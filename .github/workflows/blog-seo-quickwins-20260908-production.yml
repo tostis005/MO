@@ -1,0 +1,143 @@
+name: Deploy blog SEO quick wins 2026-09-08
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-blog-seo-quickwins-20260908.php'
+      - '.github/workflows/blog-seo-quickwins-20260908-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate PHP
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-blog-seo-quickwins-20260908.php
+
+      - name: Deploy MU plugin
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          echo "SSH_OPTIONS=$SSH_OPTIONS" >> "$GITHUB_ENV"
+
+          NAME='mdo-blog-seo-quickwins-20260908.php'
+          SRC="mu-plugins/$NAME"
+          TARGET="$PROD_PATH/wp-content/mu-plugins/$NAME"
+          REMOTE="/tmp/${NAME%.php}-${GITHUB_RUN_ID}.php"
+          BACKUP="/tmp/${NAME%.php}-backup-${GITHUB_RUN_ID}.php"
+
+          sshpass -e scp $SCP_OPTIONS "$SRC" "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$REMOTE' >/dev/null; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$TARGET' ]; then cp -p '$TARGET' '$BACKUP'; fi; install -m 0644 '$REMOTE' '$TARGET'; rm -f '$REMOTE'"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php_bin\" \"\$wp_bin\" eval 'if ( function_exists(\"wp_cache_flush\") ) { wp_cache_flush(); } if ( has_action(\"litespeed_purge_all\") ) { do_action(\"litespeed_purge_all\"); }' --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+      - name: Verify live blog HTML and canonicalization
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet beautifulsoup4
+
+          ES='https://www.elmercadodeorigen.com/hay-que-poner-lentejas-en-remojo-cuanto-tiempo/'
+          EN='https://www.elmercadodeorigen.com/en/how-much-protein-in-beef/'
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES?mdo_seo_verify=20260908" -o /tmp/es.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN?mdo_seo_verify=20260908" -o /tmp/en.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "${ES}?utm_source=rss&utm_medium=rss" -o /tmp/utm.html
+
+          python - <<'PY'
+          from bs4 import BeautifulSoup
+
+          for label, path in [('ES', '/tmp/es.html'), ('EN', '/tmp/en.html')]:
+              html = open(path, encoding='utf-8').read()
+              soup = BeautifulSoup(html, 'html.parser')
+              main = soup.select_one('main#primary.emo-article-page')
+              content = soup.select_one('.emo-article-content')
+              newsletter = soup.select_one('#emo-newsletter')
+              anchor = soup.select_one('[data-emo-newsletter-anchor]')
+              assert main is not None, f'{label}: article main missing'
+              assert content is not None, f'{label}: article content missing'
+              assert len(main.select('h1')) == 1, f'{label}: expected exactly one H1, got {len(main.select("h1"))}'
+              assert len(content.select('h1')) == 0, f'{label}: duplicated content H1 remains'
+              assert newsletter is not None, f'{label}: newsletter missing'
+              assert anchor is not None, f'{label}: later newsletter anchor missing'
+              assert newsletter.parent is anchor, f'{label}: newsletter was not moved into later anchor'
+              preceding_p = sum(1 for child in content.children if getattr(child, 'name', None) == 'p' and child is not anchor and child.find_next_sibling() is not None and list(content.children).index(child) < list(content.children).index(anchor))
+              assert preceding_p >= 7, f'{label}: newsletter still too early ({preceding_p} direct paragraphs before anchor)'
+              print(f'{label}: h1=1 newsletter_after_direct_paragraphs={preceding_p}')
+
+          utm = BeautifulSoup(open('/tmp/utm.html', encoding='utf-8').read(), 'html.parser')
+          canonical = utm.find('link', rel=lambda value: value and 'canonical' in value)
+          assert canonical is not None and canonical.get('href'), 'UTM: canonical missing'
+          href = canonical.get('href')
+          assert 'utm_' not in href.lower(), f'UTM: tracking parameters leaked into canonical: {href}'
+          print('CANONICAL=' + href)
+          PY
+
+          headers="$(curl -sSI --max-redirs 0 'http://www.elmercadodeorigen.com/hay-que-poner-lentejas-en-remojo-cuanto-tiempo/' | tr -d '\r')"
+          printf '%s\n' "$headers"
+          printf '%s\n' "$headers" | grep -Eqi '^HTTP/[^ ]+ (301|302|307|308) '
+          printf '%s\n' "$headers" | grep -Eqi '^location: https://'
+
+      - name: Roll back on failure
+        if: failure() && env.PROD_PATH != ''
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          NAME='mdo-blog-seo-quickwins-20260908.php'
+          TARGET="$PROD_PATH/wp-content/mu-plugins/$NAME"
+          BACKUP="/tmp/${NAME%.php}-backup-${GITHUB_RUN_ID}.php"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "if [ -f '$BACKUP' ]; then install -m 0644 '$BACKUP' '$TARGET' && rm -f '$BACKUP'; else rm -f '$TARGET'; fi"
+
+      - name: Clean deployment backup
+        if: success()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          NAME='mdo-blog-seo-quickwins-20260908.php'
+          BACKUP="/tmp/${NAME%.php}-backup-${GITHUB_RUN_ID}.php"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP'"
