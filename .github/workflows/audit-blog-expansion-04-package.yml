@@ -1,0 +1,49 @@
+name: Audit old blog expansion 04 package
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-blog-expansion-04-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode and inspect old package
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64,gzip,json,pathlib,hashlib,re
+          base=pathlib.Path('.github/scripts')
+          parts=[base/f'blog-expansion-04-{i}.b64' for i in range(1,4)]
+          for p in parts:
+              assert p.exists() and p.stat().st_size>0, p
+          encoded=''.join(p.read_text(encoding='utf-8').strip() for p in parts)
+          compressed=base64.b64decode(encoded,validate=True)
+          print('COMPRESSED_SHA256='+hashlib.sha256(compressed).hexdigest())
+          decoded=gzip.decompress(compressed)
+          print('DECODED_SHA256='+hashlib.sha256(decoded).hexdigest())
+          data=json.loads(decoded.decode('utf-8'))
+          print('COUNT='+str(len(data)))
+          for i,a in enumerate(data,1):
+              pos=a.get('pos','?')
+              title=a.get('title','')
+              slug=a.get('slug','')
+              cat=a.get('category_slug','')
+              prod=a.get('product_cat_slug','')
+              content=a.get('content','')
+              enc=a.get('en_content','')
+              es=len(re.findall(r"\b\w+\b",re.sub(r'<[^>]+>',' ',content),flags=re.UNICODE))
+              en=len(re.findall(r"\b[A-Za-z][A-Za-z'-]*\b",re.sub(r'<[^>]+>',' ',enc)))
+              print(f'ITEM i={i} pos={pos} es={es} en={en} cat={cat} product={prod} slug={slug} title={title}')
+          print('OLD_PACKAGE_AUDIT_OK')
+          PY
+          echo 'AUDIT_REV=2'
