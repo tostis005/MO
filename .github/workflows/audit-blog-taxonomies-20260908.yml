@@ -45,8 +45,8 @@ jobs:
             [ -n "$prod" ] || exit 4
             export PATH="$(dirname "$php"):$PATH"
             echo "=== BLOG_CATEGORIES ==="
-            "$php" "$wp" term list category --path="$prod" --allow-root --fields=term_id,name,slug,count --format=table
+            "$php" "$wp" term list category --path="$prod" --allow-root --skip-plugins --skip-themes --fields=term_id,name,slug,count --format=table
             echo "=== PRODUCT_CATEGORIES ==="
-            "$php" "$wp" term list product_cat --path="$prod" --allow-root --fields=term_id,name,slug,count --format=table
+            "$php" "$wp" term list product_cat --path="$prod" --allow-root --skip-plugins --skip-themes --fields=term_id,name,slug,count --format=table
             echo "TAXONOMY_AUDIT_OK"
           '
