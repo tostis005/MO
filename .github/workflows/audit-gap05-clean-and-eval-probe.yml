@@ -1,0 +1,72 @@
+name: Audit gap05 cleanup and eval-file probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-gap05-clean-and-eval-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm cleanup and probe eval-file
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-P $PORT -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -n1)
+            [ -n "$wp" ] || exit 2; [ -n "$php" ] || exit 3
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;; esac
+            done
+            [ -n "$prod" ] || exit 4
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+          PROD="${INFO%%|*}"; R="${INFO#*|}"; PHP="${R%%|*}"; WP="${R#*|}"
+          slugs=(
+            hortalizas-raiz-hoja-fruto-flor-bulbo-tallo
+            por-que-algunas-verduras-saben-amargas
+            por-que-frutas-hortalizas-se-oscurecen-al-cortarlas-oxidacion-enzimatica
+            como-influyen-tamano-madurez-sabor-textura-hortaliza
+            carne-con-hueso-o-deshuesada-rendimiento-coccion-precio-real
+            jamon-entero-deshuesado-loncheado-rendimiento-coste-real
+            como-comparar-precio-real-alimentos-kilo-hueso-merma-peso-escurrido
+            productor-elaborador-fabricante-envasador-distribuidor-quien-hay-detras-alimento
+            artesano-tradicional-gourmet-premium-seleccion-que-significan-alimentacion
+            dop-igp-etg-diferencias-que-garantiza-cada-sello-calidad
+          )
+          found=0
+          for slug in "${slugs[@]}"; do
+            ids="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post list --path='$PROD' --allow-root --post_type=post --name='$slug' --post_status=any --format=ids 2>/dev/null || true")"
+            if [ -n "${ids// /}" ]; then echo "LEFTOVER slug=$slug ids=$ids"; found=$((found+1)); fi
+          done
+          [ "$found" -eq 0 ]
+          echo 'GAP05_CLEAN=1'
+
+          remote=/tmp/emdo-gap05-probe-${GITHUB_RUN_ID}.php
+          sshpass -e scp $SCP .github/scripts/probe-blog-gap05-eval-file.php "$STAGING_USER@$STAGING_HOST:$remote"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f /tmp/emdo-gap05-eval-probe.json; export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$remote' --path='$PROD' --allow-root >/tmp/emdo-gap05-probe.stdout 2>/tmp/emdo-gap05-probe.stderr; rc=\$?; echo PROBE_RC=\$rc; test -s /tmp/emdo-gap05-eval-probe.json; cat /tmp/emdo-gap05-eval-probe.json; rm -f '$remote' /tmp/emdo-gap05-eval-probe.json /tmp/emdo-gap05-probe.stdout /tmp/emdo-gap05-probe.stderr"
+          echo 'EVAL_FILE_WRITE_OK=1'
