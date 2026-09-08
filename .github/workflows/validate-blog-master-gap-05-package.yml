@@ -24,14 +24,18 @@ jobs:
           python3 - <<'PY'
           import base64,gzip,hashlib,json,pathlib,re
           base=pathlib.Path('.github/scripts')
-          parts=[base/f'blog-master-gap-05-{i}.b64' for i in range(1,4)]
+          parts=[base/f'blog-master-gap-05-{i}.b64' for i in range(1,5)]
           for p in parts:
               assert p.exists() and p.stat().st_size>0, f'missing/empty {p}'
           encoded=''.join(p.read_text(encoding='utf-8').strip() for p in parts)
           compressed=base64.b64decode(encoded,validate=True)
-          print('COMPRESSED_SHA256='+hashlib.sha256(compressed).hexdigest())
+          comp_sha=hashlib.sha256(compressed).hexdigest()
+          print('COMPRESSED_SHA256='+comp_sha)
+          assert comp_sha=='dbc5bf02234f06037bee506aab77c0e272de91a519dbd8b1c006c41ed2969b7f', comp_sha
           decoded=gzip.decompress(compressed)
-          print('DECODED_SHA256='+hashlib.sha256(decoded).hexdigest())
+          dec_sha=hashlib.sha256(decoded).hexdigest()
+          print('DECODED_SHA256='+dec_sha)
+          assert dec_sha=='a401a869f6063541f6256b96b2c88733eda7320c9c447f8340d465324e48cc42', dec_sha
           articles=json.loads(decoded.decode('utf-8'))
           print('COUNT='+str(len(articles)))
           expected=[33,35,36,37,40,42,43,44,45,46]
@@ -74,4 +78,4 @@ jobs:
           assert len({a['en_slug'] for a in articles})==10
           print('PACKAGE_OK=10')
           PY
-          echo 'VALIDATION_WORKFLOW_REV=2'
+          echo 'VALIDATION_WORKFLOW_REV=3'
