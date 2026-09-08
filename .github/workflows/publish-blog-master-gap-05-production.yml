@@ -196,3 +196,4 @@ jobs:
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'"
           echo "ROLLBACK_ACTIVE=0"
           echo "SAFE_PUBLICATION_OK: 10 Spanish posts + 10 Falang English versions; master-list positions 33,35,36,37,40,42,43,44,45,46; default featured image 13442; public URLs and site health verified; no rollback needed."
+          echo "PRODUCTION_WORKFLOW_REV=2"
