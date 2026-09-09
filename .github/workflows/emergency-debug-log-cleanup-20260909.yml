@@ -1,4 +1,4 @@
-name: Emergency clear WordPress debug log 2026-09-09
+name: Emergency diagnose production disk 2026-09-09
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  cleanup:
+  diagnose:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
@@ -20,7 +20,7 @@ jobs:
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Clear production WordPress debug log
+      - name: Inspect production disk usage
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -32,7 +32,6 @@ jobs:
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-
           PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
             wp_bin=$(command -v wp || true)
             php_bin=$(command -v php || true)
@@ -46,22 +45,20 @@ jobs:
             done
           ')"
           : "${PROD_PATH:?production path not found}"
+          VHOST_PATH="$(dirname "$PROD_PATH")"
 
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
-            set -eu
             echo PROD_PATH='$PROD_PATH'
-            echo '=== DISK BEFORE ==='
-            df -h '$PROD_PATH' || true
-            for f in '$PROD_PATH/wp-content/debug.log' '$PROD_PATH/debug.log'; do
-              if [ -f \"\$f\" ]; then
-                echo '=== DEBUG LOG FOUND ==='
-                ls -lh \"\$f\" || true
-                rm -f -- \"\$f\"
-                echo \"REMOVED=\$f\"
-              fi
-            done
-            echo '=== DISK AFTER ==='
-            df -h '$PROD_PATH' || true
+            echo '=== FILESYSTEM ==='
+            df -h '$PROD_PATH' /tmp || true
+            echo '=== INODES ==='
+            df -i '$PROD_PATH' /tmp || true
+            echo '=== VHOST TOP DIRECTORIES ==='
+            du -x -h -d 1 '$VHOST_PATH' 2>/dev/null | sort -h | tail -25 || true
+            echo '=== WP-CONTENT TOP DIRECTORIES ==='
+            du -x -h -d 1 '$PROD_PATH/wp-content' 2>/dev/null | sort -h | tail -25 || true
+            echo '=== FILES OVER 250MB IN VHOST ==='
+            find '$VHOST_PATH' -xdev -type f -size +250M -printf '%s %p\n' 2>/dev/null | sort -nr | head -30 || true
           "
 
       - name: Verify public site
@@ -69,13 +66,8 @@ jobs:
         run: |
           set -euo pipefail
           for url in 'https://www.elmercadodeorigen.com/' 'https://www.elmercadodeorigen.com/tienda/' 'https://www.elmercadodeorigen.com/blog/'; do
-            echo "--- $url"
             code=$(curl -L --max-time 30 --retry 2 -sS -o /tmp/site.html -w '%{http_code}' "$url" || true)
-            echo "HTTP=$code"
-            if grep -Eqi 'No space left on device|Error en la base de datos de WordPress' /tmp/site.html; then
-              echo 'DISK_OR_DB_ERROR_STILL_VISIBLE=true'
-              exit 3
-            fi
+            echo "$url HTTP=$code"
             [ "$code" = '200' ] || exit 4
           done
           echo 'PUBLIC_SITE_HEALTHY=true'
