@@ -57,7 +57,7 @@ return array(
 <p>Añadir mucha mantequilla o aceite puede hacer más difícil apreciar la grasa propia de la carne.</p>
 <h2>Cómo influye en el punto de cocción</h2>
 <p>Una pieza menos fría puede responder de manera más predecible al calor, sobre todo si es gruesa. Pero el atemperado no garantiza el punto perfecto. Temperatura de la sartén, grosor, tiempo y reposo siguen determinando el resultado.</p>
-<p>En Wagyu A5, además, el punto debe valorarse junto a cuánto queremos fundir el marmoleo. Consulta <a href="/punto-coccion-wagyu/">el punto de cocción del Wagyu</a>.</p>
+<p>En Wagyu A5, además, el punto debe valorarse junto a cuánto queremos fundir el marmoleo. Consulta <a href="/punto-coccion-ideal-wagyu/">el punto de cocción del Wagyu</a>.</p>
 <h2>¿Hay que dejar reposar después?</h2>
 <p>En un steak grueso puede tener sentido un reposo breve. En láminas o pequeños bocados de A5, dejar reposar demasiado puede ser contraproducente porque la grasa se enfría rápidamente. Conviene servirlos casi de inmediato.</p>
 <p>La regla tradicional de reposar largos minutos cualquier filete no debe aplicarse sin considerar tamaño y formato.</p>
@@ -102,7 +102,7 @@ HTML,
 <p>Do not squeeze or press the beef. Simply remove visible moisture, especially after opening vacuum packaging or after a controlled thaw.</p>
 <h2>If the Wagyu was frozen, thaw it properly first</h2>
 <p>Do not solve incomplete thawing by leaving beef on the counter for a long time. With premium meat, slow controlled thawing under refrigeration usually provides much better control.</p>
-<p>Once safely thawed, apply the brief pre-cooking preparation appropriate to the thickness. See <a href="/en/how-to-thaw-wagyu-correctly/">how to thaw Wagyu correctly</a>.</p>
+<p>Once safely thawed, apply the brief pre-cooking preparation appropriate to the thickness. See <a href="/en/how-to-thaw-wagyu-properly/">how to thaw Wagyu correctly</a>.</p>
 <h2>Should vacuum packaging be opened in advance?</h2>
 <p>When beef arrives vacuum packed, open it according to the product instructions, remove surface juices and pat gently dry. A temporary enclosed-package aroma may dissipate after opening, although a persistent abnormal smell, swollen package or signs of spoilage should always be treated cautiously.</p>
 <p>Do not use tempering as a way to “rescue” beef whose safety is doubtful. If the product appears spoiled, do not eat it and contact the retailer.</p>
@@ -120,7 +120,7 @@ HTML,
 <p>Adding a large amount of butter or oil can make it harder to appreciate the beef's own fat.</p>
 <h2>How it affects doneness</h2>
 <p>Less-cold beef may respond more predictably to heat, particularly when thick, but tempering does not guarantee perfect doneness. Pan temperature, thickness, time and resting still determine the result.</p>
-<p>With A5, doneness also needs to be considered alongside how much marbling you want to render. See <a href="/en/wagyu-doneness-guide/">Wagyu doneness</a>.</p>
+<p>With A5, doneness also needs to be considered alongside how much marbling you want to render. See <a href="/en/ideal-wagyu-doneness/">Wagyu doneness</a>.</p>
 <h2>Should it rest after cooking?</h2>
 <p>A thick steak can benefit from a short rest. Thin slices or small A5 bites are different: resting for too long can be counterproductive because the fat cools quickly. They are usually best eaten almost immediately.</p>
 <p>The traditional rule of resting every steak for many minutes should not be applied without considering size and format.</p>
