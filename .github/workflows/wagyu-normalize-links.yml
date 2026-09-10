@@ -18,7 +18,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Normalize legacy links
+      - name: Normalize final editorial QA fixes
         run: php tools/wagyu-normalize-links.php
 
       - name: Commit normalized payloads
@@ -33,5 +33,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add .github/data/editorial-wagyu-batch*-20260910
-          git commit -m 'Normalize Wagyu internal links to canonical slugs'
+          git commit -m 'Apply final Wagyu editorial QA fixes'
           git push
