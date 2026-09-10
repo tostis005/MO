@@ -1,8 +1,7 @@
 <?php
 /**
- * One-time normalizer for legacy/provisional Wagyu internal links.
- * It only replaces exact relative paths with the canonical slugs declared
- * by the final 65-article payload set.
+ * One-time normalizer for legacy/provisional Wagyu internal links and the
+ * final small editorial QA fixes found by the automated preflight.
  */
 
 declare(strict_types=1);
@@ -46,6 +45,19 @@ $aliases = [
     '/en/how-to-season-wagyu/' => '/en/how-to-season-wagyu-salt-pepper-sauces/',
     '/en/wagyu-doneness-guide/' => '/en/ideal-wagyu-doneness/',
     '/en/wagyu-vs-kobe/' => '/en/wagyu-vs-kobe-differences/',
+    '/en/wagyu-kobe-diferencias/' => '/en/wagyu-vs-kobe-differences/',
+];
+
+$expansions = [
+    '55-todo-wagyu-es-a5.php' => [
+        '<h2>Which grade is best for a first tasting?</h2>' => '<h2>Why lower grades are not failed A5</h2>\n<p>A3 and A4 should not be treated as carcasses that simply missed the only grade worth buying. The Japanese system deliberately describes several levels of quality, and each can produce a different balance of marbling, muscle character and richness. For a shopper, that means the grade is useful descriptive information rather than a pass-or-fail authenticity test.</p>\n<p>This is also why comparing price requires context. A lower grade can still come from well-documented Japanese Wagyu, while cut, origin, portion size and intended cooking method may matter more to the eating experience than chasing A5 alone.</p>\n<h2>Which grade is best for a first tasting?</h2>',
+    ],
+    '56-numero-identificacion-wagyu.php' => [
+        '<h2>How should buyers use the number?</h2>' => '<h2>How to distinguish the cattle ID from other numbers</h2>\n<p>A premium beef label may contain several codes at the same time: the individual cattle identification number, a carcass or slaughter reference, an importer or distributor lot and a retailer SKU. They are not interchangeable. The cattle ID is the reference tied to the animal within Japan’s traceability framework, while commercial lot numbers help operators manage portions after processing and distribution.</p>\n<p>For a retail buyer, the goal is not to memorise every code format. It is to be able to ask how the portion in the pack connects back to the underlying animal or carcass record. A transparent seller should be able to explain that chain, especially when the listing makes specific claims about Japanese origin, grade or regional provenance.</p>\n<h2>How should buyers use the number?</h2>',
+    ],
+    '57-universal-wagyu-mark.php' => [
+        '<h2>Using the mark intelligently</h2>' => '<h2>What the mark can and cannot simplify for a shopper</h2>\n<p>The mark is most valuable as a fast first signal when several products use the word Wagyu. It can help separate Japanese-produced Wagyu from overseas production, but it cannot choose the right product for you. Grade, BMS, cut, portion size and regional programme still need to be read separately.</p>\n<p>That distinction matters in online shopping, where a logo may be visually prominent while the technical specification sits lower on the page. Treat the mark as the beginning of verification, not the end of it.</p>\n<h2>Using the mark intelligently</h2>',
+    ],
 ];
 
 $total = 0;
@@ -66,6 +78,18 @@ foreach ($files as $file) {
         $total += $count;
     }
 
+    $base = basename($file);
+    if (isset($expansions[$base])) {
+        foreach ($expansions[$base] as $needle => $replacement) {
+            if (str_contains($updated, $needle) && !str_contains($updated, strip_tags(strtok($replacement, "\n")))) {
+                $count = 0;
+                $updated = str_replace($needle, $replacement, $updated, $count);
+                $fileCount += $count;
+                $total += $count;
+            }
+        }
+    }
+
     if ($updated !== $source) {
         if (file_put_contents($file, $updated) === false) {
             fwrite(STDERR, "Unable to write $file\n");
@@ -76,4 +100,4 @@ foreach ($files as $file) {
     }
 }
 
-fwrite(STDOUT, "Normalized $total links across $touched payload files.\n");
+fwrite(STDOUT, "Applied $total final QA replacements across $touched payload files.\n");
