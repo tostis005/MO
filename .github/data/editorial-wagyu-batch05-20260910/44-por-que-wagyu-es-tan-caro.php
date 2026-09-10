@@ -45,7 +45,7 @@ return array(
 <h2>Kobe, Miyazaki o Kagoshima pueden añadir otra capa de valor</h2>
 <p>Las denominaciones y marcas regionales no son simples sinónimos de A5. Cada una puede tener criterios, reputación, producción y demanda diferentes. Kobe, por ejemplo, aplica requisitos propios sobre ganado Tajima y su cadena autorizada.</p>
 <p>El nombre regional puede por tanto influir en el precio además del grado. Pero pagar por una denominación solo tiene sentido si el producto realmente cumple sus requisitos y esa procedencia forma parte de la experiencia que buscas.</p>
-<p>Consulta <a href="/kobe-miyazaki-kagoshima-wagyu-diferencias/">Kobe, Miyazaki y Kagoshima</a>.</p>
+<p>Consulta <a href="/kobe-miyazaki-kagoshima-diferencias-wagyu-japones/">Kobe, Miyazaki y Kagoshima</a>.</p>
 <h2>No todos los cortes valen lo mismo</h2>
 <p>Una canal contiene una cantidad limitada de lomo alto, lomo bajo y solomillo. Los cortes con mayor demanda culinaria no pueden multiplicarse porque suba el número de compradores. Esa escasez anatómica eleva su valoración frente a otros músculos menos conocidos.</p>
 <p>Esto no significa que los cortes secundarios sean peores. Algunos funcionan magníficamente en yakiniku, sukiyaki o preparaciones en láminas. Pero el mercado suele pagar una prima por los nombres más reconocidos.</p>
@@ -111,7 +111,7 @@ HTML,
 <h2>Kobe, Miyazaki or Kagoshima can add another layer of value</h2>
 <p>Regional brands and geographical names are not simply synonyms for A5. They may have different criteria, reputations, production volumes and market demand. Kobe, for example, applies its own requirements to Tajima cattle and an authorised distribution chain.</p>
 <p>A regional name can therefore affect price in addition to grade. Paying for that name only makes sense when the product actually qualifies and the origin matters to the experience you want.</p>
-<p>See <a href="/en/kobe-miyazaki-kagoshima-wagyu-differences/">Kobe, Miyazaki and Kagoshima</a>.</p>
+<p>See <a href="/en/kobe-miyazaki-kagoshima-japanese-wagyu-differences/">Kobe, Miyazaki and Kagoshima</a>.</p>
 <h2>Not every cut has the same value</h2>
 <p>A carcass contains only a limited amount of ribeye, striploin and tenderloin. High demand cannot create more of those muscles. Their anatomical scarcity raises market value relative to less famous cuts.</p>
 <p>That does not make secondary cuts inferior. Many are excellent for yakiniku, sukiyaki or thin-sliced preparations. The market simply places a premium on familiar steak cuts.</p>
