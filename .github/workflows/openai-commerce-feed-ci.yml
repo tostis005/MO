@@ -3,8 +3,8 @@ name: OpenAI Commerce Feed CI
 on:
   pull_request:
     paths:
-      - 'mu-plugins/mdo-google-merchant-feeds-20260825.php'
-      - 'mu-plugins/mdo-google-merchant/openai/**'
+      - 'mdo-supplier-sync/mdo-supplier-sync.php'
+      - 'mdo-supplier-sync/includes/openai/**'
       - 'tests/openai-commerce-contract.php'
       - 'tools/openai-commerce-runtime-qa.php'
       - 'docs/openai-commerce-feed.md'
@@ -28,8 +28,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          php -l mu-plugins/mdo-google-merchant-feeds-20260825.php
-          find mu-plugins/mdo-google-merchant/openai -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+          php -l mdo-supplier-sync/mdo-supplier-sync.php
+          find mdo-supplier-sync/includes/openai -type f -name '*.php' -print0 | xargs -0 -n1 php -l
           php -l tests/openai-commerce-contract.php
           php -l tools/openai-commerce-runtime-qa.php
 
