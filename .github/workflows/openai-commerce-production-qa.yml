@@ -84,18 +84,35 @@ jobs:
           set -e
           rm -f "$REMOTE_QA"
           if [ -s "$QA_ERR" ]; then cat "$QA_ERR" >&2; fi
+
+          # Treat the JSON report itself as authoritative. WP-CLI eval-file can
+          # occasionally normalize an internal exception to exit status 0, so
+          # explicitly fail the job whenever the report contains failed checks
+          # or catalog validation errors.
+          set +e
           "$php_bin" -r '
             $j=json_decode(file_get_contents($argv[1]),true);
             if(!is_array($j)){fwrite(STDERR,"Runtime QA did not return JSON\n"); exit(2);}
-            printf("Runtime QA: %d checks, %d failures; exportable=%d; catalog errors=%d; warnings=%d\n",$j["summary"]["checks"]??0,$j["summary"]["failures"]??0,$j["catalog"]["exportable"]??0,$j["catalog"]["errors"]??0,$j["catalog"]["warnings"]??0);
+            $failures=(int)($j["summary"]["failures"]??0);
+            $catalog_errors=(int)($j["catalog"]["errors"]??0);
+            printf("Runtime QA: %d checks, %d failures; exportable=%d; catalog errors=%d; warnings=%d\n",$j["summary"]["checks"]??0,$failures,$j["catalog"]["exportable"]??0,$catalog_errors,$j["catalog"]["warnings"]??0);
             foreach(($j["checks"]??[]) as $c){if(empty($c["ok"])) printf("QA FAILURE: %s | %s\n",$c["name"]??"unknown",json_encode($c["detail"]??null,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));}
+            if($failures!==0 || $catalog_errors!==0 || empty($j["summary"]["ok"])) exit(3);
           ' "$QA_JSON"
-          if [ "$qa_status" -ne 0 ]; then qa_failed=1; fi
+          qa_json_status=$?
+          set -e
+          if [ "$qa_status" -ne 0 ] || [ "$qa_json_status" -ne 0 ]; then qa_failed=1; fi
 
           # Generate a fresh native snapshot with delivery explicitly disabled.
           GEN_JSON=/tmp/openai-commerce-generate.json
           "$php_bin" -d memory_limit=1024M "$wp_bin" eval '$s=mdo_openai_settings_20260909(); $s["format"]="native_jsonl_gz"; $s["delivery"]="none"; $s["auto_upload"]="0"; $p=new MDO_OpenAI_Commerce_Feed_Provider_20260909($s); echo wp_json_encode($p->generate());' --path="$PROD_PATH" --allow-root >"$GEN_JSON"
-          "$php_bin" -r '$j=json_decode(file_get_contents($argv[1]),true); if(!is_array($j)||empty($j["ok"])) exit(2); printf("Generation: exported=%d; retired=%d; errors=%d; warnings=%d; bytes=%d\n",$j["report"]["exported"]??0,$j["report"]["retired"]??0,$j["report"]["errors"]??0,$j["report"]["warnings"]??0,$j["report"]["bytes"]??0);' "$GEN_JSON"
+          "$php_bin" -r '
+            $j=json_decode(file_get_contents($argv[1]),true);
+            if(!is_array($j)||empty($j["ok"])) exit(2);
+            $errors=(int)($j["report"]["errors"]??-1);
+            printf("Generation: exported=%d; retired=%d; errors=%d; warnings=%d; bytes=%d\n",$j["report"]["exported"]??0,$j["report"]["retired"]??0,$errors,$j["report"]["warnings"]??0,$j["report"]["bytes"]??0);
+            if($errors!==0) exit(3);
+          ' "$GEN_JSON"
           FEED_PATH=$("$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo mdo_openai_feed_path_20260909("native_jsonl_gz");' --path="$PROD_PATH" --allow-root)
           test -f "$FEED_PATH"
           test "$(basename "$FEED_PATH")" = 'mercado-de-origen-products.jsonl.gz'
