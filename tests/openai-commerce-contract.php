@@ -7,10 +7,10 @@ declare(strict_types=1);
 
 $root = dirname(__DIR__);
 $files = array(
-    'loader'    => $root . '/mu-plugins/mdo-google-merchant-feeds-20260825.php',
-    'core'      => $root . '/mu-plugins/mdo-google-merchant/openai/core.php',
-    'transport' => $root . '/mu-plugins/mdo-google-merchant/openai/transport.php',
-    'admin'     => $root . '/mu-plugins/mdo-google-merchant/openai/admin.php',
+    'loader'    => $root . '/mdo-supplier-sync/mdo-supplier-sync.php',
+    'core'      => $root . '/mdo-supplier-sync/includes/openai/class-mdo-openai-commerce.php',
+    'transport' => $root . '/mdo-supplier-sync/includes/openai/class-mdo-openai-transports.php',
+    'admin'     => $root . '/mdo-supplier-sync/includes/openai/class-mdo-openai-admin.php',
 );
 
 foreach ($files as $name => $path) {
@@ -35,7 +35,8 @@ $assert = static function (bool $condition, string $message) use (&$failures, &$
 };
 $contains = static fn(string $haystack, string $needle): bool => false !== strpos($haystack, $needle);
 
-$assert($contains($src['loader'], "openai/core.php") && $contains($src['loader'], "openai/transport.php") && $contains($src['loader'], "openai/admin.php"), 'loader includes core, transport and admin');
+$assert($contains($src['loader'], "includes/openai/class-mdo-openai-commerce.php") && $contains($src['loader'], "includes/openai/class-mdo-openai-transports.php") && $contains($src['loader'], "includes/openai/class-mdo-openai-admin.php"), 'EMDO loads OpenAI core, transports and admin');
+$assert($contains($src['loader'], 'Plugin Name: EMDO'), 'OpenAI Commerce is integrated into EMDO');
 $assert($contains($src['core'], "'format'                           => 'native_jsonl_gz'"), 'native JSONL.gz is default');
 $assert($contains($src['core'], "'schedule'                         => 'six_hours'"), 'six-hour generation is default');
 $assert($contains($src['core'], "'delivery'                         => 'none'"), 'delivery is disabled by default');
