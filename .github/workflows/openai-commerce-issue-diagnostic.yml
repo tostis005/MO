@@ -20,7 +20,7 @@ jobs:
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Print production OpenAI catalog issues
+      - name: Inspect production Montjam image assets
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -52,23 +52,17 @@ jobs:
           php_bin=$(command -v php || true)
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
           "$php_bin" -d memory_limit=1024M "$wp_bin" eval '
-            $s=mdo_openai_settings_20260909();
-            $s["format"]="native_jsonl_gz";
-            $s["delivery"]="none";
-            $r=mdo_openai_validate_catalog_20260909($s);
-            echo "SUMMARY ".wp_json_encode(["parents"=>$r["parents"]??0,"variants"=>$r["variants"]??0,"exported"=>$r["exported"]??0,"excluded"=>$r["excluded"]??0,"errors"=>$r["errors"]??0,"warnings"=>$r["warnings"]??0],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
-            foreach((array)($r["issues"]??[]) as $i=>$issue){
-              echo "ISSUE ".($i+1)." ".wp_json_encode($issue,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
-              $item=(string)($issue["item_id"]??"");
-              if($item!==""){
-                $posts=get_posts(["post_type"=>["product","product_variation"],"post_status"=>"any","posts_per_page"=>10,"meta_key"=>"_mdo_openai_item_id","meta_value"=>$item,"fields"=>"ids","suppress_filters"=>true]);
-                foreach((array)$posts as $pid){
-                  $p=wc_get_product($pid); if(!$p) continue;
-                  $parent_id=$p instanceof WC_Product_Variation?(int)$p->get_parent_id():(int)$p->get_id();
-                  $parent=wc_get_product($parent_id);
-                  echo "PRODUCT ".wp_json_encode(["item_id"=>$item,"product_id"=>(int)$pid,"parent_id"=>$parent_id,"name"=>$p->get_name(),"image_id"=>(int)$p->get_image_id(),"gallery"=>array_map("absint",(array)$p->get_gallery_image_ids()),"parent_image_id"=>$parent?(int)$parent->get_image_id():0,"parent_gallery"=>$parent?array_map("absint",(array)$parent->get_gallery_image_ids()):[],"parent_name"=>$parent?$parent->get_name():""],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
-                }
-              }
+            foreach([14287,14301] as $pid){
+              $p=wc_get_product($pid); if(!$p) continue;
+              echo "PARENT ".wp_json_encode(["id"=>$pid,"name"=>$p->get_name(),"permalink"=>$p->get_permalink(),"image_id"=>(int)$p->get_image_id(),"gallery"=>array_map("absint",(array)$p->get_gallery_image_ids())],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+              $meta=get_post_meta($pid);
+              foreach($meta as $k=>$vals){ if(preg_match("/(image|thumb|gallery|photo|foto|media|attachment)/i",(string)$k)){ echo "META ".$pid." ".$k." ".wp_json_encode($vals,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n"; } }
             }
+            $q=new WP_Query(["post_type"=>"attachment","post_status"=>"inherit","posts_per_page"=>200,"orderby"=>"ID","order"=>"DESC","s"=>"Montjam","fields"=>"ids"]);
+            foreach((array)$q->posts as $aid){ echo "MEDIA ".wp_json_encode(["id"=>(int)$aid,"title"=>get_the_title($aid),"url"=>wp_get_attachment_url($aid),"alt"=>get_post_meta($aid,"_wp_attachment_image_alt",true),"parent"=>(int)wp_get_post_parent_id($aid)],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n"; }
+            $q2=new WP_Query(["post_type"=>"attachment","post_status"=>"inherit","posts_per_page"=>200,"orderby"=>"ID","order"=>"DESC","s"=>"Jabugo","fields"=>"ids"]);
+            foreach((array)$q2->posts as $aid){ echo "JABUGO_MEDIA ".wp_json_encode(["id"=>(int)$aid,"title"=>get_the_title($aid),"url"=>wp_get_attachment_url($aid),"alt"=>get_post_meta($aid,"_wp_attachment_image_alt",true),"parent"=>(int)wp_get_post_parent_id($aid)],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n"; }
+            $montjam=get_posts(["post_type"=>"product","post_status"=>"publish","posts_per_page"=>50,"s"=>"Montjam","fields"=>"ids","suppress_filters"=>true]);
+            foreach((array)$montjam as $mid){ $mp=wc_get_product($mid); if(!$mp) continue; echo "MONTJAM_PRODUCT ".wp_json_encode(["id"=>(int)$mid,"name"=>$mp->get_name(),"image_id"=>(int)$mp->get_image_id(),"image_url"=>wp_get_attachment_url((int)$mp->get_image_id())],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n"; }
           ' --path="$PROD_PATH" --allow-root
           REMOTE
