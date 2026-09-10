@@ -1,0 +1,47 @@
+name: OpenAI Commerce Issue Diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/openai-commerce-issue-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Print production OpenAI catalog issues
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          PROD_PATH=/var/www/vhosts/elmercadodeorigen.com/httpdocs
+          wp_bin=$(command -v wp)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          "$php_bin" -d memory_limit=1024M "$wp_bin" eval '
+            $s=mdo_openai_settings_20260909();
+            $s["format"]="native_jsonl_gz";
+            $s["delivery"]="none";
+            $r=mdo_openai_validate_catalog_20260909($s);
+            echo "SUMMARY ".wp_json_encode(["parents"=>$r["parents"]??0,"variants"=>$r["variants"]??0,"exported"=>$r["exported"]??0,"excluded"=>$r["excluded"]??0,"errors"=>$r["errors"]??0,"warnings"=>$r["warnings"]??0],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+            foreach((array)($r["issues"]??[]) as $i=>$issue){echo "ISSUE ".($i+1)." ".wp_json_encode($issue,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";}
+          ' --path="$PROD_PATH" --allow-root
+          REMOTE
