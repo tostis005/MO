@@ -23,4 +23,4 @@ jobs:
       - uses: actions/checkout@v4
       - name: Publish and verify protected Wagyu batch
         shell: bash
-        run: bash .github/scripts/run-wagyu-65-production.sh
+        run: bash .github/scripts/run-wagyu-65-production-safe.sh
