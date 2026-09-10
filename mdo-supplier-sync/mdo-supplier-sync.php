@@ -67,6 +67,7 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-specials-router.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-home-featured-special.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/openai/class-mdo-openai-commerce.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/openai/class-mdo-openai-catalog-hardening.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/openai/class-mdo-openai-strict-snapshot.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/openai/class-mdo-openai-feed-access.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/openai/class-mdo-openai-transports.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/openai/class-mdo-openai-admin.php';
