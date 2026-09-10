@@ -1,0 +1,156 @@
+name: Publish Wagyu 65 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-wagyu-65-production.yml'
+      - '.github/scripts/publish-wagyu-65-production.php'
+      - '.github/data/editorial-wagyu-batch01-20260910/**'
+      - '.github/data/editorial-wagyu-batch02-20260910/**'
+      - '.github/data/editorial-wagyu-batch03-20260910/**'
+      - '.github/data/editorial-wagyu-batch04-20260910/**'
+      - '.github/data/editorial-wagyu-batch05-20260910/**'
+      - '.github/data/editorial-wagyu-batch06-20260910/**'
+      - '.github/data/editorial-wagyu-batch07-20260910/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate publisher and all 65 payloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/publish-wagyu-65-production.php
+          mapfile -t FILES < <(find .github/data -maxdepth 2 -type f -path '*/editorial-wagyu-batch*-20260910/*.php' | sort -V)
+          [ "${#FILES[@]}" -eq 65 ] || { echo "Expected 65 Wagyu payloads, found ${#FILES[@]}" >&2; exit 1; }
+          for file in "${FILES[@]}"; do php -l "$file" >/dev/null; done
+          php <<'PHP' > /tmp/wagyu-slugs.tsv
+          <?php
+          $files = array();
+          foreach ( glob('.github/data/editorial-wagyu-batch*-20260910/*.php') ?: array() as $f ) { $files[] = $f; }
+          natsort($files);
+          $required = array('slug','en_slug','title','en_title','content','en_content','seo_title','en_seo_title','meta_description','en_meta_description','focus_keyword','en_focus_keyword');
+          $seenEs = $seenEn = array();
+          foreach ($files as $file) {
+              $a = include $file;
+              foreach ($required as $key) {
+                  if (!isset($a[$key]) || (is_string($a[$key]) && trim($a[$key]) === '')) { fwrite(STDERR, "Missing $key in $file\n"); exit(2); }
+              }
+              if (isset($seenEs[$a['slug']]) || isset($seenEn[$a['en_slug']])) { fwrite(STDERR, "Duplicate slug in $file\n"); exit(3); }
+              $seenEs[$a['slug']] = true; $seenEn[$a['en_slug']] = true;
+              echo $a['slug'], "\t", $a['en_slug'], "\n";
+          }
+          if (count($files) !== 65) { fwrite(STDERR, 'Expected exactly 65 payloads.'); exit(4); }
+          PHP
+          [ "$(wc -l < /tmp/wagyu-slugs.tsv)" -eq 65 ]
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          echo "Wagyu preflight OK: 65 payloads"
+
+      - name: Publish with WP-CLI and verify production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-P $PORT -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20"
+          UA='Mozilla/5.0 EMDO Wagyu editorial production verifier'
+
+          health_check() {
+            local phase="$1"; shift
+            for url in "$@"; do
+              local code
+              code="$(curl -L -sS --retry 3 --retry-delay 2 -A "$UA" -o /tmp/health.html -w '%{http_code}' "${url}?emdo_wagyu_health=${GITHUB_RUN_ID}-${phase}" || true)"
+              [ "$code" = '200' ] || { echo "Health ${phase}: HTTP ${code} ${url}" >&2; return 1; }
+              [ "$(wc -c < /tmp/health.html)" -gt 5000 ] || { echo "Health ${phase}: small response ${url}" >&2; return 1; }
+              grep -qi '</html>' /tmp/health.html || { echo "Health ${phase}: incomplete HTML ${url}" >&2; return 1; }
+              echo "health_ok phase=${phase} url=${url}"
+            done
+          }
+
+          CRITICAL_URLS=(
+            'https://www.elmercadodeorigen.com/'
+            'https://www.elmercadodeorigen.com/tienda/'
+            'https://www.elmercadodeorigen.com/blog/'
+          )
+          health_check pre "${CRITICAL_URLS[@]}"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          ARCHIVE="/tmp/wagyu-65-${GITHUB_RUN_ID}.tgz"
+          tar -czf "$ARCHIVE" \
+            .github/scripts/publish-wagyu-65-production.php \
+            .github/data/editorial-wagyu-batch01-20260910 \
+            .github/data/editorial-wagyu-batch02-20260910 \
+            .github/data/editorial-wagyu-batch03-20260910 \
+            .github/data/editorial-wagyu-batch04-20260910 \
+            .github/data/editorial-wagyu-batch05-20260910 \
+            .github/data/editorial-wagyu-batch06-20260910 \
+            .github/data/editorial-wagyu-batch07-20260910
+
+          REMOTE_DIR="/tmp/emdo-wagyu-65-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR'"
+          sshpass -e scp $SCP "$ARCHIVE" "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/payload.tgz"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "tar -xzf '$REMOTE_DIR/payload.tgz' -C '$REMOTE_DIR'"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); EMDO_WAGYU_SEED_DIR='$REMOTE_DIR' \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_DIR/.github/scripts/publish-wagyu-65-production.php' --path='$PROD_PATH' --allow-root; rc=\$?; rm -rf '$REMOTE_DIR'; exit \$rc" | tee /tmp/wagyu-65-output.txt
+
+          grep -q 'EMDO_WAGYU_65_BEGIN' /tmp/wagyu-65-output.txt
+          grep -q '"verified":true' /tmp/wagyu-65-output.txt
+          grep -q '"count":65' /tmp/wagyu-65-output.txt
+          grep -q '"blog_category_slug":"wagyu"' /tmp/wagyu-65-output.txt
+          grep -q '"shop_wagyu_category_slug":"wagyu"' /tmp/wagyu-65-output.txt
+          grep -q '"related_product_category":"carnes"' /tmp/wagyu-65-output.txt
+          grep -q 'EMDO_WAGYU_65_END' /tmp/wagyu-65-output.txt
+
+          check_url() {
+            local url="$1" code=''
+            for attempt in 1 2 3 4; do
+              code="$(curl -L -sS -A "$UA" -o /tmp/page.html -w '%{http_code}' --connect-timeout 15 --max-time 45 "${url}?emdo_wagyu=${GITHUB_RUN_ID}-${attempt}" || true)"
+              if [ "$code" = '200' ] && [ "$(wc -c < /tmp/page.html)" -gt 5000 ]; then
+                echo "OK $url"
+                return 0
+              fi
+              sleep 4
+            done
+            echo "FAILED $code $url" >&2
+            return 1
+          }
+
+          while IFS=$'\t' read -r es_slug en_slug; do
+            check_url "https://www.elmercadodeorigen.com/${es_slug}/"
+            check_url "https://www.elmercadodeorigen.com/en/${en_slug}/"
+          done < /tmp/wagyu-slugs.tsv
+
+          check_url 'https://www.elmercadodeorigen.com/category/wagyu/'
+          health_check post "${CRITICAL_URLS[@]}"
+          echo 'Wagyu production verification complete: 65 ES + 65 EN URLs'
