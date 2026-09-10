@@ -1,0 +1,69 @@
+name: OpenAI Public Catalog Coverage QA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/openai-commerce-public-catalog-qa.yml'
+      - 'tools/openai-commerce-public-catalog-qa.php'
+      - 'mdo-supplier-sync/includes/openai/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openai-commerce-public-catalog-qa
+  cancel-in-progress: false
+
+jobs:
+  qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate audit script
+        run: php -l tools/openai-commerce-public-catalog-qa.php
+      - name: Compare full WordPress catalog with physical OpenAI feed
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+          REMOTE_QA="/tmp/openai-public-catalog-qa-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS tools/openai-commerce-public-catalog-qa.php "$STAGING_USER@$STAGING_HOST:$REMOTE_QA"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH' '$REMOTE_QA'" <<'REMOTE'
+          set -euo pipefail
+          PROD_PATH="$1"; REMOTE_QA="$2"; wp_bin=$(command -v wp); php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          OUT=/tmp/openai-public-catalog-qa.json
+          "$php_bin" -d memory_limit=1024M "$wp_bin" eval-file "$REMOTE_QA" --path="$PROD_PATH" --allow-root >"$OUT"
+          rm -f "$REMOTE_QA"
+          "$php_bin" -r '
+            $j=json_decode(file_get_contents($argv[1]),true); if(!is_array($j)||empty($j["ok"]))exit(2);
+            $s=$j["stats"]??[];$g=$j["generation"]??[];
+            printf("Public catalog QA: published parents=%d; disabled-vendor parents=%d; disabled-vendor items=%d; image-less=%d; eligible simple=%d; eligible variants=%d; expected=%d; feed=%d; missing=%d; unexpected=%d; retired=%d; errors=%d; warnings=%d\n",
+              $s["published_parents"]??0,$s["disabled_vendor_parents"]??0,$s["disabled_vendor_items"]??0,$s["imageless_items"]??0,$s["eligible_simple_items"]??0,$s["eligible_variant_items"]??0,$s["expected_items"]??0,$s["feed_items"]??0,$s["missing_from_feed"]??0,$s["unexpected_in_feed"]??0,$s["retired_rows"]??0,$g["errors"]??0,$g["warnings"]??0);
+            foreach((array)($j["disabled_vendors"]??[]) as $id=>$login)printf("Excluded disabled vendor: %s (%s)\n",$login,$id);
+            foreach((array)($j["imageless"]??[]) as $x)printf("Excluded image-less item: product=%d parent=%d sku=%s\n",$x["product_id"]??0,$x["parent_id"]??0,$x["sku"]??"");
+          ' "$OUT"
+          REMOTE
