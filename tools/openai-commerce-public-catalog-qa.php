@@ -2,6 +2,11 @@
 /**
  * Exact-set QA for the OpenAI catalog.
  * Run with WP-CLI eval-file on production after loading the EMDO plugin.
+ *
+ * Deliberately enumerates published product parents directly from wp_posts so
+ * WCFM front-end visibility hooks cannot hide disabled-vendor products from
+ * the audit itself. The expected set is then reduced independently to the
+ * anonymous/public, purchasable, image-complete catalog.
  */
 if ( ! defined( 'ABSPATH' ) ) { exit( 1 ); }
 if ( ! function_exists( 'wc_get_product' ) || ! function_exists( 'mdo_openai_provider_20260909' ) ) {
@@ -12,6 +17,7 @@ function mdo_openai_public_qa_vendor_active_20260910( int $vendor_id ): bool {
     $user = get_userdata( $vendor_id );
     if ( ! $user instanceof WP_User ) { return false; }
     if ( in_array( 'disable_vendor', (array) $user->roles, true ) ) { return false; }
+    if ( in_array( 'pending_vendor', (array) $user->roles, true ) ) { return false; }
     if ( function_exists( 'mdo_gmf_vendor_is_active_v1' ) && ! mdo_gmf_vendor_is_active_v1( $vendor_id ) ) { return false; }
     return true;
 }
@@ -63,16 +69,15 @@ $stats = array(
 $disabled_vendors = array();
 $imageless = array();
 $expected = array();
-$candidate_by_id = array();
 $montjam_bad_skus = array(
     'MONTJAM-JDOP-600-650','MONTJAM-JDOP-650-700','MONTJAM-JDOP-700-750','MONTJAM-JDOP-750-800',
     'MONTJAM-PDOP-500-550','MONTJAM-PDOP-550-600',
 );
 
-$parent_ids = get_posts( array(
-    'post_type'=>'product', 'post_status'=>'publish', 'posts_per_page'=>-1, 'fields'=>'ids',
-    'orderby'=>'ID', 'order'=>'ASC', 'has_password'=>false, 'suppress_filters'=>true,
-) );
+global $wpdb;
+$parent_ids = $wpdb->get_col(
+    "SELECT ID FROM {$wpdb->posts} WHERE post_type='product' AND post_status='publish' AND post_password='' ORDER BY ID ASC"
+);
 
 foreach ( array_map( 'absint', (array) $parent_ids ) as $parent_id ) {
     $parent = wc_get_product( $parent_id );
@@ -107,7 +112,6 @@ foreach ( array_map( 'absint', (array) $parent_ids ) as $parent_id ) {
 
     foreach ( $items as $item ) {
         $sku = (string) $item->get_sku();
-        $candidate_by_id[ (int) $item->get_id() ] = array( 'sku'=>$sku, 'parent_id'=>$parent_id, 'vendor_id'=>$vendor_id );
         if ( ! $vendor_active ) { ++$stats['disabled_vendor_items']; continue; }
         if ( ! $parent_public ) { continue; }
         if ( ! $item->is_purchasable() ) { ++$stats['nonpurchasable_items']; continue; }
