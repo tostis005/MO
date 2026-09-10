@@ -1,0 +1,32 @@
+name: Wagyu Editorial QA
+
+on:
+  push:
+    branches:
+      - 'content/wagyu-blog-seo'
+    paths:
+      - '.github/data/editorial-wagyu-batch*/**/*.php'
+      - 'tools/wagyu-editorial-preflight.php'
+      - '.github/workflows/wagyu-editorial-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  editorial-preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show PHP version
+        run: php -v
+
+      - name: Lint all Wagyu PHP payloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          find .github/data -type f -path '*editorial-wagyu-batch*-20260910/*.php' -print0 \
+            | sort -z \
+            | xargs -0 -n1 php -l
+
+      - name: Run final editorial preflight
+        run: php tools/wagyu-editorial-preflight.php
