@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: MDO Google Merchant Country Feeds
- * Description: Live Google Merchant XML feeds per shipping country, derived from EMDO/WCFM public catalogue and vendor shipping rules.
- * Version: 1.0.0
+ * Plugin Name: MDO Merchant Feeds (Google + OpenAI Commerce)
+ * Description: Google Merchant country feeds plus the modular OpenAI/ChatGPT Product Discovery full-snapshot integration.
+ * Version: 1.1.0
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
@@ -11,3 +11,8 @@ require_once $base . 'core.php';
 require_once $base . 'product.php';
 require_once $base . 'feed.php';
 require_once $base . 'admin.php';
+
+$openai = $base . 'openai/';
+require_once $openai . 'core.php';
+require_once $openai . 'transport.php';
+require_once $openai . 'admin.php';
