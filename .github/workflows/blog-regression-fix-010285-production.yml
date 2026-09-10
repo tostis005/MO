@@ -24,3 +24,5 @@ jobs:
       - name: Publish and verify protected Wagyu batch final
         shell: bash
         run: bash .github/scripts/run-wagyu-65-production-safe.sh
+
+# Production trigger: final Wagyu 65 deployment after removing the non-portable WP-CLI verification.
