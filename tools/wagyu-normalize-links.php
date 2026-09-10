@@ -1,7 +1,7 @@
 <?php
 /**
  * One-time normalizer for legacy/provisional Wagyu internal links and the
- * final small editorial QA fixes found by the automated preflight.
+ * final editorial QA fixes. The cleanup is intentionally idempotent.
  */
 
 declare(strict_types=1);
@@ -11,7 +11,6 @@ $files = glob($root . '/.github/data/editorial-wagyu-batch*-20260910/*.php') ?: 
 sort($files, SORT_NATURAL);
 
 $aliases = [
-    // Spanish.
     '/cuanto-wagyu-por-persona-racion/' => '/cuanto-wagyu-comprar-por-persona/',
     '/punto-coccion-wagyu-temperatura/' => '/punto-coccion-ideal-wagyu/',
     '/punto-coccion-wagyu/' => '/punto-coccion-ideal-wagyu/',
@@ -26,8 +25,6 @@ $aliases = [
     '/yakiniku-teppanyaki-shabu-sukiyaki/' => '/wagyu-yakiniku-teppanyaki-shabu-shabu-sukiyaki/',
     '/wagyu-crudo-tataki-carpaccio/' => '/wagyu-crudo-tataki-carpaccio-seguridad/',
     '/como-sazonar-wagyu/' => '/como-sazonar-wagyu-sal-pimienta-salsas/',
-
-    // English.
     '/en/how-much-wagyu-per-person-serving-size/' => '/en/how-much-wagyu-per-person/',
     '/en/how-much-wagyu-per-person-portion/' => '/en/how-much-wagyu-per-person/',
     '/en/how-to-thaw-wagyu-correctly/' => '/en/how-to-thaw-wagyu-properly/',
@@ -48,15 +45,39 @@ $aliases = [
     '/en/wagyu-kobe-diferencias/' => '/en/wagyu-vs-kobe-differences/',
 ];
 
-$expansions = [
+$cleanup = [
     '55-todo-wagyu-es-a5.php' => [
-        '<h2>Which grade is best for a first tasting?</h2>' => '<h2>Why lower grades are not failed A5</h2>\n<p>A3 and A4 should not be treated as carcasses that simply missed the only grade worth buying. The Japanese system deliberately describes several levels of quality, and each can produce a different balance of marbling, muscle character and richness. For a shopper, that means the grade is useful descriptive information rather than a pass-or-fail authenticity test.</p>\n<p>This is also why comparing price requires context. A lower grade can still come from well-documented Japanese Wagyu, while cut, origin, portion size and intended cooking method may matter more to the eating experience than chasing A5 alone.</p>\n<h2>Which grade is best for a first tasting?</h2>',
+        'malformed' => <<<'TXT'
+<h2>Why lower grades are not failed A5</h2>\n<p>A3 and A4 should not be treated as carcasses that simply missed the only grade worth buying. The Japanese system deliberately describes several levels of quality, and each can produce a different balance of marbling, muscle character and richness. For a shopper, that means the grade is useful descriptive information rather than a pass-or-fail authenticity test.</p>\n<p>This is also why comparing price requires context. A lower grade can still come from well-documented Japanese Wagyu, while cut, origin, portion size and intended cooking method may matter more to the eating experience than chasing A5 alone.</p>\n
+TXT,
+        'canonical' => <<<'HTML'
+<h2>Why lower grades are not failed A5</h2>
+<p>A3 and A4 should not be treated as carcasses that simply missed the only grade worth buying. The Japanese system deliberately describes several levels of quality, and each can produce a different balance of marbling, muscle character and richness. For a shopper, that means the grade is useful descriptive information rather than a pass-or-fail authenticity test.</p>
+<p>This is also why comparing price requires context. A lower grade can still come from well-documented Japanese Wagyu, while cut, origin, portion size and intended cooking method may matter more to the eating experience than chasing A5 alone.</p>
+HTML,
+        'before' => '<h2>Which grade is best for a first tasting?</h2>',
     ],
     '56-numero-identificacion-wagyu.php' => [
-        '<h2>How should buyers use the number?</h2>' => '<h2>How to distinguish the cattle ID from other numbers</h2>\n<p>A premium beef label may contain several codes at the same time: the individual cattle identification number, a carcass or slaughter reference, an importer or distributor lot and a retailer SKU. They are not interchangeable. The cattle ID is the reference tied to the animal within Japan’s traceability framework, while commercial lot numbers help operators manage portions after processing and distribution.</p>\n<p>For a retail buyer, the goal is not to memorise every code format. It is to be able to ask how the portion in the pack connects back to the underlying animal or carcass record. A transparent seller should be able to explain that chain, especially when the listing makes specific claims about Japanese origin, grade or regional provenance.</p>\n<h2>How should buyers use the number?</h2>',
+        'malformed' => <<<'TXT'
+<h2>How to distinguish the cattle ID from other numbers</h2>\n<p>A premium beef label may contain several codes at the same time: the individual cattle identification number, a carcass or slaughter reference, an importer or distributor lot and a retailer SKU. They are not interchangeable. The cattle ID is the reference tied to the animal within Japan’s traceability framework, while commercial lot numbers help operators manage portions after processing and distribution.</p>\n<p>For a retail buyer, the goal is not to memorise every code format. It is to be able to ask how the portion in the pack connects back to the underlying animal or carcass record. A transparent seller should be able to explain that chain, especially when the listing makes specific claims about Japanese origin, grade or regional provenance.</p>\n
+TXT,
+        'canonical' => <<<'HTML'
+<h2>How to distinguish the cattle ID from other numbers</h2>
+<p>A premium beef label may contain several codes at the same time: the individual cattle identification number, a carcass or slaughter reference, an importer or distributor lot and a retailer SKU. They are not interchangeable. The cattle ID is the reference tied to the animal within Japan’s traceability framework, while commercial lot numbers help operators manage portions after processing and distribution.</p>
+<p>For a retail buyer, the goal is not to memorise every code format. It is to be able to ask how the portion in the pack connects back to the underlying animal or carcass record. A transparent seller should be able to explain that chain, especially when the listing makes specific claims about Japanese origin, grade or regional provenance.</p>
+HTML,
+        'before' => '<h2>How should buyers use the number?</h2>',
     ],
     '57-universal-wagyu-mark.php' => [
-        '<h2>Using the mark intelligently</h2>' => '<h2>What the mark can and cannot simplify for a shopper</h2>\n<p>The mark is most valuable as a fast first signal when several products use the word Wagyu. It can help separate Japanese-produced Wagyu from overseas production, but it cannot choose the right product for you. Grade, BMS, cut, portion size and regional programme still need to be read separately.</p>\n<p>That distinction matters in online shopping, where a logo may be visually prominent while the technical specification sits lower on the page. Treat the mark as the beginning of verification, not the end of it.</p>\n<h2>Using the mark intelligently</h2>',
+        'malformed' => <<<'TXT'
+<h2>What the mark can and cannot simplify for a shopper</h2>\n<p>The mark is most valuable as a fast first signal when several products use the word Wagyu. It can help separate Japanese-produced Wagyu from overseas production, but it cannot choose the right product for you. Grade, BMS, cut, portion size and regional programme still need to be read separately.</p>\n<p>That distinction matters in online shopping, where a logo may be visually prominent while the technical specification sits lower on the page. Treat the mark as the beginning of verification, not the end of it.</p>\n
+TXT,
+        'canonical' => <<<'HTML'
+<h2>What the mark can and cannot simplify for a shopper</h2>
+<p>The mark is most valuable as a fast first signal when several products use the word Wagyu. It can help separate Japanese-produced Wagyu from overseas production, but it cannot choose the right product for you. Grade, BMS, cut, portion size and regional programme still need to be read separately.</p>
+<p>That distinction matters in online shopping, where a logo may be visually prominent while the technical specification sits lower on the page. Treat the mark as the beginning of verification, not the end of it.</p>
+HTML,
+        'before' => '<h2>Using the mark intelligently</h2>',
     ],
 ];
 
@@ -79,14 +100,19 @@ foreach ($files as $file) {
     }
 
     $base = basename($file);
-    if (isset($expansions[$base])) {
-        foreach ($expansions[$base] as $needle => $replacement) {
-            if (str_contains($updated, $needle) && !str_contains($updated, strip_tags(strtok($replacement, "\n")))) {
-                $count = 0;
-                $updated = str_replace($needle, $replacement, $updated, $count);
-                $fileCount += $count;
-                $total += $count;
+    if (isset($cleanup[$base])) {
+        $rule = $cleanup[$base];
+        $count = 0;
+        $updated = str_replace($rule['malformed'], '', $updated, $count);
+        if ($count > 0) {
+            $inserted = 0;
+            $updated = str_replace($rule['before'], $rule['canonical'] . "\n" . $rule['before'], $updated, $inserted);
+            if ($inserted !== 1) {
+                fwrite(STDERR, "$base: unable to insert cleaned English section exactly once.\n");
+                exit(1);
             }
+            $fileCount += $count + $inserted;
+            $total += $count + $inserted;
         }
     }
 
@@ -96,8 +122,8 @@ foreach ($files as $file) {
             exit(1);
         }
         $touched++;
-        fwrite(STDOUT, basename($file) . ": $fileCount replacements\n");
+        fwrite(STDOUT, basename($file) . ": $fileCount fixes\n");
     }
 }
 
-fwrite(STDOUT, "Applied $total final QA replacements across $touched payload files.\n");
+fwrite(STDOUT, "Applied $total idempotent QA fixes across $touched payload files.\n");
