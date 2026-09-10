@@ -21,6 +21,6 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Publish and verify protected Wagyu batch
+      - name: Publish and verify protected Wagyu batch final
         shell: bash
         run: bash .github/scripts/run-wagyu-65-production-safe.sh
