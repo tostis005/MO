@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO
  * Description: Gestión y sincronización de catálogos de proveedores con WooCommerce/WCFM.
- * Version: 1.0.29
+ * Version: 1.0.30
  * Author: El Mercado de Origen
  * Requires at least: 6.4
  * Requires PHP: 8.0
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.29' );
+define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.30' );
 define( 'MDO_SUPPLIER_SYNC_DB_VERSION', '1.2.0' );
 define( 'MDO_SUPPLIER_SYNC_FILE', __FILE__ );
 define( 'MDO_SUPPLIER_SYNC_PATH', plugin_dir_path( __FILE__ ) );
@@ -66,6 +66,7 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-specials.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-specials-router.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-home-featured-special.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/openai/class-mdo-openai-commerce.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/openai/class-mdo-openai-catalog-hardening.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/openai/class-mdo-openai-feed-access.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/openai/class-mdo-openai-transports.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/openai/class-mdo-openai-admin.php';
