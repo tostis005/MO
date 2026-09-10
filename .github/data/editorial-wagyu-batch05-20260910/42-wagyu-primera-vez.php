@@ -111,7 +111,7 @@ HTML,
 <p>Think in contrasts: Wagyu brings fat and depth; the rest of the menu can provide freshness, texture and neutrality. That helps the final bite remain as enjoyable as the first.</p>
 <h2>Do you need Kobe for your first experience?</h2>
 <p>No. Kobe is a regional brand with specific requirements and enormous international recognition, but excellent Japanese Wagyu is produced elsewhere. Miyazaki, Kagoshima and other regions also have highly regarded beef.</p>
-<p>Your first experience should focus on authenticity and the actual characteristics of the cut rather than chasing a famous name without understanding it. Read <a href="/en/wagyu-kobe-diferencias/">Wagyu vs Kobe</a> and our guide to <a href="/en/kobe-miyazaki-kagoshima-japanese-wagyu-differences/">Kobe, Miyazaki and Kagoshima</a>.</p>
+<p>Your first experience should focus on authenticity and the actual characteristics of the cut rather than chasing a famous name without understanding it. Read <a href="/en/wagyu-vs-kobe-differences/">Wagyu vs Kobe</a> and our guide to <a href="/en/kobe-miyazaki-kagoshima-japanese-wagyu-differences/">Kobe, Miyazaki and Kagoshima</a>.</p>
 <h2>Check origin and traceability before paying</h2>
 <p>If you specifically want Japanese Wagyu, confirm Japan as the origin and look for coherent grading and traceability information. A heavily marbled photograph is not evidence of origin.</p>
 <p>This matters especially on a first purchase because an ambiguous product can create the wrong expectations about genuine Japanese beef. Our guide to <a href="/en/buy-japanese-wagyu-online-what-to-check/">buying Japanese Wagyu online</a> provides a full checklist.</p>
