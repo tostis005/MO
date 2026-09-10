@@ -28,5 +28,5 @@ jobs:
             | sort -z \
             | xargs -0 -n1 php -l
 
-      - name: Run editorial preflight
+      - name: Run editorial preflight after canonical-link normalization
         run: php tools/wagyu-editorial-preflight.php
