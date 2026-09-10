@@ -21,7 +21,7 @@ return array(
 <h2>Filete o steak: el formato más intuitivo</h2>
 <p>El filete es el formato que más se parece a la forma occidental de entender una carne premium. Resulta cómodo porque el grosor y el peso ya están definidos y permite cocinar la pieza directamente en sartén, plancha o parrilla.</p>
 <p>En Wagyu A5 muy marmoleado, sin embargo, no siempre interesa un grosor enorme. La elevada cantidad de grasa puede hacer que una porción grande resulte demasiado intensa. Un filete moderado puede cortarse después en pequeños bocados y compartirse.</p>
-<p>Consulta <a href="/wagyu-sarten-plancha-parrilla/">Wagyu a la sartén, plancha o parrilla</a> para elegir método.</p>
+<p>Consulta <a href="/wagyu-sarten-plancha-parrilla-que-metodo-elegir/">Wagyu a la sartén, plancha o parrilla</a> para elegir método.</p>
 <h2>Láminas finas: ideales para cocciones muy rápidas</h2>
 <p>Las láminas finas son especialmente útiles para preparaciones japonesas como shabu-shabu, sukiyaki o determinados estilos de yakiniku. El grosor reducido permite cocinar en segundos y repartir pequeñas cantidades entre varias personas.</p>
 <p>También tienen una ventaja práctica: la grasa se funde rápidamente y es más fácil apreciar el equilibrio entre carne, arroz, verduras y caldo sin que el Wagyu monopolice toda la comida.</p>
@@ -41,16 +41,16 @@ return array(
 <p>Una pieza grande tiene sentido cuando se va a compartir entre varias personas o cuando el comprador quiere preparar distintos platos a partir del mismo bloque.</p>
 <h2>Qué formato elegir para yakiniku</h2>
 <p>Para yakiniku funcionan muy bien láminas o tiras de grosor suficiente para dorarse rápidamente sin deshacerse. La idea es cocinar pequeños bocados sobre una superficie muy caliente y comerlos inmediatamente.</p>
-<p>Consulta <a href="/yakiniku-teppanyaki-shabu-sukiyaki/">yakiniku, teppanyaki, shabu-shabu y sukiyaki</a> para ver cómo cambia el corte en cada técnica.</p>
+<p>Consulta <a href="/wagyu-yakiniku-teppanyaki-shabu-shabu-sukiyaki/">yakiniku, teppanyaki, shabu-shabu y sukiyaki</a> para ver cómo cambia el corte en cada técnica.</p>
 <h2>Qué formato elegir para shabu-shabu o sukiyaki</h2>
 <p>Aquí las láminas muy finas son las más prácticas. En shabu-shabu la carne pasa brevemente por el caldo caliente; en sukiyaki se cocina junto con otros ingredientes en una preparación más sabrosa y dulce.</p>
 <p>Un filete grueso obligaría a cortar la carne en casa, así que comprar el formato adecuado simplifica mucho la receta.</p>
 <h2>Qué formato elegir para tataki</h2>
 <p>El tataki necesita una pieza con suficiente volumen para poder marcar el exterior dejando el interior mucho menos cocinado. Un bloque o corte compacto suele resultar más adecuado que láminas o dados pequeños.</p>
-<p>La preparación de carne poco cocinada requiere especial atención a higiene, cadena de frío y seguridad. Consulta <a href="/wagyu-crudo-tataki-carpaccio/">Wagyu crudo, tataki y carpaccio</a> antes de prepararlo.</p>
+<p>La preparación de carne poco cocinada requiere especial atención a higiene, cadena de frío y seguridad. Consulta <a href="/wagyu-crudo-tataki-carpaccio-seguridad/">Wagyu crudo, tataki y carpaccio</a> antes de prepararlo.</p>
 <h2>Qué formato ayuda más a controlar la ración</h2>
 <p>Las porciones individuales, láminas y dados facilitan mucho el cálculo. Una pieza entera requiere pesar y dividir antes de cocinar. Si es tu primera compra, un formato ya porcionado reduce incertidumbre.</p>
-<p>La guía <a href="/cuanto-wagyu-por-persona-racion/">cuánto Wagyu comprar por persona</a> permite calcular la cantidad según marmoleo y menú.</p>
+<p>La guía <a href="/cuanto-wagyu-comprar-por-persona/">cuánto Wagyu comprar por persona</a> permite calcular la cantidad según marmoleo y menú.</p>
 <h2>Qué formato suele ser mejor para regalar</h2>
 <p>Para regalo conviene priorizar sencillez. Una selección ya porcionada, con instrucciones claras, suele ser más fácil de disfrutar que una gran pieza que obligue al destinatario a decidir cómo cortarla.</p>
 <p>Si la persona es aficionada avanzada, una pieza entera puede resultar más atractiva porque le da libertad. Consulta <a href="/wagyu-para-regalar-que-elegir/">qué Wagyu regalar</a> para elegir según perfil.</p>
@@ -80,7 +80,7 @@ HTML,
 <h2>Steak: the most intuitive format</h2>
 <p>A steak is closest to the Western idea of premium beef. It is convenient because thickness and weight are already defined and it can go directly into a pan, onto a plancha or onto a grill.</p>
 <p>With heavily marbled A5, however, an enormous thickness is not always desirable. High fat content can make a large serving overwhelmingly rich. A moderate steak can be cooked and then sliced into small shared bites.</p>
-<p>See <a href="/en/wagyu-pan-plancha-or-grill/">Wagyu in a pan, on a plancha or grill</a> to choose a method.</p>
+<p>See <a href="/en/wagyu-pan-griddle-grill-which-method/">Wagyu in a pan, on a plancha or grill</a> to choose a method.</p>
 <h2>Thin slices: ideal for very fast cooking</h2>
 <p>Thin slices are particularly useful for Japanese preparations such as shabu-shabu, sukiyaki and certain styles of yakiniku. Their low thickness means they cook in seconds and make it easy to distribute small quantities among several diners.</p>
 <p>They also offer a practical advantage: fat melts quickly, and the Wagyu can be balanced with rice, vegetables and broth rather than dominating the entire meal.</p>
@@ -100,13 +100,13 @@ HTML,
 <p>A larger block makes sense when several people will share it or when the buyer wants to prepare multiple dishes from one piece.</p>
 <h2>Which format works for yakiniku?</h2>
 <p>Yakiniku works well with slices or strips thick enough to brown quickly without falling apart. The idea is to cook small bites over high heat and eat them immediately.</p>
-<p>See <a href="/en/yakiniku-teppanyaki-shabu-shabu-sukiyaki/">yakiniku, teppanyaki, shabu-shabu and sukiyaki</a> to see how cutting changes for each technique.</p>
+<p>See <a href="/en/wagyu-yakiniku-teppanyaki-shabu-shabu-sukiyaki/">yakiniku, teppanyaki, shabu-shabu and sukiyaki</a> to see how cutting changes for each technique.</p>
 <h2>Which format works for shabu-shabu or sukiyaki?</h2>
 <p>Very thin slices are the practical choice. In shabu-shabu, beef is passed briefly through hot broth; in sukiyaki it cooks with other ingredients in a richer, sweeter preparation.</p>
 <p>A thick steak would have to be sliced at home, so buying the correct format makes the recipe much easier.</p>
 <h2>Which format works for tataki?</h2>
 <p>Tataki needs enough volume to sear the outside while leaving the centre much less cooked. A compact block or thicker cut usually works better than thin slices or small cubes.</p>
-<p>Undercooked beef requires particular attention to hygiene, cold chain and food safety. Read <a href="/en/wagyu-raw-tataki-carpaccio-safety/">raw Wagyu, tataki and carpaccio</a> before preparing it.</p>
+<p>Undercooked beef requires particular attention to hygiene, cold chain and food safety. Read <a href="/en/raw-wagyu-tataki-carpaccio-safety/">raw Wagyu, tataki and carpaccio</a> before preparing it.</p>
 <h2>Which format makes portion control easiest?</h2>
 <p>Individual portions, slices and cubes make calculations simple. A whole cut needs to be weighed and divided before cooking. For a first purchase, pre-portioned formats reduce uncertainty.</p>
 <p>Our <a href="/en/how-much-wagyu-per-person/">Wagyu portion guide</a> helps calculate quantity based on marbling and menu.</p>

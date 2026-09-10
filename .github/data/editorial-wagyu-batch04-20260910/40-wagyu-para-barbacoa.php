@@ -28,11 +28,11 @@ return array(
 <h2>No necesitas una pieza enorme</h2>
 <p>En una barbacoa tradicional es habitual pensar en grandes chuletones. Con A5 muy marmoleado, esa lógica puede producir una ración excesiva. Una cantidad menor, cortada en bocados después de cocinar, permite que varias personas prueben la carne sin saturarse.</p>
 <p>Además, reducir la cantidad de Wagyu deja espacio para verduras, arroz, setas u otras carnes y convierte la barbacoa en una comida más equilibrada.</p>
-<p>Para calcular el peso, revisa <a href="/cuanto-wagyu-por-persona-racion/">cuánto Wagyu comprar por persona</a>.</p>
+<p>Para calcular el peso, revisa <a href="/cuanto-wagyu-comprar-por-persona/">cuánto Wagyu comprar por persona</a>.</p>
 <h2>Parrilla abierta frente a plancha sobre la barbacoa</h2>
 <p>Una parrilla abierta aporta contacto directo con el calor y aromas de combustión, pero permite que la grasa caiga sobre las brasas. Con un A5 extremo, esto puede generar llamaradas repentinas.</p>
 <p>Una plancha o placa colocada sobre la barbacoa ofrece más control. La grasa se mantiene en la superficie y puedes mover la pieza con rapidez. Para alguien que cocina Wagyu por primera vez al aire libre, puede ser una opción más predecible.</p>
-<p>En <a href="/wagyu-sarten-plancha-parrilla/">Wagyu a la sartén, plancha o parrilla</a> comparamos los tres métodos.</p>
+<p>En <a href="/wagyu-sarten-plancha-parrilla-que-metodo-elegir/">Wagyu a la sartén, plancha o parrilla</a> comparamos los tres métodos.</p>
 <h2>Cómo preparar las brasas</h2>
 <p>Busca calor intenso pero estable, no una llama continua tocando la carne. Trabajar con <strong>dos zonas de calor</strong> resulta muy útil: una zona caliente para marcar y otra más suave donde mover la pieza si la grasa provoca demasiado fuego.</p>
 <p>Evita colocar A5 directamente encima de una llama alta. La combustión de la grasa puede ennegrecer el exterior antes de que tengas control sobre la cocción.</p>
@@ -42,7 +42,7 @@ return array(
 <h2>¿Hay que añadir aceite?</h2>
 <p>En un Wagyu A5 muy marmoleado, normalmente no es necesario añadir una cantidad importante de aceite. La propia pieza comenzará a liberar grasa rápidamente.</p>
 <p>Si utilizas una plancha, una mínima película de grasa puede ayudar al inicio, pero no tiene sentido cubrir un producto ya extremadamente graso con mantequilla o aceite en exceso.</p>
-<p>Consulta <a href="/como-sazonar-wagyu/">cómo sazonar Wagyu</a> para mantener la preparación sencilla.</p>
+<p>Consulta <a href="/como-sazonar-wagyu-sal-pimienta-salsas/">cómo sazonar Wagyu</a> para mantener la preparación sencilla.</p>
 <h2>Sal antes o después</h2>
 <p>No existe una única regla universal, pero en una cocción muy breve la diferencia entre salar justo antes o inmediatamente después puede ser pequeña. Lo importante es no enmascarar la carne con marinados dulces que se quemen sobre fuego intenso.</p>
 <p>Para una primera experiencia, sal y quizá un toque de pimienta al final suelen ser suficientes.</p>
@@ -55,11 +55,11 @@ return array(
 <p>No apliques automáticamente el mismo reposo largo que utilizarías con un chuletón grande si estás cocinando porciones pequeñas.</p>
 <h2>Cómo saber el punto</h2>
 <p>El marmoleo cambia la percepción del punto porque la grasa fundida aporta suavidad incluso cuando el músculo está más cocinado. Aun así, pasar demasiado una pieza puede secar la fracción magra y perder parte del contraste de texturas.</p>
-<p>Consulta <a href="/punto-coccion-wagyu/">a qué punto cocinar Wagyu</a> para decidir según corte y grosor.</p>
+<p>Consulta <a href="/punto-coccion-ideal-wagyu/">a qué punto cocinar Wagyu</a> para decidir según corte y grosor.</p>
 <h2>Barbacoa estilo yakiniku: una alternativa muy lógica</h2>
 <p>En lugar de cocinar una gran pieza, puedes cortar el Wagyu en pequeñas porciones y cocinar cada una durante pocos segundos. Este formato se adapta perfectamente a una barbacoa de mesa o parrilla muy caliente.</p>
 <p>Permite probar distintos cortes, controlar la cantidad y servir cada bocado en su mejor momento.</p>
-<p>Consulta <a href="/yakiniku-teppanyaki-shabu-sukiyaki/">yakiniku y otras formas japonesas de cocinar Wagyu</a>.</p>
+<p>Consulta <a href="/wagyu-yakiniku-teppanyaki-shabu-shabu-sukiyaki/">yakiniku y otras formas japonesas de cocinar Wagyu</a>.</p>
 <h2>Qué acompañamientos funcionan</h2>
 <p>Una barbacoa de Wagyu mejora con elementos frescos y poco grasos: verduras a la parrilla, setas, arroz, encurtidos o cítricos. Evita llenar el menú de quesos, salsas cremosas y guarniciones muy grasas si el A5 ya va a ser el protagonista.</p>
 <p>En <a href="/acompanamientos-para-wagyu-guarniciones-salsas/">qué acompañar con Wagyu</a> tienes opciones para equilibrar el menú.</p>
@@ -100,7 +100,7 @@ HTML,
 <h2>Open grate vs griddle on the barbecue</h2>
 <p>An open grate gives direct heat and combustion aromas, but rendered fat can fall onto the coals. With extreme A5, that can cause sudden flare-ups.</p>
 <p>A griddle or flat plate placed over the barbecue gives more control. Rendered fat remains on the surface and the beef can be moved quickly. For a first-time outdoor Wagyu cook, this can be more predictable.</p>
-<p>See <a href="/en/wagyu-pan-plancha-or-grill/">Wagyu in a pan, on a plancha or grill</a> for the three methods.</p>
+<p>See <a href="/en/wagyu-pan-griddle-grill-which-method/">Wagyu in a pan, on a plancha or grill</a> for the three methods.</p>
 <h2>How to prepare the fire</h2>
 <p>Aim for intense but stable heat rather than continuous flames touching the beef. A <strong>two-zone fire</strong> is extremely useful: one hot section for searing and a cooler section where the beef can be moved if rendered fat causes excessive flames.</p>
 <p>Avoid placing A5 directly over a large active flame. Burning fat can blacken the exterior before you have control of the cooking.</p>
@@ -110,7 +110,7 @@ HTML,
 <h2>Do you need oil?</h2>
 <p>Highly marbled A5 normally needs little or no additional oil. The beef will begin releasing its own fat very quickly.</p>
 <p>On a flat plate, an extremely thin film of fat may help at the start, but there is little reason to cover an already rich product with large amounts of butter or oil.</p>
-<p>See <a href="/en/how-to-season-wagyu/">how to season Wagyu</a> to keep preparation simple.</p>
+<p>See <a href="/en/how-to-season-wagyu-salt-pepper-sauces/">how to season Wagyu</a> to keep preparation simple.</p>
 <h2>Salt before or after?</h2>
 <p>There is no single universal rule, but in a very short cook the difference between salting immediately before and just after can be small. More importantly, avoid sweet marinades that can burn rapidly over high heat.</p>
 <p>For a first experience, salt and perhaps a little pepper after cooking are usually enough.</p>
@@ -123,11 +123,11 @@ HTML,
 <p>Do not automatically apply the same long resting time you would use for a huge steak if you are cooking small portions.</p>
 <h2>How do you judge doneness?</h2>
 <p>Marbling changes the perception of doneness because rendered fat adds softness even as muscle cooks further. Even so, excessive cooking can dry the lean fraction and remove some of the textural contrast.</p>
-<p>See <a href="/en/wagyu-doneness-guide/">what doneness suits Wagyu</a> for guidance by cut and thickness.</p>
+<p>See <a href="/en/ideal-wagyu-doneness/">what doneness suits Wagyu</a> for guidance by cut and thickness.</p>
 <h2>Yakiniku-style barbecue is a logical alternative</h2>
 <p>Instead of cooking one huge steak, portion Wagyu into small pieces and cook each for only a short time. This style works naturally on a tabletop barbecue or very hot grill.</p>
 <p>It allows you to compare cuts, control quantity and serve every bite at its best.</p>
-<p>See <a href="/en/yakiniku-teppanyaki-shabu-shabu-sukiyaki/">yakiniku and other Japanese Wagyu preparations</a>.</p>
+<p>See <a href="/en/wagyu-yakiniku-teppanyaki-shabu-shabu-sukiyaki/">yakiniku and other Japanese Wagyu preparations</a>.</p>
 <h2>Which sides work well?</h2>
 <p>A Wagyu barbecue benefits from fresh, less fatty sides: grilled vegetables, mushrooms, rice, pickles or citrus. Avoid filling the menu with cheese, cream sauces and very rich sides if A5 is already the main event.</p>
 <p>Our <a href="/en/wagyu-side-dishes-pairings-sauces/">Wagyu side-dish guide</a> offers ideas for balancing the meal.</p>

@@ -68,7 +68,7 @@ return array(
 <p>Para un Wagyu caro, la estrategia más sensata es porcionar antes de congelar cuando sea posible y descongelar solo lo que vas a utilizar. Si el producto llega ya congelado en porciones individuales, ese formato tiene una ventaja clara.</p>
 <h2>Por qué las porciones individuales son prácticas</h2>
 <p>Una bolsa pequeña se congela y descongela de forma más uniforme que un gran bloque. Además, permite mantener el resto del pedido estable en el congelador y consumir únicamente la cantidad necesaria.</p>
-<p>Esto encaja bien con A5, que suele servirse en raciones pequeñas. En nuestra guía sobre <a href="/cuanto-wagyu-por-persona-racion/">cantidad de Wagyu por persona</a> puedes calcular mejor las porciones antes de abrir varios paquetes.</p>
+<p>Esto encaja bien con A5, que suele servirse en raciones pequeñas. En nuestra guía sobre <a href="/cuanto-wagyu-comprar-por-persona/">cantidad de Wagyu por persona</a> puedes calcular mejor las porciones antes de abrir varios paquetes.</p>
 <h2>Qué revisar al recibir Wagyu congelado</h2>
 <p>Comprueba que el producto llegue realmente congelado según las condiciones de envío previstas, que el envase esté íntegro y que no haya señales evidentes de descongelación prolongada y recongelación. Revisa también etiqueta, lote, fechas e instrucciones de conservación.</p>
 <p>Si el transporte ha sufrido una incidencia y la carne llega a una temperatura inesperada, no tomes decisiones únicamente por el aspecto. Contacta con el vendedor y sigue las indicaciones de seguridad correspondientes.</p>
@@ -79,7 +79,7 @@ return array(
 <p>Solo si la diferencia de producto y logística justifica ese sobreprecio para tu caso. Una pieza fresca de excelente calidad y perfectamente conservada puede ser magnífica. Una pieza congelada profesionalmente también puede serlo.</p>
 <p>En un producto importado desde Japón, elegir congelado puede facilitar disponibilidad, reducir presión sobre los tiempos de consumo y permitir comprar porciones específicas. No deberíamos penalizarlo solo por la palabra “congelado”.</p>
 <h2>Qué información es más importante que fresco/congelado</h2>
-<p>Origen, autenticidad, grado, BMS cuando esté disponible, corte, fecha, envasado, cadena de frío y reputación del vendedor pueden aportar más información que una única etiqueta. Para comprar Wagyu japonés, el <a href="/como-elegir-wagyu-japones-guia-compra/">conjunto de criterios de elección</a> importa más que perseguir un solo atributo.</p>
+<p>Origen, autenticidad, grado, BMS cuando esté disponible, corte, fecha, envasado, cadena de frío y reputación del vendedor pueden aportar más información que una única etiqueta. Para comprar Wagyu japonés, el <a href="/como-elegir-wagyu-japones/">conjunto de criterios de elección</a> importa más que perseguir un solo atributo.</p>
 <p>También conviene comprar el formato que realmente vas a consumir. Una pieza perfecta que termina mal descongelada o guardada durante demasiado tiempo en casa pierde la ventaja de su condición inicial.</p>
 <h2>La conclusión: bien congelado puede seguir siendo excelente</h2>
 <p><strong>El Wagyu congelado no es automáticamente inferior al fresco.</strong> La congelación puede afectar a textura y pérdida de líquido, pero la calidad final depende enormemente de la rapidez del proceso, el envasado, la estabilidad de temperatura y la descongelación.</p>
@@ -139,7 +139,7 @@ HTML,
 <p>Avoid repeatedly allowing frozen beef to partially warm and returning it to the freezer. Plan when you will use it and thaw it once under controlled conditions.</p>
 <h2>How to thaw Wagyu for quality</h2>
 <p>The simplest controlled approach is to move the appropriately packaged product from freezer to refrigerator with enough lead time. The time depends on thickness and size: a small portion will thaw much faster than a large block.</p>
-<p>Do not leave Wagyu on a worktop for hours. See our full guide to <a href="/en/how-to-thaw-wagyu-correctly/">thawing Wagyu correctly</a>.</p>
+<p>Do not leave Wagyu on a worktop for hours. See our full guide to <a href="/en/how-to-thaw-wagyu-properly/">thawing Wagyu correctly</a>.</p>
 <h2>Should you microwave-thaw A5?</h2>
 <p>Microwave thawing can be used as a food-safety method when followed by immediate cooking, but gastronomically it is not our first choice for premium Wagyu. Some areas can warm or begin cooking while others remain frozen, making fat and texture harder to control.</p>
 <p>When the meal is planned, slow refrigerator thawing gives you far more margin.</p>
@@ -148,7 +148,7 @@ HTML,
 <p>For expensive Wagyu, portioning before freezing where possible and thawing only what you need is usually the most sensible strategy. Individually frozen packs provide a clear practical advantage.</p>
 <h2>Why individual portions work well</h2>
 <p>A small package freezes and thaws more uniformly than a large block. It also allows the rest of an order to remain undisturbed while you use only the amount required.</p>
-<p>This is particularly convenient with A5 because serving sizes tend to be modest. Use our <a href="/en/how-much-wagyu-per-person-portion/">Wagyu portion guide</a> to plan how many packs to thaw.</p>
+<p>This is particularly convenient with A5 because serving sizes tend to be modest. Use our <a href="/en/how-much-wagyu-per-person/">Wagyu portion guide</a> to plan how many packs to thaw.</p>
 <h2>What to check when frozen Wagyu arrives</h2>
 <p>Confirm that the product arrives in the expected frozen condition, the package is intact and there are no obvious signs of prolonged thawing and refreezing. Review labels, lot information, dates and storage instructions.</p>
 <p>If shipping has suffered a temperature-control incident, do not make a safety decision from appearance alone. Contact the seller and follow appropriate food-safety guidance.</p>
@@ -159,7 +159,7 @@ HTML,
 <p>Only when the actual product and logistics justify the premium for your use. Excellent, perfectly handled fresh Wagyu can be superb. Professionally frozen Wagyu can also be superb.</p>
 <p>For beef imported from Japan, frozen formats can improve availability, reduce pressure on short consumption windows and allow convenient individual portions. The word “frozen” alone should not be treated as a defect.</p>
 <h2>What matters more than fresh versus frozen?</h2>
-<p>Origin, authenticity, grade, BMS when available, cut, dates, packaging, cold chain and seller reliability can tell you more than one status label. Our <a href="/en/how-to-choose-japanese-wagyu-buying-guide/">Japanese Wagyu buying guide</a> explains why purchase quality is a combination of criteria.</p>
+<p>Origin, authenticity, grade, BMS when available, cut, dates, packaging, cold chain and seller reliability can tell you more than one status label. Our <a href="/en/how-to-choose-japanese-wagyu/">Japanese Wagyu buying guide</a> explains why purchase quality is a combination of criteria.</p>
 <p>It also pays to buy the format you will actually use well. Perfect beef poorly thawed or stored too long at home can lose the advantage of its original condition.</p>
 <h2>The conclusion: properly frozen Wagyu can remain excellent</h2>
 <p><strong>Frozen Wagyu is not automatically inferior to fresh Wagyu.</strong> Freezing can affect texture and moisture loss, but final quality depends greatly on freezing speed, packaging, temperature stability and thawing.</p>

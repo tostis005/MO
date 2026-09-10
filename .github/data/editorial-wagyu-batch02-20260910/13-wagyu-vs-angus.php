@@ -37,7 +37,7 @@ return array(
 <h2>La ración es una diferencia importante</h2>
 <p>Uno de los errores más frecuentes consiste en imaginar una pieza de A5 con las mismas dimensiones que un chuletón Angus. Técnicamente puede servirse, pero gastronómicamente suele resultar innecesario. La concentración de grasa intramuscular hace que pequeñas cantidades de Wagyu muy marmoleado sean suficientes para una experiencia intensa.</p>
 <p>En Angus, incluso en categorías premium, es más habitual plantear raciones de steak convencionales. Esto afecta al coste real de la comida: comparar precio por kilogramo sin considerar cuántos gramos vamos a servir puede exagerar o esconder diferencias económicas.</p>
-<p>Nuestra guía de <a href="/cuanto-wagyu-por-persona-racion/">cantidad de Wagyu por persona</a> desarrolla cómo adaptar la ración al grado de marmoleo y al papel de la carne dentro del menú.</p>
+<p>Nuestra guía de <a href="/cuanto-wagyu-comprar-por-persona/">cantidad de Wagyu por persona</a> desarrolla cómo adaptar la ración al grado de marmoleo y al papel de la carne dentro del menú.</p>
 <h2>¿Cuál necesita más maduración?</h2>
 <p>La maduración es otra zona donde aplicar las mismas reglas a ambas carnes puede ser un error. Muchos cortes Angus se benefician de programas de maduración diseñados para mejorar ternura y desarrollar perfiles aromáticos. En un Wagyu japonés A5, la extraordinaria infiltración y la textura de partida hacen que el objetivo sea diferente.</p>
 <p>Esto no significa que el Wagyu nunca se madure, sino que <strong>más días no equivalen automáticamente a más calidad</strong>. La maduración debe entenderse como una decisión del productor o carnicero según corte, grasa, envasado y resultado deseado, no como un número que siempre aumenta el valor.</p>
@@ -89,7 +89,7 @@ HTML,
 <h2>Serving size is a major difference</h2>
 <p>A common mistake is imagining A5 in the same serving size as a large Angus ribeye. It can be done, but the extreme intramuscular fat often makes a smaller quantity more satisfying.</p>
 <p>Premium Angus is more naturally served in conventional steak portions. This changes the real economics of the meal: comparing price per kilogram without considering how many grams you intend to serve can distort the difference.</p>
-<p>Our <a href="/en/how-much-wagyu-per-person-serving-size/">Wagyu serving-size guide</a> explains how to adjust portions to marbling and menu structure.</p>
+<p>Our <a href="/en/how-much-wagyu-per-person/">Wagyu serving-size guide</a> explains how to adjust portions to marbling and menu structure.</p>
 <h2>Does one need more ageing?</h2>
 <p>Many Angus cuts benefit from ageing programmes designed to improve tenderness and develop flavour. With heavily marbled Japanese A5, starting tenderness and fat structure are already very different, so the objective of ageing changes.</p>
 <p>This does not mean Wagyu is never aged. It means <strong>more days do not automatically equal higher quality</strong>. Ageing should be chosen according to cut, fat level, packaging and desired flavour rather than treated as a universal score.</p>

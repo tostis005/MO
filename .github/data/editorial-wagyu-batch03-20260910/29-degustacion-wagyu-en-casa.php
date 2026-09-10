@@ -23,7 +23,7 @@ return array(
 <p>Para una primera sesión, dos o tres piezas distintas son suficientes. Permiten repetir un bocado si hace falta sin convertir la comida en una prueba interminable.</p>
 <h2>No necesitas comprar grandes cantidades</h2>
 <p>El error más frecuente es calcular el Wagyu como si fuera un chuletón convencional. Un A5 de alto BMS tiene una riqueza enorme y funciona mejor en porciones pequeñas. En una degustación con acompañamientos, la cantidad total por persona puede ser sensiblemente menor que en una comida basada en un bistec magro.</p>
-<p>No existe una cifra universal porque depende del marmoleo, número de referencias y resto del menú. Nuestra guía sobre <a href="/cuanto-wagyu-por-persona-racion/">cuánto Wagyu servir por persona</a> ayuda a ajustar la compra al tipo de experiencia.</p>
+<p>No existe una cifra universal porque depende del marmoleo, número de referencias y resto del menú. Nuestra guía sobre <a href="/cuanto-wagyu-comprar-por-persona/">cuánto Wagyu servir por persona</a> ayuda a ajustar la compra al tipo de experiencia.</p>
 <h2>Cómo elegir las piezas</h2>
 <p>Intenta que la comparación tenga lógica. Si quieres evaluar origen, utiliza cortes y marmoleos lo más parecidos posible. Si quieres comparar cortes, intenta mantener el mismo origen y grado. Así reduces variables y la diferencia se vuelve más interpretable.</p>
 <p>Pide información sobre origen, corte, grado, BMS cuando esté disponible y peso. Una fotografía real del marmoleo también puede ayudarte a diseñar un orden coherente.</p>
@@ -47,7 +47,7 @@ return array(
 <p>Cocina la primera referencia, sírvela, coméntala y después pasa a la siguiente. La pausa entre tandas forma parte de la degustación.</p>
 <h2>Usa el mismo punto de partida en todas las piezas</h2>
 <p>Si el objetivo es comparar carne, evita cocinar una muy hecha y otra apenas marcada. Ajusta la técnica al grosor, pero busca un nivel de cocción comparable. Así las diferencias de textura reflejarán mejor el corte y el marmoleo.</p>
-<p>En piezas muy finas, el concepto de temperatura interna es menos útil que en un bistec grueso; el dorado y el tiempo de contacto cobran más importancia. Consulta nuestra guía del <a href="/punto-coccion-wagyu-temperatura/">punto de cocción del Wagyu</a> para entender estas diferencias.</p>
+<p>En piezas muy finas, el concepto de temperatura interna es menos útil que en un bistec grueso; el dorado y el tiempo de contacto cobran más importancia. Consulta nuestra guía del <a href="/punto-coccion-ideal-wagyu/">punto de cocción del Wagyu</a> para entender estas diferencias.</p>
 <h2>Primera vuelta: solo sal</h2>
 <p>La primera vez que pruebes cada referencia, utiliza únicamente una cantidad moderada de sal. Así estableces una línea base. Después puedes repetir un pequeño bocado con wasabi, ponzu, soja o la salsa que hayas elegido.</p>
 <p>Si cada pieza lleva un adobo distinto desde el principio, terminarás comparando condimentos en lugar de Wagyu.</p>
@@ -95,7 +95,7 @@ HTML,
 <p>For a first session, two or three pieces are enough. That leaves room to repeat a bite without turning dinner into an endless test.</p>
 <h2>You do not need huge quantities</h2>
 <p>The most common mistake is calculating Wagyu as if it were a conventional steak. High-BMS A5 is extremely rich and works better in small portions. In a tasting with sides, total meat per person can be substantially lower than in a meal centred on lean steak.</p>
-<p>There is no universal number because marbling, number of samples and the rest of the menu all matter. See <a href="/en/how-much-wagyu-per-person-portion/">how much Wagyu to serve per person</a> for detailed planning.</p>
+<p>There is no universal number because marbling, number of samples and the rest of the menu all matter. See <a href="/en/how-much-wagyu-per-person/">how much Wagyu to serve per person</a> for detailed planning.</p>
 <h2>How to choose the samples</h2>
 <p>Make the comparison logical. If evaluating origin, use similar cuts and marbling where possible. If comparing cuts, try to keep origin and grade similar. Reducing variables makes the result much easier to interpret.</p>
 <p>Ask for origin, cut, grade, BMS where available and weight. A photograph of the actual marbling can also help establish a sensible tasting order.</p>
@@ -119,7 +119,7 @@ HTML,
 <p>Cook the first reference, serve and discuss it, then move to the next. The pauses are part of the tasting.</p>
 <h2>Use a consistent cooking baseline</h2>
 <p>If beef comparison is the goal, do not cook one sample well done and another barely seared. Adapt to thickness but aim for comparable doneness so texture differences more closely reflect cut and marbling.</p>
-<p>For very thin pieces, internal temperature is less informative than with a thick steak; surface browning and contact time matter more. See our <a href="/en/ideal-wagyu-doneness-temperature/">Wagyu doneness guide</a> for the distinction.</p>
+<p>For very thin pieces, internal temperature is less informative than with a thick steak; surface browning and contact time matter more. See our <a href="/en/ideal-wagyu-doneness/">Wagyu doneness guide</a> for the distinction.</p>
 <h2>First pass: salt only</h2>
 <p>Taste each reference first with only moderate salt. That creates a baseline. You can then repeat a small bite with wasabi, ponzu, soy or another chosen sauce.</p>
 <p>If every piece starts with a different marinade, you will end up comparing seasonings rather than Wagyu.</p>

@@ -21,7 +21,7 @@ return array(
 <h2>Qué aporta el Wagyu antes de hablar de maduración</h2>
 <p>El rasgo más llamativo del Wagyu japonés de alto grado es el <strong>marmoleo intramuscular</strong>. En una canal A5, la calidad se evalúa mediante varios criterios y el marmoleo puede alcanzar valores muy altos en la escala BMS.</p>
 <p>Ese tejido graso distribuido dentro del músculo modifica jugosidad, textura, aroma y sensación en boca. Por eso un A5 puede resultar extremadamente tierno y fundente incluso sin someterlo a maduraciones largas.</p>
-<p>Si necesitas contexto sobre la clasificación, consulta <a href="/wagyu-japones-a5/">qué significa Wagyu A5</a> y nuestra guía de <a href="/bms-wagyu-escala-marmoleo-1-12/">BMS del 1 al 12</a>.</p>
+<p>Si necesitas contexto sobre la clasificación, consulta <a href="/wagyu-japones-a5-que-es-que-significa/">qué significa Wagyu A5</a> y nuestra guía de <a href="/bms-wagyu-escala-marmoleo-1-12/">BMS del 1 al 12</a>.</p>
 <h2>Qué hace realmente la maduración</h2>
 <p>Tras el sacrificio, las enzimas naturales de la carne continúan actuando sobre determinadas proteínas. Con tiempo y condiciones controladas, esto puede mejorar la ternura y modificar el perfil sensorial.</p>
 <p>En maduración en seco o <em>dry aging</em>, además se produce pérdida de humedad superficial y una evolución aromática característica. El proceso requiere control de temperatura, humedad, circulación de aire e higiene. También genera mermas por evaporación y recorte.</p>
@@ -43,7 +43,7 @@ return array(
 <p>Son dos caminos diferentes hacia un producto caro. Un precio alto por sí solo no demuestra que la carne sea mejor para tu gusto.</p>
 <h2>Cómo cambia la ración</h2>
 <p>Con Wagyu A5, la elevada densidad de grasa hace que porciones pequeñas tengan mucho sentido. En una carne madurada con menos marmoleo se pueden servir cantidades mayores sin producir la misma sensación de saturación.</p>
-<p>Si estás calculando una compra, revisa <a href="/cuanto-wagyu-por-persona-racion/">cuánto Wagyu comprar por persona</a>.</p>
+<p>Si estás calculando una compra, revisa <a href="/cuanto-wagyu-comprar-por-persona/">cuánto Wagyu comprar por persona</a>.</p>
 <h2>Qué elegir para una cena especial</h2>
 <p>Elige Wagyu japonés si quieres que la experiencia gire alrededor del marmoleo, la fusión de la grasa y pequeños bocados muy ricos. Elige una carne madurada si buscas una pieza grande, una buena costra y un sabor más centrado en la evolución de la carne.</p>
 <p>También puedes diseñar una degustación con ambos. Servir primero una carne menos grasa y después una pequeña porción de A5 permite apreciar muy bien la diferencia.</p>
@@ -67,7 +67,7 @@ HTML,
 <h2>What Wagyu contributes before ageing enters the picture</h2>
 <p>The defining visual feature of high-grade Japanese Wagyu is <strong>intramuscular marbling</strong>. In A5 carcasses, quality is assessed through several criteria and marbling can reach the highest ranges of the BMS scale.</p>
 <p>Fat distributed through the muscle changes juiciness, texture, aroma and mouthfeel. This is why A5 can feel exceptionally tender and melting without requiring very long ageing.</p>
-<p>For grading context, see <a href="/en/japanese-wagyu-a5-explained/">what A5 Wagyu means</a> and our <a href="/en/wagyu-bms-marbling-scale-1-12/">BMS 1–12 guide</a>.</p>
+<p>For grading context, see <a href="/en/japanese-wagyu-a5-what-it-is-what-it-means/">what A5 Wagyu means</a> and our <a href="/en/wagyu-bms-marbling-scale-1-12/">BMS 1–12 guide</a>.</p>
 <h2>What ageing actually does</h2>
 <p>After slaughter, natural enzymes continue acting on certain muscle proteins. Given time under controlled conditions, this can improve tenderness and alter the sensory profile.</p>
 <p>With dry ageing, surface moisture is also lost and characteristic aromas develop. The process requires controlled temperature, humidity, airflow and hygiene. It also creates economic loss through evaporation and trimming.</p>

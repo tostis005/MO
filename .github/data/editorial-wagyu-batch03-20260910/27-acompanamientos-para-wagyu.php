@@ -71,7 +71,7 @@ return array(
 <p>La intensidad del acompañamiento debe crecer a medida que disminuye la intensidad grasa de la carne. No hay que tratar todo lo que lleva la palabra Wagyu como si fuera A5 BMS 12.</p>
 <h2>Y con un A5 muy marmoleado</h2>
 <p>Cuanto mayor sea el marmoleo, más sencillos pueden ser los acompañamientos. Arroz blanco, setas, una verdura verde, encurtido y una salsa ácida servida aparte ya forman un conjunto muy completo.</p>
-<p>También conviene reducir el tamaño de la ración de carne. En <a href="/cuanto-wagyu-por-persona-racion/">cuánto Wagyu servir por persona</a> explicamos por qué una degustación de A5 puede necesitar bastante menos carne que un plato convencional.</p>
+<p>También conviene reducir el tamaño de la ración de carne. En <a href="/cuanto-wagyu-comprar-por-persona/">cuánto Wagyu servir por persona</a> explicamos por qué una degustación de A5 puede necesitar bastante menos carne que un plato convencional.</p>
 <h2>Qué hacer con la grasa que queda al cocinar</h2>
 <p>No la tires automáticamente, pero tampoco sientas que debes usarla toda. Una cucharadita puede perfumar arroz o setas. El resto puede retirarse si añadirlo convierte el menú en excesivamente graso.</p>
 <p>La cocina inteligente con Wagyu consiste en gestionar su grasa como ingrediente, no en acumularla en cada componente del plato.</p>
@@ -143,7 +143,7 @@ HTML,
 <p>The intensity of the accompaniment can increase as the fat intensity of the beef decreases. Not every product labelled Wagyu needs to be treated like BMS 12 A5.</p>
 <h2>Sides for extremely marbled A5</h2>
 <p>The more marbled the beef, the simpler the sides can become. Plain rice, mushrooms, green vegetables, pickles and an acidic sauce on the side already create a complete meal.</p>
-<p>Serving size should fall as richness rises. See <a href="/en/how-much-wagyu-per-person-portion/">how much Wagyu to serve per person</a> for more detail.</p>
+<p>Serving size should fall as richness rises. See <a href="/en/how-much-wagyu-per-person/">how much Wagyu to serve per person</a> for more detail.</p>
 <h2>What to do with rendered fat</h2>
 <p>Do not automatically discard it, but do not feel obliged to use all of it either. A teaspoon can perfume rice or mushrooms. Remove the rest if it would make the meal excessively fatty.</p>
 <p>Smart Wagyu cooking treats rendered fat as an ingredient to manage, not something that must be accumulated in every component.</p>

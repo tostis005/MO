@@ -40,7 +40,7 @@ return array(
 <h2>La ración importa más que la cifra por 100 gramos</h2>
 <p>En alimentos intensos como el Wagyu A5, la pregunta práctica no debería ser solo “¿cuántas calorías tiene 100 gramos?”, sino <strong>“¿cuánto voy a servir realmente?”</strong>. Las raciones de una degustación de A5 suelen ser menores que las de un chuletón convencional porque el nivel de marmoleo produce una sensación de riqueza mucho mayor.</p>
 <p>Una tabla expresada por 100 gramos es útil para comparar, pero la ingesta real depende de la cantidad que llega al plato. Una pequeña degustación y una ración grande pueden representar experiencias nutricionales y gastronómicas completamente distintas aunque la materia prima sea la misma.</p>
-<p>Para ajustar cantidades según el tipo de comida, puedes consultar <a href="/cuanto-wagyu-por-persona-racion/">cuánto Wagyu servir por persona</a>.</p>
+<p>Para ajustar cantidades según el tipo de comida, puedes consultar <a href="/cuanto-wagyu-comprar-por-persona/">cuánto Wagyu servir por persona</a>.</p>
 <h2>Cómo leer una etiqueta o ficha nutricional</h2>
 <p>Si un producto concreto incluye información nutricional, esa es una referencia mucho más útil que una cifra genérica encontrada en internet. Conviene comprobar cinco cosas: tamaño de la porción, energía, grasa total, grasas saturadas y proteína. También hay que verificar si los datos corresponden a 100 gramos, a una unidad o a una ración sugerida.</p>
 <p>En productos importados o en cortes premium puede no existir una tabla individual para cada pieza fresca. En ese caso, la información de bases de datos sobre vacuno puede servir para orientarse, pero no debe presentarse como una medición exacta de esa pieza de Wagyu.</p>
@@ -95,7 +95,7 @@ HTML,
 <h2>Your actual serving matters more than the 100-gram column</h2>
 <p>With rich foods such as A5 Wagyu, the practical question is not only “how many calories are in 100 grams?” but <strong>“how much am I actually going to serve?”</strong> A5 tasting portions are commonly smaller than conventional steak portions because extreme marbling creates much greater richness.</p>
 <p>Per-100-gram data are useful for comparison, but actual intake depends on the amount placed on the plate. A small tasting and a large steak can represent very different nutritional and culinary experiences even when the raw material is identical.</p>
-<p>For serving guidance, see <a href="/en/how-much-wagyu-per-person-portion/">how much Wagyu to serve per person</a>.</p>
+<p>For serving guidance, see <a href="/en/how-much-wagyu-per-person/">how much Wagyu to serve per person</a>.</p>
 <h2>How to read a nutrition label</h2>
 <p>If a specific packaged product provides nutrition information, that is usually more useful than a generic number found online. Check the serving basis, energy, total fat, saturated fat and protein, and make sure you know whether values apply per 100 grams, per pack or per suggested portion.</p>
 <p>Fresh premium cuts may not always have a laboratory analysis for each individual steak. In that situation, general beef databases can provide orientation, but their figures should not be presented as an exact measurement of a different Wagyu piece.</p>

@@ -35,14 +35,14 @@ return array(
 <h2>La maduración cambia mucho la comparación</h2>
 <p>En España, parte del prestigio comercial de determinadas carnes gallegas se ha unido a la maduración. Sin embargo, <strong>Rubia Gallega y carne madurada no son sinónimos</strong>. Una pieza puede proceder de esta raza y tener una maduración corta, larga o simplemente la necesaria para su comercialización.</p>
 <p>En Wagyu japonés de alto marmoleo, la experiencia suele apoyarse más en la grasa intramuscular y menos en buscar largas maduraciones para concentrar sabor. Eso no significa que el Wagyu no pueda madurarse, sino que aplicar una maduración extrema no es automáticamente una mejora.</p>
-<p>Profundizamos en esta diferencia en <a href="/wagyu-vs-carne-madurada/">Wagyu vs carne madurada</a>.</p>
+<p>Profundizamos en esta diferencia en <a href="/wagyu-vs-carne-madurada-diferencias/">Wagyu vs carne madurada</a>.</p>
 <h2>Cuál necesita una ración mayor</h2>
 <p>Una de las diferencias más prácticas está en la cantidad. Un chuletón de vacuno español puede plantearse como plato principal en una ración relativamente generosa, muchas veces para compartir. Un Wagyu A5 muy marmoleado suele disfrutarse mejor en cantidades bastante menores.</p>
-<p>La razón no es solo el precio. La concentración de grasa y la intensidad sensorial hacen que una ración enorme de A5 pueda resultar pesada. En <a href="/cuanto-wagyu-por-persona-racion/">cuánto Wagyu servir por persona</a> explicamos cómo ajustar la cantidad.</p>
+<p>La razón no es solo el precio. La concentración de grasa y la intensidad sensorial hacen que una ración enorme de A5 pueda resultar pesada. En <a href="/cuanto-wagyu-comprar-por-persona/">cuánto Wagyu servir por persona</a> explicamos cómo ajustar la cantidad.</p>
 <h2>Cómo cambia la forma de cocinar</h2>
 <p>Una pieza gruesa de Rubia Gallega puede funcionar muy bien con parrilla, brasa o plancha, buscando una buena costra y controlando la temperatura interior. El formato permite cocinar cortes de gran tamaño y reposarlos antes de servir.</p>
 <p>El Wagyu A5 suele agradecer piezas más pequeñas, superficies muy calientes y tiempos cortos. Con marmoleo elevado no necesitas añadir mucha grasa externa: la propia pieza libera suficiente durante la cocción.</p>
-<p>Nuestra guía sobre <a href="/como-cocinar-wagyu-a5/">cómo cocinar Wagyu A5</a> desarrolla este método paso a paso.</p>
+<p>Nuestra guía sobre <a href="/como-cocinar-wagyu-japones-a5-casa/">cómo cocinar Wagyu A5</a> desarrolla este método paso a paso.</p>
 <h2>Cuál elegir para una primera compra</h2>
 <p>Si nunca has probado Wagyu japonés auténtico y tu objetivo es descubrir aquello que lo hace diferente, conviene elegir una pieza en la que el marmoleo sea protagonista y servirla en una cantidad moderada. No tendría sentido comprar A5 esperando la experiencia de un chuletón grande de vacuno europeo.</p>
 <p>Si, en cambio, buscas una carne para compartir en formato de chuleta o chuletón, con mayor protagonismo del músculo y una experiencia más próxima a la cultura española de la brasa, la Rubia Gallega puede encajar mejor.</p>
@@ -80,14 +80,14 @@ HTML,
 <h2>Ageing changes the comparison</h2>
 <p>In Spain, the reputation of some Galician beef has become closely associated with ageing. However, <strong>Rubia Gallega and dry-aged beef are not synonyms</strong>. Beef from the breed may be subjected to shorter or longer ageing depending on the producer and product.</p>
 <p>With highly marbled Japanese Wagyu, the sensory experience usually relies more on intramuscular fat than on very long ageing to concentrate flavour. Wagyu can certainly be aged, but extreme ageing is not automatically an improvement.</p>
-<p>We examine that distinction in <a href="/en/wagyu-vs-aged-beef/">Wagyu vs aged beef</a>.</p>
+<p>We examine that distinction in <a href="/en/wagyu-vs-aged-beef-differences/">Wagyu vs aged beef</a>.</p>
 <h2>Which needs a larger portion?</h2>
 <p>One of the most practical differences is serving size. A Spanish premium steak may be presented as a generous main course, often shared. Highly marbled A5 Wagyu is usually more enjoyable in a much smaller quantity.</p>
 <p>This is not only about cost. The concentration of fat and sensory richness means a huge A5 portion can become overwhelming. Our <a href="/en/how-much-wagyu-per-person/">Wagyu portion guide</a> explains how to plan quantities.</p>
 <h2>How cooking changes</h2>
 <p>A thick Rubia Gallega steak can perform beautifully over charcoal, grill or a plancha, developing a strong crust while the centre is carefully managed. The format works well for large cuts that are rested before slicing.</p>
 <p>A5 Wagyu often benefits from smaller pieces, a hot cooking surface and short cooking times. With extreme marbling, little or no additional cooking fat is required because the beef quickly renders its own.</p>
-<p>See our guide to <a href="/en/how-to-cook-a5-wagyu/">cooking A5 Wagyu</a> for a more detailed method.</p>
+<p>See our guide to <a href="/en/how-to-cook-japanese-wagyu-a5-at-home/">cooking A5 Wagyu</a> for a more detailed method.</p>
 <h2>Which should you choose for a first purchase?</h2>
 <p>If you have never tasted authentic Japanese Wagyu and want to understand what makes it distinctive, choose a cut where marbling is clearly visible and serve a moderate portion. Buying A5 while expecting the experience of a very large European steak misses the point.</p>
 <p>If you want a substantial shared rib steak, more muscle character and an experience rooted in Spanish grilling culture, Rubia Gallega may make more sense.</p>

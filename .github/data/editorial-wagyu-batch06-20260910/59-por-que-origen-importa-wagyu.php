@@ -29,7 +29,7 @@ return array(
 <p>Esto convierte el nombre regional en algo más que marketing cuando existe una organización que define y controla esas condiciones. Pero como cada marca es diferente, no debe suponerse que todas exigen exactamente lo mismo.</p>
 <h2>El caso de Kobe explica bien por qué el origen importa</h2>
 <p>Kobe Beef procede de ganado Tajima y está ligado a la prefectura de Hyogo. La asociación responsable establece condiciones detalladas de producción y calidad. El nombre Kobe, por tanto, resume una cadena de requisitos verificables.</p>
-<p>Esto también demuestra por qué “Kobe-style”, “tipo Kobe” o una carne muy marmoleada no son equivalentes al producto certificado. Consulta <a href="/wagyu-vs-kobe/">las diferencias entre Wagyu y Kobe</a>.</p>
+<p>Esto también demuestra por qué “Kobe-style”, “tipo Kobe” o una carne muy marmoleada no son equivalentes al producto certificado. Consulta <a href="/wagyu-kobe-diferencias/">las diferencias entre Wagyu y Kobe</a>.</p>
 <h2>El entorno regional puede influir, pero no de forma mágica</h2>
 <p>Clima, disponibilidad de forrajes y cereales, agua, tradición ganadera y estructura de las explotaciones pueden cambiar entre regiones. Los productores adaptan alimentación y manejo a esas condiciones y desarrollan conocimientos locales.</p>
 <p>Sin embargo, conviene evitar explicaciones románticas del tipo “el agua de esta montaña crea por sí sola el marmoleo”. La calidad es multifactorial: genética, nutrición, salud, edad y manejo interactúan durante todo el ciclo.</p>

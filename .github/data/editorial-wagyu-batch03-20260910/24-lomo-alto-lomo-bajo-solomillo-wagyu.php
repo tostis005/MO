@@ -45,7 +45,7 @@ return array(
 <h2>Qué corte funciona mejor en porciones pequeñas</h2>
 <p>Los tres pueden servirse en porciones pequeñas. En A5, de hecho, es recomendable pensar más en bocados o láminas que en un filete grande. El lomo alto especialmente rico se beneficia de piezas pequeñas porque cada bocado concentra mucha grasa.</p>
 <p>El lomo bajo puede admitir un poco más de volumen si su marmoleo es menos extremo, mientras que el solomillo puede presentarse en medallones pequeños o dados. Ajustar la ración al marmoleo es más útil que fijarla únicamente por nombre del corte.</p>
-<p>Consulta <a href="/cuanto-wagyu-por-persona-racion/">cuánto Wagyu servir por persona</a> para planificar una degustación.</p>
+<p>Consulta <a href="/cuanto-wagyu-comprar-por-persona/">cuánto Wagyu servir por persona</a> para planificar una degustación.</p>
 <h2>Cómo cambia la cocción</h2>
 <p>Una pieza muy grasa de lomo alto necesita control de temperatura porque puede liberar grasa rápidamente. Una sartén o plancha bien caliente permite dorar porciones pequeñas y evacuar el exceso si es necesario. En el lomo bajo, un grosor moderado puede permitir trabajar algo más el contraste entre corteza y centro.</p>
 <p>El solomillo agradece una cocción precisa que conserve su textura. En todos los casos, la idea de cocinar A5 como un chuletón grande durante mucho tiempo suele desaprovechar una parte de su carácter. Nuestra guía de <a href="/como-cocinar-wagyu-japones-a5-casa/">cómo cocinar Wagyu A5</a> desarrolla esa técnica.</p>
@@ -100,7 +100,7 @@ HTML,
 <h2>Which works best in small portions?</h2>
 <p>All three do. With A5 it is generally better to think in slices or bites than one enormous steak. Very rich rib meat benefits particularly from small servings because every bite contains so much fat.</p>
 <p>A less extreme striploin may support a slightly larger portion, while tenderloin can work as small medallions or cubes. Adjust serving size to the actual marbling rather than the name alone.</p>
-<p>See <a href="/en/how-much-wagyu-per-person-portion/">how much Wagyu to serve per person</a> when planning a tasting.</p>
+<p>See <a href="/en/how-much-wagyu-per-person/">how much Wagyu to serve per person</a> when planning a tasting.</p>
 <h2>How cooking changes by cut</h2>
 <p>Very rich rib meat needs heat control because fat can render rapidly. A hot pan or griddle allows small pieces to brown quickly while excess rendered fat can be removed if necessary. Striploin at moderate thickness can create a little more contrast between browned surface and centre.</p>
 <p>Tenderloin rewards precision that preserves its delicate texture. In all three cases, treating A5 like a very large conventional steak can miss the point. Our <a href="/en/how-to-cook-japanese-wagyu-a5-at-home/">A5 cooking guide</a> covers the basic technique.</p>

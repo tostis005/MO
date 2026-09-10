@@ -24,7 +24,7 @@ return array(
 <h2>La cantidad es la herramienta más fácil para controlar el presupuesto</h2>
 <p>Con Wagyu A5, servir menos no significa ofrecer una experiencia peor. El marmoleo elevado produce una intensidad muy alta por bocado, por lo que una ración pequeña puede ser suficiente.</p>
 <p>Si el precio por kilo parece elevado, calcula primero cuánto producto necesitas realmente. Comprar la misma cantidad que comprarías de un chuletón convencional puede llevarte a gastar más y, además, a servir una ración excesiva.</p>
-<p>Consulta <a href="/cuanto-wagyu-por-persona-racion/">cuánto Wagyu comprar por persona</a> para ajustar el peso.</p>
+<p>Consulta <a href="/cuanto-wagyu-comprar-por-persona/">cuánto Wagyu comprar por persona</a> para ajustar el peso.</p>
 <h2>No todo el presupuesto debe ir al BMS máximo</h2>
 <p>El BMS describe el marmoleo. Un valor más alto suele aumentar la espectacularidad visual y la intensidad grasa, pero no garantiza que vaya a gustarte más.</p>
 <p>Si tu presupuesto es limitado, puede tener más sentido elegir un nivel de marmoleo alto pero no extremo y destinar el resto a una cantidad adecuada o a un corte que encaje mejor con la preparación.</p>
@@ -42,7 +42,7 @@ return array(
 <h2>El origen también influye en el precio</h2>
 <p>Kobe, Miyazaki, Kagoshima y otras referencias regionales pueden tener disponibilidad y prestigio diferentes. No deberías asumir que la marca más conocida es siempre la mejor compra para tu presupuesto.</p>
 <p>Si quieres descubrir Wagyu japonés auténtico, puede ser preferible un producto perfectamente trazable de una región menos famosa que pagar un sobreprecio únicamente por reconocimiento de nombre.</p>
-<p>Consulta <a href="/kobe-miyazaki-kagoshima/">Kobe, Miyazaki o Kagoshima</a> para entender esas diferencias.</p>
+<p>Consulta <a href="/kobe-miyazaki-kagoshima-diferencias-wagyu-japones/">Kobe, Miyazaki o Kagoshima</a> para entender esas diferencias.</p>
 <h2>No pagues más por términos que no estén explicados</h2>
 <p>Expresiones como “A5+”, “ultra premium” o “selección especial” pueden sonar a una categoría superior, pero deben estar definidas. A5+ no es un grado oficial por encima de A5.</p>
 <p>Si el vendedor cobra más por ese término, pregunta qué BMS, origen o criterio objetivo justifica la diferencia.</p>
@@ -91,7 +91,7 @@ HTML,
 <h2>Cut can change the final cost substantially</h2>
 <p>Famous, highly demanded cuts often command a higher price. Ribeye, striploin and tenderloin do not necessarily cost the same and do not create identical experiences.</p>
 <p>Instead of assuming the most expensive cut is best, decide whether you prioritise marbling, balance or tenderness. A less glamorous cut name can sometimes offer excellent eating quality for a lower total cost.</p>
-<p>See <a href="/en/how-to-choose-wagyu-cut/">which Wagyu cut to choose</a> and our <a href="/en/wagyu-ribeye-striploin-tenderloin-differences/">ribeye, striploin and tenderloin comparison</a>.</p>
+<p>See <a href="/en/which-wagyu-cut-to-choose/">which Wagyu cut to choose</a> and our <a href="/en/wagyu-ribeye-striploin-tenderloin-differences/">ribeye, striploin and tenderloin comparison</a>.</p>
 <h2>A tasting box can use the budget more efficiently</h2>
 <p>If your goal is to learn and compare, several small portions can make more sense than spending everything on one large cut. You can discover differences without committing to family-size portions.</p>
 <p>A tasting also prevents the entire experience depending on whether you happened to choose the right single cut.</p>
@@ -101,7 +101,7 @@ HTML,
 <h2>Origin influences price too</h2>
 <p>Kobe, Miyazaki, Kagoshima and other regional references can differ in availability and brand prestige. The best-known name is not automatically the best value for your budget.</p>
 <p>If your objective is authentic Japanese Wagyu, a perfectly traceable product from a less famous region may be a better buy than paying primarily for name recognition.</p>
-<p>See <a href="/en/kobe-miyazaki-kagoshima-wagyu/">Kobe, Miyazaki or Kagoshima</a> for context.</p>
+<p>See <a href="/en/kobe-miyazaki-kagoshima-japanese-wagyu-differences/">Kobe, Miyazaki or Kagoshima</a> for context.</p>
 <h2>Do not pay extra for unexplained terminology</h2>
 <p>Terms such as “A5+,” “ultra premium” or “special selection” can sound like higher official categories, but they need definitions. A5+ is not an official grade above A5.</p>
 <p>If a seller charges a premium for the term, ask which BMS, origin or objective selection criterion justifies it.</p>

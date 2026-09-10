@@ -56,7 +56,7 @@ return array(
 <p>Con A5 extremo, dividir antes de cocinar permite controlar cada bocado y evitar que una gran masa de grasa se funda de forma desigual. Nuestra guía sobre <a href="/como-cocinar-wagyu-japones-a5-casa/">cómo cocinar Wagyu A5 en casa</a> desarrolla la preparación completa.</p>
 <h2>Cómo saber cuándo darle la vuelta</h2>
 <p>No hace falta esperar a que un cronómetro marque una cifra universal. Observa el borde, la cantidad de grasa que empieza a aparecer y el color de la superficie. En piezas pequeñas, una cocción breve por cada cara puede ser suficiente para desarrollar costra.</p>
-<p>El tiempo cambia con el grosor, la temperatura de la carne, el material de cocción y el grado de marmoleo. Por eso nuestra guía de <a href="/punto-coccion-wagyu-temperatura/">punto de cocción del Wagyu</a> recomienda combinar observación y temperatura en lugar de memorizar segundos mágicos.</p>
+<p>El tiempo cambia con el grosor, la temperatura de la carne, el material de cocción y el grado de marmoleo. Por eso nuestra guía de <a href="/punto-coccion-ideal-wagyu/">punto de cocción del Wagyu</a> recomienda combinar observación y temperatura en lugar de memorizar segundos mágicos.</p>
 <h2>¿Hay que dejar reposar el Wagyu?</h2>
 <p>El reposo largo que se utiliza para un gran asado no siempre tiene sentido en pequeñas porciones de A5. Si dejamos enfriar demasiado un bocado muy graso, la grasa puede volverse más firme y perder parte de su sensación fundente.</p>
 <p>Una pieza más gruesa sí puede beneficiarse de un breve reposo para equilibrar temperatura. La regla debe adaptarse al tamaño real, no aplicarse mecánicamente.</p>
@@ -119,7 +119,7 @@ HTML,
 <p>With extreme A5, portioning before cooking makes every bite easier to control and prevents a large mass of fat from rendering unevenly. Our <a href="/en/how-to-cook-japanese-wagyu-a5-at-home/">guide to cooking A5 at home</a> covers the complete process.</p>
 <h2>How do you know when to turn it?</h2>
 <p>You do not need one universal stopwatch number. Watch the edges, the appearance of rendered fat and the colour of the contact surface. Small pieces may need only brief cooking on each side to develop browning.</p>
-<p>Time changes with thickness, starting temperature, cookware and marbling. Our <a href="/en/ideal-wagyu-doneness-temperature/">Wagyu doneness guide</a> explains why observation and temperature are more useful than magic seconds.</p>
+<p>Time changes with thickness, starting temperature, cookware and marbling. Our <a href="/en/ideal-wagyu-doneness/">Wagyu doneness guide</a> explains why observation and temperature are more useful than magic seconds.</p>
 <h2>Should Wagyu rest?</h2>
 <p>The long rest used for a large roast does not necessarily make sense for tiny A5 portions. Let a highly fatty bite cool too far and the fat becomes firmer, reducing the melting sensation.</p>
 <p>A thicker steak can still benefit from a short rest to equalise temperature. Adapt the technique to size rather than applying one rule mechanically.</p>

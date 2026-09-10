@@ -100,7 +100,7 @@ HTML,
 <p>Even where some hazards are mainly associated with the surface of intact muscle, other hazards and handling failures remain possible. A rare preparation should therefore be understood as a choice with residual risk, not as a magic way to disinfect beef.</p>
 <h2>Cold preserves; it does not sterilise</h2>
 <p>Refrigeration limits the growth of many microorganisms, but it does not make raw meat sterile. Freezing should not be treated as a universal way to eliminate bacteria either. Cold-chain control is an important safety measure, not a replacement for hygiene and adequate cooking.</p>
-<p>Thaw Wagyu in the refrigerator or by another recognised safe method, never for hours on the counter. Our <a href="/en/how-to-thaw-wagyu-correctly/">guide to thawing Wagyu correctly</a> explains how to protect both quality and safety.</p>
+<p>Thaw Wagyu in the refrigerator or by another recognised safe method, never for hours on the counter. Our <a href="/en/how-to-thaw-wagyu-properly/">guide to thawing Wagyu correctly</a> explains how to protect both quality and safety.</p>
 <h2>Cutting hygiene becomes especially important</h2>
 <p>With carpaccio or tartare, every additional contact matters: board, knife, hands, bowl and accompanying ingredients. Use clean utensils, prevent cross-contamination with ready-to-eat foods and keep the beef cold until preparation.</p>
 <p>If a knife touches an exposed surface and is then used deep inside the meat without hygienic handling, contamination can be transferred. In a raw dish there is no later cooking step to correct that mistake.</p>

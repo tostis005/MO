@@ -24,7 +24,7 @@ return array(
 <h2>¿A5 es siempre la mejor opción para regalo?</h2>
 <p>A5 es la clasificación más alta dentro del sistema japonés de rendimiento y calidad, pero eso no significa que todo el mundo prefiera el marmoleo más extremo. Una pieza A5 con BMS muy alto puede ser espectacular en pocos bocados y demasiado intensa si el destinatario espera un filete grande.</p>
 <p>Si no conoces sus preferencias, es más sensato buscar equilibrio que perseguir el máximo número.</p>
-<p>Consulta <a href="/wagyu-japones-a5/">qué significa A5</a> y la <a href="/bms-wagyu-escala-marmoleo-1-12/">escala BMS</a> antes de decidir.</p>
+<p>Consulta <a href="/wagyu-japones-a5-que-es-que-significa/">qué significa A5</a> y la <a href="/bms-wagyu-escala-marmoleo-1-12/">escala BMS</a> antes de decidir.</p>
 <h2>Qué corte suele funcionar mejor</h2>
 <p>El lomo alto y el lomo bajo son opciones muy atractivas porque muestran claramente el marmoleo y permiten cocinar pequeñas porciones con facilidad. El solomillo ofrece una textura muy tierna y puede gustar a quien prioriza suavidad sobre intensidad grasa.</p>
 <p>Si tienes dudas, nuestra comparativa de <a href="/lomo-alto-lomo-bajo-solomillo-wagyu-diferencias/">lomo alto, lomo bajo y solomillo Wagyu</a> explica qué ofrece cada uno.</p>
@@ -35,7 +35,7 @@ return array(
 <h2>Cuánta cantidad regalar</h2>
 <p>La cantidad depende del marmoleo y de si el Wagyu será el plato principal o parte de una degustación. Con A5 muy graso, una porción relativamente pequeña por persona puede ser más agradable que servir un bistec tradicional de gran tamaño.</p>
 <p>Si el regalo es para una pareja, una selección de pequeñas piezas puede dar más juego que un único corte sobredimensionado. Para una familia o grupo, conviene calcular cuántos bocados queremos servir y acompañarlos con arroz, verduras u otros platos.</p>
-<p>La guía <a href="/cuanto-wagyu-por-persona-racion/">cuánto Wagyu comprar por persona</a> ayuda a ajustar el peso.</p>
+<p>La guía <a href="/cuanto-wagyu-comprar-por-persona/">cuánto Wagyu comprar por persona</a> ayuda a ajustar el peso.</p>
 <h2>Fresco o congelado para regalo</h2>
 <p>El producto congelado puede ser muy práctico porque da al destinatario margen para elegir cuándo consumirlo. Si la congelación, el envasado y la cadena de frío son correctos, no debería descartarse solo por no llegar fresco.</p>
 <p>El fresco puede resultar más inmediato, pero exige coordinación para consumirlo dentro de su ventana adecuada. Si no sabes cuándo podrá cocinarlo la otra persona, el congelado puede incluso ser una opción más cómoda.</p>
@@ -49,7 +49,7 @@ return array(
 <p>Para la parte de autenticidad, revisa <a href="/certificado-trazabilidad-wagyu-japones/">certificado y trazabilidad del Wagyu japonés</a>.</p>
 <h2>Qué regalar a alguien que nunca ha probado Wagyu</h2>
 <p>Busca una experiencia sencilla: una o dos porciones de un corte reconocible, instrucciones claras, sal como condimento principal y una preparación corta en sartén o plancha. Evita crear una receta complicada alrededor de una carne que ya tiene mucho carácter.</p>
-<p>La guía <a href="/como-cocinar-wagyu-a5/">cómo cocinar Wagyu A5</a> puede acompañar perfectamente el regalo.</p>
+<p>La guía <a href="/como-cocinar-wagyu-japones-a5-casa/">cómo cocinar Wagyu A5</a> puede acompañar perfectamente el regalo.</p>
 <h2>Qué regalar a un aficionado avanzado</h2>
 <p>En ese caso puedes buscar contraste: dos orígenes, dos niveles de BMS, lomo alto frente a lomo bajo o un lote que permita preparar yakiniku y después una pieza más gruesa.</p>
 <p>El interés ya no está solo en “probar Wagyu”, sino en descubrir cómo cambian raza, prefectura, corte y marmoleo.</p>
@@ -79,7 +79,7 @@ HTML,
 <h2>Is A5 always the best gift?</h2>
 <p>A5 is the highest grade in the Japanese yield-and-quality system, but that does not mean everybody prefers the most extreme marbling. An A5 cut with very high BMS can be spectacular in a few bites and overwhelming if the recipient expects a large steak.</p>
 <p>If you do not know their preferences, balance is more sensible than simply chasing the maximum number.</p>
-<p>See <a href="/en/japanese-wagyu-a5-explained/">what A5 means</a> and our <a href="/en/wagyu-bms-marbling-scale-1-12/">BMS guide</a> before choosing.</p>
+<p>See <a href="/en/japanese-wagyu-a5-what-it-is-what-it-means/">what A5 means</a> and our <a href="/en/wagyu-bms-marbling-scale-1-12/">BMS guide</a> before choosing.</p>
 <h2>Which cut usually works best?</h2>
 <p>Ribeye and striploin are attractive choices because they show marbling clearly and can be cooked in small portions. Tenderloin provides exceptional tenderness and may suit someone who prioritises softness over maximum fat intensity.</p>
 <p>Our <a href="/en/wagyu-ribeye-striploin-tenderloin-differences/">ribeye, striploin and tenderloin comparison</a> explains the trade-offs.</p>
@@ -104,7 +104,7 @@ HTML,
 <p>For authenticity, see <a href="/en/japanese-wagyu-certificate-traceability/">Japanese Wagyu certificates and traceability</a>.</p>
 <h2>What to give someone who has never tried Wagyu</h2>
 <p>Keep the experience simple: one or two portions of a recognisable cut, clear instructions, salt as the main seasoning and quick cooking in a pan or on a plancha. Avoid building a complicated recipe around beef that already has so much character.</p>
-<p>Our guide to <a href="/en/how-to-cook-a5-wagyu/">cooking A5 Wagyu</a> can accompany the gift.</p>
+<p>Our guide to <a href="/en/how-to-cook-japanese-wagyu-a5-at-home/">cooking A5 Wagyu</a> can accompany the gift.</p>
 <h2>What to give an advanced enthusiast</h2>
 <p>Look for contrast: two origins, two BMS levels, ribeye versus striploin, or a set that allows both yakiniku and a thicker steak preparation.</p>
 <p>The interest is no longer simply “trying Wagyu,” but discovering how breed, prefecture, cut and marbling change the experience.</p>

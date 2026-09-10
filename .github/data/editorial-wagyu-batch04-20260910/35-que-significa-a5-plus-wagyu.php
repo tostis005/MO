@@ -21,7 +21,7 @@ return array(
 <h2>Cómo funciona realmente la clasificación japonesa</h2>
 <p>El sistema de clasificación de canales bovinas en Japón combina dos elementos. Por un lado está el <strong>grado de rendimiento</strong>, expresado como A, B o C. Por otro está el <strong>grado de calidad</strong>, que va de 1 a 5.</p>
 <p>Al unirlos aparecen categorías como A3, A4 o A5. Por tanto, A5 significa rendimiento A y calidad 5. No existe un grado oficial A6 ni un A5+ añadido por la Japan Meat Grading Association.</p>
-<p>Si necesitas una explicación desde cero, consulta <a href="/wagyu-japones-a5/">qué significa Wagyu A5</a>.</p>
+<p>Si necesitas una explicación desde cero, consulta <a href="/wagyu-japones-a5-que-es-que-significa/">qué significa Wagyu A5</a>.</p>
 <h2>Entonces, ¿qué mide el BMS?</h2>
 <p>El BMS o Beef Marbling Standard se utiliza para valorar el marmoleo. La escala va del 1 al 12. En la clasificación oficial, el nivel de marmoleo necesario para el grado de calidad 5 corresponde a <strong>BMS 8–12</strong>.</p>
 <p>Esto significa que dos canales pueden ser A5 y, sin embargo, tener niveles de marmoleo distintos dentro del rango que permite alcanzar calidad 5. Una puede estar en BMS 8 y otra en BMS 12.</p>
@@ -49,7 +49,7 @@ return array(
 <p>Lo importante es <strong>no confundir esa selección interna con una categoría emitida por el organismo oficial de clasificación japonés</strong>.</p>
 <h2>Qué preguntar antes de comprar un producto anunciado como A5+</h2>
 <p>Pregunta cuál es el grado oficial, cuál es el BMS declarado, cuál es el origen, qué corte estás comprando y qué documentación de trazabilidad existe. Con esos datos puedes comparar productos de forma mucho más limpia.</p>
-<p>La guía <a href="/wagyu-japones-autentico/">cómo saber si un Wagyu japonés es auténtico</a> explica las comprobaciones más importantes.</p>
+<p>La guía <a href="/como-saber-wagyu-japones-autentico-certificado-trazabilidad/">cómo saber si un Wagyu japonés es auténtico</a> explica las comprobaciones más importantes.</p>
 <h2>La conclusión</h2>
 <p><strong>A5+ no es una clasificación oficial superior a A5.</strong> El sistema japonés llega hasta A5. Dentro del grado de calidad 5, el marmoleo puede variar entre BMS 8 y 12, y algunos vendedores utilizan el “+” para destacar piezas situadas en la zona más alta de ese rango.</p>
 <p>El término no tiene por qué ser engañoso si está bien explicado, pero nunca debería sustituir los datos objetivos. Si ves A5+, busca siempre el BMS, el origen, el corte y la trazabilidad.</p>
@@ -70,7 +70,7 @@ HTML,
 <h2>How the Japanese grading system actually works</h2>
 <p>Japanese beef carcass grading combines two elements. The <strong>yield grade</strong> is expressed as A, B or C. The <strong>quality grade</strong> runs from 1 to 5.</p>
 <p>Combining them creates grades such as A3, A4 and A5. A5 therefore means yield grade A and quality grade 5. There is no official A6 or A5+ grade issued by the Japan Meat Grading Association.</p>
-<p>For the full basics, see <a href="/en/japanese-wagyu-a5-explained/">what A5 Wagyu means</a>.</p>
+<p>For the full basics, see <a href="/en/japanese-wagyu-a5-what-it-is-what-it-means/">what A5 Wagyu means</a>.</p>
 <h2>So what does BMS measure?</h2>
 <p>BMS, or Beef Marbling Standard, is used to evaluate marbling. The scale runs from 1 to 12. Within the official system, the marbling range associated with quality grade 5 is <strong>BMS 8–12</strong>.</p>
 <p>This means two carcasses can both be A5 while still having different marbling levels within the quality-5 range. One may be BMS 8 and another BMS 12.</p>
@@ -98,7 +98,7 @@ HTML,
 <p>The important point is <strong>not to confuse that internal selection with a grade issued by the official Japanese grading body</strong>.</p>
 <h2>What should you ask before buying A5+?</h2>
 <p>Ask for the official grade, declared BMS, country and region of origin, the exact cut and available traceability documentation. Those details allow much cleaner product comparisons.</p>
-<p>See <a href="/en/how-to-identify-authentic-japanese-wagyu/">how to identify authentic Japanese Wagyu</a> for the full purchasing checklist.</p>
+<p>See <a href="/en/how-to-tell-authentic-japanese-wagyu-certification-traceability/">how to identify authentic Japanese Wagyu</a> for the full purchasing checklist.</p>
 <h2>The conclusion</h2>
 <p><strong>A5+ is not an official grade above A5.</strong> The Japanese system tops out at A5. Within quality grade 5, marbling can range from BMS 8 to 12, and some sellers use the plus sign to highlight beef toward the top of that range.</p>
 <p>The term does not have to be misleading if it is clearly defined, but it should never replace objective data. When you see A5+, look for BMS, origin, cut and traceability.</p>

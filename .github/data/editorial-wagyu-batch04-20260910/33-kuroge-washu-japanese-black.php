@@ -28,7 +28,7 @@ return array(
 <h2>Japanese Black y A5 no son sinónimos</h2>
 <p>A5 es una clasificación de canal que combina un grado de rendimiento y un grado de calidad. Kuroge Washu es una raza. Un animal Japanese Black puede producir carne clasificada en diferentes grados.</p>
 <p>Por tanto, una tienda debería poder explicar por separado <strong>raza, país de origen y grado</strong>. Si una ficha usa “Kuroge Washu” como si fuera una categoría superior a A5, está mezclando conceptos.</p>
-<p>En <a href="/wagyu-japones-a5/">qué significa Wagyu A5</a> explicamos cómo se construye esa clasificación.</p>
+<p>En <a href="/wagyu-japones-a5-que-es-que-significa/">qué significa Wagyu A5</a> explicamos cómo se construye esa clasificación.</p>
 <h2>Qué relación tiene con el BMS</h2>
 <p>Japanese Black tiene una capacidad extraordinaria para desarrollar grasa intramuscular. El BMS o Beef Marbling Standard evalúa visualmente el nivel de marmoleo utilizado dentro de la clasificación japonesa.</p>
 <p>Eso no significa que todo Japanese Black alcance los valores máximos. Genética individual, alimentación, edad, manejo y otros factores afectan al resultado de cada canal.</p>
@@ -36,10 +36,10 @@ return array(
 <h2>¿Kobe Beef es Japanese Black?</h2>
 <p>Kobe Beef procede de ganado Tajima, una línea de Japanese Black, y debe cumplir además requisitos específicos de nacimiento, cría, sacrificio, clasificación y certificación establecidos para la marca Kobe.</p>
 <p>Por eso <strong>todo Kobe auténtico pertenece al universo Japanese Black, pero no todo Japanese Black es Kobe</strong>. Confundir la raza con la indicación regional es uno de los errores más habituales del mercado.</p>
-<p>Nuestra comparativa <a href="/wagyu-vs-kobe/">Wagyu vs Kobe</a> explica esta relación con más detalle.</p>
+<p>Nuestra comparativa <a href="/wagyu-kobe-diferencias/">Wagyu vs Kobe</a> explica esta relación con más detalle.</p>
 <h2>¿Miyazaki y Kagoshima también suelen ser Japanese Black?</h2>
 <p>Muchas de las referencias premium procedentes de Miyazaki y Kagoshima corresponden a Japanese Black, aunque cada marca o programa regional establece sus propios criterios. El nombre de la prefectura no sustituye a la información de raza y clasificación.</p>
-<p>Si estás decidiendo entre orígenes, revisa <a href="/kobe-miyazaki-kagoshima/">Kobe, Miyazaki o Kagoshima: diferencias</a>.</p>
+<p>Si estás decidiendo entre orígenes, revisa <a href="/kobe-miyazaki-kagoshima-diferencias-wagyu-japones/">Kobe, Miyazaki o Kagoshima: diferencias</a>.</p>
 <h2>Qué aporta la raza a la textura</h2>
 <p>En piezas muy marmoleadas, el tejido adiposo se distribuye en vetas pequeñas dentro del músculo. Al calentarse, parte de esa grasa se ablanda y funde, modificando la percepción de ternura y jugosidad.</p>
 <p>La sensación característica no depende exclusivamente de “tener mucha grasa”. También influyen el tamaño y distribución de las vetas, la composición de los ácidos grasos, el corte y la técnica de cocción.</p>
@@ -52,7 +52,7 @@ return array(
 <p>Esto permite entender una idea importante: no existe un único “sabor Japanese Black”. Dos piezas pueden pertenecer a la misma raza y aun así diferir en marmoleo, corte, alimentación, edad, procedencia y preparación.</p>
 <h2>Qué mirar al comprar</h2>
 <p>Si el producto se presenta como Kuroge Washu, comprueba primero que sea <strong>Wagyu producido en Japón</strong> si eso es lo que buscas. Después revisa grado, BMS cuando se declare, corte, peso y trazabilidad.</p>
-<p>La guía <a href="/wagyu-japones-autentico/">cómo saber si un Wagyu japonés es auténtico</a> reúne estas comprobaciones en un solo proceso de compra.</p>
+<p>La guía <a href="/como-saber-wagyu-japones-autentico-certificado-trazabilidad/">cómo saber si un Wagyu japonés es auténtico</a> reúne estas comprobaciones en un solo proceso de compra.</p>
 <h2>La conclusión</h2>
 <p><strong>Kuroge Washu es la raza central para entender el Wagyu japonés moderno</strong>. Su capacidad de marmoleo explica gran parte de la estética y experiencia que han hecho famoso al producto, pero la raza por sí sola no garantiza A5, BMS 12 ni una marca regional concreta.</p>
 <p>La mejor lectura de una etiqueta separa cada nivel: raza, origen, marca, grado, corte y trazabilidad. Cuando esos datos están claros, “Japanese Black” deja de ser una palabra de marketing y se convierte en información útil.</p>
@@ -80,7 +80,7 @@ HTML,
 <h2>Japanese Black and A5 are not synonyms</h2>
 <p>A5 is a carcass grade combining yield grade and quality grade. Kuroge Washu is a breed. A Japanese Black animal can therefore produce beef classified at different grades.</p>
 <p>A good retailer should be able to state <strong>breed, country of origin and grade separately</strong>. If a product page uses “Kuroge Washu” as though it were a grade above A5, it is mixing different concepts.</p>
-<p>Our <a href="/en/japanese-wagyu-a5-explained/">A5 Wagyu guide</a> explains how the grade is constructed.</p>
+<p>Our <a href="/en/japanese-wagyu-a5-what-it-is-what-it-means/">A5 Wagyu guide</a> explains how the grade is constructed.</p>
 <h2>How does it relate to BMS?</h2>
 <p>Japanese Black has exceptional potential for intramuscular fat development. BMS, or Beef Marbling Standard, is the visual marbling scale used within Japanese beef grading.</p>
 <p>That does not mean every Japanese Black carcass reaches the highest values. Individual genetics, feeding, age, management and other factors influence the outcome.</p>
@@ -91,7 +91,7 @@ HTML,
 <p>See <a href="/en/wagyu-vs-kobe-differences/">Wagyu vs Kobe</a> for a full comparison.</p>
 <h2>Are Miyazaki and Kagoshima Wagyu also usually Japanese Black?</h2>
 <p>Many premium references from Miyazaki and Kagoshima are Japanese Black, although each regional brand or programme can apply its own criteria. A prefecture name does not replace breed and grading information.</p>
-<p>Our <a href="/en/kobe-miyazaki-kagoshima-wagyu/">Kobe, Miyazaki and Kagoshima comparison</a> helps distinguish these origins.</p>
+<p>Our <a href="/en/kobe-miyazaki-kagoshima-japanese-wagyu-differences/">Kobe, Miyazaki and Kagoshima comparison</a> helps distinguish these origins.</p>
 <h2>What does the breed contribute to texture?</h2>
 <p>In highly marbled cuts, adipose tissue is distributed as fine veins through the muscle. During cooking, some of that fat softens and melts, changing the perception of tenderness and juiciness.</p>
 <p>The characteristic sensation is not simply the result of “a lot of fat.” The size and distribution of marbling, fatty-acid composition, cut and cooking technique all matter.</p>
@@ -104,7 +104,7 @@ HTML,
 <p>This also explains why there is no single “Japanese Black flavour.” Two cuts from the same breed can still differ in marbling, cut, feeding, age, origin and preparation.</p>
 <h2>What should you check when buying?</h2>
 <p>If a product is presented as Kuroge Washu, first confirm it is <strong>Wagyu produced in Japan</strong> if that is what you intend to buy. Then check grade, BMS where declared, cut, weight and traceability.</p>
-<p>Our guide to <a href="/en/how-to-identify-authentic-japanese-wagyu/">identifying authentic Japanese Wagyu</a> brings those checks together.</p>
+<p>Our guide to <a href="/en/how-to-tell-authentic-japanese-wagyu-certification-traceability/">identifying authentic Japanese Wagyu</a> brings those checks together.</p>
 <h2>The conclusion</h2>
 <p><strong>Kuroge Washu is central to understanding modern Japanese Wagyu.</strong> Its marbling potential explains much of the appearance and eating quality that made Wagyu famous, but breed alone does not guarantee A5, BMS 12 or any particular regional brand.</p>
 <p>The most useful product label separates each layer: breed, origin, brand, grade, cut and traceability. When those details are clear, “Japanese Black” becomes meaningful information rather than marketing shorthand.</p>

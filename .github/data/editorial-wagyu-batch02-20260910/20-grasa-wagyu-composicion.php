@@ -49,7 +49,7 @@ return array(
 <p>Una afirmación correcta sería señalar que Japanese Black ha sido estudiada por presentar proporciones elevadas de MUFA y ácido oleico en comparación con determinados tipos de vacuno. De ahí no debemos saltar a promesas de reducir colesterol, prevenir enfermedades o compensar una dieta desequilibrada.</p>
 <h2>Por qué las porciones pequeñas tienen sentido también aquí</h2>
 <p>El marmoleo elevado aumenta la riqueza sensorial y la cantidad de grasa por bocado. Servir menos no es solo una estrategia para reducir el coste; suele mejorar la experiencia gastronómica y evita que la intensidad se vuelva pesada.</p>
-<p>Una cata de A5 puede construirse con una cantidad relativamente pequeña acompañada de arroz, vegetales o preparaciones frescas. En <a href="/cuanto-wagyu-por-persona-racion/">cuánto Wagyu servir por persona</a> analizamos cómo ajustar la cantidad a la ocasión y al nivel de marmoleo.</p>
+<p>Una cata de A5 puede construirse con una cantidad relativamente pequeña acompañada de arroz, vegetales o preparaciones frescas. En <a href="/cuanto-wagyu-comprar-por-persona/">cuánto Wagyu servir por persona</a> analizamos cómo ajustar la cantidad a la ocasión y al nivel de marmoleo.</p>
 <h2>La grasa es parte del producto, no un defecto que haya que retirar</h2>
 <p>En una carne convencional puede ser habitual recortar grandes capas exteriores antes de cocinar. En A5, retirar las vetas internas es imposible y además eliminaría precisamente una de sus características principales. La cocina debe gestionar esa grasa, no luchar contra ella.</p>
 <p>Eso implica evitar exceso de aceite o mantequilla, controlar la sartén y servir la carne caliente para que la grasa mantenga una textura agradable. La grasa que se rinde durante la cocción puede aprovecharse en pequeñas cantidades para una guarnición.</p>
@@ -104,7 +104,7 @@ HTML,
 <p>A more accurate statement is that Japanese Black has been studied for comparatively high proportions of MUFA and oleic acid in certain contexts. That does not justify claims that Wagyu lowers cholesterol, prevents disease or compensates for an unbalanced diet.</p>
 <h2>Why small portions make sense here too</h2>
 <p>High marbling increases both sensory richness and fat per bite. Serving less is not only a cost-saving strategy; it often produces a better gastronomic experience by preventing richness from becoming tiring.</p>
-<p>An A5 tasting can use a modest amount of meat alongside rice, vegetables or fresh accompaniments. Our <a href="/en/how-much-wagyu-per-person-serving-size/">Wagyu serving-size guide</a> explains how to adjust quantity to occasion and marbling.</p>
+<p>An A5 tasting can use a modest amount of meat alongside rice, vegetables or fresh accompaniments. Our <a href="/en/how-much-wagyu-per-person/">Wagyu serving-size guide</a> explains how to adjust quantity to occasion and marbling.</p>
 <h2>Fat is part of the product, not a flaw to remove</h2>
 <p>With conventional beef, large external fat caps may be trimmed before cooking. In A5, internal veins cannot be removed without destroying the defining characteristic. Cooking needs to manage that fat rather than fight it.</p>
 <p>Use little added oil or butter, control the pan and serve the meat warm so rendered fat remains pleasant. Small amounts of fat left in the pan can also flavour a side dish.</p>

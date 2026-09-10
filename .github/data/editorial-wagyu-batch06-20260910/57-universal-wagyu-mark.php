@@ -32,7 +32,7 @@ return array(
 <p>Por eso una pieza puede ser Wagyu japonés auténtico sin ser A5, y un producto comercializado como “A5-style” fuera de Japón no adquiere origen japonés por utilizar una expresión parecida.</p>
 <h2>Universal Wagyu Mark y Kobe Beef</h2>
 <p>Kobe Beef cuenta con requisitos y certificación propios. La carne debe proceder de ganado Tajima y cumplir condiciones específicas vinculadas a Hyogo, producción, sacrificio y calidad. El Universal Wagyu Mark no sustituye ese sistema.</p>
-<p>Si compras Kobe, lo relevante es comprobar además la documentación de Kobe y el vendedor autorizado correspondiente. Consulta <a href="/wagyu-vs-kobe/">Wagyu vs Kobe</a> para separar ambos conceptos.</p>
+<p>Si compras Kobe, lo relevante es comprobar además la documentación de Kobe y el vendedor autorizado correspondiente. Consulta <a href="/wagyu-kobe-diferencias/">Wagyu vs Kobe</a> para separar ambos conceptos.</p>
 <h2>Qué relación tiene con la trazabilidad</h2>
 <p>El Wagyu producido en Japón se apoya en el sistema japonés de identificación bovina. Cada animal dispone de un número individual, y esos registros permiten verificar información de producción. La trazabilidad es, por tanto, la infraestructura documental; el logotipo es una forma de comunicar autenticidad al mercado.</p>
 <p>El propio sistema del Universal Wagyu Mark exige que las condiciones correspondientes puedan verificarse mediante la trazabilidad. Por eso ambos elementos se refuerzan mutuamente.</p>

@@ -37,7 +37,7 @@ return array(
 <h2>¿Las cuatro pueden ser Wagyu auténtico?</h2>
 <p>Sí. Las cuatro son razas Wagyu reconocidas dentro del sistema japonés. El error está en pensar que solo Japanese Black merece el nombre Wagyu.</p>
 <p>Ahora bien, para que una carne vendida internacionalmente como <strong>Wagyu japonés</strong> pueda presentarse con rigor, debe poder demostrarse su origen y trazabilidad. No basta con mencionar una raza de forma aislada.</p>
-<p>En <a href="/wagyu-japones-autentico/">cómo saber si un Wagyu japonés es auténtico</a> explicamos qué datos comprobar.</p>
+<p>En <a href="/como-saber-wagyu-japones-autentico-certificado-trazabilidad/">cómo saber si un Wagyu japonés es auténtico</a> explicamos qué datos comprobar.</p>
 <h2>¿Todas alcanzan A5?</h2>
 <p>La clasificación A5 no es una raza. Es el resultado de combinar grado de rendimiento y grado de calidad de la canal. En la práctica, Japanese Black es la raza más asociada a los niveles de marmoleo que permiten alcanzar las calificaciones más altas con frecuencia.</p>
 <p>Pero no deberíamos comprar Japanese Brown, Shorthorn o Polled esperando que imiten necesariamente el aspecto de Japanese Black A5. Cada una puede tener un perfil distinto.</p>
@@ -87,7 +87,7 @@ HTML,
 <h2>Can all four be authentic Wagyu?</h2>
 <p>Yes. All four are recognised Wagyu breeds within the Japanese system. The mistake is assuming only Japanese Black deserves the name.</p>
 <p>However, for beef sold internationally as <strong>Japanese Wagyu</strong>, origin and traceability still matter. Naming a breed alone is not enough to establish that a product was produced in Japan.</p>
-<p>See <a href="/en/how-to-identify-authentic-japanese-wagyu/">how to identify authentic Japanese Wagyu</a> for the practical checks.</p>
+<p>See <a href="/en/how-to-tell-authentic-japanese-wagyu-certification-traceability/">how to identify authentic Japanese Wagyu</a> for the practical checks.</p>
 <h2>Can all four reach A5?</h2>
 <p>A5 is not a breed; it is a carcass grade combining yield and quality. In practice, Japanese Black is the breed most commonly associated with the extreme marbling that frequently supports the highest quality grades.</p>
 <p>Japanese Brown, Shorthorn or Polled should not be purchased with the expectation that they must visually imitate Japanese Black A5. Their identity can be different.</p>
