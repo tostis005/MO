@@ -1,0 +1,37 @@
+name: OpenAI Commerce Feed CI
+
+on:
+  pull_request:
+    paths:
+      - 'mdo-supplier-sync/mdo-supplier-sync.php'
+      - 'mdo-supplier-sync/includes/openai/**'
+      - 'tests/openai-commerce-contract.php'
+      - 'tools/openai-commerce-runtime-qa.php'
+      - 'docs/openai-commerce-feed.md'
+      - '.github/workflows/openai-commerce-feed-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  php-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: PHP version
+        run: php -v
+
+      - name: Syntax check OpenAI Commerce PHP
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mdo-supplier-sync/mdo-supplier-sync.php
+          find mdo-supplier-sync/includes/openai -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+          php -l tests/openai-commerce-contract.php
+          php -l tools/openai-commerce-runtime-qa.php
+
+      - name: Static contract regression suite
+        run: php tests/openai-commerce-contract.php
