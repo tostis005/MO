@@ -20,7 +20,7 @@ jobs:
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Inspect production Montjam image assets
+      - name: Inspect recent Montjam attachments
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -51,18 +51,11 @@ jobs:
           wp_bin=$(command -v wp)
           php_bin=$(command -v php || true)
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-          "$php_bin" -d memory_limit=1024M "$wp_bin" eval '
-            foreach([14287,14301] as $pid){
-              $p=wc_get_product($pid); if(!$p) continue;
-              echo "PARENT ".wp_json_encode(["id"=>$pid,"name"=>$p->get_name(),"permalink"=>$p->get_permalink(),"image_id"=>(int)$p->get_image_id(),"gallery"=>array_map("absint",(array)$p->get_gallery_image_ids())],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
-              $meta=get_post_meta($pid);
-              foreach($meta as $k=>$vals){ if(preg_match("/(image|thumb|gallery|photo|foto|media|attachment)/i",(string)$k)){ echo "META ".$pid." ".$k." ".wp_json_encode($vals,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n"; } }
-            }
-            $q=new WP_Query(["post_type"=>"attachment","post_status"=>"inherit","posts_per_page"=>200,"orderby"=>"ID","order"=>"DESC","s"=>"Montjam","fields"=>"ids"]);
-            foreach((array)$q->posts as $aid){ echo "MEDIA ".wp_json_encode(["id"=>(int)$aid,"title"=>get_the_title($aid),"url"=>wp_get_attachment_url($aid),"alt"=>get_post_meta($aid,"_wp_attachment_image_alt",true),"parent"=>(int)wp_get_post_parent_id($aid)],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n"; }
-            $q2=new WP_Query(["post_type"=>"attachment","post_status"=>"inherit","posts_per_page"=>200,"orderby"=>"ID","order"=>"DESC","s"=>"Jabugo","fields"=>"ids"]);
-            foreach((array)$q2->posts as $aid){ echo "JABUGO_MEDIA ".wp_json_encode(["id"=>(int)$aid,"title"=>get_the_title($aid),"url"=>wp_get_attachment_url($aid),"alt"=>get_post_meta($aid,"_wp_attachment_image_alt",true),"parent"=>(int)wp_get_post_parent_id($aid)],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n"; }
-            $montjam=get_posts(["post_type"=>"product","post_status"=>"publish","posts_per_page"=>50,"s"=>"Montjam","fields"=>"ids","suppress_filters"=>true]);
-            foreach((array)$montjam as $mid){ $mp=wc_get_product($mid); if(!$mp) continue; echo "MONTJAM_PRODUCT ".wp_json_encode(["id"=>(int)$mid,"name"=>$mp->get_name(),"image_id"=>(int)$mp->get_image_id(),"image_url"=>wp_get_attachment_url((int)$mp->get_image_id())],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n"; }
+          "$php_bin" -d memory_limit=768M "$wp_bin" eval '
+            global $wpdb;
+            $ids=$wpdb->get_col("SELECT ID FROM {$wpdb->posts} WHERE post_type=\"attachment\" AND ID BETWEEN 14250 AND 14320 ORDER BY ID ASC");
+            foreach((array)$ids as $aid){echo "ATTACH ".wp_json_encode(["id"=>(int)$aid,"title"=>get_the_title($aid),"url"=>wp_get_attachment_url($aid),"alt"=>get_post_meta($aid,"_wp_attachment_image_alt",true),"parent"=>(int)wp_get_post_parent_id($aid),"date"=>get_post_field("post_date",$aid)],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";}
+            $pids=$wpdb->get_col("SELECT ID FROM {$wpdb->posts} WHERE post_type=\"product\" AND ID BETWEEN 14250 AND 14320 ORDER BY ID ASC");
+            foreach((array)$pids as $pid){$p=wc_get_product($pid); if(!$p) continue; echo "PRODUCT ".wp_json_encode(["id"=>(int)$pid,"name"=>$p->get_name(),"image_id"=>(int)$p->get_image_id(),"gallery"=>array_map("absint",(array)$p->get_gallery_image_ids())],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";}
           ' --path="$PROD_PATH" --allow-root
           REMOTE
