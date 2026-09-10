@@ -4,22 +4,24 @@ Last reviewed against the official OpenAI Agentic Commerce documentation: 2026-0
 
 ## Scope
 
-This integration extends the existing EMDO merchant-feed module. It does **not** create an unrelated standalone plugin and it does **not** enable Instant Checkout. Its job is to generate a high-quality Product Discovery catalog that sends the shopper back to `https://www.elmercadodeorigen.com/` for checkout.
+This integration is part of the existing WordPress plugin **EMDO** (`mdo-supplier-sync`). It does not create or depend on a separate OpenAI plugin and it does not replace the Google Merchant feed.
 
-The existing `mdo-chatgpt-discovery.php` MU-plugin remains separate. That module controls organic crawling/discovery (`OAI-SearchBot`, `ChatGPT-User` and `chatgpt-sitemap.xml`). A Product Feed is a separate merchant-onboarding mechanism and must not be confused with a public sitemap or robots rule.
+Its purpose is Product Discovery in ChatGPT. Checkout remains on `https://www.elmercadodeorigen.com/`. Instant Checkout is out of scope.
+
+The existing `mdo-chatgpt-discovery.php` MU-plugin remains separate: it controls organic crawling/discovery (`OAI-SearchBot`, `ChatGPT-User` and the ChatGPT sitemap). A direct merchant Product Feed is a different onboarding and ingestion mechanism.
 
 ## Specification change detected
 
-**CAMBIO DE ESPECIFICACIÓN DETECTADO:** the current standard OpenAI-format File Upload documentation says standard uploads target the **US**. Row-level market fields do not change that. Additional markets and currencies must only be used after OpenAI confirms the integration and the allowed countries/currencies for the account.
+**CAMBIO DE ESPECIFICACIÓN DETECTADO:** the current standard OpenAI File Upload documentation says standard OpenAI-format uploads target the **US** by default. Row-level country/currency data does not enable another market. Additional markets/currencies must be enabled only after OpenAI confirms them for the merchant integration.
 
-EMDO therefore generates and validates the real Spanish/EUR catalog, but automated delivery remains disabled by default and is technically blocked until two explicit admin confirmations exist:
+EMDO can therefore generate and validate the real Spain/EUR catalog before onboarding, but delivery is blocked until both conditions are explicitly confirmed in admin:
 
-- direct Product Feed access has been granted by OpenAI;
-- Spain/EUR has been confirmed for this integration.
+- direct Product Feed access granted by OpenAI;
+- Spain/EUR confirmed for this integration.
 
-Google-compatible mode is also blocked until OpenAI has explicitly confirmed and registered that compatibility path for the account.
+Google-compatible mode is also blocked until OpenAI explicitly registers/confirms that path for the merchant account.
 
-## Official sources used
+## Official sources
 
 - Products: https://developers.openai.com/commerce/specs/file-upload/products
 - File Upload overview: https://developers.openai.com/commerce/specs/file-upload/overview
@@ -28,48 +30,44 @@ Google-compatible mode is also blocked until OpenAI has explicitly confirmed and
 - Shopping with ChatGPT Search: https://help.openai.com/en/articles/11128490-improved-shopping-results-from-chatgpt-search
 - Merchant Feed Terms: https://openai.com/policies/merchant-feed-terms-of-service/
 
-OpenAI can update these specifications. Re-check them before enabling a new transport, market, optional capability, or checkout feature.
+Re-check the official documentation before enabling a new market, transport, optional field family or checkout capability.
 
-## Architecture
+## EMDO architecture
 
-The loader remains `mu-plugins/mdo-google-merchant-feeds-20260825.php` and now loads the existing Google module plus:
+Plugin bootstrap:
 
-- `mdo-google-merchant/openai/core.php`: mapping, validation, full-snapshot generation, preview, scheduling and tombstones;
-- `mdo-google-merchant/openai/transport.php`: encrypted credentials, SFTP delivery and a deliberately inactive API abstraction;
-- `mdo-google-merchant/openai/admin.php`: `Feeds · OpenAI / ChatGPT` settings, status, preview, validation, generation, connection testing and explicit upload.
+`mdo-supplier-sync/mdo-supplier-sync.php`
 
-Generation and delivery are intentionally separate. A snapshot can be generated and QA'd without any OpenAI credentials.
+OpenAI module:
 
-## Native OpenAI feed
+- `mdo-supplier-sync/includes/openai/class-mdo-openai-commerce.php`: WooCommerce/WCFM mapping, validation, providers, full-snapshot generation, preview, schedules and 14-day delisting manifest.
+- `mdo-supplier-sync/includes/openai/class-mdo-openai-transports.php`: encrypted secrets, SFTP transport and a deliberately fail-closed Commerce API abstraction.
+- `mdo-supplier-sync/includes/openai/class-mdo-openai-admin.php`: configuration, onboarding status, validation, preview, generation, connection test and manual upload.
 
-Primary format: `JSONL.gz`, UTF-8, one JSON object per line. Stable filename:
+The Google Merchant MU-plugin remains independent and is not an OpenAI loader. OpenAI can reuse existing factual normalization helpers when they are available, but generation and delivery live in EMDO and do not require a Google-format feed.
+
+Generation and delivery are separate operations. A catalog can be generated and QA'd without OpenAI credentials.
+
+## Native full snapshot
+
+Primary format: UTF-8 `JSONL.gz`, one JSON object per line.
+
+Stable filename:
 
 `mercado-de-origen-products.jsonl.gz`
 
-Optional native CSV.gz and TSV.gz exports are available from the same mapper. The generator streams records to gzip instead of building the whole catalog in memory.
+Optional native outputs:
 
-The OpenAI File Upload contract is a full snapshot. The integration keeps a manifest of previously exported item IDs. When an item disappears from the eligible current catalog, its prior record is retained for up to 14 days with `is_eligible_search=false`, matching the current OpenAI retention guidance and allowing deterministic delisting.
+- `mercado-de-origen-products.csv.gz`
+- `mercado-de-origen-products.tsv.gz`
 
-Default schedule: every 6 hours. Available schedules: manual, hourly, every 6 hours, every 12 hours, daily.
+The generator streams directly to gzip in batches and atomically replaces the local snapshot.
 
-## Product and variation model
-
-WooCommerce variable products are not exported as a single parent offer. Every published purchasable variation is independently mapped to one row with its own current price, stock, URL/image where available, and variant options.
-
-Stable identity:
-
-1. existing persisted `_mdo_openai_item_id`, if present;
-2. SKU, only if that SKU is unique in WooCommerce;
-3. simple product fallback: `wc-{product_id}`;
-4. variation fallback: `wc-{parent_id}-v{variation_id}`.
-
-The resolved ID is persisted in `_mdo_openai_item_id`, so later SKU edits cannot silently rewrite the OpenAI identity. Variable products use a separate persisted group ID `wcg-{parent_id}`. `group_id` must never equal an `item_id`.
-
-`offer_id` is stable and based on seller identity plus the item ID; it never contains the current price.
+Default schedule: every 6 hours. Available schedules: manual, hourly, 6 hours, 12 hours and daily.
 
 ## Required native fields
 
-The mapper validates these current OpenAI discovery requirements:
+The validator requires the current nine Product Discovery fields:
 
 - `item_id`
 - `title`
@@ -81,32 +79,51 @@ The mapper validates these current OpenAI discovery requirements:
 - `availability`
 - `price`
 
-URLs and image URLs are required to be absolute HTTPS values. Missing brand/image/price or duplicated IDs are validation errors and the bad row is not written as a valid offer.
+Product and image URLs must be public absolute HTTPS URLs.
 
-## Seller, producer/brand and marketplace semantics
+## WooCommerce product/variation model
 
-The production legal text in EMDO establishes the marketplace model: El Mercado de Origen is the intermediary/platform and, unless a product page expressly states otherwise, the seller identified on the product page is the contractual seller and fulfills the order.
+A simple purchasable product produces one offer.
 
-Default OpenAI model is therefore:
+A variable product does not produce a single parent offer. Every published purchasable variation produces its own row with its own current price, stock, image/URL when available and variation options.
 
-- `seller_name`: real WCFM vendor/producer attached to the product;
-- `brand`: real producer/brand from a supported taxonomy/meta field, with the WCFM store name as the final factual fallback;
-- `marketplace_seller`: `El Mercado de Origen` **only** when OpenAI has explicitly configured that marketplace field for the account;
-- `seller_url`: specific WCFM store URL when available.
+Stable identity order:
 
-No seller is inferred from words in a product title.
+1. persisted `_mdo_openai_item_id`;
+2. SKU only when unique in WooCommerce;
+3. simple fallback `wc-{product_id}`;
+4. variation fallback `wc-{parent_id}-v{variation_id}`.
 
-Admin also supports `El Mercado de Origen = seller_name` and a custom filter mode for future commercial structures, but the WCFM marketplace model is the project default.
+The chosen ID is persisted so later SKU edits do not silently rewrite identity.
 
-Central brand function: `mdo_get_openai_brand( WC_Product $product )`.
+Variable products use separate persisted `group_id` values (`wcg-{parent_id}`), `listing_has_variations=true` and a factual `variant_dict`. A `group_id` must never equal an offer `item_id`.
 
-## Descriptions and food attributes
+`offer_id` is stable and based on seller identity + item identity; price is never part of it.
 
-HTML/shortcodes are stripped and whitespace is normalized. The mapper only enriches the factual description with data that actually exists in WooCommerce attributes/meta. Recognized food concepts include DOP/denomination, breed, feeding, seal, origin, producer, format and curing.
+## Seller, producer/brand and marketplace
 
-It does not create unsupported arbitrary OpenAI columns for those concepts. Information stays in the product description, category or `variant_dict` unless the official schema has an appropriate supported field.
+The store operates as a marketplace/intermediary in the production legal/commercial structure. The default feed model is therefore:
 
-A brand/vendor mismatch is a QA warning, not an automatic rewrite.
+- `seller_name`: actual WCFM seller/vendor attached to the product;
+- `brand`: actual producer/brand from WooCommerce taxonomy/meta, with the WCFM store identity only as a factual final fallback;
+- `marketplace_seller`: `El Mercado de Origen` only when OpenAI has explicitly enabled/configured that field for the feed;
+- `seller_url`: WCFM store URL when available.
+
+The admin also supports `El Mercado de Origen` as seller and a custom-filter seller model for future commercial structures.
+
+No seller or brand is inferred from product-title words.
+
+Central resolver: `mdo_get_openai_brand( WC_Product $product )`.
+
+A brand/vendor mismatch is a QA warning, not an automatic rewrite, because producer and contractual seller can legitimately differ.
+
+## Food descriptions and attributes
+
+HTML and shortcodes are stripped and whitespace is normalized.
+
+Descriptions are enriched only with data that already exists in WooCommerce. Recognized concepts include DOP/denomination, breed, feeding, seal, origin, producer, format and curing.
+
+Unsupported business attributes are not invented as arbitrary OpenAI columns; they remain in description/category/variant data when appropriate.
 
 ## Availability
 
@@ -116,69 +133,189 @@ Native mapping:
 - Woo `outofstock` -> `out_of_stock`
 - Woo `onbackorder` -> `backorder`
 - explicit `_mdo_openai_preorder=yes` -> `pre_order`
-- unknown/unmapped -> `unknown`
+- otherwise -> `unknown`
 
-A future availability date is never fabricated. If one is real, it can be supplied as `_mdo_openai_availability_date` or by the `mdo_openai_availability_date` filter.
+A future availability date is never fabricated. A real value can be supplied through `_mdo_openai_availability_date` or the `mdo_openai_availability_date` filter.
 
-Google-compatible mode maps native `pre_order` to `preorder`. Current Google-compatible OpenAI rules require `availability_date` for both `preorder` and `backorder`; the row is rejected if that date is absent.
+## Price and sale price
 
-## Price
+WooCommerce display prices are emitted as `amount CURRENCY`, for example `440.00 EUR`.
 
-The mapper uses WooCommerce display prices and the store currency, formatted as `amount CURRENCY`, e.g. `440.00 EUR`.
+When WooCommerce has a genuine active sale, regular price is `price` and the lower current sale value is `sale_price`. Validation requires the same currency and `0 < sale_price < price`.
 
-For a genuine current sale, the regular price is written as `price` and the current sale price as `sale_price`; validation requires the same currency and `0 < sale_price < price`.
-
-No price is invented for products without a payable WooCommerce price.
+No payable price is invented.
 
 ## Images
 
 Primary image order:
 
 1. variation image;
-2. parent product image.
+2. parent image.
 
-Additional gallery images are emitted as `additional_image_urls` for native JSONL and mapped to the supported Google-compatible representation. URLs must be public HTTPS URLs.
+Additional gallery images are emitted as `additional_image_urls` in native JSONL and converted to the appropriate delimited representation when needed.
 
-## Weight and variants
+## Product category
 
-`weight` and `item_weight_unit` are only emitted when WooCommerce contains an exact numeric weight using `g`, `kg`, `oz` or `lb`.
+`product_category` represents the real WooCommerce hierarchy (`Parent > Child`) through the OpenAI mapping filter/common catalog normalizer. Missing category data is treated as a quality gap rather than fabricated.
 
-A textual weight range such as `7–8 kg` remains a variation option and is **not** converted into a fabricated exact product weight.
+## Weight
 
-## Categories, GTIN and MPN
+`weight` + `item_weight_unit` are emitted only for a real exact positive WooCommerce weight in `g`, `kg`, `oz` or `lb`.
 
-`product_category` reuses the EMDO WooCommerce product-category hierarchy (`Parent > Child`).
+A variation label such as `7–8 kg` remains variation data and is not converted to an invented exact weight.
 
-GTIN uses the existing EMDO checksum validator and only accepts valid 8/12/13/14-digit values. MPN is read only from known product metadata. No identifier is manufactured.
+## GTIN and MPN
 
-In Google-compatible mode, `identifier_exists=no` is emitted only when neither a valid GTIN nor MPN exists.
+A GTIN is emitted only when a real identifier passes the existing catalog checksum validation for 8/12/13/14 digits. Leading zeros are preserved. MPN is emitted only when a real stored identifier exists.
+
+No identifier is manufactured.
 
 ## Reviews
 
-Only WooCommerce product review aggregates are used. Seller/store reviews are not mixed into `review_count` or `star_rating`. The count and average must describe the same population.
+Only WooCommerce product-review aggregates are used. Seller/store reviews are not mixed into product `review_count`/`star_rating`; both fields must describe the same review population.
 
 ## Shipping
 
-Shipping is disabled by default. Even if an admin selects a shipping representation, no shipping field is emitted unless `shipping_capability_confirmed=1` after OpenAI onboarding.
+Shipping is disabled by default.
 
-When enabled, the mapper reuses the real EMDO/WCFM shipping calculations already used by Google Merchant and can emit either:
+Even if an admin selects a representation, shipping data is not emitted until `shipping_capability_confirmed=1` after onboarding. The implementation can reuse the factual EMDO/WCFM shipping calculation already used by the commerce catalog.
+
+Supported representations are mutually exclusive:
 
 - `shipping_price`; or
-- the feed-specific `country:region:service_class:price` tuple.
+- OpenAI shipping tuple.
 
-It never emits both. Zero means free shipping only when the existing factual shipping logic resolves the charge to zero (including a real threshold met by the item price).
+Zero is emitted only when the real shipping calculation resolves to free shipping for that offer/condition.
 
 ## Returns
 
-Returns are disabled by default because food/perishable products cannot safely inherit a single blanket assumption. Admin can enable factual return data and exclude specific product IDs, category IDs or vendor IDs. Filters can implement more specific product-level logic.
+Returns are disabled by default because food/perishable products must not inherit an invented blanket policy.
 
-When `accepts_returns=false`, no return window should be supplied. This is also validated operationally before onboarding.
+Admin can enable factual return data and exclude product IDs, category IDs and vendor IDs. Product-specific rules can be implemented through `mdo_openai_returns`.
 
-## Search eligibility and exclusions
+Current OpenAI field names used by EMDO are `accepts_returns`, `return_deadline_in_days` and `return_policy`.
 
-A current offer is eligible only when its parent is published, not password-protected, product visibility is not hidden, the Woo product is purchasable, its vendor is active/approved, and it is not excluded by product/category/vendor configuration or filter.
+## Search eligibility, exclusions and deletion retention
 
-The following filters allow future project-specific logic without copying the feed generator:
+A current offer is exported only when it is published, passwordless, not hidden, purchasable and not excluded by product/category/vendor configuration or filters. Existing vendor-activity normalization is reused when available.
+
+Native format supports `is_eligible_search=false` for explicit delisting.
+
+EMDO keeps a lightweight manifest of previously exported native item IDs. An offer that disappears from the current eligible catalog can remain in snapshots for up to 14 days with `is_eligible_search=false`, matching current OpenAI retention guidance, and is then removed.
+
+## Google-compatible alternative
+
+This is a dedicated alternative provider, not the Google Merchant XML feed copied or renamed.
+
+It is disabled until `google_compatible_confirmed=1`.
+
+Supported outputs are UTF-8 CSV.gz/TSV.gz; XML/RSS/Atom are intentionally not produced.
+
+Current required compatibility columns are:
+
+`id`, `title`, `description`, `link`, `image_link`, `availability`, `price`, `brand`.
+
+Native `pre_order` maps to Google-compatible `preorder`. Google-compatible `preorder` and `backorder` require a real `availability_date`; the row is rejected if it is missing.
+
+If neither a valid GTIN nor a real MPN exists, `identifier_exists=no` is emitted.
+
+In this compatibility path the registered OpenAI merchant identity determines seller identity; an uploaded `seller_name` cannot override it. Marketplace semantics must therefore be agreed during onboarding before selecting this provider.
+
+## SFTP delivery
+
+OpenAI File Upload uses the SFTP destination supplied during onboarding. Admin accepts only operator-provided values for host, port, username, password/private key, passphrase, remote directory and optional remote filename.
+
+No SFTP credential is hard-coded or committed.
+
+Stored secrets are encrypted with AES-256-GCM using WordPress authentication material as key material. Logs redact secret-like context fields.
+
+Upload uses a temporary remote filename followed by rename/replacement where the server supports it.
+
+## Commerce API abstraction
+
+The code has a separate API transport because OpenAI publishes a Commerce Feed API specification. It intentionally does not guess a base URL/feed path for this merchant account.
+
+Until exact onboarding values/contract are supplied, API `test_connection()` and `upload()` fail closed. Account-specific implementation can be supplied through:
+
+- `mdo_openai_api_test_connection`
+- `mdo_openai_api_upload`
+
+Do not point this transport at the general OpenAI model API.
+
+## Admin screen
+
+WordPress admin -> WooCommerce/EMDO -> `Feeds · OpenAI / ChatGPT`.
+
+The page displays:
+
+- merchant onboarding status;
+- direct-feed access confirmation;
+- Spain/EUR confirmation;
+- current exportable offer count;
+- format and schedule;
+- seller/marketplace settings;
+- exclusions;
+- shipping/returns capabilities;
+- SFTP/API configuration;
+- validation report;
+- 20-row preview;
+- generation/upload actions;
+- redacted recent logs.
+
+The downloadable QA URL is explicitly labelled as an internal/operational download. OpenAI does not automatically consume that URL.
+
+## Safe pre-onboarding workflow
+
+1. Keep merchant status truthful (`No solicitado` until application is sent).
+2. Keep direct feed, Spain/EUR and Google-compatible confirmations disabled.
+3. Keep delivery `Ninguno`.
+4. Keep native `JSONL.gz`.
+5. Run `Validar catálogo`.
+6. Review `Vista previa (20)` for producer/brand, seller, variation grouping, current price, availability and HTTPS URLs.
+7. Generate a full local snapshot for QA.
+8. Do not send the QA download URL as if it were an ingestion endpoint.
+
+## Workflow after OpenAI approval
+
+1. Record only capabilities OpenAI explicitly confirms.
+2. Enter only the SFTP/API values supplied by OpenAI.
+3. Test the configured connection.
+4. Generate and upload one full snapshot manually.
+5. Review OpenAI processing/rejection results, especially seller identity, market/currency and variation grouping.
+6. Enable automatic upload only after the manual feed is accepted.
+7. Keep the six-hour cadence unless OpenAI requests another cadence.
+
+## QA and tests
+
+Static regression suite:
+
+`php tests/openai-commerce-contract.php`
+
+CI:
+
+`.github/workflows/openai-commerce-feed-ci.yml`
+
+Production-safe WP-CLI QA:
+
+`wp eval-file /path/to/repo/tools/openai-commerce-runtime-qa.php`
+
+The runtime QA validates the real catalog, samples up to 20 mapped offers, covers difficult catalog scenarios, and searches real Los Pedroches products so their actual producer/brand, WCFM seller, variations, price and availability can be reviewed without hard-coding replacement values.
+
+It does not edit products, vendors or prices. The mapper can persist `_mdo_openai_item_id` and `_mdo_openai_group_id`, which is intentional stable-identity behavior.
+
+## Deployment and rollback
+
+Release only after `OpenAI Commerce Feed CI` passes.
+
+Deploy the updated `mdo-supplier-sync` plugin through the existing production deployment mechanism. The Google Merchant MU-plugin does not need to be replaced for OpenAI activation.
+
+After deployment, open the admin screen with delivery still disabled, run validation/preview and generate a local QA snapshot.
+
+Rollback is code-only: revert the OpenAI Commerce feature commit(s) or restore the previous `mdo-supplier-sync` version. Generated files live under WordPress uploads and contain no credentials; stored delivery secrets remain in WordPress options and should be cleared from admin if onboarding is abandoned.
+
+## Extension hooks
+
+Core mapping/customization hooks include:
 
 - `mdo_openai_item_id`
 - `mdo_openai_title`
@@ -199,93 +336,4 @@ The following filters allow future project-specific logic without copying the fe
 - `mdo_openai_google_compatible_record`
 - `mdo_openai_feed_provider`
 
-## Google-compatible alternative
-
-This is an alternative provider, not a renamed copy of the Google Shopping XML feed. It reuses normalization helpers where appropriate but generates a dedicated OpenAI compatibility file.
-
-It is disabled until `google_compatible_confirmed=1`. Required columns are the current compatibility fields `id`, `title`, `description`, `link`, `image_link`, `availability`, `price`, `brand`. Output is UTF-8 CSV.gz or TSV.gz. XML/RSS is deliberately not generated.
-
-In this compatibility mode, OpenAI's **registered merchant display name** becomes the seller identity. Therefore the marketplace commercial structure must be agreed with OpenAI before choosing this path; uploading a `seller_name` does not override the registered merchant identity.
-
-## Delivery
-
-### SFTP
-
-The File Upload documentation describes pushing full snapshots to the SFTP destination assigned during onboarding. EMDO accepts only administrator-supplied values for host, port, username, password/private key, passphrase, remote directory and optional remote filename.
-
-No credential is included in source control. Secrets stored in WordPress options are encrypted with AES-256-GCM using WordPress authentication material as key material. Logs redact secret-looking fields.
-
-Upload is atomic where supported: upload to `.tmp`, then rename over the stable remote snapshot.
-
-### Commerce API abstraction
-
-The API transport has configuration placeholders and the documented authentication/header concepts, but intentionally implements **no guessed product-feed route**. `test_connection()` and `upload()` fail closed unless a project filter implements the exact account contract supplied by OpenAI.
-
-Extension hooks:
-
-- `mdo_openai_api_test_connection`
-- `mdo_openai_api_upload`
-
-Do not point this at the general OpenAI model API.
-
-## Admin workflow
-
-Open WordPress admin -> EMDO/El Mercado de Origen (or WooCommerce fallback) -> `Feeds · OpenAI / ChatGPT`.
-
-Safe pre-onboarding workflow:
-
-1. Keep Merchant status as `No solicitado` or the truthful current state.
-2. Keep all OpenAI confirmation checkboxes off.
-3. Keep delivery `Ninguno` and native `JSONL.gz` selected.
-4. Run `Validar catálogo`.
-5. Run `Vista previa (20)` and inspect brand, seller, price, stock, variation grouping and URLs.
-6. Run `Generar snapshot` to create the full internal QA file.
-7. Do **not** send the QA URL to OpenAI as though it were automatically consumed. It is an internal/download endpoint only.
-
-After OpenAI onboarding:
-
-1. Record only capabilities actually confirmed by OpenAI.
-2. Enter only the SFTP/API values OpenAI supplies.
-3. Test the connection.
-4. Perform one manual upload.
-5. Review OpenAI's processing/upload report with particular attention to rejected rows, seller identity, market/currency and variant grouping.
-6. Enable automatic upload only after the manual upload is accepted.
-7. Keep the default six-hour snapshot cadence unless OpenAI asks for another cadence.
-
-## QA
-
-Static regression suite:
-
-`php tests/openai-commerce-contract.php`
-
-GitHub Actions workflow:
-
-`.github/workflows/openai-commerce-feed-ci.yml`
-
-Production-safe runtime QA from the WordPress root:
-
-`wp eval-file /path/to/repo/tools/openai-commerce-runtime-qa.php`
-
-The runtime QA validates the live catalog and prints up to 20 real mapped rows. It also scans live scenario coverage (simple/variable/no-SKU/out-of-stock/sale/reviews/4+ variants/variation out of stock/duplicate SKU), exercises synthetic validator cases, tests UTF-8 and price formatting, validates GTIN behavior and finds real `Los Pedroches` products so their mapped brand/seller/variant data can be reviewed.
-
-The runtime script does not edit products, prices or vendors. Mapping may persist `_mdo_openai_item_id` and `_mdo_openai_group_id`, which is the intended stable-identity behavior.
-
-## Los Pedroches reference case
-
-The public catalog currently includes `Jamón de bellota 100% Ibérico con DOP Los Pedroches (brida negra)` sold by Hidalgo de la Jara. The runtime QA does not hard-code those words as a substitute for catalog data; it finds the real WooCommerce product and reports the mapper's actual `brand`, `seller_name`, variant options, current price and availability. Any mismatch between explicit brand metadata and WCFM vendor data becomes a warning for review rather than an invented correction.
-
-## Deployment and rollback
-
-The integration is additive to the existing `MDO Merchant Feeds (Google + OpenAI Commerce)` loader. Google feed code is not replaced.
-
-Recommended release procedure:
-
-1. Merge only after `OpenAI Commerce Feed CI` succeeds.
-2. Deploy the changed MU-plugin files with the same production mechanism used for the rest of `mu-plugins`.
-3. Load WP Admin and verify the new `Feeds · OpenAI / ChatGPT` screen without changing delivery settings.
-4. Run validation and preview against production data.
-5. Generate the snapshot and run the WP-CLI runtime QA.
-6. Confirm existing Google Merchant feed URLs and `chatgpt-sitemap.xml` still respond normally.
-7. Keep delivery disabled until OpenAI onboarding is approved.
-
-Rollback is file-level: restore the prior `mdo-google-merchant-feeds-20260825.php` loader and remove the `mdo-google-merchant/openai/` directory. The existing Google Merchant and organic ChatGPT discovery modules then continue independently. Generated files/options can remain harmlessly or be deleted after rollback; they are not loaded without the OpenAI module.
+The transport-specific API hooks are listed above.
