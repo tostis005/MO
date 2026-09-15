@@ -257,6 +257,9 @@ final class MDO_Reviews_Integration {
 		if ( ! is_array( $assigned ) ) {
 			$assigned = $data;
 		}
+		if ( empty( $assigned['status'] ) ) {
+			$assigned['status'] = 'pending';
+		}
 		return (bool) self::invoke_reviews_private( 'upsert_review', array( $source, $assigned ) );
 	}
 
