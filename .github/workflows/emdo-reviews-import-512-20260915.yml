@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  inspect-trustpilot:
+  inspect-trustpilot-instance:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -35,5 +35,5 @@ jobs:
           ')"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
           wp=$(command -v wp); php=$(command -v php); [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-          "$php" -d memory_limit=512M "$wp" eval '$classes=array_filter(get_declared_classes(),fn($c)=>false!==stripos($c,"Trustindex")); foreach($classes as $c){$r=new ReflectionClass($c); $m=array(); foreach($r->getMethods(ReflectionMethod::IS_PUBLIC) as $x){if(false!==stripos($x->name,"review")||false!==stripos($x->name,"noreg")){$m[]=array("name"=>$x->name,"required"=>$x->getNumberOfRequiredParameters(),"total"=>$x->getNumberOfParameters());}} if($m) echo "CLASS_METHODS=".$c."|".wp_json_encode($m).PHP_EOL;}' --path="$PROD_PATH" --allow-root
+          "$php" -d memory_limit=512M "$wp" eval '$hits=array(); foreach($GLOBALS as $k=>$v){if(is_object($v) && is_a($v,"TrustindexPlugin")){$hits[]=$k;}} echo "TP_GLOBALS=".wp_json_encode($hits).PHP_EOL; $r=new ReflectionClass("TrustindexPlugin"); $ctor=$r->getConstructor(); echo "TP_CTOR=".($ctor?($ctor->getNumberOfRequiredParameters()."/".$ctor->getNumberOfParameters()):"none").PHP_EOL; if($hits){$o=$GLOBALS[$hits[0]]; $x=$o->get_noreg_list_reviews(); echo "TP_RETURN_TYPE=".gettype($x).PHP_EOL; if(is_array($x)){echo "TP_RETURN_COUNT=".count($x).PHP_EOL; $first=reset($x); echo "TP_RETURN_KEYS=".wp_json_encode(is_array($first)?array_keys($first):(is_object($first)?array_keys((array)$first):array())).PHP_EOL;}}' --path="$PROD_PATH" --allow-root
           REMOTE
