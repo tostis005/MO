@@ -1,0 +1,51 @@
+name: EMDO reviews status hotfix 2026-09-15
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emdo-reviews-status-hotfix-20260915.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch review default status and validate PHP
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('mdo-supplier-sync/includes/class-mdo-reviews.php')
+          s = p.read_text()
+          old = """        $record = array(\n            'source' => $source,\n"""
+          new = """        $status = (string) ($data['status'] ?? 'pending');\n        if (!in_array($status, self::valid_statuses(), true)) {\n            $status = 'pending';\n        }\n\n        $record = array(\n            'source' => $source,\n"""
+          if old not in s:
+              raise SystemExit('Insertion anchor not found')
+          s = s.replace(old, new, 1)
+          old_status = """            'status' => in_array((string) ($data['status'] ?? 'pending'), self::valid_statuses(), true)\n                ? (string) $data['status']\n                : 'pending',\n"""
+          if old_status not in s:
+              raise SystemExit('Buggy status block not found')
+          s = s.replace(old_status, "            'status' => $status,\n", 1)
+          p.write_text(s)
+          PY
+          php -l mdo-supplier-sync/includes/class-mdo-reviews.php
+          grep -Fq "'status' => \$status," mdo-supplier-sync/includes/class-mdo-reviews.php
+
+      - name: Commit hotfix and remove one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/emdo-reviews-status-hotfix-20260915.yml
+          git add mdo-supplier-sync/includes/class-mdo-reviews.php
+          git commit -m 'Fix default status for imported EMDO reviews'
+          git push origin HEAD:main
