@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO
  * Description: Gestión y sincronización de catálogos de proveedores con WooCommerce/WCFM.
- * Version: 1.0.30
+ * Version: 1.0.31
  * Author: El Mercado de Origen
  * Requires at least: 6.4
  * Requires PHP: 8.0
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.30' );
+define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.31' );
 define( 'MDO_SUPPLIER_SYNC_DB_VERSION', '1.2.0' );
 define( 'MDO_SUPPLIER_SYNC_FILE', __FILE__ );
 define( 'MDO_SUPPLIER_SYNC_PATH', plugin_dir_path( __FILE__ ) );
@@ -65,6 +65,8 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-promotions.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-specials.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-specials-router.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-home-featured-special.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-reviews-schema.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-reviews.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/openai/class-mdo-openai-commerce.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/openai/class-mdo-openai-catalog-hardening.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/openai/class-mdo-openai-strict-snapshot.php';
@@ -74,6 +76,7 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'includes/openai/class-mdo-openai-admin.ph
 
 register_activation_hook( __FILE__, array( 'MDO_Database', 'activate' ) );
 register_deactivation_hook( __FILE__, array( 'MDO_Scheduler', 'deactivate' ) );
+register_deactivation_hook( __FILE__, array( 'MDO_Reviews', 'deactivate' ) );
 register_deactivation_hook(
 	__FILE__,
 	static function (): void {
@@ -85,6 +88,7 @@ add_action(
 	'plugins_loaded',
 	static function (): void {
 		MDO_Database::maybe_upgrade();
+		MDO_Reviews_Schema::maybe_install();
 		MDO_Description_Migration::run_once();
 		MDO_Pricing::init();
 		MDO_Iberico_Variations::init();
@@ -128,6 +132,7 @@ add_action(
 		MDO_Specials_Router::init();
 		MDO_Promotions::init();
 		MDO_Home_Featured_Special::init();
+		MDO_Reviews::init();
 		if ( is_admin() ) {
 			MDO_Admin::init();
 			MDO_Product_Bulk_Admin::init();
