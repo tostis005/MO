@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  inspect-sources:
+  inspect-tables:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -21,7 +21,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect source structures in production
+      - name: Inspect local review tables in production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -40,7 +40,6 @@ jobs:
           set -euo pipefail
           wp=$(command -v wp || true); php=$(command -v php || true); [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
           run_wp(){ "$php" -d memory_limit=512M "$wp" "$@" --path="$PROD_PATH" --allow-root; }
-          run_wp eval '$v=get_option("trustindex-google-review-content",""); echo "GOOGLE_CACHE_LEN=".strlen((string)$v).PHP_EOL; $s=ltrim((string)$v); echo "GOOGLE_CACHE_FIRST=".(isset($s[0])?ord($s[0]):0).PHP_EOL; $j=json_decode((string)$v,true); echo "GOOGLE_CACHE_JSON=".(JSON_ERROR_NONE===json_last_error()?"yes":"no").PHP_EOL; preg_match_all("/class=[\\\"\\\x27]([^\\\"\\\x27]*(?:review|rating|star)[^\\\"\\\x27]*)[\\\"\\\x27]/i",(string)$v,$m); $classes=array_values(array_unique(array_slice($m[1]??array(),0,80))); echo "GOOGLE_CLASSES=".wp_json_encode($classes).PHP_EOL; preg_match_all("/data-([a-z0-9_-]+)/i",(string)$v,$a); $attrs=array_values(array_unique(array_slice($a[1]??array(),0,80))); echo "GOOGLE_DATA_ATTRS=".wp_json_encode($attrs).PHP_EOL; foreach(array("review","rating","star","author","date","text","content") as $needle){echo "GOOGLE_TOKEN_{$needle}=".substr_count(strtolower((string)$v),$needle).PHP_EOL;}'
-          run_wp eval 'global $wpdb; $rows=$wpdb->get_results("SELECT option_name,LENGTH(option_value) AS len FROM {$wpdb->options} WHERE option_name LIKE \"%trustpilot%\" OR option_name LIKE \"%trustindex%\" ORDER BY option_name",ARRAY_A); echo "REVIEW_OPTION_NAMES=".wp_json_encode($rows).PHP_EOL;'
-          run_wp eval '$plugins=get_option("active_plugins",array()); $hits=array_values(array_filter($plugins,fn($p)=>false!==stripos($p,"trust")||false!==stripos($p,"review"))); echo "REVIEW_PLUGINS=".wp_json_encode($hits).PHP_EOL;'
+          run_wp eval 'global $wpdb; $db=$wpdb->dbname; $rows=$wpdb->get_col($wpdb->prepare("SELECT table_name FROM information_schema.tables WHERE table_schema=%s AND (table_name LIKE %s OR table_name LIKE %s OR table_name LIKE %s) ORDER BY table_name",$db,"%trustindex%","%trustpilot%","%review%")); $out=array(); foreach($rows as $t){if(false===stripos($t,"trustindex") && false===stripos($t,"trustpilot")) continue; $count=(int)$wpdb->get_var("SELECT COUNT(*) FROM `".esc_sql($t)."`"); $cols=$wpdb->get_col("SHOW COLUMNS FROM `".esc_sql($t)."`",0); $out[]=array("table"=>$t,"count"=>$count,"columns"=>$cols);} echo "REVIEW_TABLES=".wp_json_encode($out).PHP_EOL;'
+          run_wp eval '$paths=array(WP_PLUGIN_DIR."/review-widgets-for-trustpilot",WP_PLUGIN_DIR."/wp-reviews-plugin-for-google"); foreach($paths as $p){echo "PLUGIN_DIR=".basename($p)."|".(is_dir($p)?"yes":"no").PHP_EOL; if(is_dir($p)){foreach(glob($p."/*.php")?:array() as $f){$b=basename($f); $c=file_get_contents($f); if(false!==stripos($c,"get_tablename")||false!==stripos($c,"CREATE TABLE")){echo "PLUGIN_FILE_TABLE_REF=".basename($p)."/".$b.PHP_EOL;}}}}'
           REMOTE
