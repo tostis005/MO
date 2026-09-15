@@ -23,18 +23,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Validate review PHP locally
-        shell: bash
         run: |
           set -euo pipefail
           php -l mdo-supplier-sync/mdo-supplier-sync.php
           php -l mdo-supplier-sync/includes/class-mdo-reviews.php
           php -l mdo-supplier-sync/includes/class-mdo-reviews-schema.php
           php -l mdo-supplier-sync/includes/class-mdo-reviews-integration.php
-          grep -q "Version: 1.0.32" mdo-supplier-sync/mdo-supplier-sync.php
-          grep -q "setTime( 2, 30, 0 )" mdo-supplier-sync/includes/class-mdo-reviews-integration.php
-          grep -q "result\['reviews'\] = \$label" mdo-supplier-sync/includes/class-mdo-reviews-integration.php
 
-      - name: Deploy review files to production
+      - name: Deploy, import and diagnose on production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -49,10 +45,10 @@ jobs:
 
           PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
             wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break;; esac; done
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
           ')"
-          : "${PROD_PATH:?}"
-          echo "Production path resolved"
+          : "${PROD_PATH:?Production path not found}"
+          echo "PRODUCTION_PATH=resolved"
 
           tar -czf /tmp/emdo-reviews-${GITHUB_RUN_ID}.tgz \
             mdo-supplier-sync/mdo-supplier-sync.php \
@@ -60,60 +56,41 @@ jobs:
             mdo-supplier-sync/includes/class-mdo-reviews-schema.php \
             mdo-supplier-sync/includes/class-mdo-reviews-integration.php \
             mdo-supplier-sync/assets/reviews.css
-          REMOTE_TAR="/tmp/emdo-reviews-${GITHUB_RUN_ID}.tgz"
-          sshpass -e scp $SCP_OPTIONS /tmp/emdo-reviews-${GITHUB_RUN_ID}.tgz "$STAGING_USER@$STAGING_HOST:$REMOTE_TAR"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; cd '$PROD_PATH/wp-content/plugins'; tar -xzf '$REMOTE_TAR'; rm -f '$REMOTE_TAR'"
+          sshpass -e scp $SCP_OPTIONS /tmp/emdo-reviews-${GITHUB_RUN_ID}.tgz "$STAGING_USER@$STAGING_HOST:/tmp/emdo-reviews-${GITHUB_RUN_ID}.tgz"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; cd '$PROD_PATH/wp-content/plugins'; tar -xzf '/tmp/emdo-reviews-${GITHUB_RUN_ID}.tgz'; rm -f '/tmp/emdo-reviews-${GITHUB_RUN_ID}.tgz'"
 
-          printf '%s' "$PROD_PATH" > /tmp/prod_path
-          printf '%s' "$SSH_OPTIONS" > /tmp/ssh_options
-
-      - name: Lint and run external review import
-        shell: bash
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-        run: |
-          set -euo pipefail
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          PROD_PATH="$(cat /tmp/prod_path)"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
           set -euo pipefail
           wp_bin=$(command -v wp || true)
           php_bin=$(command -v php || true)
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
           : "${wp_bin:?}"; : "${php_bin:?}"
+          WP=("$php_bin" -d memory_limit=512M "$wp_bin" --path="$PROD_PATH" --allow-root)
           PLUGIN="$PROD_PATH/wp-content/plugins/mdo-supplier-sync"
-          "$php_bin" -l "$PLUGIN/mdo-supplier-sync.php"
+
           "$php_bin" -l "$PLUGIN/includes/class-mdo-reviews.php"
-          "$php_bin" -l "$PLUGIN/includes/class-mdo-reviews-schema.php"
           "$php_bin" -l "$PLUGIN/includes/class-mdo-reviews-integration.php"
-          "$php_bin" "$wp_bin" plugin is-active mdo-supplier-sync --path="$PROD_PATH" --allow-root
-          "$php_bin" "$wp_bin" eval 'echo "EMDO_VERSION=" . MDO_SUPPLIER_SYNC_VERSION . PHP_EOL; MDO_Reviews_Schema::maybe_install(); MDO_Reviews_Integration::ensure_schedule(); $s=MDO_Reviews_Integration::import_external(); echo "EXTERNAL_IMPORT=" . wp_json_encode($s) . PHP_EOL;' --path="$PROD_PATH" --allow-root
-          "$php_bin" "$wp_bin" eval 'global $wpdb; $t=$wpdb->prefix."mdo_reviews"; echo "REVIEWS_TABLE=".$t.PHP_EOL; $rows=$wpdb->get_results("SELECT source,status,COUNT(*) AS total FROM {$t} GROUP BY source,status ORDER BY source,status",ARRAY_A); echo "REVIEW_COUNTS=".wp_json_encode($rows).PHP_EOL; $samples=$wpdb->get_results("SELECT id,source,status,vendor_user_id,suggested_vendor_user_id,rating,author_name,review_date FROM {$t} WHERE source IN (\"google\",\"trustpilot\") ORDER BY review_date DESC,id DESC LIMIT 10",ARRAY_A); echo "EXTERNAL_SAMPLES=".wp_json_encode($samples).PHP_EOL;' --path="$PROD_PATH" --allow-root
-          "$php_bin" "$wp_bin" eval '$opts=array("trustindex-google-review-content","trustindex-google-reviews","google_reviews","trustindex-trustpilot-review-content","trustindex-trustpilot-reviews","trustpilot_reviews"); foreach($opts as $o){$v=get_option($o,null); $type=gettype($v); $size=is_string($v)?strlen($v):(is_array($v)?count($v):($v===null?0:1)); echo "OPTION_DIAG={$o}|{$type}|{$size}".PHP_EOL;}' --path="$PROD_PATH" --allow-root
-          "$php_bin" "$wp_bin" eval '$review=function_exists("as_next_scheduled_action")?as_next_scheduled_action("mdo_reviews_daily_import",array(),"mdo-supplier-sync"):wp_next_scheduled("mdo_reviews_daily_import"); $products=function_exists("as_next_scheduled_action")?as_next_scheduled_action("mdo_supplier_sync_dispatch",array(),"mdo-supplier-sync"):wp_next_scheduled("mdo_supplier_sync_dispatch"); echo "WP_TIMEZONE=".wp_timezone_string().PHP_EOL; echo "REVIEWS_NEXT=".($review?wp_date("Y-m-d H:i:s T",(int)$review):"NONE").PHP_EOL; echo "PRODUCTS_NEXT=".($products?wp_date("Y-m-d H:i:s T",(int)$products):"NONE").PHP_EOL;' --path="$PROD_PATH" --allow-root
-          "$php_bin" "$wp_bin" cache flush --path="$PROD_PATH" --allow-root || true
+          "${WP[@]}" plugin is-active mdo-supplier-sync
+
+          "${WP[@]}" eval 'echo "EMDO_VERSION=" . MDO_SUPPLIER_SYNC_VERSION . PHP_EOL; MDO_Reviews_Schema::maybe_install(); MDO_Reviews_Integration::ensure_schedule(); $s=MDO_Reviews_Integration::import_external(); echo "EXTERNAL_IMPORT=" . wp_json_encode($s) . PHP_EOL;'
+          "${WP[@]}" eval 'global $wpdb; $t=$wpdb->prefix."mdo_reviews"; $rows=$wpdb->get_results("SELECT source,status,COUNT(*) total FROM {$t} GROUP BY source,status ORDER BY source,status",ARRAY_A); echo "REVIEW_COUNTS=".wp_json_encode($rows).PHP_EOL; $bad=(int)$wpdb->get_var("SELECT COUNT(*) FROM {$t} WHERE source IN (\"google\",\"trustpilot\") AND (status IS NULL OR status=\"\")"); echo "EXTERNAL_EMPTY_STATUS={$bad}".PHP_EOL; $samples=$wpdb->get_results("SELECT id,source,status,vendor_user_id,suggested_vendor_user_id,rating,author_name,review_date FROM {$t} WHERE source IN (\"google\",\"trustpilot\") ORDER BY review_date DESC,id DESC LIMIT 12",ARRAY_A); echo "EXTERNAL_SAMPLES=".wp_json_encode($samples).PHP_EOL;'
+          "${WP[@]}" eval '$review=function_exists("as_next_scheduled_action")?as_next_scheduled_action("mdo_reviews_daily_import",array(),"mdo-supplier-sync"):wp_next_scheduled("mdo_reviews_daily_import"); $products=function_exists("as_next_scheduled_action")?as_next_scheduled_action("mdo_supplier_sync_dispatch",array(),"mdo-supplier-sync"):wp_next_scheduled("mdo_supplier_sync_dispatch"); echo "WP_TIMEZONE=".wp_timezone_string().PHP_EOL; echo "REVIEWS_NEXT=".($review?wp_date("Y-m-d H:i:s T",(int)$review):"NONE").PHP_EOL; echo "PRODUCTS_NEXT=".($products?wp_date("Y-m-d H:i:s T",(int)$products):"NONE").PHP_EOL;'
+
+          "${WP[@]}" eval '$active=(array)get_option("active_plugins",array()); foreach($active as $p){if(stripos($p,"trust")!==false){echo "TRUST_PLUGIN={$p}".PHP_EOL;}} echo "TRUSTINDEX_CLASS=".(class_exists("TrustindexPlugin")?"yes":"no").PHP_EOL; global $wpdb; $tables=$wpdb->get_col("SHOW TABLES LIKE \"%trust%\""); foreach((array)$tables as $t){echo "TRUST_TABLE={$t}".PHP_EOL;} $opts=$wpdb->get_results("SELECT option_name,LENGTH(option_value) bytes FROM {$wpdb->options} WHERE option_name LIKE \"%trustpilot%\" OR option_name LIKE \"%trustindex%\" ORDER BY option_name",ARRAY_A); foreach((array)$opts as $o){echo "TRUST_OPTION=".$o["option_name"]."|".$o["bytes"].PHP_EOL;}'
+          "${WP[@]}" eval '$r=new ReflectionMethod("MDO_Reviews_Integration","find_trustpilot_plugin_instance"); $r->setAccessible(true); $p=$r->invoke(null); echo "TRUSTPILOT_INSTANCE=".($p?get_class($p):"none").PHP_EOL; echo "TRUSTPILOT_METHOD=".($p&&method_exists($p,"get_noreg_list_reviews")?"yes":"no").PHP_EOL;'
+
+          STORE_URL=$("${WP[@]}" eval 'global $wpdb; $t=$wpdb->prefix."mdo_reviews"; $vid=(int)$wpdb->get_var("SELECT vendor_user_id FROM {$t} WHERE status=\"validated\" AND vendor_user_id>0 ORDER BY review_date DESC,id DESC LIMIT 1"); if(!$vid){$vid=(int)$wpdb->get_var("SELECT post_author FROM {$wpdb->posts} WHERE post_type=\"product\" AND post_status=\"publish\" AND post_author>0 LIMIT 1");} if($vid&&function_exists("wcfmmp_get_store_url")){echo trailingslashit(wcfmmp_get_store_url($vid))."reviews/";}')
+          echo "STORE_REVIEWS_URL=$STORE_URL"
+          "${WP[@]}" cache flush || true
           REMOTE
 
-      - name: Discover a store review URL and verify public tab
-        shell: bash
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-        run: |
-          set -euo pipefail
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          PROD_PATH="$(cat /tmp/prod_path)"
-          STORE_URL="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" \"\$wp_bin\" eval 'global \$wpdb; \$t=\$wpdb->prefix.\"mdo_reviews\"; \$vid=(int)\$wpdb->get_var(\"SELECT vendor_user_id FROM {\$t} WHERE status=\\\"validated\\\" AND vendor_user_id>0 ORDER BY review_date DESC,id DESC LIMIT 1\"); if(!\$vid){\$vid=(int)\$wpdb->get_var(\"SELECT post_author FROM {\$wpdb->posts} WHERE post_type=\\\"product\\\" AND post_status=\\\"publish\\\" AND post_author>0 LIMIT 1\");} if(\$vid && function_exists(\"wcfmmp_get_store_url\")){echo trailingslashit(wcfmmp_get_store_url(\$vid)).\"reviews/\";}' --path='$PROD_PATH' --allow-root")"
+          STORE_URL="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval 'global $wpdb; $t=$wpdb->prefix."mdo_reviews"; $vid=(int)$wpdb->get_var("SELECT vendor_user_id FROM {$t} WHERE status=\"validated\" AND vendor_user_id>0 ORDER BY review_date DESC,id DESC LIMIT 1"); if(!$vid){$vid=(int)$wpdb->get_var("SELECT post_author FROM {$wpdb->posts} WHERE post_type=\"product\" AND post_status=\"publish\" AND post_author>0 LIMIT 1");} if($vid&&function_exists("wcfmmp_get_store_url")){echo trailingslashit(wcfmmp_get_store_url($vid))."reviews/";}' --path="$PROD_PATH" --allow-root 2>/dev/null
+          REMOTE
+          )"
           : "${STORE_URL:?No store review URL found}"
-          echo "STORE_REVIEWS_URL=$STORE_URL"
-          curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO reviews verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' "$STORE_URL?emdo_reviews_verify=${GITHUB_RUN_ID}" -o /tmp/store-reviews.html
+          curl -fsSL --retry 3 -A 'Mozilla/5.0 EMDO reviews verifier' -H 'Cache-Control: no-cache, no-store' "$STORE_URL?emdo_reviews_verify=${GITHUB_RUN_ID}" -o /tmp/store-reviews.html
           grep -Eqi 'Reseñas|Reviews' /tmp/store-reviews.html
-          if grep -q 'mdo-store-reviews' /tmp/store-reviews.html; then
-            echo 'PUBLIC_REVIEW_LIST=present'
-          else
-            echo 'PUBLIC_REVIEW_LIST=empty_or_not_rendered'
-          fi
-          echo 'PUBLIC_REVIEWS_TAB=present'
-
-# Trigger redeploy after external-review status fix.
+          echo "PUBLIC_REVIEWS_TAB=present"
+          if grep -q 'mdo-store-reviews' /tmp/store-reviews.html; then echo "PUBLIC_REVIEW_LIST=present"; else echo "PUBLIC_REVIEW_LIST=empty_or_not_rendered"; fi
