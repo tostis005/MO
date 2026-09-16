@@ -20,7 +20,7 @@ jobs:
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Read production review moderation state
+      - name: Verify production review moderation state
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -47,50 +47,60 @@ jobs:
           wp_bin=$(command -v wp || true)
           php_bin=$(command -v php || true)
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-          cat > /tmp/emdo-reviews-moderation-audit.php <<'PHP'
+          cat > /tmp/emdo-reviews-moderation-post-audit.php <<'PHP'
           <?php
           global $wpdb;
           $table = MDO_Database::table( 'reviews' );
           $counts = array(
+            'version' => defined( 'MDO_SUPPLIER_SYNC_VERSION' ) ? MDO_SUPPLIER_SYNC_VERSION : '',
             'total' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" ),
             'pending' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE status='pending'" ),
-            'unassigned_pending' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE status='pending' AND COALESCE(vendor_user_id,0)=0 AND COALESCE(suggested_vendor_user_id,0)=0" ),
-            'suggested_pending' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE status='pending' AND COALESCE(vendor_user_id,0)=0 AND COALESCE(suggested_vendor_user_id,0)>0" ),
             'validated' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE status='validated'" ),
             'rejected' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE status='rejected'" ),
-            'google_legacy_id' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE source='google' AND (source_review_id IS NULL OR source_review_id NOT LIKE 'trustindex-%')" ),
-            'google_trustindex_id' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE source='google' AND source_review_id LIKE 'trustindex-%'" ),
+            'unassigned_pending' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE status='pending' AND COALESCE(vendor_user_id,0)=0 AND COALESCE(suggested_vendor_user_id,0)=0" ),
+            'suggested_pending' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE status='pending' AND COALESCE(vendor_user_id,0)=0 AND COALESCE(suggested_vendor_user_id,0)>0" ),
+            'suggested_hidalgo' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE status='pending' AND COALESCE(vendor_user_id,0)=0 AND suggested_vendor_user_id=6 AND validation_method='ai_suggestion'" ),
+            'suggested_1957' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE status='pending' AND COALESCE(vendor_user_id,0)=0 AND suggested_vendor_user_id=3 AND validation_method='ai_suggestion'" ),
+            'ai_published' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE validation_method='ai_suggestion' AND status='validated'" ),
+            'ai_final_vendor' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE validation_method='ai_suggestion' AND COALESCE(vendor_user_id,0)>0" ),
+            'legacy_google' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE source='google' AND (source_review_id IS NULL OR source_review_id NOT LIKE 'trustindex-%')" ),
+            'canonical_google' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE source='google' AND source_review_id LIKE 'trustindex-%'" ),
+            'trustpilot' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE source='trustpilot'" ),
+            'woo' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE source='woocommerce'" ),
+            'duplicate_source_keys' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM (SELECT source_key FROM {$table} WHERE source_key IS NOT NULL AND source_key<>'' GROUP BY source_key HAVING COUNT(*)>1) x" ),
+            'duplicate_fingerprints' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM (SELECT content_fingerprint FROM {$table} WHERE content_fingerprint IS NOT NULL AND content_fingerprint<>'' GROUP BY content_fingerprint HAVING COUNT(*)>1) x" ),
           );
-          echo 'AUDIT_COUNTS=' . wp_json_encode( $counts, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
+          echo 'POST_AUDIT=' . wp_json_encode( $counts, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
+          $migration = get_option( 'mdo_reviews_moderation_last_run', array() );
+          echo 'MODERATION_RUN=' . wp_json_encode( $migration, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
 
-          $vendors = array();
-          try {
-            $method = new ReflectionMethod( 'MDO_Reviews', 'vendor_options' );
-            $method->setAccessible( true );
-            $vendors = (array) $method->invoke( null );
-          } catch ( Throwable $e ) {}
-          foreach ( $vendors as $vendor_id => $vendor_name ) {
-            $product_titles = $wpdb->get_col( $wpdb->prepare( "SELECT post_title FROM {$wpdb->posts} WHERE post_type='product' AND post_status IN ('publish','draft','private') AND post_author=%d ORDER BY ID DESC LIMIT 25", (int) $vendor_id ) );
-            echo 'VENDOR=' . wp_json_encode( array( 'id' => (int) $vendor_id, 'name' => (string) $vendor_name, 'products' => array_values( array_map( 'strval', $product_titles ) ) ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
-          }
-
-          $legacy = $wpdb->get_results( "SELECT id,source_review_id,author_name,rating,review_date,status,validation_method,review_text,source_payload FROM {$table} WHERE source='google' AND (source_review_id IS NULL OR source_review_id NOT LIKE 'trustindex-%') ORDER BY id ASC", ARRAY_A );
-          foreach ( (array) $legacy as $row ) {
-            $payload = (string) ( $row['source_payload'] ?? '' );
-            unset( $row['source_payload'] );
-            $row['payload_mentions_trustindex'] = false !== stripos( $payload, 'trustindex' );
-            $row['text'] = wp_strip_all_tags( (string) ( $row['review_text'] ?? '' ) );
-            unset( $row['review_text'] );
-            echo 'LEGACY_GOOGLE=' . wp_json_encode( $row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
-          }
-
-          $rows = $wpdb->get_results( "SELECT id,source,source_review_id,author_name,rating,review_title,review_text,review_date,wc_product_id,wc_order_id,assignment_reason FROM {$table} WHERE status='pending' AND COALESCE(vendor_user_id,0)=0 AND COALESCE(suggested_vendor_user_id,0)=0 ORDER BY review_date DESC,id DESC", ARRAY_A );
-          foreach ( (array) $rows as $row ) {
-            $row['review_title'] = wp_strip_all_tags( (string) ( $row['review_title'] ?? '' ) );
-            $row['review_text'] = wp_strip_all_tags( (string) ( $row['review_text'] ?? '' ) );
-            echo 'UNASSIGNED=' . wp_json_encode( $row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
+          $samples = $wpdb->get_results( "SELECT id,suggested_vendor_user_id,author_name,rating,review_text,assignment_confidence,assignment_reason FROM {$table} WHERE validation_method='ai_suggestion' AND status='pending' ORDER BY suggested_vendor_user_id,id ASC LIMIT 30", ARRAY_A );
+          foreach ( (array) $samples as $row ) {
+            $row['review_text'] = wp_strip_all_tags( (string) $row['review_text'] );
+            echo 'AI_SAMPLE=' . wp_json_encode( $row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
           }
           PHP
-          "$php_bin" -d memory_limit=512M "$wp_bin" eval-file /tmp/emdo-reviews-moderation-audit.php --path="$PROD_PATH" --allow-root
-          rm -f /tmp/emdo-reviews-moderation-audit.php
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval-file /tmp/emdo-reviews-moderation-post-audit.php --path="$PROD_PATH" --allow-root
+          rm -f /tmp/emdo-reviews-moderation-post-audit.php
+
+          plugin="$PROD_PATH/wp-content/plugins/mdo-supplier-sync"
+          grep -q "Sin asignar" "$plugin/includes/class-mdo-reviews.php"
+          grep -q "Borradores" "$plugin/includes/class-mdo-reviews.php"
+          grep -q "Publicadas" "$plugin/includes/class-mdo-reviews.php"
+          grep -q "Borrador" "$plugin/assets/reviews-admin-inline.js"
+          echo 'ADMIN_UI_CHECK=OK'
+
+          URL='https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/reviews/'
+          html=$(curl -fsSL --max-time 45 -H 'Cache-Control: no-cache' "$URL")
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 45 -H 'Cache-Control: no-cache' "$URL")
+          printf 'PUBLIC_HTTP=%s\n' "$code"
+          printf '%s' "$html" | grep -q 'mdo-reviews-page'
+          printf '%s' "$html" | grep -q 'mdo-review-summary'
+          printf '%s' "$html" | grep -q 'sobre 5'
+          printf '%s' "$html" | grep -Eqi '[0-9]+[[:space:]]+(reseñas|opiniones)'
+          if printf '%s' "$html" | grep -Eqi 'no tiene reseñas|no hay reseñas|has no reviews|no reviews found'; then
+            echo 'NATIVE_EMPTY_MESSAGE=FOUND'
+            exit 41
+          fi
+          echo 'PUBLIC_SUMMARY_CHECK=OK'
           REMOTE
