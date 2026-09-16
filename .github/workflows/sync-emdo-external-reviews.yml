@@ -7,6 +7,7 @@ on:
       - 'mdo-supplier-sync/includes/class-mdo-reviews-scraping.php'
       - 'mdo-supplier-sync/includes/class-mdo-reviews-trustpilot-scraper.php'
       - 'mdo-supplier-sync/scripts/scrape-external-reviews.mjs'
+      - 'mdo-supplier-sync/scripts/scrape-google-reviews.mjs'
       - 'mdo-supplier-sync/scripts/scrape-trustpilot-reviews.mjs'
       - 'mdo-supplier-sync/mdo-supplier-sync.php'
       - '.github/workflows/sync-emdo-external-reviews.yml'
@@ -88,6 +89,7 @@ jobs:
           php -l mdo-supplier-sync/includes/class-mdo-reviews-scraping.php
           php -l mdo-supplier-sync/includes/class-mdo-reviews-trustpilot-scraper.php
           node --check mdo-supplier-sync/scripts/scrape-external-reviews.mjs
+          node --check mdo-supplier-sync/scripts/scrape-google-reviews.mjs
           node --check mdo-supplier-sync/scripts/scrape-trustpilot-reviews.mjs
 
       - name: Resolve production and wait for completed deploy
@@ -162,7 +164,7 @@ jobs:
           for source in $MDO_SOURCES; do
             output="/tmp/emdo-${source}.json"
             if [ "$source" = 'google' ]; then
-              node mdo-supplier-sync/scripts/scrape-external-reviews.mjs --source google --mode "$MDO_MODE" --output "$output"
+              node mdo-supplier-sync/scripts/scrape-google-reviews.mjs --mode "$MDO_MODE" --output "$output"
             else
               node mdo-supplier-sync/scripts/scrape-trustpilot-reviews.mjs --mode "$MDO_MODE" --output "$output"
             fi
@@ -182,9 +184,11 @@ jobs:
           if not data.get('sorted_newest'):
               raise SystemExit(f'{source}: payload is not marked newest-first')
           if source == 'google':
+              missing_authors=sum(not str(x.get('author_name') or '').strip() for x in reviews)
+              if missing_authors: raise SystemExit(f'google: {missing_authors} reviews without author identity')
               if mode == 'full':
                   if found < 150: raise SystemExit(f'google: full scrape too small ({found})')
-                  if reported and found < int(reported * 0.90): raise SystemExit(f'google: full scrape incomplete ({found}/{reported})')
+                  if reported and found < reported: raise SystemExit(f'google: full scrape incomplete ({found}/{reported})')
               expected=reported
           else:
               if historical and available and historical < available:
