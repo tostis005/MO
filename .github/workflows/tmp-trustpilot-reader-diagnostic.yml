@@ -20,7 +20,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect cleanup preconditions in production
+      - name: Inspect star-only legacy match in production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -52,40 +52,30 @@ jobs:
           "$php_bin" -d memory_limit=512M "$wp_bin" eval '
             global $wpdb;
             $table = MDO_Database::table( "reviews" );
-            $targets = array( 242, 243, 245, 247, 248, 250 );
-            foreach ( $targets as $id ) {
-              $row = $wpdb->get_row( $wpdb->prepare( "SELECT id,source,source_review_id,status,validation_method,vendor_user_id,suggested_vendor_user_id,content_fingerprint,author_name,rating,review_date FROM {$table} WHERE id=%d", $id ) );
-              if ( ! $row ) { echo "TARGET_MISSING={$id}\n"; continue; }
-              $matches = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE id<>%d AND source=%s AND source_review_id LIKE %s AND content_fingerprint=%s", $id, "google", "trustindex-%", (string) $row->content_fingerprint ) );
-              echo "TARGET=" . wp_json_encode( array(
-                "id" => (int) $row->id,
-                "source_review_id" => (string) $row->source_review_id,
-                "status" => (string) $row->status,
-                "validation_method" => (string) $row->validation_method,
-                "vendor" => (int) $row->vendor_user_id,
-                "suggested_vendor" => (int) $row->suggested_vendor_user_id,
-                "fingerprint" => (string) $row->content_fingerprint,
-                "canonical_matches" => $matches,
-                "author" => (string) $row->author_name,
-                "rating" => (int) $row->rating,
-                "date" => (string) $row->review_date,
-              ) ) . PHP_EOL;
+            $row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id=%d", 247 ) );
+            if ( ! $row ) { echo "STAR_ONLY_LEGACY_MISSING\n"; exit; }
+            $date = substr( (string) $row->review_date, 0, 10 );
+            $candidates = $wpdb->get_results( $wpdb->prepare(
+              "SELECT id,source_review_id,author_name,rating,review_text,review_date,status,validation_method,vendor_user_id FROM {$table} WHERE id<>%d AND source=%s AND source_review_id LIKE %s AND author_name=%s AND rating=%d AND DATE(review_date)=%s ORDER BY id",
+              247,
+              "google",
+              "trustindex-%",
+              (string) $row->author_name,
+              (int) $row->rating,
+              $date
+            ) );
+            echo "STAR_ONLY_LEGACY=" . wp_json_encode( array(
+              "id" => (int) $row->id,
+              "author" => (string) $row->author_name,
+              "rating" => (int) $row->rating,
+              "date" => $date,
+              "text" => (string) $row->review_text,
+              "status" => (string) $row->status,
+              "validation_method" => (string) $row->validation_method,
+            ) ) . PHP_EOL;
+            echo "STAR_ONLY_CANDIDATE_COUNT=" . count( $candidates ) . PHP_EOL;
+            foreach ( $candidates as $candidate ) {
+              echo "STAR_ONLY_CANDIDATE=" . wp_json_encode( $candidate ) . PHP_EOL;
             }
-
-            $woo_rows = $wpdb->get_col( "SELECT DISTINCT CAST(c.comment_ID AS CHAR) FROM {$wpdb->comments} c INNER JOIN {$wpdb->posts} p ON p.ID=c.comment_post_ID AND p.post_type=\"product\" INNER JOIN {$wpdb->commentmeta} cm ON cm.comment_id=c.comment_ID AND cm.meta_key=\"rating\" WHERE c.comment_approved=\"1\" AND CAST(cm.meta_value AS DECIMAL(4,2))>0 ORDER BY c.comment_ID" );
-            $mdo_rows = $wpdb->get_col( $wpdb->prepare( "SELECT source_review_id FROM {$table} WHERE source=%s ORDER BY CAST(source_review_id AS UNSIGNED)", "woocommerce_product" ) );
-            $missing = array_values( array_diff( array_map( "strval", $woo_rows ), array_map( "strval", $mdo_rows ) ) );
-            $extra = array_values( array_diff( array_map( "strval", $mdo_rows ), array_map( "strval", $woo_rows ) ) );
-            echo "WOO_SOURCE_COUNT=" . count( $woo_rows ) . PHP_EOL;
-            echo "WOO_MDO_COUNT=" . count( $mdo_rows ) . PHP_EOL;
-            echo "WOO_MISSING_IDS=" . wp_json_encode( $missing ) . PHP_EOL;
-            echo "WOO_EXTRA_IDS=" . wp_json_encode( $extra ) . PHP_EOL;
-            foreach ( $missing as $comment_id ) {
-              $detail = $wpdb->get_row( $wpdb->prepare( "SELECT c.comment_ID,c.comment_author,c.comment_author_email,c.comment_content,c.comment_date,c.comment_date_gmt,p.ID product_id,p.post_author vendor_id,MAX(CAST(cm.meta_value AS DECIMAL(4,2))) rating FROM {$wpdb->comments} c INNER JOIN {$wpdb->posts} p ON p.ID=c.comment_post_ID AND p.post_type=\"product\" INNER JOIN {$wpdb->commentmeta} cm ON cm.comment_id=c.comment_ID AND cm.meta_key=\"rating\" WHERE c.comment_ID=%d AND c.comment_approved=\"1\" GROUP BY c.comment_ID", (int) $comment_id ) );
-              echo "WOO_MISSING_DETAIL=" . wp_json_encode( $detail ) . PHP_EOL;
-            }
-            echo "MIGRATION_OPTION=" . wp_json_encode( get_option( "mdo_reviews_migration_1038", "" ) ) . PHP_EOL;
-            echo "OLD_CRON_NEXT=" . wp_json_encode( wp_next_scheduled( "mdo_reviews_daily_import" ) ) . PHP_EOL;
-            echo "OLD_SEED_NEXT=" . wp_json_encode( wp_next_scheduled( "mdo_reviews_seed_import" ) ) . PHP_EOL;
           ' --path="$PROD_PATH" --allow-root
           REMOTE
