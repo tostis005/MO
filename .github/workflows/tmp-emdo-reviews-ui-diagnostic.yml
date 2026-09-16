@@ -9,7 +9,6 @@ on:
 permissions:
   contents: read
 
-# Temporary read-only production acceptance for EMDO 1.0.42. Remove after verification.
 jobs:
   diagnose:
     runs-on: ubuntu-24.04
@@ -21,7 +20,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Validate reviews route and summary in production
+      - name: Inspect actual reviews markup in production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -50,44 +49,23 @@ jobs:
           wp_bin=$(command -v wp || true)
           php_bin=$(command -v php || true)
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-          version=$("$php_bin" -d memory_limit=512M "$wp_bin" plugin get mdo-supplier-sync --field=version --path="$PROD_PATH" --allow-root 2>/dev/null || true)
-          echo "EMDO_VERSION=$version"
-          test "$version" = '1.0.42'
+          slug=hidalgo-de-la-jara
+          base="https://www.elmercadodeorigen.com/tienda/$slug/"
+          rev="${base}reviews/"
+          curl -k -L -sS --connect-timeout 8 --max-time 45 -H 'Cache-Control: no-cache, no-store' "$base?emdo_ui_diag=2" -o /tmp/base.html
+          code=$(curl -k -L -sS --connect-timeout 8 --max-time 45 -H 'Cache-Control: no-cache, no-store' -o /tmp/reviews.html -w '%{http_code}' "$rev?emdo_ui_diag=2")
+          echo "REVIEWS_HTTP=$code"
+          echo '=== BASE MATCHES ==='
+          grep -Ein -C 2 'Rese|reviews|mdo_reviews' /tmp/base.html | head -n 120 || true
+          echo '=== REVIEW PAGE MATCHES ==='
+          grep -Ein -C 2 'mdo-reviews-page|mdo-review-summary|mdo-store-reviews|sobre 5|no tiene rese|no reviews' /tmp/reviews.html | head -n 160 || true
+          echo '=== FILTER SNAPSHOT ==='
           "$php_bin" -d memory_limit=512M "$wp_bin" eval '
-            echo "PUBLIC_CLASS=" . ( class_exists("MDO_Reviews_Public") ? "1" : "0" ) . PHP_EOL;
-            echo "ROUTE_VERSION=" . get_option("mdo_reviews_public_route_version", "") . PHP_EOL;
-            echo "NEW_TAB_HOOK=" . (int) has_filter("wcfmmp_store_tabs", array("MDO_Reviews_Public","store_tabs")) . PHP_EOL;
-            echo "OLD_TAB_HOOK=" . (int) has_filter("wcfmmp_store_tabs", array("MDO_Reviews_Integration","store_tabs")) . PHP_EOL;
+            echo "PUBLIC_CLASS=".(class_exists("MDO_Reviews_Public")?"1":"0").PHP_EOL;
+            echo "NEW_TAB_HOOK=".(int)has_filter("wcfmmp_store_tabs",array("MDO_Reviews_Public","store_tabs")).PHP_EOL;
+            echo "NEW_URL_HOOK=".(int)has_filter("wcfmp_store_tabs_url",array("MDO_Reviews_Public","store_tab_url")).PHP_EOL;
+            $sample=array("products"=>"Productos","about"=>"Acerca de","reviews"=>"Reviews");
+            echo "FILTERED_TABS=".wp_json_encode(apply_filters("wcfmmp_store_tabs",$sample,6)).PHP_EOL;
+            echo "URL_SAMPLE=".apply_filters("wcfmp_store_tabs_url","https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/","mdo_reviews").PHP_EOL;
           ' --path="$PROD_PATH" --allow-root
-          for slug in hidalgo-de-la-jara tolecarnes la-huerta-de-ana-mary 1957; do
-            base="https://www.elmercadodeorigen.com/tienda/$slug/"
-            rev="${base}reviews/"
-            curl -k -L -sS --connect-timeout 8 --max-time 45 -H 'Cache-Control: no-cache, no-store' "$base?emdo_ui_diag=1" -o "/tmp/${slug}-base.html"
-            code=$(curl -k -L -sS --connect-timeout 8 --max-time 45 -H 'Cache-Control: no-cache, no-store' -o "/tmp/${slug}-reviews.html" -w '%{http_code}' "$rev?emdo_ui_diag=1")
-            echo "STORE=$slug REVIEWS_HTTP=$code"
-            test "$code" = '200'
-            link=$(grep -Eio 'href="[^"]+/reviews/?"[^>]*>[^<]*Reseñas[^<]*<' "/tmp/${slug}-base.html" | head -n1 || true)
-            echo "TAB_LINK=$link"
-            case "$link" in *"/tienda/$slug/reviews/"*) ;; *) echo "BAD_TAB_LINK=$slug" >&2; exit 51 ;; esac
-            if grep -Eqi 'no tiene reseñ|usuario no tiene reseñ|has no review|no reviews yet' "/tmp/${slug}-reviews.html"; then
-              echo "NATIVE_EMPTY_TEXT_PRESENT=$slug" >&2
-              exit 52
-            fi
-          done
-          page=/tmp/hidalgo-de-la-jara-reviews.html
-          grep -q 'mdo-reviews-page' "$page"
-          grep -q 'mdo-review-summary' "$page"
-          grep -q 'mdo-review-summary-stars' "$page"
-          grep -q 'mdo-store-reviews' "$page"
-          grep -Eq 'sobre 5' "$page"
-          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
-            global $wpdb;
-            $table=MDO_Database::table("reviews");
-            foreach(array("hidalgo-de-la-jara","tolecarnes","la-huerta-de-ana-mary","1957") as $slug){
-              $u=get_user_by("slug",$slug); if(!$u){echo "SUMMARY $slug user=0\n";continue;}
-              $row=$wpdb->get_row($wpdb->prepare("SELECT COUNT(*) c, AVG(rating) a FROM {$table} WHERE vendor_user_id=%d AND status=%s AND rating>0",$u->ID,"validated"));
-              echo "SUMMARY $slug user={$u->ID} count=".(int)$row->c." avg=".number_format((float)$row->a,2,".","").PHP_EOL;
-            }
-          ' --path="$PROD_PATH" --allow-root
-          echo 'EMDO_REVIEWS_UI_ACCEPTANCE_OK=1'
           REMOTE
