@@ -1,0 +1,61 @@
+name: Temporary Trustpilot Reader diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tmp-trustpilot-reader-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Fetch canonical and recency Trustpilot pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          for spec in canonical2 recency2 canonical8 recency8 canonical9 recency9; do
+            case "$spec" in
+              canonical2) target='https://es.trustpilot.com/review/elmercadodeorigen.com?page=2' ;;
+              recency2) target='https://es.trustpilot.com/review/elmercadodeorigen.com?page=2&sort=recency' ;;
+              canonical8) target='https://es.trustpilot.com/review/elmercadodeorigen.com?page=8' ;;
+              recency8) target='https://es.trustpilot.com/review/elmercadodeorigen.com?page=8&sort=recency' ;;
+              canonical9) target='https://es.trustpilot.com/review/elmercadodeorigen.com?page=9' ;;
+              recency9) target='https://es.trustpilot.com/review/elmercadodeorigen.com?page=9&sort=recency' ;;
+            esac
+            curl -LfsS --max-time 55 \
+              -H 'Accept: application/json' \
+              -H 'X-Engine: browser' \
+              -H 'X-Respond-With: markdown' \
+              -H 'X-Retain-Images: alt' \
+              -H 'X-No-Cache: true' \
+              -H 'X-Timeout: 35' \
+              "https://r.jina.ai/$target" -o "/tmp/$spec.json" || true
+          done
+
+      - name: Summarize Reader structures
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, re
+          for path in sorted(pathlib.Path('/tmp').glob('canonical*.json')) + sorted(pathlib.Path('/tmp').glob('recency*.json')):
+              raw = path.read_text('utf-8', errors='replace')
+              try:
+                  data = json.loads(raw)
+                  text = ((data.get('data') or {}).get('content') or data.get('content') or '')
+              except Exception:
+                  text = raw
+              lines=[x.strip() for x in text.replace('\r','').split('\n')]
+              ratings=[(i,x) for i,x in enumerate(lines) if re.search(r'(Valorad|Rated).*?[1-5].*(estrella|star|out of|de 5)',x,re.I)]
+              review_links=re.findall(r'/reviews/([A-Za-z0-9_-]{8,})', text)
+              print(f'=== {path.stem} bytes={len(text)} ratings={len(ratings)} review_links={len(set(review_links))} ===')
+              for i,line in ratings[:4]:
+                  lo=max(0,i-4); hi=min(len(lines),i+7)
+                  print(f'--- rating at line {i} ---')
+                  for j in range(lo,hi):
+                      print(f'{j}: {lines[j][:300]}')
+          PY
