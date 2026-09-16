@@ -5,24 +5,31 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Integración operativa de las reseñas de tienda.
+ * Sincronización de reseñas externas directamente desde las APIs oficiales.
  *
- * - Sincroniza a diario únicamente las fuentes externas (Google + Trustpilot).
- * - Se ejecuta a las 02:30 en la zona horaria de WordPress, antes del dispatcher
- *   nocturno de proveedores de EMDO (03:00).
- * - Restaura la pestaña pública "Reseñas" de WCFM aunque la preferencia nativa
- *   de reseñas de proveedor esté desactivada.
+ * Google: Google Business Profile API (OAuth 2.0).
+ * Trustpilot: Business Units API pública (API key).
+ *
+ * No se usa Trustindex ni scraping como fuente de contenido de reseñas.
  */
 final class MDO_Reviews_Integration {
 	private const CRON_HOOK = 'mdo_reviews_daily_import';
+	private const SEED_HOOK = 'mdo_reviews_seed_import';
 	private const GROUP = 'mdo-supplier-sync';
-	private const SCHEDULE_VERSION = '2.1.0';
+	private const SCHEDULE_VERSION = '3.0.0';
+	private const BUSINESS_DOMAIN = 'elmercadodeorigen.com';
+	private const GOOGLE_PROFILE_URL = 'https://www.google.com/maps/search/?api=1&query=El%20Mercado%20de%20Origen';
+	private const TRUSTPILOT_PROFILE_URL = 'https://es.trustpilot.com/review/elmercadodeorigen.com';
 
 	public static function init(): void {
 		remove_action( self::CRON_HOOK, array( 'MDO_Reviews', 'import_all' ) );
+		remove_action( self::SEED_HOOK, array( 'MDO_Reviews', 'import_all' ) );
 		remove_action( 'init', array( 'MDO_Reviews', 'ensure_schedule' ), 30 );
-		add_action( self::CRON_HOOK, array( __CLASS__, 'import_external' ) );
+		remove_action( 'init', array( 'MDO_Reviews', 'maybe_seed' ), 31 );
+		remove_action( 'admin_post_mdo_reviews_import', array( 'MDO_Reviews', 'handle_import' ) );
 
+		add_action( self::CRON_HOOK, array( __CLASS__, 'import_external' ) );
+		add_action( 'admin_post_mdo_reviews_import', array( __CLASS__, 'handle_import' ) );
 		add_filter( 'wcfmmp_store_tabs', array( __CLASS__, 'store_tabs' ), 999, 2 );
 
 		if ( did_action( 'action_scheduler_init' ) ) {
@@ -41,54 +48,56 @@ final class MDO_Reviews_Integration {
 		wp_clear_scheduled_hook( self::CRON_HOOK );
 	}
 
-	/**
-	 * Ejecuta exclusivamente la ingesta externa. Primero usa las fuentes reales
-	 * que los plugins de Trustindex ya mantienen/parsean en WordPress y conserva
-	 * el parser de opciones como fallback de compatibilidad.
-	 */
+	public static function handle_import(): void {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_die( esc_html__( 'No tienes permisos para realizar esta acción.', 'mdo-supplier-sync' ) );
+		}
+		check_admin_referer( 'mdo_reviews_import' );
+
+		$stats = array(
+			'wcfm' => self::invoke_reviews_private( 'import_wcfm_reviews' ),
+			'woocommerce' => self::invoke_reviews_private( 'import_woocommerce_reviews' ),
+		);
+		$stats = array_merge( $stats, self::import_external() );
+		$found = 0;
+		$saved = 0;
+		foreach ( $stats as $source_stats ) {
+			if ( ! is_array( $source_stats ) ) {
+				continue;
+			}
+			$found += (int) ( $source_stats['found'] ?? 0 );
+			$saved += (int) ( $source_stats['saved'] ?? 0 );
+		}
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page' => 'mdo-reviews',
+					'mdo_notice' => 'imported',
+					'found' => $found,
+					'saved' => $saved,
+				),
+				admin_url( 'admin.php' )
+			)
+		);
+		exit;
+	}
+
 	public static function import_external(): array {
 		$context = self::invoke_reviews_private( 'assignment_context' );
 		if ( ! is_array( $context ) ) {
 			$context = array();
 		}
 
-		$google = self::import_google_table( $context );
-		if ( empty( $google['found'] ) ) {
-			$google = self::fallback_cached_source(
-				'google',
-				array( 'trustindex-google-review-content', 'trustindex-google-reviews', 'google_reviews' ),
-				$context
-			);
-		}
-		$google_expected = absint( get_option( 'mdo_google_review_count', 0 ) );
-		if ( $google_expected > 0 ) {
-			$google['expected'] = $google_expected;
-			$google['complete'] = (int) ( $google['found'] ?? 0 ) >= $google_expected;
-		}
-
-		$trustpilot = self::import_trustpilot_plugin( $context );
-		if ( empty( $trustpilot['found'] ) ) {
-			$trustpilot = self::fallback_cached_source(
-				'trustpilot',
-				array( 'trustindex-trustpilot-review-content', 'trustindex-trustpilot-reviews', 'trustpilot_reviews' ),
-				$context
-			);
-		}
-		$trustpilot_expected = absint( get_option( 'mdo_trustpilot_review_count', 0 ) );
-		if ( $trustpilot_expected > 0 ) {
-			$trustpilot['expected'] = $trustpilot_expected;
-			$trustpilot['complete'] = (int) ( $trustpilot['found'] ?? 0 ) >= $trustpilot_expected;
-		}
-
 		$stats = array(
-			'google' => $google,
-			'trustpilot' => $trustpilot,
+			'google' => self::import_google_official( $context ),
+			'trustpilot' => self::import_trustpilot_official( $context ),
 		);
 
 		$payload = array(
 			'at' => time(),
 			'stats' => $stats,
-			'mode' => 'external_only',
+			'mode' => 'official_external_only',
 		);
 		update_option( 'mdo_reviews_last_external_import', $payload, false );
 		update_option( 'mdo_reviews_last_import', $payload, false );
@@ -96,177 +105,329 @@ final class MDO_Reviews_Integration {
 		return $stats;
 	}
 
-	/**
-	 * Widgets for Google Reviews almacena las reseñas descargadas en una tabla
-	 * propia. Leer esa tabla evita confundir la plantilla HTML de la opción
-	 * trustindex-google-review-content con datos de reseñas.
-	 */
-	private static function import_google_table( array $context ): array {
-		global $wpdb;
-		$table = $wpdb->prefix . 'trustindex_google_reviews';
-		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
-			return array( 'found' => 0, 'saved' => 0, 'provider' => 'trustindex_table' );
+	private static function import_google_official( array $context ): array {
+		$token = self::google_access_token();
+		if ( is_wp_error( $token ) ) {
+			return self::error_stats( 'google_business_profile_api', $token );
 		}
 
-		$rows = $wpdb->get_results( "SELECT * FROM `{$table}` WHERE hidden = 0 ORDER BY date ASC, id ASC", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$identity = self::google_business_identity( $token );
+		if ( is_wp_error( $identity ) ) {
+			return self::error_stats( 'google_business_profile_api', $identity );
+		}
+
+		$account_id = (string) $identity['account_id'];
+		$location_id = (string) $identity['location_id'];
+		$page_token = '';
+		$found = 0;
 		$saved = 0;
-		foreach ( (array) $rows as $row ) {
-			$data = array(
-				'source_review_id' => (string) ( $row['reviewId'] ?? $row['id'] ?? '' ),
-				'author_name' => (string) ( $row['user'] ?? '' ),
-				'author_avatar_url' => (string) ( $row['user_photo'] ?? '' ),
-				'rating' => max( 1, min( 5, (int) round( (float) ( $row['rating'] ?? 0 ) ) ) ),
-				'review_text' => wp_strip_all_tags( (string) ( $row['text'] ?? '' ) ),
-				'review_date' => self::normalize_source_date( $row['date'] ?? '' ),
-				'source_url' => 'https://www.trustindex.io/reviews/www.elmercadodeorigen.com',
-				'source_payload' => wp_json_encode( $row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ),
+		$expected = 0;
+		$guard = 0;
+
+		do {
+			$url = sprintf(
+				'https://mybusiness.googleapis.com/v4/accounts/%s/locations/%s/reviews?pageSize=50',
+				rawurlencode( $account_id ),
+				rawurlencode( $location_id )
 			);
-			if ( self::save_external_row( 'google', $data, $context ) ) {
-				++$saved;
+			if ( '' !== $page_token ) {
+				$url .= '&pageToken=' . rawurlencode( $page_token );
 			}
-		}
+			$response = self::api_json( $url, array( 'Authorization' => 'Bearer ' . $token ) );
+			if ( is_wp_error( $response ) ) {
+				return self::error_stats( 'google_business_profile_api', $response, $found, $saved, $expected );
+			}
 
-		return array( 'found' => count( (array) $rows ), 'saved' => $saved, 'provider' => 'trustindex_table' );
-	}
-
-	/**
-	 * El plugin legado de Trustpilot conserva la ficha de la página y expone un
-	 * método que consulta la API de Trustindex. Usamos esa vía antes que su tabla
-	 * local porque instalaciones antiguas pueden haber perdido la tabla durante
-	 * una migración. Así evitamos scraping y reutilizamos exactamente el proveedor
-	 * ya configurado en WordPress.
-	 */
-	private static function import_trustpilot_plugin( array $context ): array {
-		$plugin = self::find_trustpilot_plugin_instance();
-		if ( ! $plugin ) {
-			return array( 'found' => 0, 'saved' => 0, 'provider' => 'trustindex_plugin' );
-		}
-
-		$raw = null;
-		$provider = 'trustindex_plugin';
-		try {
-			if ( method_exists( $plugin, 'download_noreg_reviews' ) && method_exists( $plugin, 'get_option_name' ) ) {
-				$option_name = (string) $plugin->get_option_name( 'page-details' );
-				$page_details = $option_name ? get_option( $option_name, array() ) : array();
-				if ( is_array( $page_details ) && ! empty( $page_details['id'] ) ) {
-					$raw = $plugin->download_noreg_reviews( $page_details );
-					$provider = 'trustindex_api';
+			$reviews = isset( $response['reviews'] ) && is_array( $response['reviews'] ) ? $response['reviews'] : array();
+			$expected = max( $expected, absint( $response['totalReviewCount'] ?? 0 ) );
+			foreach ( $reviews as $review ) {
+				if ( ! is_array( $review ) ) {
+					continue;
+				}
+				++$found;
+				$reviewer = isset( $review['reviewer'] ) && is_array( $review['reviewer'] ) ? $review['reviewer'] : array();
+				$data = array(
+					'source_review_id' => (string) ( $review['reviewId'] ?? '' ),
+					'author_name' => (string) ( $reviewer['displayName'] ?? '' ),
+					'author_avatar_url' => (string) ( $reviewer['profilePhotoUrl'] ?? '' ),
+					'rating' => self::google_star_rating( $review['starRating'] ?? 0 ),
+					'review_text' => wp_strip_all_tags( (string) ( $review['comment'] ?? '' ) ),
+					'review_date' => self::normalize_source_date( $review['createTime'] ?? $review['updateTime'] ?? '' ),
+					'source_url' => self::GOOGLE_PROFILE_URL,
+					'source_payload' => wp_json_encode( $review, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ),
+					'status' => 'pending',
+				);
+				if ( $data['rating'] > 0 && self::save_external_row( 'google', $data, $context ) ) {
+					++$saved;
 				}
 			}
+			$page_token = (string) ( $response['nextPageToken'] ?? '' );
+			++$guard;
+		} while ( '' !== $page_token && $guard < 100 );
 
-			$candidates = array();
-			self::collect_review_candidates( $raw, $candidates );
-			if ( empty( $candidates ) && method_exists( $plugin, 'get_noreg_list_reviews' ) ) {
-				global $wpdb;
-				$table = $wpdb->prefix . 'trustindex_trustpilot_reviews';
-				if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table ) {
-					$raw = $plugin->get_noreg_list_reviews( null, true );
-					$provider = 'trustindex_table';
-				}
-			}
-		} catch ( Throwable $error ) {
-			error_log( '[EMDO reviews] Trustpilot plugin: ' . $error->getMessage() );
-			return array( 'found' => 0, 'saved' => 0, 'provider' => $provider, 'error' => 'provider_error' );
-		}
-
-		$candidates = array();
-		self::collect_review_candidates( $raw, $candidates );
-		$saved = 0;
-		$seen = array();
-		$source_url = (string) get_option( 'mdo_trustpilot_review_source_url', 'https://es.trustpilot.com/review/elmercadodeorigen.com' );
-
-		foreach ( $candidates as $row ) {
-			$data = self::normalize_trustpilot_row( $row, $source_url );
-			if ( empty( $data['rating'] ) || ( '' === (string) $data['review_text'] && '' === (string) $data['author_name'] ) ) {
-				continue;
-			}
-			$key = hash( 'sha256', strtolower( (string) $data['source_review_id'] ) . '|' . strtolower( (string) $data['author_name'] ) . '|' . (string) $data['review_date'] . '|' . (string) $data['rating'] . '|' . (string) $data['review_text'] );
-			if ( isset( $seen[ $key ] ) ) {
-				continue;
-			}
-			$seen[ $key ] = true;
-			if ( self::save_external_row( 'trustpilot', $data, $context ) ) {
-				++$saved;
-			}
-		}
-
-		return array( 'found' => count( $seen ), 'saved' => $saved, 'provider' => $provider );
-	}
-
-	private static function find_trustpilot_plugin_instance() {
-		global $wp_filter;
-		foreach ( (array) $wp_filter as $hook ) {
-			if ( ! is_object( $hook ) || ! isset( $hook->callbacks ) || ! is_array( $hook->callbacks ) ) {
-				continue;
-			}
-			foreach ( $hook->callbacks as $callbacks ) {
-				foreach ( (array) $callbacks as $callback ) {
-					$function = $callback['function'] ?? null;
-					if ( is_array( $function ) && isset( $function[0] ) && is_object( $function[0] ) && is_a( $function[0], 'TrustindexPlugin' ) ) {
-						return $function[0];
-					}
-				}
-			}
-		}
-		return null;
-	}
-
-	private static function collect_review_candidates( $node, array &$out ): void {
-		if ( is_object( $node ) ) {
-			$node = (array) $node;
-		}
-		if ( ! is_array( $node ) ) {
-			return;
-		}
-		$keys = array_change_key_case( array_fill_keys( array_keys( $node ), true ), CASE_LOWER );
-		$has_rating = isset( $keys['rating'] ) || isset( $keys['stars'] ) || isset( $keys['score'] ) || isset( $keys['review_rating'] );
-		$has_content = isset( $keys['text'] ) || isset( $keys['review'] ) || isset( $keys['content'] ) || isset( $keys['user'] ) || isset( $keys['name'] ) || isset( $keys['reviewer'] );
-		if ( $has_rating && $has_content ) {
-			$out[] = $node;
-		}
-		foreach ( $node as $child ) {
-			if ( is_array( $child ) || is_object( $child ) ) {
-				self::collect_review_candidates( $child, $out );
-			}
-		}
-	}
-
-	private static function normalize_trustpilot_row( array $row, string $source_url ): array {
-		$reviewer = $row['reviewer'] ?? array();
-		if ( is_object( $reviewer ) ) {
-			$reviewer = (array) $reviewer;
-		}
-		$reviewer = is_array( $reviewer ) ? $reviewer : array();
-
-		$author = self::first_row_value( $row, array( 'user', 'author_name', 'reviewer_name', 'name' ) );
-		if ( '' === $author ) {
-			$author = (string) ( $reviewer['name'] ?? '' );
-		}
-		$avatar = self::first_row_value( $row, array( 'user_photo', 'avatar_url', 'photo' ) );
-		if ( '' === $avatar ) {
-			$avatar = (string) ( $reviewer['avatar_url'] ?? '' );
+		if ( $expected > 0 ) {
+			update_option( 'mdo_google_review_count', $expected, false );
+			update_option( 'mdo_google_review_count_updated_at', time(), false );
 		}
 
 		return array(
-			'source_review_id' => self::first_row_value( $row, array( 'reviewId', 'review_id', 'id' ) ),
-			'author_name' => $author,
-			'author_avatar_url' => $avatar,
-			'rating' => (int) round( (float) self::first_row_value( $row, array( 'rating', 'stars', 'score', 'review_rating' ) ) ),
-			'review_title' => self::first_row_value( $row, array( 'title', 'headline', 'review_title' ) ),
-			'review_text' => wp_strip_all_tags( self::first_row_value( $row, array( 'text', 'review', 'content', 'review_text' ) ) ),
-			'review_date' => self::normalize_source_date( self::first_row_value( $row, array( 'date', 'created_at', 'published_at', 'time' ) ) ),
-			'source_url' => $source_url,
-			'source_payload' => wp_json_encode( $row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ),
+			'found' => $found,
+			'saved' => $saved,
+			'expected' => $expected,
+			'complete' => $expected > 0 ? $found >= $expected : true,
+			'provider' => 'google_business_profile_api',
+			'configured' => true,
 		);
 	}
 
-	private static function first_row_value( array $row, array $keys ): string {
-		foreach ( $keys as $key ) {
-			if ( isset( $row[ $key ] ) && ! is_array( $row[ $key ] ) && ! is_object( $row[ $key ] ) && '' !== (string) $row[ $key ] ) {
-				return (string) $row[ $key ];
+	private static function google_access_token() {
+		$direct = self::config_value( 'MDO_GOOGLE_BUSINESS_ACCESS_TOKEN', 'mdo_google_business_access_token' );
+		if ( '' !== $direct ) {
+			return $direct;
+		}
+		$client_id = self::config_value( 'MDO_GOOGLE_BUSINESS_CLIENT_ID', 'mdo_google_business_client_id' );
+		$client_secret = self::config_value( 'MDO_GOOGLE_BUSINESS_CLIENT_SECRET', 'mdo_google_business_client_secret' );
+		$refresh_token = self::config_value( 'MDO_GOOGLE_BUSINESS_REFRESH_TOKEN', 'mdo_google_business_refresh_token' );
+		if ( '' === $client_id || '' === $client_secret || '' === $refresh_token ) {
+			return new WP_Error( 'missing_google_oauth', 'Faltan credenciales OAuth de Google Business Profile.' );
+		}
+
+		$response = wp_remote_post(
+			'https://oauth2.googleapis.com/token',
+			array(
+				'timeout' => 30,
+				'body' => array(
+					'client_id' => $client_id,
+					'client_secret' => $client_secret,
+					'refresh_token' => $refresh_token,
+					'grant_type' => 'refresh_token',
+				),
+			)
+		);
+		if ( is_wp_error( $response ) ) {
+			return new WP_Error( 'google_oauth_transport', $response->get_error_message() );
+		}
+		$status = (int) wp_remote_retrieve_response_code( $response );
+		$body = json_decode( (string) wp_remote_retrieve_body( $response ), true );
+		if ( $status < 200 || $status >= 300 || ! is_array( $body ) || empty( $body['access_token'] ) ) {
+			return new WP_Error( 'google_oauth_failed', 'Google OAuth no ha devuelto un access token válido.', array( 'status' => $status ) );
+		}
+		return (string) $body['access_token'];
+	}
+
+	private static function google_business_identity( string $token ) {
+		$account_id = self::clean_resource_id( self::config_value( 'MDO_GOOGLE_BUSINESS_ACCOUNT_ID', 'mdo_google_business_account_id' ), 'accounts/' );
+		$location_id = self::clean_resource_id( self::config_value( 'MDO_GOOGLE_BUSINESS_LOCATION_ID', 'mdo_google_business_location_id' ), 'locations/' );
+		if ( '' !== $account_id && '' !== $location_id ) {
+			return array( 'account_id' => $account_id, 'location_id' => $location_id );
+		}
+
+		$headers = array( 'Authorization' => 'Bearer ' . $token );
+		$accounts_response = self::api_json( 'https://mybusinessaccountmanagement.googleapis.com/v1/accounts', $headers );
+		if ( is_wp_error( $accounts_response ) ) {
+			return $accounts_response;
+		}
+		$accounts = isset( $accounts_response['accounts'] ) && is_array( $accounts_response['accounts'] ) ? $accounts_response['accounts'] : array();
+		$candidates = array();
+		foreach ( $accounts as $account ) {
+			if ( ! is_array( $account ) || empty( $account['name'] ) ) {
+				continue;
+			}
+			$current_account = self::clean_resource_id( (string) $account['name'], 'accounts/' );
+			if ( '' === $current_account || ( '' !== $account_id && $account_id !== $current_account ) ) {
+				continue;
+			}
+			$page_token = '';
+			$guard = 0;
+			do {
+				$url = sprintf(
+					'https://mybusinessbusinessinformation.googleapis.com/v1/accounts/%s/locations?readMask=name,title,websiteUri&pageSize=100',
+					rawurlencode( $current_account )
+				);
+				if ( '' !== $page_token ) {
+					$url .= '&pageToken=' . rawurlencode( $page_token );
+				}
+				$locations_response = self::api_json( $url, $headers );
+				if ( is_wp_error( $locations_response ) ) {
+					break;
+				}
+				$locations = isset( $locations_response['locations'] ) && is_array( $locations_response['locations'] ) ? $locations_response['locations'] : array();
+				foreach ( $locations as $location ) {
+					if ( ! is_array( $location ) || empty( $location['name'] ) ) {
+						continue;
+					}
+					$current_location = self::clean_resource_id( (string) $location['name'], 'locations/' );
+					$website = strtolower( (string) ( $location['websiteUri'] ?? '' ) );
+					$candidates[] = array(
+						'account_id' => $current_account,
+						'location_id' => $current_location,
+						'matches_domain' => false !== strpos( $website, self::BUSINESS_DOMAIN ),
+					);
+				}
+				$page_token = (string) ( $locations_response['nextPageToken'] ?? '' );
+				++$guard;
+			} while ( '' !== $page_token && $guard < 50 );
+		}
+
+		$chosen = null;
+		foreach ( $candidates as $candidate ) {
+			if ( ! empty( $candidate['matches_domain'] ) ) {
+				$chosen = $candidate;
+				break;
 			}
 		}
-		return '';
+		if ( ! $chosen && 1 === count( $candidates ) ) {
+			$chosen = $candidates[0];
+		}
+		if ( ! $chosen ) {
+			return new WP_Error( 'google_location_not_resolved', 'No se ha podido identificar de forma inequívoca la ubicación de Google Business Profile.' );
+		}
+		update_option( 'mdo_google_business_account_id', (string) $chosen['account_id'], false );
+		update_option( 'mdo_google_business_location_id', (string) $chosen['location_id'], false );
+		return array( 'account_id' => (string) $chosen['account_id'], 'location_id' => (string) $chosen['location_id'] );
+	}
+
+	private static function import_trustpilot_official( array $context ): array {
+		$api_key = self::config_value( 'MDO_TRUSTPILOT_API_KEY', 'mdo_trustpilot_api_key' );
+		if ( '' === $api_key ) {
+			return array(
+				'found' => 0,
+				'saved' => 0,
+				'provider' => 'trustpilot_business_units_api',
+				'configured' => false,
+				'error' => 'missing_trustpilot_api_key',
+			);
+		}
+
+		$headers = array( 'apikey' => $api_key );
+		$business_unit_id = self::config_value( 'MDO_TRUSTPILOT_BUSINESS_UNIT_ID', 'mdo_trustpilot_business_unit_id' );
+		if ( '' === $business_unit_id ) {
+			$find = self::api_json( 'https://api.trustpilot.com/v1/business-units/find?name=' . rawurlencode( self::BUSINESS_DOMAIN ), $headers );
+			if ( is_wp_error( $find ) || empty( $find['id'] ) ) {
+				return self::error_stats( 'trustpilot_business_units_api', is_wp_error( $find ) ? $find : new WP_Error( 'trustpilot_business_unit_not_found', 'No se ha encontrado el Business Unit de Trustpilot.' ) );
+			}
+			$business_unit_id = (string) $find['id'];
+			update_option( 'mdo_trustpilot_business_unit_id', $business_unit_id, false );
+		}
+
+		$expected = 0;
+		$summary = self::api_json( 'https://api.trustpilot.com/v1/business-units/' . rawurlencode( $business_unit_id ), $headers );
+		if ( ! is_wp_error( $summary ) ) {
+			$expected = absint( $summary['numberOfReviews']['total'] ?? 0 );
+			$rating = (float) ( $summary['score']['trustScore'] ?? 0 );
+			if ( $expected > 0 ) {
+				update_option( 'mdo_trustpilot_review_count', $expected, false );
+				update_option( 'mdo_trustpilot_review_count_updated_at', time(), false );
+			}
+			if ( $rating > 0 && $rating <= 5 ) {
+				update_option( 'mdo_trustpilot_rating', round( $rating, 1 ), false );
+			}
+		}
+
+		$page_token = '';
+		$found = 0;
+		$saved = 0;
+		$guard = 0;
+		do {
+			$url = 'https://api.trustpilot.com/v1/business-units/' . rawurlencode( $business_unit_id ) . '/all-reviews';
+			if ( '' !== $page_token ) {
+				$url .= '?pageToken=' . rawurlencode( $page_token );
+			}
+			$response = self::api_json( $url, $headers );
+			if ( is_wp_error( $response ) ) {
+				return self::error_stats( 'trustpilot_business_units_api', $response, $found, $saved, $expected );
+			}
+			$reviews = isset( $response['reviews'] ) && is_array( $response['reviews'] ) ? $response['reviews'] : array();
+			foreach ( $reviews as $review ) {
+				if ( ! is_array( $review ) ) {
+					continue;
+				}
+				++$found;
+				$consumer = isset( $review['consumer'] ) && is_array( $review['consumer'] ) ? $review['consumer'] : array();
+				$data = array(
+					'source_review_id' => (string) ( $review['id'] ?? '' ),
+					'author_name' => (string) ( $consumer['displayName'] ?? '' ),
+					'rating' => max( 1, min( 5, (int) ( $review['stars'] ?? 0 ) ) ),
+					'review_title' => (string) ( $review['title'] ?? '' ),
+					'review_text' => wp_strip_all_tags( (string) ( $review['text'] ?? '' ) ),
+					'review_date' => self::normalize_source_date( $review['createdAt'] ?? $review['updatedAt'] ?? '' ),
+					'source_url' => self::TRUSTPILOT_PROFILE_URL,
+					'source_payload' => wp_json_encode( $review, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ),
+					'status' => 'pending',
+				);
+				if ( self::save_external_row( 'trustpilot', $data, $context ) ) {
+					++$saved;
+				}
+			}
+			$page_token = (string) ( $response['nextPageToken'] ?? '' );
+			++$guard;
+		} while ( '' !== $page_token && $guard < 500 );
+
+		update_option( 'mdo_trustpilot_review_source', 'trustpilot_official_api', false );
+		update_option( 'mdo_trustpilot_review_source_url', self::TRUSTPILOT_PROFILE_URL, false );
+
+		return array(
+			'found' => $found,
+			'saved' => $saved,
+			'expected' => $expected,
+			'complete' => $expected > 0 ? $found >= $expected : true,
+			'provider' => 'trustpilot_business_units_api',
+			'configured' => true,
+		);
+	}
+
+	private static function api_json( string $url, array $headers = array() ) {
+		$response = wp_remote_get(
+			$url,
+			array(
+				'timeout' => 30,
+				'redirection' => 3,
+				'headers' => $headers,
+			)
+		);
+		if ( is_wp_error( $response ) ) {
+			return new WP_Error( 'api_transport_error', $response->get_error_message() );
+		}
+		$status = (int) wp_remote_retrieve_response_code( $response );
+		$body = json_decode( (string) wp_remote_retrieve_body( $response ), true );
+		if ( $status < 200 || $status >= 300 ) {
+			return new WP_Error( 'api_http_' . $status, 'La API oficial ha respondido con HTTP ' . $status . '.', array( 'status' => $status ) );
+		}
+		if ( ! is_array( $body ) ) {
+			return new WP_Error( 'api_invalid_json', 'La API oficial no ha devuelto JSON válido.' );
+		}
+		return $body;
+	}
+
+	private static function config_value( string $constant, string $option ): string {
+		if ( defined( $constant ) ) {
+			$value = constant( $constant );
+			if ( is_scalar( $value ) && '' !== trim( (string) $value ) ) {
+				return trim( (string) $value );
+			}
+		}
+		$env = getenv( $constant );
+		if ( false !== $env && '' !== trim( (string) $env ) ) {
+			return trim( (string) $env );
+		}
+		$value = get_option( $option, '' );
+		return is_scalar( $value ) ? trim( (string) $value ) : '';
+	}
+
+	private static function clean_resource_id( string $value, string $prefix ): string {
+		$value = trim( $value );
+		if ( 0 === strpos( $value, $prefix ) ) {
+			$value = substr( $value, strlen( $prefix ) );
+		}
+		return trim( $value, '/' );
+	}
+
+	private static function google_star_rating( $value ): int {
+		if ( is_numeric( $value ) ) {
+			return max( 1, min( 5, (int) round( (float) $value ) ) );
+		}
+		$map = array( 'ONE' => 1, 'TWO' => 2, 'THREE' => 3, 'FOUR' => 4, 'FIVE' => 5 );
+		return (int) ( $map[ strtoupper( (string) $value ) ] ?? 0 );
 	}
 
 	private static function normalize_source_date( $value ): ?string {
@@ -295,9 +456,19 @@ final class MDO_Reviews_Integration {
 		return (bool) self::invoke_reviews_private( 'upsert_review', array( $source, $assigned ) );
 	}
 
-	private static function fallback_cached_source( string $source, array $options, array $context ): array {
-		$result = self::invoke_reviews_private( 'import_cached_source', array( $source, $options, $context ) );
-		return is_array( $result ) ? $result : array( 'found' => 0, 'saved' => 0, 'provider' => 'cached_option' );
+	private static function error_stats( string $provider, WP_Error $error, int $found = 0, int $saved = 0, int $expected = 0 ): array {
+		$result = array(
+			'found' => $found,
+			'saved' => $saved,
+			'provider' => $provider,
+			'configured' => ! in_array( $error->get_error_code(), array( 'missing_google_oauth', 'missing_trustpilot_api_key' ), true ),
+			'error' => $error->get_error_code(),
+		);
+		if ( $expected > 0 ) {
+			$result['expected'] = $expected;
+			$result['complete'] = false;
+		}
+		return $result;
 	}
 
 	public static function ensure_schedule(): void {
@@ -305,7 +476,6 @@ final class MDO_Reviews_Integration {
 		$existing = self::next_scheduled_timestamp();
 		$wrong_slot = $existing > 0 && '02:30' !== wp_date( 'H:i', $existing );
 		$needs_reset = self::SCHEDULE_VERSION !== $version || $wrong_slot;
-
 		if ( $needs_reset ) {
 			if ( function_exists( 'as_unschedule_all_actions' ) ) {
 				as_unschedule_all_actions( self::CRON_HOOK, array(), self::GROUP );
@@ -313,7 +483,6 @@ final class MDO_Reviews_Integration {
 			wp_clear_scheduled_hook( self::CRON_HOOK );
 			$existing = 0;
 		}
-
 		$next = self::next_two_thirty_timestamp();
 		if ( function_exists( 'as_has_scheduled_action' ) && function_exists( 'as_schedule_recurring_action' ) ) {
 			if ( $existing <= 0 && ! as_has_scheduled_action( self::CRON_HOOK, array(), self::GROUP ) ) {
@@ -322,7 +491,6 @@ final class MDO_Reviews_Integration {
 		} elseif ( $existing <= 0 && ! wp_next_scheduled( self::CRON_HOOK ) ) {
 			wp_schedule_event( $next, 'daily', self::CRON_HOOK );
 		}
-
 		if ( $needs_reset || self::SCHEDULE_VERSION !== $version ) {
 			update_option( 'mdo_reviews_external_schedule_version', self::SCHEDULE_VERSION, false );
 		}
@@ -376,7 +544,7 @@ final class MDO_Reviews_Integration {
 			}
 			return $reflection->invokeArgs( null, $args );
 		} catch ( Throwable $error ) {
-			error_log( '[EMDO reviews] Error en importación externa: ' . $method . ' - ' . $error->getMessage() );
+			error_log( '[EMDO reviews] Error en integración: ' . $method . ' - ' . $error->getMessage() );
 			return null;
 		}
 	}
