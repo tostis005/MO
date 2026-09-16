@@ -6,20 +6,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * Public vendor reviews UI owned by EMDO.
- *
- * WCFM keeps providing the vendor-store shell, but EMDO owns the reviews
- * endpoint and content so the native WCFM "no reviews" state cannot conflict
- * with the unified review table.
  */
 final class MDO_Reviews_Public {
 	private const QUERY_VAR = 'mdo_reviews';
 	private const TAB_KEY = 'mdo_reviews';
 	private const ENDPOINT = 'reviews';
-	private const ROUTE_VERSION = '2.0.1';
+	private const ROUTE_VERSION = '2.1.0';
 	private const ROUTE_OPTION = 'mdo_reviews_public_route_version';
+	private const PAGE_SIZE = 10;
 
 	public static function init(): void {
-		// Retire the previous bridge to the native WCFM reviews tab/template.
 		remove_filter( 'wcfmmp_store_tabs', array( 'MDO_Reviews_Integration', 'store_tabs' ), 999 );
 		remove_action( 'wcfmmp_rewrite_rules_loaded', array( 'MDO_Reviews_Route', 'rewrite_rules' ), 50 );
 		remove_filter( 'query_vars', array( 'MDO_Reviews_Route', 'query_vars' ), 50 );
@@ -33,14 +29,11 @@ final class MDO_Reviews_Public {
 		add_filter( 'query_vars', array( __CLASS__, 'query_vars' ), 60 );
 		add_filter( 'wcfmmp_store_tabs', array( __CLASS__, 'store_tabs' ), 1000, 2 );
 		add_filter( 'wcfmp_store_tabs_url', array( __CLASS__, 'store_tab_url' ), 1000, 2 );
-
-		// WCFM 3.8.x uses both spellings while resolving a custom store tab.
 		add_filter( 'wcfmp_store_default_query_vars', array( __CLASS__, 'default_query_var' ), 60, 3 );
 		add_filter( 'wcfmmp_store_default_query_vars', array( __CLASS__, 'default_query_var' ), 60, 3 );
 		add_filter( 'wcfmp_store_default_template', array( __CLASS__, 'default_template' ), 60, 2 );
 		add_filter( 'wcfmmp_store_default_template', array( __CLASS__, 'default_template' ), 60, 2 );
 		add_filter( 'wcfmp_store_default_template_path', array( __CLASS__, 'default_template_path' ), 60, 2 );
-
 		add_action( 'wp_loaded', array( __CLASS__, 'maybe_flush_rewrite_rules' ), 100 );
 	}
 
@@ -49,12 +42,7 @@ final class MDO_Reviews_Public {
 		if ( '' === $base ) {
 			return;
 		}
-
-		add_rewrite_rule(
-			$base . '/([^/]+)/' . self::ENDPOINT . '/?$',
-			'index.php?' . $base . '=$matches[1]&' . self::QUERY_VAR . '=1',
-			'top'
-		);
+		add_rewrite_rule( $base . '/([^/]+)/' . self::ENDPOINT . '/?$', 'index.php?' . $base . '=$matches[1]&' . self::QUERY_VAR . '=1', 'top' );
 	}
 
 	public static function query_vars( array $vars ): array {
@@ -87,31 +75,20 @@ final class MDO_Reviews_Public {
 		if ( self::TAB_KEY !== $tab ) {
 			return $store_tab_url;
 		}
-
-		// Be defensive if a previous filter has already appended /reviews.
 		$store_tab_url = preg_replace( '~/' . preg_quote( self::ENDPOINT, '~' ) . '/?$~', '/', $store_tab_url );
 		return trailingslashit( (string) $store_tab_url ) . self::ENDPOINT . '/';
 	}
 
 	public static function default_query_var( $query_var, ...$unused ) {
-		if ( get_query_var( self::QUERY_VAR ) ) {
-			return self::TAB_KEY;
-		}
-		return $query_var;
+		return get_query_var( self::QUERY_VAR ) ? self::TAB_KEY : $query_var;
 	}
 
 	public static function default_template( $template, $tab ) {
-		if ( self::TAB_KEY === $tab ) {
-			return 'store/wcfmmp-view-store-mdo-reviews.php';
-		}
-		return $template;
+		return self::TAB_KEY === $tab ? 'store/wcfmmp-view-store-mdo-reviews.php' : $template;
 	}
 
 	public static function default_template_path( $template_path, $tab ) {
-		if ( self::TAB_KEY === $tab ) {
-			return trailingslashit( MDO_SUPPLIER_SYNC_PATH . 'templates' );
-		}
-		return $template_path;
+		return self::TAB_KEY === $tab ? trailingslashit( MDO_SUPPLIER_SYNC_PATH . 'templates' ) : $template_path;
 	}
 
 	public static function render_current_store(): void {
@@ -119,12 +96,14 @@ final class MDO_Reviews_Public {
 		if ( $vendor_id < 1 ) {
 			return;
 		}
-
 		global $wpdb;
 		$table = MDO_Database::table( 'reviews' );
+		$vendor_sql = MDO_Reviews_Vendors::review_matches_vendor_sql( 'r' );
 		$summary = $wpdb->get_row(
 			$wpdb->prepare(
-				"SELECT COUNT(*) AS total, AVG(rating) AS average_rating FROM {$table} WHERE status='validated' AND vendor_user_id=%d AND rating>0",
+				"SELECT COUNT(*) AS total, AVG(r.rating) AS average_rating FROM {$table} r WHERE r.status='validated' AND r.rating>0 AND {$vendor_sql}",
+				$vendor_id,
+				$vendor_id,
 				$vendor_id
 			),
 			ARRAY_A
@@ -134,14 +113,104 @@ final class MDO_Reviews_Public {
 
 		echo '<div class="mdo-reviews-page">';
 		echo '<h2 class="mdo-reviews-page-title">' . esc_html__( 'Reseñas', 'mdo-supplier-sync' ) . '</h2>';
-
 		if ( $total > 0 ) {
 			self::render_summary( $average, $total );
-			MDO_Reviews::render_store_reviews( $vendor_id );
+			self::render_reviews( $vendor_id, $total );
 		} else {
 			echo '<p class="mdo-reviews-empty">' . esc_html__( 'Todavía no hay reseñas publicadas para esta tienda.', 'mdo-supplier-sync' ) . '</p>';
 		}
 		echo '</div>';
+	}
+
+	private static function render_reviews( int $vendor_id, int $total ): void {
+		global $wpdb;
+		$table = MDO_Database::table( 'reviews' );
+		$page = max( 1, absint( $_GET['mdo_review_page'] ?? 1 ) );
+		$offset = ( $page - 1 ) * self::PAGE_SIZE;
+		$vendor_sql = MDO_Reviews_Vendors::review_matches_vendor_sql( 'r' );
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT r.* FROM {$table} r WHERE r.status='validated' AND {$vendor_sql} ORDER BY (r.review_date IS NULL) ASC,r.review_date DESC,r.id DESC LIMIT %d OFFSET %d",
+				$vendor_id,
+				$vendor_id,
+				$vendor_id,
+				self::PAGE_SIZE,
+				$offset
+			)
+		);
+		if ( ! $rows ) {
+			return;
+		}
+		echo '<style>.bd_review_section>.review_section,.bd_review_section>.pagination{display:none!important}</style><div class="mdo-store-reviews" aria-label="Reseñas de la tienda">';
+		foreach ( $rows as $row ) {
+			self::render_review( $row );
+		}
+		$pages = (int) ceil( $total / self::PAGE_SIZE );
+		if ( $pages > 1 ) {
+			$base_url = remove_query_arg( 'mdo_review_page' );
+			echo '<nav class="mdo-review-pagination" aria-label="Paginación de reseñas">';
+			for ( $i = 1; $i <= $pages; $i++ ) {
+				$url = 1 === $i ? $base_url : add_query_arg( 'mdo_review_page', $i, $base_url );
+				echo '<a class="' . ( $i === $page ? 'is-current' : '' ) . '" href="' . esc_url( $url ) . '#reviews">' . esc_html( (string) $i ) . '</a>';
+			}
+			echo '</nav>';
+		}
+		echo '</div>';
+	}
+
+	private static function render_review( $row ): void {
+		$name = $row->author_name ?: 'Cliente';
+		$initial = function_exists( 'mb_substr' ) ? mb_substr( $name, 0, 1, 'UTF-8' ) : substr( $name, 0, 1 );
+		echo '<article class="mdo-store-review"><div class="mdo-store-review-avatar">';
+		if ( $row->author_avatar_url ) {
+			echo '<img src="' . esc_url( $row->author_avatar_url ) . '" alt="">';
+		} else {
+			echo '<span>' . esc_html( strtoupper( $initial ) ) . '</span>';
+		}
+		echo '</div><div class="mdo-store-review-body"><div class="mdo-store-review-head"><strong>' . esc_html( $name ) . '</strong>' . self::source_badge( $row ) . '</div><div class="mdo-store-review-meta">' . wp_kses_post( self::stars( (int) $row->rating ) ) . '<span>' . esc_html( self::format_date( $row->review_date ) ) . '</span></div>';
+		if ( $row->review_title ) {
+			echo '<h4>' . esc_html( $row->review_title ) . '</h4>';
+		}
+		echo '<div class="mdo-store-review-text">' . wpautop( wp_kses_post( $row->review_text ) ) . '</div>';
+		echo '</div></article>';
+	}
+
+	private static function source_badge( $row ): string {
+		$label = self::source_label( (string) $row->source );
+		$badge = '<span class="mdo-source-badge">' . esc_html( $label ) . '</span>';
+		if ( in_array( (string) $row->source, array( 'google', 'trustpilot', 'forocoches' ), true ) && ! empty( $row->source_url ) ) {
+			return '<a class="mdo-source-link" href="' . esc_url( $row->source_url ) . '" target="_blank" rel="noopener noreferrer" aria-label="Ver reseña original en ' . esc_attr( $label ) . '">' . $badge . '</a>';
+		}
+		return $badge;
+	}
+
+	private static function source_label( string $source ): string {
+		$labels = array(
+			'woocommerce_product' => 'EMDO',
+			'wcfm' => 'EMDO',
+			'external' => 'EMDO',
+			'google' => 'Google',
+			'trustpilot' => 'Trustpilot',
+			'forocoches' => 'Foro Coches',
+		);
+		return $labels[ $source ] ?? ucfirst( str_replace( '_', ' ', $source ) );
+	}
+
+	private static function stars( int $rating ): string {
+		$rating = max( 0, min( 5, $rating ) );
+		$out = '<span class="mdo-stars" aria-label="' . esc_attr( sprintf( '%d de 5 estrellas', $rating ) ) . '">';
+		for ( $i = 1; $i <= 5; $i++ ) {
+			$out .= '<span class="' . ( $i <= $rating ? 'is-filled' : '' ) . '" aria-hidden="true">★</span>';
+		}
+		return $out . '</span>';
+	}
+
+	private static function format_date( $date ): string {
+		if ( ! $date ) {
+			return 'Sin fecha';
+		}
+		$timestamp = strtotime( (string) $date );
+		return $timestamp ? wp_date( 'd/m/Y', $timestamp ) : 'Sin fecha';
 	}
 
 	private static function render_summary( float $average, int $total ): void {
@@ -149,22 +218,9 @@ final class MDO_Reviews_Public {
 		$filled = ( $average / 5 ) * 100;
 		$average_label = number_format_i18n( $average, 1 );
 		$rating_label = sprintf( __( '%s sobre 5', 'mdo-supplier-sync' ), $average_label );
-		$count_label = sprintf(
-			_n( '%s reseña', '%s reseñas', $total, 'mdo-supplier-sync' ),
-			number_format_i18n( $total )
-		);
-
+		$count_label = sprintf( _n( '%s reseña', '%s reseñas', $total, 'mdo-supplier-sync' ), number_format_i18n( $total ) );
 		echo '<section class="mdo-review-summary" aria-label="' . esc_attr( $rating_label . ', ' . $count_label ) . '">';
-		echo '<div class="mdo-review-summary-score">' . esc_html( $average_label ) . '</div>';
-		echo '<div class="mdo-review-summary-body">';
-		echo '<div class="mdo-review-summary-stars" aria-hidden="true">';
-		echo '<span class="mdo-review-summary-stars-base">★★★★★</span>';
-		echo '<span class="mdo-review-summary-stars-fill" style="width:' . esc_attr( number_format( $filled, 2, '.', '' ) ) . '%">★★★★★</span>';
-		echo '</div>';
-		echo '<div class="mdo-review-summary-rating"><strong>' . esc_html( $rating_label ) . '</strong></div>';
-		echo '<div class="mdo-review-summary-count">' . esc_html( $count_label ) . '</div>';
-		echo '</div>';
-		echo '</section>';
+		echo '<div class="mdo-review-summary-score">' . esc_html( $average_label ) . '</div><div class="mdo-review-summary-body"><div class="mdo-review-summary-stars" aria-hidden="true"><span class="mdo-review-summary-stars-base">★★★★★</span><span class="mdo-review-summary-stars-fill" style="width:' . esc_attr( number_format( $filled, 2, '.', '' ) ) . '%">★★★★★</span></div><div class="mdo-review-summary-rating"><strong>' . esc_html( $rating_label ) . '</strong></div><div class="mdo-review-summary-count">' . esc_html( $count_label ) . '</div></div></section>';
 	}
 
 	private static function current_vendor_id(): int {
