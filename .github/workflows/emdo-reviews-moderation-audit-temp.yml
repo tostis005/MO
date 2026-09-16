@@ -1,5 +1,6 @@
 name: EMDO reviews moderation audit temp
 
+# Rerun after EMDO 1.0.45 refinement.
 on:
   push:
     branches: [main]
@@ -66,19 +67,21 @@ jobs:
             'legacy_google' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE source='google' AND (source_review_id IS NULL OR source_review_id NOT LIKE 'trustindex-%')" ),
             'canonical_google' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE source='google' AND source_review_id LIKE 'trustindex-%'" ),
             'trustpilot' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE source='trustpilot'" ),
-            'woo' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE source='woocommerce'" ),
             'duplicate_source_keys' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM (SELECT source_key FROM {$table} WHERE source_key IS NOT NULL AND source_key<>'' GROUP BY source_key HAVING COUNT(*)>1) x" ),
             'duplicate_fingerprints' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM (SELECT content_fingerprint FROM {$table} WHERE content_fingerprint IS NOT NULL AND content_fingerprint<>'' GROUP BY content_fingerprint HAVING COUNT(*)>1) x" ),
           );
           echo 'POST_AUDIT=' . wp_json_encode( $counts, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
           $migration = get_option( 'mdo_reviews_moderation_last_run', array() );
           echo 'MODERATION_RUN=' . wp_json_encode( $migration, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
-
-          $samples = $wpdb->get_results( "SELECT id,suggested_vendor_user_id,author_name,rating,review_text,assignment_confidence,assignment_reason FROM {$table} WHERE validation_method='ai_suggestion' AND status='pending' ORDER BY suggested_vendor_user_id,id ASC LIMIT 30", ARRAY_A );
-          foreach ( (array) $samples as $row ) {
-            $row['review_text'] = wp_strip_all_tags( (string) $row['review_text'] );
-            echo 'AI_SAMPLE=' . wp_json_encode( $row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
+          foreach ( array( 438, 503, 568, 810 ) as $id ) {
+            $row = $wpdb->get_row( $wpdb->prepare( "SELECT id,status,vendor_user_id,suggested_vendor_user_id,validation_method,review_text,assignment_reason FROM {$table} WHERE id=%d", $id ), ARRAY_A );
+            if ( $row ) {
+              $row['review_text'] = wp_strip_all_tags( (string) $row['review_text'] );
+              echo 'SPOT=' . wp_json_encode( $row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
+            }
           }
+          $summary = $wpdb->get_row( "SELECT COUNT(*) AS total, AVG(rating) AS avg_rating FROM {$table} WHERE status='validated' AND vendor_user_id=6 AND rating>0", ARRAY_A );
+          echo 'HIDALGO_SUMMARY=' . wp_json_encode( $summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
           PHP
           "$php_bin" -d memory_limit=512M "$wp_bin" eval-file /tmp/emdo-reviews-moderation-post-audit.php --path="$PROD_PATH" --allow-root
           rm -f /tmp/emdo-reviews-moderation-post-audit.php
@@ -94,11 +97,11 @@ jobs:
           html=$(curl -fsSL --max-time 45 -H 'Cache-Control: no-cache' "$URL")
           code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 45 -H 'Cache-Control: no-cache' "$URL")
           printf 'PUBLIC_HTTP=%s\n' "$code"
-          printf '%s' "$html" | grep -q 'mdo-reviews-page'
-          printf '%s' "$html" | grep -q 'mdo-review-summary'
-          printf '%s' "$html" | grep -q 'sobre 5'
-          printf '%s' "$html" | grep -Eqi '[0-9]+[[:space:]]+(reseñas|opiniones)'
-          if printf '%s' "$html" | grep -Eqi 'no tiene reseñas|no hay reseñas|has no reviews|no reviews found'; then
+          grep -q 'mdo-reviews-page' <<<"$html"
+          grep -q 'mdo-review-summary' <<<"$html"
+          grep -q 'sobre 5' <<<"$html"
+          grep -Eqi '[0-9]+[[:space:]]+reseña(s)?' <<<"$html"
+          if grep -Eqi 'no tiene reseñas|no hay reseñas|has no reviews|no reviews found' <<<"$html"; then
             echo 'NATIVE_EMPTY_MESSAGE=FOUND'
             exit 41
           fi
