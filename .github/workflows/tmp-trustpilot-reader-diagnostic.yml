@@ -1,4 +1,4 @@
-name: Temporary Trustindex Google DOM diagnostic
+name: Temporary EMDO review dedupe diagnostic
 
 on:
   push:
@@ -12,37 +12,53 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-24.04
-    timeout-minutes: 6
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect current Trustindex review card DOM
+      - name: Audit production review collisions
         shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          npm init -y >/dev/null 2>&1
-          npm install --no-save playwright@1.55.0 >/dev/null 2>&1
-          test -x /usr/bin/google-chrome || test -x /usr/bin/google-chrome-stable || npx playwright install chromium >/dev/null 2>&1
-          node <<'JS'
-          const { chromium } = require('playwright');
-          (async () => {
-            const executablePath = ['/usr/bin/google-chrome','/usr/bin/google-chrome-stable','/usr/bin/chromium'].find(p => require('fs').existsSync(p));
-            const browser = await chromium.launch(executablePath ? { headless:true, executablePath, args:['--no-sandbox','--disable-dev-shm-usage'] } : { headless:true });
-            const page = await browser.newPage({ userAgent:'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36' });
-            await page.goto('https://www.trustindex.io/reviews/www.elmercadodeorigen.com', {waitUntil:'domcontentloaded', timeout:90000});
-            await page.waitForTimeout(1200);
-            const result = await page.evaluate(() => {
-              const card = document.querySelector('.ti-review-item.source-Google, .ti-review-item');
-              const named = Array.from(document.querySelectorAll('body *')).find(el => (el.textContent || '').trim() === 'Daviz Vázquez');
-              const classHits = card ? Array.from(card.querySelectorAll('*')).filter(el => /Daviz Vázquez|2026\.07\.12/.test((el.textContent || '').trim())).slice(0,20).map(el => ({tag:el.tagName, cls:el.className, text:(el.textContent||'').trim().slice(0,160)})) : [];
-              return {
-                cardClass: card?.className || '',
-                cardText: (card?.innerText || card?.textContent || '').replace(/\s+/g,' ').trim().slice(0,1200),
-                cardHtml: (card?.outerHTML || '').slice(0,8000),
-                exactName: named ? {tag:named.tagName, cls:named.className, parentTag:named.parentElement?.tagName || '', parentClass:named.parentElement?.className || ''} : null,
-                classHits,
-              };
-            });
-            console.log('TRUSTINDEX_DOM='+JSON.stringify(result));
-            await browser.close();
-          })().catch(err => { console.error(err); process.exit(1); });
-          JS
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH'" <<'REMOTE'
+          set -euo pipefail
+          PROD_PATH="$1"
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          prefix=$("$php_bin" -d memory_limit=512M "$wp_bin" db prefix --path="$PROD_PATH" --allow-root)
+          table="${prefix}mdo_reviews"
+          echo '=== SOURCE COUNTS ==='
+          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT source,COUNT(*) total FROM ${table} GROUP BY source ORDER BY source" --skip-column-names --path="$PROD_PATH" --allow-root
+          echo '=== GOOGLE ID FAMILIES ==='
+          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT CASE WHEN source_review_id LIKE 'trustindex-%' THEN 'trustindex' WHEN source_review_id IS NULL OR source_review_id='' THEN 'empty' ELSE 'legacy' END family,COUNT(*) total FROM ${table} WHERE source='google' GROUP BY family ORDER BY family" --skip-column-names --path="$PROD_PATH" --allow-root
+          echo '=== DUPLICATE FINGERPRINT GROUPS ==='
+          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT LEFT(content_fingerprint,16) fp,COUNT(*) c,GROUP_CONCAT(CONCAT(id,':',source,':',COALESCE(source_review_id,''),':p',COALESCE(wc_product_id,0),':v',COALESCE(vendor_user_id,0),':',status,':',COALESCE(validation_method,''),':',COALESCE(DATE(review_date),'0000-00-00')) ORDER BY id SEPARATOR ' | ') rowspec FROM ${table} WHERE content_fingerprint IS NOT NULL AND content_fingerprint<>'' GROUP BY content_fingerprint HAVING COUNT(*)>1 ORDER BY c DESC,fp" --skip-column-names --path="$PROD_PATH" --allow-root
+          echo '=== CROSS SOURCE FINGERPRINT GROUPS ==='
+          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT LEFT(content_fingerprint,16) fp,COUNT(*) c,COUNT(DISTINCT source) sources,GROUP_CONCAT(DISTINCT source ORDER BY source SEPARATOR ',') source_list,GROUP_CONCAT(CONCAT(id,':',source,':',COALESCE(source_review_id,''),':p',COALESCE(wc_product_id,0),':v',COALESCE(vendor_user_id,0),':',status) ORDER BY id SEPARATOR ' | ') rowspec FROM ${table} WHERE content_fingerprint IS NOT NULL AND content_fingerprint<>'' GROUP BY content_fingerprint HAVING COUNT(DISTINCT source)>1 ORDER BY c DESC,fp" --skip-column-names --path="$PROD_PATH" --allow-root
+          echo '=== LEGACY GOOGLE ROWS ==='
+          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT id,COALESCE(source_review_id,''),rating,COALESCE(DATE(review_date),'0000-00-00'),LENGTH(COALESCE(review_text,'')),LEFT(content_fingerprint,16),status,COALESCE(validation_method,'') FROM ${table} WHERE source='google' AND (source_review_id NOT LIKE 'trustindex-%' OR source_review_id IS NULL) ORDER BY id" --skip-column-names --path="$PROD_PATH" --allow-root
+          REMOTE
