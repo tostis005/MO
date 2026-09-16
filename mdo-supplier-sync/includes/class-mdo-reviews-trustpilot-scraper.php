@@ -195,7 +195,9 @@ final class MDO_Reviews_Trustpilot_Scraper {
 				'redirection' => 3,
 				'headers' => array(
 					'Accept' => 'application/json',
+					'X-Engine' => 'browser',
 					'X-Respond-With' => 'html',
+					'X-Target-Selector' => 'script#__NEXT_DATA__',
 					'X-No-Cache' => 'true',
 					'X-Timeout' => '35',
 				),
@@ -214,17 +216,35 @@ final class MDO_Reviews_Trustpilot_Scraper {
 		if ( is_array( $decoded ) ) {
 			$html = (string) ( $decoded['data']['content'] ?? $decoded['content'] ?? '' );
 		}
-		if ( '' === $html && false !== stripos( $body, '<html' ) ) {
+		if ( '' === $html && false !== stripos( $body, '__NEXT_DATA__' ) ) {
 			$html = $body;
 		}
 		if ( '' === $html ) {
-			return new WP_Error( 'mdo_trustpilot_jina_empty', 'Jina Reader no devolvió HTML utilizable para Trustpilot página ' . $page_number . '.' );
+			return new WP_Error( 'mdo_trustpilot_jina_empty', 'Jina Reader no devolvió el bloque SSR de Trustpilot página ' . $page_number . '.' );
 		}
+
 		$data = self::extract_next_data( $html );
 		if ( is_wp_error( $data ) ) {
-			return new WP_Error( 'mdo_trustpilot_jina_next_data', 'Jina Reader no conservó __NEXT_DATA__ en Trustpilot página ' . $page_number . '.' );
+			$data = self::decode_next_data_fragment( $html );
+		}
+		if ( is_wp_error( $data ) ) {
+			return new WP_Error( 'mdo_trustpilot_jina_next_data', 'Jina Reader no devolvió __NEXT_DATA__ utilizable en Trustpilot página ' . $page_number . '.' );
 		}
 		return array( 'profile_url' => self::PROFILE_ES, 'transport' => 'jina_reader', 'data' => $data );
+	}
+
+	/** @return array|WP_Error */
+	private static function decode_next_data_fragment( string $fragment ) {
+		$fragment = trim( $fragment );
+		if ( preg_match( '#<script[^>]*>(.*?)</script>#is', $fragment, $matches ) ) {
+			$fragment = trim( $matches[1] );
+		}
+		$fragment = html_entity_decode( $fragment, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+		$data = json_decode( $fragment, true );
+		if ( ! is_array( $data ) || JSON_ERROR_NONE !== json_last_error() ) {
+			return new WP_Error( 'mdo_trustpilot_fragment_json', 'El fragmento __NEXT_DATA__ no es JSON válido.' );
+		}
+		return $data;
 	}
 
 	/** @return array|WP_Error */
