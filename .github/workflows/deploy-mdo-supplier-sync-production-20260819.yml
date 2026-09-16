@@ -28,15 +28,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate rollback plugin PHP
+      - name: Validate EMDO PHP
         shell: bash
         run: |
           set -euo pipefail
           find mdo-supplier-sync -type f -name '*.php' -print0 | xargs -0 -n1 php -l
-          ! test -f mdo-supplier-sync/includes/class-mdo-home-specials.php
-          ! test -f mdo-supplier-sync/assets/css/home-specials.css
 
-      - name: Deploy rollback and verify production
+      - name: Deploy and verify EMDO production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -44,6 +42,8 @@ jobs:
           set -euo pipefail
 
           EXPECTED_VERSION="$(sed -n 's/^ \* Version: //p' mdo-supplier-sync/mdo-supplier-sync.php | head -n1 | tr -d '\r')"
+          LOCAL_MAIN_SHA="$(sha256sum mdo-supplier-sync/mdo-supplier-sync.php | awk '{print $1}')"
+          LOCAL_TP_SHA="$(sha256sum mdo-supplier-sync/includes/class-mdo-reviews-trustpilot-scraper.php | awk '{print $1}')"
           test -n "$EXPECTED_VERSION"
           test -n "${STAGING_HOST:-}"
           test -n "${STAGING_USER:-}"
@@ -73,14 +73,17 @@ jobs:
           test -n "$PROD_PATH"
 
           REMOTE_ARCHIVE="/tmp/mdo-supplier-sync-${GITHUB_RUN_ID}.tar.gz"
-          tar -czf /tmp/mdo-supplier-sync.tar.gz mdo-supplier-sync
-          sshpass -e scp $SCP_OPTIONS /tmp/mdo-supplier-sync.tar.gz "$STAGING_USER@$STAGING_HOST:$REMOTE_ARCHIVE"
+          LOCAL_ARCHIVE="/tmp/mdo-supplier-sync-${GITHUB_RUN_ID}.tar.gz"
+          tar -czf "$LOCAL_ARCHIVE" mdo-supplier-sync
+          sshpass -e scp $SCP_OPTIONS "$LOCAL_ARCHIVE" "$STAGING_USER@$STAGING_HOST:$REMOTE_ARCHIVE"
 
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH' '$REMOTE_ARCHIVE' '$EXPECTED_VERSION'" <<'REMOTE'
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH' '$REMOTE_ARCHIVE' '$EXPECTED_VERSION' '$LOCAL_MAIN_SHA' '$LOCAL_TP_SHA'" <<'REMOTE'
           set -euo pipefail
           PROD_PATH="$1"
           REMOTE_ARCHIVE="$2"
           EXPECTED_VERSION="$3"
+          EXPECTED_MAIN_SHA="$4"
+          EXPECTED_TP_SHA="$5"
 
           wp_bin=$(command -v wp || true)
           php_bin=$(command -v php || true)
@@ -88,101 +91,34 @@ jobs:
           test -n "$wp_bin"
           test -n "$php_bin"
 
-          PLUGIN_PATH="$PROD_PATH/wp-content/plugins/mdo-supplier-sync"
+          PLUGIN_DIR="$PROD_PATH/wp-content/plugins/mdo-supplier-sync"
           mkdir -p "$PROD_PATH/wp-content/plugins"
+          rm -rf "$PLUGIN_DIR"
           tar -xzf "$REMOTE_ARCHIVE" -C "$PROD_PATH/wp-content/plugins"
           rm -f "$REMOTE_ARCHIVE"
 
-          rm -f "$PLUGIN_PATH/includes/class-mdo-home-specials.php"
-          rm -f "$PLUGIN_PATH/assets/css/home-specials.css"
+          find "$PLUGIN_DIR" -type f -name '*.php' -print0 | xargs -0 -n1 "$php_bin" -l >/dev/null
+          test "$(sha256sum "$PLUGIN_DIR/mdo-supplier-sync.php" | awk '{print $1}')" = "$EXPECTED_MAIN_SHA"
+          test "$(sha256sum "$PLUGIN_DIR/includes/class-mdo-reviews-trustpilot-scraper.php" | awk '{print $1}')" = "$EXPECTED_TP_SHA"
 
-          "$php_bin" -l "$PLUGIN_PATH/mdo-supplier-sync.php" >/dev/null
           deployed_version=$("$php_bin" -d memory_limit=512M "$wp_bin" plugin get mdo-supplier-sync --field=version --path="$PROD_PATH" --allow-root)
           plugin_status=$("$php_bin" -d memory_limit=512M "$wp_bin" plugin get mdo-supplier-sync --field=status --path="$PROD_PATH" --allow-root)
           test "$deployed_version" = "$EXPECTED_VERSION"
           test "$plugin_status" = 'active'
 
-          echo '=== EMDO REVIEW DIAGNOSTICS BEGIN ==='
-          "$php_bin" -d memory_limit=512M "$wp_bin" eval '$stats = MDO_Reviews_Integration::import_external(); echo "EXTERNAL_IMPORT_STATS=" . wp_json_encode( $stats ) . PHP_EOL;' --path="$PROD_PATH" --allow-root
-          prefix=$("$php_bin" -d memory_limit=512M "$wp_bin" db prefix --path="$PROD_PATH" --allow-root)
-          echo '-- EMDO review counts --'
-          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT source, COALESCE(NULLIF(TRIM(status),''),'EMPTY') AS review_status, COUNT(*) AS total FROM ${prefix}mdo_reviews GROUP BY source, review_status ORDER BY source, review_status" --skip-column-names --path="$PROD_PATH" --allow-root || true
-          echo '-- validation methods --'
-          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT COALESCE(NULLIF(validation_method,''),'NONE') AS method, status, COUNT(*) FROM ${prefix}mdo_reviews GROUP BY method,status ORDER BY method,status" --skip-column-names --path="$PROD_PATH" --allow-root || true
-          echo '-- duplicate checks --'
-          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT source, COUNT(*) AS duplicate_groups FROM (SELECT source, source_key FROM ${prefix}mdo_reviews GROUP BY source, source_key HAVING COUNT(*)>1) d GROUP BY source" --skip-column-names --path="$PROD_PATH" --allow-root || true
-          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT source, COUNT(*) AS duplicate_fingerprints FROM (SELECT source, content_fingerprint FROM ${prefix}mdo_reviews WHERE content_fingerprint IS NOT NULL AND content_fingerprint<>'' GROUP BY source, content_fingerprint HAVING COUNT(*)>1) d GROUP BY source" --skip-column-names --path="$PROD_PATH" --allow-root || true
-          echo '-- Google local source counts --'
-          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT COUNT(*) AS all_rows, SUM(CASE WHEN hidden=0 THEN 1 ELSE 0 END) AS visible_rows, SUM(CASE WHEN hidden<>0 THEN 1 ELSE 0 END) AS hidden_rows FROM ${prefix}trustindex_google_reviews" --skip-column-names --path="$PROD_PATH" --allow-root || true
-          echo '-- GRP Google source --'
-          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT COUNT(*) FROM ${prefix}grp_google_review" --skip-column-names --path="$PROD_PATH" --allow-root || true
-          echo '-- safe source metadata --'
-          printf 'MDO_GOOGLE_COUNT='; "$php_bin" -d memory_limit=512M "$wp_bin" option get mdo_google_review_count --path="$PROD_PATH" --allow-root 2>/dev/null || true
-          printf 'MDO_TRUSTPILOT_COUNT='; "$php_bin" -d memory_limit=512M "$wp_bin" option get mdo_trustpilot_review_count --path="$PROD_PATH" --allow-root 2>/dev/null || true
-          printf 'MDO_TRUSTPILOT_RATING='; "$php_bin" -d memory_limit=512M "$wp_bin" option get mdo_trustpilot_rating --path="$PROD_PATH" --allow-root 2>/dev/null || true
-          printf 'MDO_TRUSTPILOT_SOURCE='; "$php_bin" -d memory_limit=512M "$wp_bin" option get mdo_trustpilot_review_source --path="$PROD_PATH" --allow-root 2>/dev/null || true
-          printf 'MDO_TRUSTPILOT_URL='; "$php_bin" -d memory_limit=512M "$wp_bin" option get mdo_trustpilot_review_source_url --path="$PROD_PATH" --allow-root 2>/dev/null || true
-          printf 'TRUSTPILOT_ACTIVE='; "$php_bin" -d memory_limit=512M "$wp_bin" option get trustindex-trustpilot-active --path="$PROD_PATH" --allow-root 2>/dev/null || true
-          echo '-- Trustpilot option inventory (names and sizes only) --'
-          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT option_name,LENGTH(option_value) FROM ${prefix}options WHERE option_name LIKE 'trustindex-trustpilot-%' ORDER BY option_name" --skip-column-names --path="$PROD_PATH" --allow-root || true
-          echo '-- Trustpilot provider shape (no values/tokens) --'
-          "$php_bin" -d memory_limit=512M "$wp_bin" eval 'global $trustindex_pm_trustpilot; $p = $trustindex_pm_trustpilot ?? null; echo "TP_PLUGIN_INSTANCE=" . ( is_object( $p ) ? get_class( $p ) : "NONE" ) . PHP_EOL; if ( is_object( $p ) && method_exists( $p, "get_option_name" ) ) { $on = (string) $p->get_option_name( "page-details" ); $pd = $on ? get_option( $on, null ) : null; echo "TP_PAGE_DETAILS_PRESENT=" . ( is_array( $pd ) ? "1" : "0" ) . PHP_EOL; if ( is_array( $pd ) ) { $safe_keys = array_values( array_diff( array_keys( $pd ), array( "access_token" ) ) ); sort( $safe_keys ); echo "TP_PAGE_KEYS=" . implode( ",", $safe_keys ) . PHP_EOL; echo "TP_HAS_ID=" . ( ! empty( $pd["id"] ) ? "1" : "0" ) . PHP_EOL; echo "TP_HAS_ACCESS_TOKEN=" . ( ! empty( $pd["access_token"] ) ? "1" : "0" ) . PHP_EOL; if ( ! empty( $pd["id"] ) && method_exists( $p, "download_noreg_reviews" ) ) { $raw = $p->download_noreg_reviews( $pd ); echo "TP_API_TYPE=" . gettype( $raw ) . PHP_EOL; if ( is_array( $raw ) ) { echo "TP_API_COUNT=" . count( $raw ) . PHP_EOL; $keys = array_keys( $raw ); echo "TP_API_KEYS=" . implode( ",", array_slice( array_map( "strval", $keys ), 0, 30 ) ) . PHP_EOL; foreach ( array_slice( $raw, 0, 10, true ) as $k => $v ) { echo "TP_API_ITEM_" . preg_replace( "/[^A-Za-z0-9_-]/", "_", (string) $k ) . "=" . gettype( $v ) . ( is_array( $v ) ? ":" . count( $v ) : "" ) . PHP_EOL; } } } } }' --path="$PROD_PATH" --allow-root || true
-          echo '-- installed review-related plugins --'
-          "$php_bin" -d memory_limit=512M "$wp_bin" plugin list --fields=name,status,version --format=csv --path="$PROD_PATH" --allow-root | grep -Ei '^(name|.*(trust|google|review).*)' || true
-          find "$PROD_PATH/wp-content/plugins" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | grep -Ei 'trust|google|review' | sort || true
-          echo '-- Trustpilot plugin DB/API implementation --'
-          grep -RniE --include='*.php' 'trustindex_trustpilot_reviews|CREATE TABLE|download_noreg_reviews|getPromoReviews|page.details|page_details' "$PROD_PATH/wp-content/plugins/review-widgets-for-trustpilot" | head -120 || true
-          echo '-- Trustpilot connection/search implementation --'
-          grep -RniE --include='*.php' --include='*.js' 'searchPage|search_page|findPage|find_page|page_details|page-details|admin\.trustindex\.io|trustindex\.io/api' "$PROD_PATH/wp-content/plugins/review-widgets-for-trustpilot" | head -220 || true
-          echo '-- Trustpilot get_noreg_list_reviews excerpt --'
-          sed -n '1438,1565p' "$PROD_PATH/wp-content/plugins/review-widgets-for-trustpilot/trustindex-plugin.class.php" || true
-          echo '-- Trustpilot download_noreg_reviews excerpt --'
-          sed -n '1840,1895p' "$PROD_PATH/wp-content/plugins/review-widgets-for-trustpilot/trustindex-plugin.class.php" || true
-          echo '-- Public review route verification --'
-          top_vendor=$("$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT r.vendor_user_id,u.user_nicename,COUNT(*) c FROM ${prefix}mdo_reviews r INNER JOIN ${prefix}users u ON u.ID=r.vendor_user_id WHERE r.status='validated' AND r.vendor_user_id IS NOT NULL GROUP BY r.vendor_user_id,u.user_nicename ORDER BY c DESC LIMIT 1" --skip-column-names --path="$PROD_PATH" --allow-root | head -n1 || true)
-          if [ -n "$top_vendor" ]; then
-            vendor_id=$(printf '%s' "$top_vendor" | awk '{print $1}')
-            vendor_slug=$(printf '%s' "$top_vendor" | awk '{print $2}')
-            vendor_count=$(printf '%s' "$top_vendor" | awk '{print $3}')
-            echo "PUBLIC_VENDOR_ID=$vendor_id"
-            echo "PUBLIC_VENDOR_SLUG=$vendor_slug"
-            echo "PUBLIC_VENDOR_VALIDATED=$vendor_count"
-            store_url="https://www.elmercadodeorigen.com/tienda/${vendor_slug}/"
-            reviews_url="${store_url}reviews/"
-            store_code=$(curl -k -L -sS --connect-timeout 5 --max-time 30 -o /tmp/mdo-store.html -w '%{http_code}' "$store_url")
-            reviews_code=$(curl -k -L -sS --connect-timeout 5 --max-time 30 -o /tmp/mdo-reviews.html -w '%{http_code}' "$reviews_url")
-            echo "PUBLIC_STORE_HTTP=$store_code"
-            echo "PUBLIC_REVIEWS_HTTP=$reviews_code"
-            echo "PUBLIC_TAB_LINK=$(grep -Eoc 'href=[\"'\'' ][^\"'\'' ]*/reviews/?[\"'\'' ]' /tmp/mdo-store.html || true)"
-            echo "PUBLIC_TAB_LABEL=$(grep -Eoc '>[[:space:]]*Reseñas[[:space:]]*<' /tmp/mdo-store.html || true)"
-            echo "PUBLIC_EMDO_LIST=$(grep -c 'mdo-store-reviews' /tmp/mdo-reviews.html || true)"
-            echo "PUBLIC_EMDO_REVIEW_ITEMS=$(grep -o 'mdo-store-review' /tmp/mdo-reviews.html | wc -l | tr -d ' ')"
-            echo "PUBLIC_PRODUCT_BADGE=$(grep -c '>Producto<' /tmp/mdo-reviews.html || true)"
-            test "$store_code" = '200'
-            test "$reviews_code" = '200'
-            grep -q 'mdo-store-reviews' /tmp/mdo-reviews.html
-          fi
-          echo '=== EMDO REVIEW DIAGNOSTICS END ==='
-
+          "$php_bin" -d memory_limit=512M "$wp_bin" rewrite flush --hard --path="$PROD_PATH" --allow-root >/dev/null
           "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$PROD_PATH" --allow-root >/dev/null || true
           if "$php_bin" -d memory_limit=512M "$wp_bin" plugin is-active wp-rocket --path="$PROD_PATH" --allow-root >/dev/null 2>&1; then
             "$php_bin" -d memory_limit=512M "$wp_bin" rocket clean --confirm --path="$PROD_PATH" --allow-root >/dev/null 2>&1 || true
           fi
 
-          cachebust=$(date +%s)
-          home_es=$(curl -k -L -sS --connect-timeout 5 --max-time 30 -o /tmp/home-es.html -w '%{http_code}' "https://www.elmercadodeorigen.com/?rollback=$cachebust")
-          home_en=$(curl -k -L -sS --connect-timeout 5 --max-time 30 -o /tmp/home-en.html -w '%{http_code}' "https://www.elmercadodeorigen.com/en/?rollback=$cachebust")
-          specials_es=$(curl -k -L -sS --connect-timeout 5 --max-time 30 -o /tmp/specials-es.html -w '%{http_code}' https://www.elmercadodeorigen.com/especiales/)
-          special_es=$(curl -k -L -sS --connect-timeout 5 --max-time 30 -o /tmp/special-es.html -w '%{http_code}' https://www.elmercadodeorigen.com/especiales/hamburguesas-ternera-regalo-tolecarnes/)
+          for url in \
+            'https://www.elmercadodeorigen.com/' \
+            'https://www.elmercadodeorigen.com/tienda/' \
+            'https://www.elmercadodeorigen.com/blog/'; do
+            code=$(curl -k -L -sS --connect-timeout 5 --max-time 30 -o /dev/null -w '%{http_code}' "$url")
+            case "$code" in 200|301|302) ;; *) echo "Health check failed: $url -> $code" >&2; exit 1 ;; esac
+          done
 
-          test "$home_es" = '200'
-          test "$home_en" = '200'
-          test "$specials_es" = '200'
-          test "$special_es" = '200'
-          grep -Fq 'Especiales del Mercado de Origen' /tmp/specials-es.html
-          grep -Fq 'Dos hamburguesas de ternera de regalo' /tmp/special-es.html
-          ! grep -Fq 'mdo-home-specials' /tmp/home-es.html
-          ! grep -Fq 'mdo-home-specials' /tmp/home-en.html
-
-          echo "Rollback verified: EMDO $deployed_version active; ES/EN home HTTP 200; failed homepage Specials integration removed."
+          echo "EMDO_DEPLOY_OK version=$deployed_version status=$plugin_status"
           REMOTE
