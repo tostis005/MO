@@ -7,10 +7,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Scraper público de Trustpilot ejecutado desde producción.
  *
- * Prioriza el HTML público directo. Si Trustpilot bloquea la IP del servidor,
- * usa Jina Reader únicamente como transporte/renderizador gratuito del
- * contenido público. Toda la normalización, atribución, deduplicación y
- * protección de decisiones manuales continúa dentro de EMDO.
+ * Mantiene el transporte separado de la lógica de importación: todo termina en
+ * MDO_Reviews_Scraping::import_payload(), que conserva atribución,
+ * deduplicación y decisiones manuales de EMDO.
  */
 final class MDO_Reviews_Trustpilot_Scraper {
 	private const PROFILE_ES  = 'https://es.trustpilot.com/review/elmercadodeorigen.com';
@@ -34,9 +33,8 @@ final class MDO_Reviews_Trustpilot_Scraper {
 		}
 
 		$reviews        = array();
-		$reported_count = 0;
-		$rating         = 0.0;
-		$total_pages    = 0;
+		$reported_count = absint( get_option( 'mdo_trustpilot_review_count', 0 ) );
+		$rating         = (float) get_option( 'mdo_trustpilot_rating', 0 );
 		$profile_url    = self::PROFILE_ES;
 		$transport      = '';
 		$max_pages      = 'full' === $mode ? 12 : 2;
@@ -55,12 +53,11 @@ final class MDO_Reviews_Trustpilot_Scraper {
 			}
 
 			if ( 1 === $page_number ) {
-				$business_unit  = isset( $page_props['businessUnit'] ) && is_array( $page_props['businessUnit'] ) ? $page_props['businessUnit'] : array();
-				$filters        = isset( $page_props['filters'] ) && is_array( $page_props['filters'] ) ? $page_props['filters'] : array();
-				$pagination     = isset( $filters['pagination'] ) && is_array( $filters['pagination'] ) ? $filters['pagination'] : array();
-				$reported_count = absint( $business_unit['numberOfReviews'] ?? $pagination['totalCount'] ?? 0 );
-				$rating         = (float) ( $business_unit['trustScore'] ?? 0 );
-				$total_pages    = absint( $pagination['totalPages'] ?? 0 );
+				$business_unit = isset( $page_props['businessUnit'] ) && is_array( $page_props['businessUnit'] ) ? $page_props['businessUnit'] : array();
+				$filters       = isset( $page_props['filters'] ) && is_array( $page_props['filters'] ) ? $page_props['filters'] : array();
+				$pagination    = isset( $filters['pagination'] ) && is_array( $filters['pagination'] ) ? $filters['pagination'] : array();
+				$reported_count = absint( $business_unit['numberOfReviews'] ?? $pagination['totalCount'] ?? $reported_count );
+				$rating         = (float) ( $business_unit['trustScore'] ?? $rating );
 			}
 
 			$raw_reviews = isset( $page_props['reviews'] ) && is_array( $page_props['reviews'] ) ? $page_props['reviews'] : array();
@@ -78,7 +75,6 @@ final class MDO_Reviews_Trustpilot_Scraper {
 				if ( '' === $id || $review_rating < 1 || $review_rating > 5 ) {
 					continue;
 				}
-
 				$consumer = isset( $raw_review['consumer'] ) && is_array( $raw_review['consumer'] ) ? $raw_review['consumer'] : array();
 				$dates    = isset( $raw_review['dates'] ) && is_array( $raw_review['dates'] ) ? $raw_review['dates'] : array();
 				$reviews[ $id ] = array(
@@ -96,9 +92,6 @@ final class MDO_Reviews_Trustpilot_Scraper {
 			}
 
 			if ( 'full' === $mode && $reported_count > 0 && count( $reviews ) >= $reported_count ) {
-				break;
-			}
-			if ( $total_pages > 0 && $page_number >= $total_pages ) {
 				break;
 			}
 			if ( $page_number > 1 && count( $reviews ) === $before ) {
@@ -140,7 +133,7 @@ final class MDO_Reviews_Trustpilot_Scraper {
 	private static function fetch_page( int $page_number ) {
 		$last_error = null;
 		foreach ( array( self::PROFILE_ES, self::PROFILE_WWW ) as $base_url ) {
-			$url = 1 === $page_number ? $base_url : add_query_arg( array( 'page' => $page_number, 'sort' => 'recency' ), $base_url );
+			$url = self::page_url( $base_url, $page_number );
 			$response = wp_remote_get(
 				$url,
 				array(
@@ -148,15 +141,9 @@ final class MDO_Reviews_Trustpilot_Scraper {
 					'redirection' => 5,
 					'user-agent'  => 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
 					'headers'     => array(
-						'Accept'                    => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-						'Accept-Language'           => 'es-ES,es;q=0.9,en;q=0.8',
-						'Cache-Control'             => 'no-cache',
-						'Pragma'                    => 'no-cache',
-						'Referer'                   => 'https://www.google.com/',
-						'Sec-Fetch-Dest'            => 'document',
-						'Sec-Fetch-Mode'            => 'navigate',
-						'Sec-Fetch-Site'            => 'cross-site',
-						'Upgrade-Insecure-Requests' => '1',
+						'Accept'          => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+						'Accept-Language' => 'es-ES,es;q=0.9,en;q=0.8',
+						'Cache-Control'   => 'no-cache',
 					),
 				)
 			);
@@ -164,7 +151,6 @@ final class MDO_Reviews_Trustpilot_Scraper {
 				$last_error = $response;
 				continue;
 			}
-
 			$code = (int) wp_remote_retrieve_response_code( $response );
 			$body = (string) wp_remote_retrieve_body( $response );
 			if ( $code >= 200 && $code < 400 && '' !== $body ) {
@@ -172,11 +158,7 @@ final class MDO_Reviews_Trustpilot_Scraper {
 				if ( ! is_wp_error( $data ) ) {
 					return array( 'profile_url' => $base_url, 'transport' => 'direct_http', 'data' => $data );
 				}
-				$dom_data = self::rendered_html_to_next_data( $body );
-				if ( ! is_wp_error( $dom_data ) ) {
-					return array( 'profile_url' => $base_url, 'transport' => 'direct_http', 'data' => $dom_data );
-				}
-				$last_error = $dom_data;
+				$last_error = $data;
 			} else {
 				$last_error = new WP_Error( 'mdo_trustpilot_http', 'Trustpilot HTTP ' . $code . ' en página ' . $page_number . '.' );
 			}
@@ -191,7 +173,7 @@ final class MDO_Reviews_Trustpilot_Scraper {
 
 	/** @return array|WP_Error */
 	private static function fetch_page_via_jina( int $page_number ) {
-		$target_url = 1 === $page_number ? self::PROFILE_ES : add_query_arg( array( 'page' => $page_number, 'sort' => 'recency' ), self::PROFILE_ES );
+		$target_url = self::page_url( self::PROFILE_ES, $page_number );
 		$response = wp_remote_get(
 			self::JINA_READER . $target_url,
 			array(
@@ -207,13 +189,11 @@ final class MDO_Reviews_Trustpilot_Scraper {
 		if ( is_wp_error( $response ) ) {
 			return new WP_Error( 'mdo_trustpilot_jina_transport', $response->get_error_message() );
 		}
-
 		$code = (int) wp_remote_retrieve_response_code( $response );
 		$body = (string) wp_remote_retrieve_body( $response );
 		if ( $code < 200 || $code >= 300 || '' === $body ) {
 			return new WP_Error( 'mdo_trustpilot_jina_http', 'Jina Reader HTTP ' . $code . ' para Trustpilot página ' . $page_number . '.' );
 		}
-
 		$decoded = json_decode( $body, true );
 		$content = is_array( $decoded ) ? (string) ( $decoded['data']['content'] ?? $decoded['content'] ?? '' ) : $body;
 		if ( '' === trim( $content ) ) {
@@ -222,16 +202,16 @@ final class MDO_Reviews_Trustpilot_Scraper {
 
 		$data = self::extract_next_data( $content );
 		if ( is_wp_error( $data ) ) {
-			$data = self::rendered_html_to_next_data( $content );
-		}
-		if ( is_wp_error( $data ) ) {
 			$data = self::reader_content_to_next_data( $content );
 		}
 		if ( is_wp_error( $data ) ) {
 			return new WP_Error( 'mdo_trustpilot_jina_parse', 'Jina Reader no devolvió reseñas interpretables en Trustpilot página ' . $page_number . '.' );
 		}
-
 		return array( 'profile_url' => self::PROFILE_ES, 'transport' => 'jina_reader', 'data' => $data );
+	}
+
+	private static function page_url( string $base_url, int $page_number ): string {
+		return 1 === $page_number ? $base_url : add_query_arg( array( 'page' => $page_number, 'sort' => 'recency' ), $base_url );
 	}
 
 	/** @return array|WP_Error */
@@ -242,9 +222,8 @@ final class MDO_Reviews_Trustpilot_Scraper {
 			$content = substr( $content, $marker + strlen( 'Todas las opiniones' ) );
 		}
 
-		$raw_lines = preg_split( '/\n/u', $content );
-		$lines     = array();
-		foreach ( $raw_lines as $line ) {
+		$lines = array();
+		foreach ( preg_split( '/\n/u', $content ) as $line ) {
 			$line = trim( (string) $line );
 			$line = preg_replace( '/^#{1,6}\s*/u', '', $line );
 			$line = preg_replace( '/^[*+-]\s+/u', '', $line );
@@ -254,7 +233,7 @@ final class MDO_Reviews_Trustpilot_Scraper {
 		$reviews = array();
 		$count   = count( $lines );
 		for ( $i = 0; $i < $count; ++$i ) {
-			if ( ! preg_match( '/(?:Valorada|Valorado|Rated)\s+con?\s*([1-5])\s+estrellas?|Rated\s+([1-5])\s+(?:out of|of)\s+5/iu', $lines[ $i ], $rating_match ) ) {
+			if ( ! preg_match( '/(?:Valorada|Valorado|Rated)\s+(?:con\s*)?([1-5])\s+(?:estrellas?|stars?)|Rated\s+([1-5])\s+(?:out of|of)\s+5/iu', $lines[ $i ], $rating_match ) ) {
 				continue;
 			}
 			$review_rating = (int) ( $rating_match[1] ?: ( $rating_match[2] ?? 0 ) );
@@ -266,7 +245,6 @@ final class MDO_Reviews_Trustpilot_Scraper {
 			if ( $author_index < 0 ) {
 				continue;
 			}
-
 			$author = self::clean_author_line( $lines[ $author_index ] );
 			if ( '' === $author || preg_match( '/^(Image|Imagen|Respuesta de|TrustScore)/iu', $author ) ) {
 				continue;
@@ -285,20 +263,19 @@ final class MDO_Reviews_Trustpilot_Scraper {
 			if ( $j < 0 ) {
 				continue;
 			}
-
-			$title_raw = $lines[ $j ];
-			$title     = self::plain_markdown_text( $title_raw );
+			$title = self::plain_markdown_text( $lines[ $j ] );
 			if ( '' === $title || preg_match( '/^(Opinión espontánea|Invitada|Respuesta de)/iu', $title ) ) {
 				continue;
 			}
 			++$j;
 
-			$body_lines       = array();
-			$experienced_iso  = '';
-			$block_end        = min( $count, $j + 40 );
-			$review_link_blob = implode( "\n", array_slice( $lines, max( 0, $author_index - 1 ), min( 45, $count - max( 0, $author_index - 1 ) ) ) );
+			$body_lines      = array();
+			$experienced_iso = '';
+			$block_end       = min( $count, $j + 40 );
+			$link_start      = max( 0, $author_index - 2 );
+			$link_blob       = implode( "\n", array_slice( $lines, $link_start, min( 48, $count - $link_start ) ) );
 			for ( ; $j < $block_end; ++$j ) {
-				$current = trim( $lines[ $j ] );
+				$current = trim( (string) $lines[ $j ] );
 				if ( '' === $current ) {
 					continue;
 				}
@@ -306,25 +283,21 @@ final class MDO_Reviews_Trustpilot_Scraper {
 					$experienced_iso = self::spanish_date_to_iso( $current );
 					break;
 				}
-				if ( preg_match( '/^(Opinión espontánea|Invitada|Respuesta de El Mercado de Origen)$/iu', self::plain_markdown_text( $current ) ) ) {
+				$plain = self::plain_markdown_text( $current );
+				if ( preg_match( '/^(Opinión espontánea|Invitada|Respuesta de El Mercado de Origen)$/iu', $plain ) ) {
 					break;
 				}
 				if ( preg_match( '/(?:Valorada|Rated).*([1-5])/iu', $current ) ) {
 					break;
 				}
-				$plain = self::plain_markdown_text( $current );
 				if ( '' !== $plain && ! preg_match( '/^Ver \d+ reseñas? más de /iu', $plain ) ) {
 					$body_lines[] = $plain;
 				}
 			}
 
 			$text = trim( implode( "\n", $body_lines ) );
-			if ( '' === $text && '' === $title ) {
-				continue;
-			}
-
-			$id = '';
-			if ( preg_match( '#/reviews/([A-Za-z0-9_-]{8,})#', $review_link_blob, $id_match ) ) {
+			$id   = '';
+			if ( preg_match( '#/reviews/([A-Za-z0-9_-]{8,})#', $link_blob, $id_match ) ) {
 				$id = sanitize_text_field( $id_match[1] );
 			}
 			if ( '' === $id ) {
@@ -339,10 +312,10 @@ final class MDO_Reviews_Trustpilot_Scraper {
 				'text'     => $text,
 				'consumer' => array( 'displayName' => $author ),
 				'dates'    => array(
-					'publishedDate'  => $published_iso,
+					'publishedDate'   => $published_iso,
 					'experiencedDate' => $experienced_iso,
 				),
-				'labels'   => array( 'verification' => array( 'isVerified' => $verified ) ),
+				'labels' => array( 'verification' => array( 'isVerified' => $verified ) ),
 			);
 		}
 
@@ -350,60 +323,6 @@ final class MDO_Reviews_Trustpilot_Scraper {
 			return new WP_Error( 'mdo_trustpilot_reader_empty', 'No se pudieron reconocer reseñas en la salida de Reader.' );
 		}
 		return self::reviews_to_next_data( array_values( $reviews ) );
-	}
-
-	/** @return array|WP_Error */
-	private static function rendered_html_to_next_data( string $html ) {
-		if ( ! class_exists( 'DOMDocument' ) ) {
-			return new WP_Error( 'mdo_trustpilot_dom_missing', 'DOMDocument no está disponible.' );
-		}
-
-		$previous = libxml_use_internal_errors( true );
-		$dom      = new DOMDocument();
-		$loaded   = $dom->loadHTML( '<?xml encoding="utf-8" ?>' . $html, LIBXML_NOWARNING | LIBXML_NOERROR );
-		libxml_clear_errors();
-		libxml_use_internal_errors( $previous );
-		if ( ! $loaded ) {
-			return new WP_Error( 'mdo_trustpilot_dom_invalid', 'No se pudo interpretar el HTML renderizado de Trustpilot.' );
-		}
-
-		$xpath = new DOMXPath( $dom );
-		$cards = $xpath->query( '//article[@data-service-review-card-paper]' );
-		if ( ! $cards || 0 === $cards->length ) {
-			return new WP_Error( 'mdo_trustpilot_cards_empty', 'No se encontraron tarjetas Trustpilot renderizadas.' );
-		}
-
-		$reviews = array();
-		foreach ( $cards as $card ) {
-			$author = self::xpath_text( $xpath, './/*[@data-consumer-name-typography]', $card );
-			$title  = self::xpath_text( $xpath, './/*[@data-service-review-title-typography or @data-review-title-typography]', $card );
-			$text   = self::xpath_text( $xpath, './/*[@data-service-review-text-typography or @data-relevant-review-text-typography]', $card );
-			$date   = self::xpath_attr( $xpath, './/time[@datetime]', 'datetime', $card );
-			$rating = self::extract_dom_rating( $xpath, $card );
-			$id     = self::extract_dom_review_id( $xpath, $card );
-			if ( '' === $id ) {
-				$id = 'tp-dom-' . substr( hash( 'sha256', self::normalize_identity_text( $author ) . '|' . substr( $date, 0, 10 ) . '|' . self::normalize_identity_text( $title ) ), 0, 32 );
-			}
-			if ( $rating < 1 || $rating > 5 || ( '' === $text && '' === $title ) ) {
-				continue;
-			}
-
-			$verified_text = self::xpath_text( $xpath, './/*[@data-review-label]', $card );
-			$reviews[] = array(
-				'id'       => $id,
-				'rating'   => $rating,
-				'title'    => $title,
-				'text'     => $text,
-				'consumer' => array( 'displayName' => $author ),
-				'dates'    => array( 'publishedDate' => $date ),
-				'labels'   => array( 'verification' => array( 'isVerified' => (bool) preg_match( '/verificad|verified/i', $verified_text ) ) ),
-			);
-		}
-
-		if ( empty( $reviews ) ) {
-			return new WP_Error( 'mdo_trustpilot_cards_invalid', 'Las tarjetas Trustpilot no contenían reseñas válidas.' );
-		}
-		return self::reviews_to_next_data( $reviews );
 	}
 
 	private static function reviews_to_next_data( array $reviews ): array {
@@ -452,6 +371,7 @@ final class MDO_Reviews_Trustpilot_Scraper {
 			if ( '' !== trim( (string) $lines[ $index ] ) ) {
 				return $index;
 			}
+		}
 		return -1;
 	}
 
@@ -461,6 +381,7 @@ final class MDO_Reviews_Trustpilot_Scraper {
 			if ( '' !== trim( (string) $lines[ $index ] ) ) {
 				return $index;
 			}
+		}
 		return -1;
 	}
 
@@ -498,52 +419,6 @@ final class MDO_Reviews_Trustpilot_Scraper {
 			return mb_strripos( $haystack, $needle, 0, 'UTF-8' );
 		}
 		return strripos( $haystack, $needle );
-	}
-
-	private static function xpath_text( DOMXPath $xpath, string $query, DOMNode $context ): string {
-		$nodes = $xpath->query( $query, $context );
-		if ( ! $nodes || 0 === $nodes->length ) {
-			return '';
-		}
-		return trim( preg_replace( '/\s+/u', ' ', (string) $nodes->item( 0 )->textContent ) );
-	}
-
-	private static function xpath_attr( DOMXPath $xpath, string $query, string $attribute, DOMNode $context ): string {
-		$nodes = $xpath->query( $query, $context );
-		if ( ! $nodes || 0 === $nodes->length || ! $nodes->item( 0 ) instanceof DOMElement ) {
-			return '';
-		}
-		return trim( (string) $nodes->item( 0 )->getAttribute( $attribute ) );
-	}
-
-	private static function extract_dom_rating( DOMXPath $xpath, DOMNode $card ): int {
-		$nodes = $xpath->query( './/*[@data-service-review-rating]', $card );
-		if ( $nodes && $nodes->length > 0 && $nodes->item( 0 ) instanceof DOMElement ) {
-			$value = (string) $nodes->item( 0 )->getAttribute( 'data-service-review-rating' );
-			if ( preg_match( '/([1-5])/', $value, $match ) ) {
-				return (int) $match[1];
-			}
-		}
-		$images = $xpath->query( './/img[@alt]', $card );
-		if ( $images ) {
-			foreach ( $images as $image ) {
-				if ( $image instanceof DOMElement && preg_match( '/(?:rated|valorad[^0-9]*)\s*([1-5])|([1-5])\s*(?:out of|de)\s*5/i', $image->getAttribute( 'alt' ), $match ) ) {
-					return (int) ( $match[1] ?: $match[2] );
-				}
-			}
-		}
-		return 0;
-	}
-
-	private static function extract_dom_review_id( DOMXPath $xpath, DOMNode $card ): string {
-		$links = $xpath->query( './/a[contains(@href, "/reviews/")]', $card );
-		if ( $links ) {
-			foreach ( $links as $link ) {
-				if ( $link instanceof DOMElement && preg_match( '#/reviews/([A-Za-z0-9_-]{8,})#', (string) $link->getAttribute( 'href' ), $match ) ) {
-					return sanitize_text_field( $match[1] );
-				}
-		}
-		return '';
 	}
 
 	/** @return array|WP_Error */
