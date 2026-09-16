@@ -1,4 +1,4 @@
-name: Temporary EMDO review dedupe diagnostic
+name: Temporary EMDO legacy Google matching diagnostic
 
 on:
   push:
@@ -20,7 +20,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Audit production review collisions
+      - name: Match legacy Google rows in production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -49,16 +49,41 @@ jobs:
           wp_bin=$(command -v wp || true)
           php_bin=$(command -v php || true)
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-          prefix=$("$php_bin" -d memory_limit=512M "$wp_bin" db prefix --path="$PROD_PATH" --allow-root)
-          table="${prefix}mdo_reviews"
-          echo '=== SOURCE COUNTS ==='
-          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT source,COUNT(*) total FROM ${table} GROUP BY source ORDER BY source" --skip-column-names --path="$PROD_PATH" --allow-root
-          echo '=== GOOGLE ID FAMILIES ==='
-          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT CASE WHEN source_review_id LIKE 'trustindex-%' THEN 'trustindex' WHEN source_review_id IS NULL OR source_review_id='' THEN 'empty' ELSE 'legacy' END family,COUNT(*) total FROM ${table} WHERE source='google' GROUP BY family ORDER BY family" --skip-column-names --path="$PROD_PATH" --allow-root
-          echo '=== DUPLICATE FINGERPRINT GROUPS ==='
-          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT LEFT(content_fingerprint,16) fp,COUNT(*) c,GROUP_CONCAT(CONCAT(id,':',source,':',COALESCE(source_review_id,''),':p',COALESCE(wc_product_id,0),':v',COALESCE(vendor_user_id,0),':',status,':',COALESCE(validation_method,''),':',COALESCE(DATE(review_date),'0000-00-00')) ORDER BY id SEPARATOR ' | ') rowspec FROM ${table} WHERE content_fingerprint IS NOT NULL AND content_fingerprint<>'' GROUP BY content_fingerprint HAVING COUNT(*)>1 ORDER BY c DESC,fp" --skip-column-names --path="$PROD_PATH" --allow-root
-          echo '=== CROSS SOURCE FINGERPRINT GROUPS ==='
-          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT LEFT(content_fingerprint,16) fp,COUNT(*) c,COUNT(DISTINCT source) sources,GROUP_CONCAT(DISTINCT source ORDER BY source SEPARATOR ',') source_list,GROUP_CONCAT(CONCAT(id,':',source,':',COALESCE(source_review_id,''),':p',COALESCE(wc_product_id,0),':v',COALESCE(vendor_user_id,0),':',status) ORDER BY id SEPARATOR ' | ') rowspec FROM ${table} WHERE content_fingerprint IS NOT NULL AND content_fingerprint<>'' GROUP BY content_fingerprint HAVING COUNT(DISTINCT source)>1 ORDER BY c DESC,fp" --skip-column-names --path="$PROD_PATH" --allow-root
-          echo '=== LEGACY GOOGLE ROWS ==='
-          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT id,COALESCE(source_review_id,''),rating,COALESCE(DATE(review_date),'0000-00-00'),LENGTH(COALESCE(review_text,'')),LEFT(content_fingerprint,16),status,COALESCE(validation_method,'') FROM ${table} WHERE source='google' AND (source_review_id NOT LIKE 'trustindex-%' OR source_review_id IS NULL) ORDER BY id" --skip-column-names --path="$PROD_PATH" --allow-root
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            global $wpdb;
+            $table = MDO_Database::table( "reviews" );
+            $legacy = $wpdb->get_results( "SELECT * FROM {$table} WHERE source=\"google\" AND (source_review_id NOT LIKE \"trustindex-%\" OR source_review_id IS NULL) ORDER BY id" );
+            $fresh = $wpdb->get_results( "SELECT * FROM {$table} WHERE source=\"google\" AND source_review_id LIKE \"trustindex-%\" ORDER BY id" );
+            $norm = new ReflectionMethod( "MDO_Reviews", "normalize_text" );
+            $norm->setAccessible( true );
+            foreach ( $legacy as $old ) {
+              $oa = $norm->invoke( null, (string) $old->author_name );
+              $ot = $norm->invoke( null, (string) $old->review_text );
+              $od = $old->review_date ? substr( (string) $old->review_date, 0, 10 ) : "";
+              $candidates = array();
+              foreach ( $fresh as $new ) {
+                $nd = $new->review_date ? substr( (string) $new->review_date, 0, 10 ) : "";
+                if ( (int) $new->rating !== (int) $old->rating || $nd !== $od ) { continue; }
+                $na = $norm->invoke( null, (string) $new->author_name );
+                $nt = $norm->invoke( null, (string) $new->review_text );
+                $author_match = "" !== $oa && $oa === $na;
+                $text_match = "" !== $ot && $ot === $nt;
+                $empty_text_pair = "" === $ot && "" === $nt;
+                $score = ( $author_match ? 2 : 0 ) + ( $text_match ? 4 : 0 ) + ( $empty_text_pair ? 1 : 0 );
+                if ( $score > 0 ) {
+                  $candidates[] = array( "id" => (int) $new->id, "source_review_id" => (string) $new->source_review_id, "score" => $score, "author_match" => $author_match, "text_match" => $text_match, "empty_text_pair" => $empty_text_pair, "vendor" => (int) $new->vendor_user_id, "status" => (string) $new->status );
+                }
+              }
+              usort( $candidates, static fn( $a, $b ) => $b["score"] <=> $a["score"] );
+              echo "LEGACY_MATCH=" . wp_json_encode( array(
+                "legacy_id" => (int) $old->id,
+                "legacy_source_review_id" => (string) $old->source_review_id,
+                "date" => $od,
+                "rating" => (int) $old->rating,
+                "legacy_text_len" => strlen( (string) $old->review_text ),
+                "candidate_count" => count( $candidates ),
+                "top" => array_slice( $candidates, 0, 3 ),
+              ) ) . PHP_EOL;
+            }
+          ' --path="$PROD_PATH" --allow-root
           REMOTE
