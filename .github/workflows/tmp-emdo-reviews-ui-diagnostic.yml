@@ -20,7 +20,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect actual reviews markup in production
+      - name: Inspect WCFM reviews route collision
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -49,23 +49,13 @@ jobs:
           wp_bin=$(command -v wp || true)
           php_bin=$(command -v php || true)
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-          slug=hidalgo-de-la-jara
-          base="https://www.elmercadodeorigen.com/tienda/$slug/"
-          rev="${base}reviews/"
-          curl -k -L -sS --connect-timeout 8 --max-time 45 -H 'Cache-Control: no-cache, no-store' "$base?emdo_ui_diag=2" -o /tmp/base.html
-          code=$(curl -k -L -sS --connect-timeout 8 --max-time 45 -H 'Cache-Control: no-cache, no-store' -o /tmp/reviews.html -w '%{http_code}' "$rev?emdo_ui_diag=2")
-          echo "REVIEWS_HTTP=$code"
-          echo '=== BASE MATCHES ==='
-          grep -Ein -C 2 'Rese|reviews|mdo_reviews' /tmp/base.html | head -n 120 || true
-          echo '=== REVIEW PAGE MATCHES ==='
-          grep -Ein -C 2 'mdo-reviews-page|mdo-review-summary|mdo-store-reviews|sobre 5|no tiene rese|no reviews' /tmp/reviews.html | head -n 160 || true
-          echo '=== FILTER SNAPSHOT ==='
-          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
-            echo "PUBLIC_CLASS=".(class_exists("MDO_Reviews_Public")?"1":"0").PHP_EOL;
-            echo "NEW_TAB_HOOK=".(int)has_filter("wcfmmp_store_tabs",array("MDO_Reviews_Public","store_tabs")).PHP_EOL;
-            echo "NEW_URL_HOOK=".(int)has_filter("wcfmp_store_tabs_url",array("MDO_Reviews_Public","store_tab_url")).PHP_EOL;
-            $sample=array("products"=>"Productos","about"=>"Acerca de","reviews"=>"Reviews");
-            echo "FILTERED_TABS=".wp_json_encode(apply_filters("wcfmmp_store_tabs",$sample,6)).PHP_EOL;
-            echo "URL_SAMPLE=".apply_filters("wcfmp_store_tabs_url","https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/","mdo_reviews").PHP_EOL;
-          ' --path="$PROD_PATH" --allow-root
+          echo '=== REWRITE MATCHES ==='
+          "$php_bin" -d memory_limit=512M "$wp_bin" rewrite list --format=csv --path="$PROD_PATH" --allow-root | grep -E 'tienda.*reviews|mdo_reviews|reviews=' | head -n 30 || true
+          echo '=== WCFM FILTER SOURCES ==='
+          grep -RIn -C 8 -E 'wcfmp_store_default_query_vars|wcfmmp_store_default_template_path|wcfmmp_store_default_template|wcfmp_store_tabs_url' "$PROD_PATH/wp-content/plugins/wc-multivendor-marketplace" | head -n 300 || true
+          echo '=== WCFM REVIEWS REWRITE SOURCES ==='
+          grep -RIn -C 6 -E "reviews.*rewrite|add_rewrite_rule.*reviews|'reviews'|\"reviews\"" "$PROD_PATH/wp-content/plugins/wc-multivendor-marketplace/core" "$PROD_PATH/wp-content/plugins/wc-multivendor-marketplace/views" | head -n 260 || true
+          echo '=== LIVE REVIEW TAB ==='
+          curl -k -L -sS --connect-timeout 8 --max-time 45 -H 'Cache-Control: no-cache, no-store' 'https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/reviews/?emdo_ui_diag=3' -o /tmp/reviews.html
+          grep -Ein -C 2 '<li class="active"|mdo-reviews-page|bd_review_section|review_section|no.*rese|No.*review|Productos|Acerca de|Reseñas' /tmp/reviews.html | tail -n 140 || true
           REMOTE
