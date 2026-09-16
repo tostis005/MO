@@ -9,6 +9,7 @@ on:
 permissions:
   contents: read
 
+# Temporary read-only production diagnostic. Remove after the fix is verified.
 jobs:
   diagnose:
     runs-on: ubuntu-24.04
