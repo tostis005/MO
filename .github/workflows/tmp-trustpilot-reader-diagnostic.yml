@@ -20,7 +20,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect duplicate fingerprints in production
+      - name: Inspect remaining duplicate fingerprints in production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -52,14 +52,18 @@ jobs:
           "$php_bin" -d memory_limit=512M "$wp_bin" eval '
             global $wpdb;
             $table = MDO_Database::table( "reviews" );
+            echo "PLUGIN_VERSION=" . MDO_SUPPLIER_SYNC_VERSION . PHP_EOL;
+            echo "MIGRATION_OPTION=" . wp_json_encode( get_option( "mdo_reviews_migration_1038", "" ) ) . PHP_EOL;
             $fps = $wpdb->get_col( "SELECT content_fingerprint FROM {$table} WHERE content_fingerprint IS NOT NULL AND content_fingerprint<>\"\" GROUP BY content_fingerprint HAVING COUNT(*)>1 ORDER BY content_fingerprint" );
             echo "DUP_GROUP_COUNT=" . count( $fps ) . PHP_EOL;
             foreach ( $fps as $fp ) {
               $rows = $wpdb->get_results( $wpdb->prepare(
-                "SELECT id,source,source_review_id,status,validation_method,vendor_user_id,suggested_vendor_user_id,author_name,rating,review_text,review_date,content_fingerprint FROM {$table} WHERE content_fingerprint=%s ORDER BY id",
+                "SELECT id,source,source_review_id,source_key,status,validation_method,vendor_user_id,suggested_vendor_user_id,product_id,order_id,author_name,rating,review_title,review_text,review_date,created_at,updated_at,content_fingerprint FROM {$table} WHERE content_fingerprint=%s ORDER BY id",
                 $fp
               ) );
               echo "DUP_GROUP=" . wp_json_encode( array( "fingerprint" => $fp, "rows" => $rows ) ) . PHP_EOL;
             }
+            $woo = $wpdb->get_row( $wpdb->prepare( "SELECT id,source_review_id,source_key,status,validation_method,product_id,vendor_user_id,author_name,rating,review_text,review_date,content_fingerprint FROM {$table} WHERE source=%s AND source_review_id=%s", "woocommerce_product", "8352" ) );
+            echo "WOO_8352=" . wp_json_encode( $woo ) . PHP_EOL;
           ' --path="$PROD_PATH" --allow-root
           REMOTE
