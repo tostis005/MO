@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO
  * Description: Gestión y sincronización de catálogos de proveedores con WooCommerce/WCFM.
- * Version: 1.0.40
+ * Version: 1.0.41
  * Author: El Mercado de Origen
  * Requires at least: 6.4
  * Requires PHP: 8.0
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.40' );
+define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.41' );
 define( 'MDO_SUPPLIER_SYNC_DB_VERSION', '1.2.0' );
 define( 'MDO_SUPPLIER_SYNC_FILE', __FILE__ );
 define( 'MDO_SUPPLIER_SYNC_PATH', plugin_dir_path( __FILE__ ) );
@@ -71,6 +71,7 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-reviews-admin-inline.p
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-reviews-integration.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-reviews-scraping.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-reviews-migration-1038.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-reviews-external-dedupe.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-reviews-route.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/openai/class-mdo-openai-commerce.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/openai/class-mdo-openai-catalog-hardening.php';
@@ -144,6 +145,7 @@ add_action(
 		MDO_Reviews_Integration::init();
 		MDO_Reviews_Scraping::init();
 		MDO_Reviews_Migration_1038::run_once();
+		MDO_Reviews_External_Dedupe::init();
 		MDO_Reviews_Route::init();
 		if ( is_admin() ) {
 			MDO_Admin::init();
