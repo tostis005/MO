@@ -141,13 +141,21 @@ try {
     throw new Error(`Trustpilot full incompleto: ${map.size}/${activeCount} reseñas activas (histórico ${historicalCount || '?'}).`);
   }
 
+  // Trustpilot puede publicar transitoriamente un total filtrado inferior al
+  // número de filas que sus propias páginas oficiales exponen (p. ej. 143 vs
+  // 145). En full, las filas realmente paginadas constituyen el mínimo
+  // verificable; nunca persistimos un objetivo menor que lo capturado.
+  const effectiveActiveCount = mode === 'full'
+    ? Math.max(activeCount || 0, map.size)
+    : (activeCount || map.size);
+
   const payload = {
     source: 'trustpilot',
     provider: 'trustpilot_public_playwright_next_data',
     mode,
     scraped_at: new Date().toISOString(),
-    reported_count: activeCount || map.size,
-    available_count: activeCount || map.size,
+    reported_count: effectiveActiveCount,
+    available_count: effectiveActiveCount,
     historical_count: historicalCount,
     pagination_pages: totalPages,
     rating,
