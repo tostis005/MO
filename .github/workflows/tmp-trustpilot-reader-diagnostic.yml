@@ -1,4 +1,4 @@
-name: Temporary EMDO review cleanup diagnostic
+name: Temporary EMDO admin inline diagnostic
 
 on:
   push:
@@ -20,7 +20,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect remaining duplicate fingerprints in production
+      - name: Validate inline review admin wiring in production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -50,20 +50,23 @@ jobs:
           php_bin=$(command -v php || true)
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
           "$php_bin" -d memory_limit=512M "$wp_bin" eval '
-            global $wpdb;
-            $table = MDO_Database::table( "reviews" );
-            echo "PLUGIN_VERSION=" . MDO_SUPPLIER_SYNC_VERSION . PHP_EOL;
-            echo "MIGRATION_OPTION=" . wp_json_encode( get_option( "mdo_reviews_migration_1038", "" ) ) . PHP_EOL;
-            $fps = $wpdb->get_col( "SELECT content_fingerprint FROM {$table} WHERE content_fingerprint IS NOT NULL AND content_fingerprint<>\"\" GROUP BY content_fingerprint HAVING COUNT(*)>1 ORDER BY content_fingerprint" );
-            echo "DUP_GROUP_COUNT=" . count( $fps ) . PHP_EOL;
-            foreach ( $fps as $fp ) {
-              $rows = $wpdb->get_results( $wpdb->prepare(
-                "SELECT id,source,source_review_id,source_key,status,validation_method,vendor_user_id,suggested_vendor_user_id,wc_product_id,source_product_id,wc_order_id,assignment_type,assignment_confidence,assignment_reason,author_name,rating,review_title,review_text,review_date,first_seen_at,last_seen_at,created_at,updated_at,content_fingerprint FROM {$table} WHERE content_fingerprint=%s ORDER BY id",
-                $fp
-              ) );
-              echo "DUP_GROUP=" . wp_json_encode( array( "fingerprint" => $fp, "rows" => $rows ) ) . PHP_EOL;
+            $plugin_dir = MDO_SUPPLIER_SYNC_PATH;
+            $checks = array(
+              "class_loaded" => class_exists( "MDO_Reviews_Admin_Inline" ),
+              "js_exists" => file_exists( $plugin_dir . "assets/reviews-admin-inline.js" ),
+              "ajax_data_hook" => has_action( "wp_ajax_mdo_reviews_inline_data", array( "MDO_Reviews_Admin_Inline", "ajax_data" ) ),
+              "ajax_save_hook" => has_action( "wp_ajax_mdo_reviews_inline_save", array( "MDO_Reviews_Admin_Inline", "ajax_save" ) ),
+              "enqueue_hook" => has_action( "admin_enqueue_scripts", array( "MDO_Reviews_Admin_Inline", "enqueue_assets" ) ),
+            );
+            echo "ADMIN_INLINE=" . wp_json_encode( $checks ) . PHP_EOL;
+            foreach ( $checks as $key => $value ) {
+              if ( ! $value ) { fwrite( STDERR, "ADMIN_INLINE_FAIL={$key}\n" ); exit(41); }
             }
-            $woo = $wpdb->get_row( $wpdb->prepare( "SELECT id,source_review_id,source_key,status,validation_method,wc_product_id,vendor_user_id,author_name,rating,review_text,review_date,content_fingerprint FROM {$table} WHERE source=%s AND source_review_id=%s", "woocommerce_product", "8352" ) );
-            echo "WOO_8352=" . wp_json_encode( $woo ) . PHP_EOL;
+            $js = file_get_contents( $plugin_dir . "assets/reviews-admin-inline.js" );
+            $tokens = array( "mdo_reviews_inline_data", "mdo_reviews_inline_save", "vendor_user_id", "review_id", "status" );
+            foreach ( $tokens as $token ) {
+              if ( false === strpos( $js, $token ) ) { fwrite( STDERR, "ADMIN_JS_TOKEN_MISSING={$token}\n" ); exit(42); }
+            }
+            echo "ADMIN_JS_TOKENS_OK=" . count( $tokens ) . PHP_EOL;
           ' --path="$PROD_PATH" --allow-root
           REMOTE
