@@ -45,6 +45,7 @@ jobs:
           LOCAL_MAIN_SHA="$(sha256sum mdo-supplier-sync/mdo-supplier-sync.php | awk '{print $1}')"
           LOCAL_TP_SHA="$(sha256sum mdo-supplier-sync/includes/class-mdo-reviews-trustpilot-scraper.php | awk '{print $1}')"
           test -n "$EXPECTED_VERSION"
+          test -n "${GITHUB_SHA:-}"
           test -n "${STAGING_HOST:-}"
           test -n "${STAGING_USER:-}"
           test -n "${STAGING_PASSWORD:-}"
@@ -77,19 +78,21 @@ jobs:
           tar -czf "$LOCAL_ARCHIVE" mdo-supplier-sync
           sshpass -e scp $SCP_OPTIONS "$LOCAL_ARCHIVE" "$STAGING_USER@$STAGING_HOST:$REMOTE_ARCHIVE"
 
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH' '$REMOTE_ARCHIVE' '$EXPECTED_VERSION' '$LOCAL_MAIN_SHA' '$LOCAL_TP_SHA'" <<'REMOTE'
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH' '$REMOTE_ARCHIVE' '$EXPECTED_VERSION' '$LOCAL_MAIN_SHA' '$LOCAL_TP_SHA' '$GITHUB_SHA'" <<'REMOTE'
           set -euo pipefail
           PROD_PATH="$1"
           REMOTE_ARCHIVE="$2"
           EXPECTED_VERSION="$3"
           EXPECTED_MAIN_SHA="$4"
           EXPECTED_TP_SHA="$5"
+          DEPLOY_SHA="$6"
 
           wp_bin=$(command -v wp || true)
           php_bin=$(command -v php || true)
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
           test -n "$wp_bin"
           test -n "$php_bin"
+          test -n "$DEPLOY_SHA"
 
           PLUGIN_DIR="$PROD_PATH/wp-content/plugins/mdo-supplier-sync"
           mkdir -p "$PROD_PATH/wp-content/plugins"
@@ -120,5 +123,12 @@ jobs:
             case "$code" in 200|301|302) ;; *) echo "Health check failed: $url -> $code" >&2; exit 1 ;; esac
           done
 
-          echo "EMDO_DEPLOY_OK version=$deployed_version status=$plugin_status"
+          # Publicado únicamente después de completar copia, lint, plugin checks,
+          # cache/rewrite y health checks. Los consumidores pueden usarlo como
+          # barrera de despliegue sin depender de checksums de archivos que no
+          # cambien entre commits.
+          printf '%s\n' "$DEPLOY_SHA" > "$PLUGIN_DIR/.emdo-deployed-sha"
+          test "$(tr -d '\r\n' < "$PLUGIN_DIR/.emdo-deployed-sha")" = "$DEPLOY_SHA"
+
+          echo "EMDO_DEPLOY_OK version=$deployed_version status=$plugin_status sha=$DEPLOY_SHA"
           REMOTE
