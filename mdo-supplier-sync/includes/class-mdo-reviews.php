@@ -452,6 +452,10 @@ final class MDO_Reviews {
 		if ( ! $existing && $fingerprint ) {
 			$existing = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE content_fingerprint=%s LIMIT 1", $fingerprint ) );
 		}
+		$resolved_status = trim( (string) ( $data['status'] ?? 'pending' ) );
+		if ( ! in_array( $resolved_status, array( 'pending', 'validated', 'rejected' ), true ) ) {
+			$resolved_status = 'pending';
+		}
 		$row = array(
 			'source' => $source,
 			'source_review_id' => $source_id ?: null,
@@ -474,7 +478,7 @@ final class MDO_Reviews {
 			'assignment_type' => sanitize_key( (string) ( $data['assignment_type'] ?? '' ) ) ?: null,
 			'assignment_confidence' => max( 0, min( 1, (float) ( $data['assignment_confidence'] ?? 0 ) ) ),
 			'assignment_reason' => sanitize_textarea_field( (string) ( $data['assignment_reason'] ?? '' ) ) ?: null,
-			'status' => in_array( (string) ( $data['status'] ?? 'pending' ), array( 'pending', 'validated', 'rejected' ), true ) ? (string) $data['status'] : 'pending',
+			'status' => $resolved_status,
 			'validation_method' => sanitize_key( (string) ( $data['validation_method'] ?? '' ) ) ?: null,
 			'source_payload' => (string) ( $data['source_payload'] ?? '' ) ?: null,
 			'last_seen_at' => $now,
