@@ -132,10 +132,36 @@ jobs:
           find "$PROD_PATH/wp-content/plugins" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | grep -Ei 'trust|google|review' | sort || true
           echo '-- Trustpilot plugin DB/API implementation --'
           grep -RniE --include='*.php' 'trustindex_trustpilot_reviews|CREATE TABLE|download_noreg_reviews|getPromoReviews|page.details|page_details' "$PROD_PATH/wp-content/plugins/review-widgets-for-trustpilot" | head -120 || true
+          echo '-- Trustpilot connection/search implementation --'
+          grep -RniE --include='*.php' --include='*.js' 'searchPage|search_page|findPage|find_page|page_details|page-details|admin\.trustindex\.io|trustindex\.io/api' "$PROD_PATH/wp-content/plugins/review-widgets-for-trustpilot" | head -220 || true
           echo '-- Trustpilot get_noreg_list_reviews excerpt --'
           sed -n '1438,1565p' "$PROD_PATH/wp-content/plugins/review-widgets-for-trustpilot/trustindex-plugin.class.php" || true
           echo '-- Trustpilot download_noreg_reviews excerpt --'
           sed -n '1840,1895p' "$PROD_PATH/wp-content/plugins/review-widgets-for-trustpilot/trustindex-plugin.class.php" || true
+          echo '-- Public review route verification --'
+          top_vendor=$("$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT r.vendor_user_id,u.user_nicename,COUNT(*) c FROM ${prefix}mdo_reviews r INNER JOIN ${prefix}users u ON u.ID=r.vendor_user_id WHERE r.status='validated' AND r.vendor_user_id IS NOT NULL GROUP BY r.vendor_user_id,u.user_nicename ORDER BY c DESC LIMIT 1" --skip-column-names --path="$PROD_PATH" --allow-root | head -n1 || true)
+          if [ -n "$top_vendor" ]; then
+            vendor_id=$(printf '%s' "$top_vendor" | awk '{print $1}')
+            vendor_slug=$(printf '%s' "$top_vendor" | awk '{print $2}')
+            vendor_count=$(printf '%s' "$top_vendor" | awk '{print $3}')
+            echo "PUBLIC_VENDOR_ID=$vendor_id"
+            echo "PUBLIC_VENDOR_SLUG=$vendor_slug"
+            echo "PUBLIC_VENDOR_VALIDATED=$vendor_count"
+            store_url="https://www.elmercadodeorigen.com/tienda/${vendor_slug}/"
+            reviews_url="${store_url}reviews/"
+            store_code=$(curl -k -L -sS --connect-timeout 5 --max-time 30 -o /tmp/mdo-store.html -w '%{http_code}' "$store_url")
+            reviews_code=$(curl -k -L -sS --connect-timeout 5 --max-time 30 -o /tmp/mdo-reviews.html -w '%{http_code}' "$reviews_url")
+            echo "PUBLIC_STORE_HTTP=$store_code"
+            echo "PUBLIC_REVIEWS_HTTP=$reviews_code"
+            echo "PUBLIC_TAB_LINK=$(grep -Eoc 'href=[\"'\'' ][^\"'\'' ]*/reviews/?[\"'\'' ]' /tmp/mdo-store.html || true)"
+            echo "PUBLIC_TAB_LABEL=$(grep -Eoc '>[[:space:]]*Reseñas[[:space:]]*<' /tmp/mdo-store.html || true)"
+            echo "PUBLIC_EMDO_LIST=$(grep -c 'mdo-store-reviews' /tmp/mdo-reviews.html || true)"
+            echo "PUBLIC_EMDO_REVIEW_ITEMS=$(grep -o 'mdo-store-review' /tmp/mdo-reviews.html | wc -l | tr -d ' ')"
+            echo "PUBLIC_PRODUCT_BADGE=$(grep -c '>Producto<' /tmp/mdo-reviews.html || true)"
+            test "$store_code" = '200'
+            test "$reviews_code" = '200'
+            grep -q 'mdo-store-reviews' /tmp/mdo-reviews.html
+          fi
           echo '=== EMDO REVIEW DIAGNOSTICS END ==='
 
           "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$PROD_PATH" --allow-root >/dev/null || true
