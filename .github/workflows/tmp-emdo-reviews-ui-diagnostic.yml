@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
 
-# Temporary read-only production diagnostic. Remove after the fix is verified.
+# Temporary read-only production acceptance for EMDO 1.0.42. Remove after verification.
 jobs:
   diagnose:
     runs-on: ubuntu-24.04
@@ -21,7 +21,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect reviews route and WCFM output in production
+      - name: Validate reviews route and summary in production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -50,33 +50,44 @@ jobs:
           wp_bin=$(command -v wp || true)
           php_bin=$(command -v php || true)
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-          echo "EMDO_VERSION=$($php_bin $wp_bin plugin get mdo-supplier-sync --field=version --path="$PROD_PATH" --allow-root 2>/dev/null || true)"
-          echo "WCFMMP_VERSION=$($php_bin $wp_bin plugin get wc-multivendor-marketplace --field=version --path="$PROD_PATH" --allow-root 2>/dev/null || true)"
+          version=$($php_bin $wp_bin plugin get mdo-supplier-sync --field=version --path="$PROD_PATH" --allow-root 2>/dev/null || true)
+          echo "EMDO_VERSION=$version"
+          test "$version" = '1.0.42'
+          $php_bin -d memory_limit=512M $wp_bin eval '
+            echo "PUBLIC_CLASS=" . ( class_exists("MDO_Reviews_Public") ? "1" : "0" ) . PHP_EOL;
+            echo "ROUTE_VERSION=" . get_option("mdo_reviews_public_route_version", "") . PHP_EOL;
+            echo "NEW_TAB_HOOK=" . (int) has_filter("wcfmmp_store_tabs", array("MDO_Reviews_Public","store_tabs")) . PHP_EOL;
+            echo "OLD_TAB_HOOK=" . (int) has_filter("wcfmmp_store_tabs", array("MDO_Reviews_Integration","store_tabs")) . PHP_EOL;
+          ' --path="$PROD_PATH" --allow-root
           for slug in hidalgo-de-la-jara tolecarnes la-huerta-de-ana-mary 1957; do
             base="https://www.elmercadodeorigen.com/tienda/$slug/"
             rev="${base}reviews/"
             curl -k -L -sS --connect-timeout 8 --max-time 45 -H 'Cache-Control: no-cache, no-store' "$base?emdo_ui_diag=1" -o "/tmp/${slug}-base.html"
             code=$(curl -k -L -sS --connect-timeout 8 --max-time 45 -H 'Cache-Control: no-cache, no-store' -o "/tmp/${slug}-reviews.html" -w '%{http_code}' "$rev?emdo_ui_diag=1")
             echo "STORE=$slug REVIEWS_HTTP=$code"
-            echo "TAB_LINKS_BEGIN=$slug"
-            grep -Eio 'href="[^"]+"[^>]*>[^<]*Reseñas[^<]*<' "/tmp/${slug}-base.html" | head -n 5 || true
-            echo "TAB_LINKS_END=$slug"
-            echo "REVIEWS_TEXT_BEGIN=$slug"
-            grep -Eio '.{0,120}(no tiene reseñ|sin reseñ|reseñ|valorad|rating|star|mdo-store-reviews).{0,160}' "/tmp/${slug}-reviews.html" | head -n 30 || true
-            echo "REVIEWS_TEXT_END=$slug"
+            test "$code" = '200'
+            link=$(grep -Eio 'href="[^"]+/reviews/?"[^>]*>[^<]*Reseñas[^<]*<' "/tmp/${slug}-base.html" | head -n1 || true)
+            echo "TAB_LINK=$link"
+            case "$link" in *"/tienda/$slug/reviews/"*) ;; *) echo "BAD_TAB_LINK=$slug" >&2; exit 51 ;; esac
+            if grep -Eqi 'no tiene reseñ|usuario no tiene reseñ|has no review|no reviews yet' "/tmp/${slug}-reviews.html"; then
+              echo "NATIVE_EMPTY_TEXT_PRESENT=$slug" >&2
+              exit 52
+            fi
           done
-          echo 'WCFM_TEMPLATE_BEGIN'
-          template=$(find "$PROD_PATH/wp-content/plugins" -type f -path '*/views/store/wcfmmp-view-store-reviews.php' | head -n1 || true)
-          echo "WCFM_TEMPLATE=$template"
-          if [ -n "$template" ]; then sed -n '1,240p' "$template"; fi
-          echo 'WCFM_TEMPLATE_END'
+          page=/tmp/hidalgo-de-la-jara-reviews.html
+          grep -q 'mdo-reviews-page' "$page"
+          grep -q 'mdo-review-summary' "$page"
+          grep -q 'mdo-review-summary-stars' "$page"
+          grep -q 'mdo-store-reviews' "$page"
+          grep -Eq 'sobre 5' "$page"
           $php_bin -d memory_limit=512M $wp_bin eval '
             global $wpdb;
-            $table = MDO_Database::table("reviews");
-            foreach (array("hidalgo-de-la-jara","tolecarnes","la-huerta-de-ana-mary","1957") as $slug) {
-              $u=get_user_by("slug",$slug); if(!$u){echo "SUMMARY $slug user=0\n"; continue;}
+            $table=MDO_Database::table("reviews");
+            foreach(array("hidalgo-de-la-jara","tolecarnes","la-huerta-de-ana-mary","1957") as $slug){
+              $u=get_user_by("slug",$slug); if(!$u){echo "SUMMARY $slug user=0\n";continue;}
               $row=$wpdb->get_row($wpdb->prepare("SELECT COUNT(*) c, AVG(rating) a FROM {$table} WHERE vendor_user_id=%d AND status=%s AND rating>0",$u->ID,"validated"));
-              echo "SUMMARY $slug user={$u->ID} count=".(int)$row->c." avg=".number_format((float)$row->a,2,".","")."\n";
+              echo "SUMMARY $slug user={$u->ID} count=".(int)$row->c." avg=".number_format((float)$row->a,2,".","").PHP_EOL;
             }
           ' --path="$PROD_PATH" --allow-root
+          echo 'EMDO_REVIEWS_UI_ACCEPTANCE_OK=1'
           REMOTE
