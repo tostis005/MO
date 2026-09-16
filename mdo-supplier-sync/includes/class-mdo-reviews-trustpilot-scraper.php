@@ -180,9 +180,12 @@ final class MDO_Reviews_Trustpilot_Scraper {
 				'timeout'     => 55,
 				'redirection' => 3,
 				'headers'     => array(
-					'Accept'     => 'application/json',
-					'X-No-Cache' => 'true',
-					'X-Timeout'  => '35',
+					'Accept'          => 'application/json',
+					'X-Engine'        => 'browser',
+					'X-Respond-With'  => 'markdown',
+					'X-Retain-Images' => 'alt',
+					'X-No-Cache'      => 'true',
+					'X-Timeout'       => '35',
 				),
 			)
 		);
@@ -233,7 +236,8 @@ final class MDO_Reviews_Trustpilot_Scraper {
 		$reviews = array();
 		$count   = count( $lines );
 		for ( $i = 0; $i < $count; ++$i ) {
-			if ( ! preg_match( '/(?:Valorada|Valorado|Rated)\s+(?:con\s*)?([1-5])\s+(?:estrellas?|stars?)|Rated\s+([1-5])\s+(?:out of|of)\s+5/iu', $lines[ $i ], $rating_match ) ) {
+			$rating_line = self::plain_markdown_text( $lines[ $i ] );
+			if ( ! preg_match( '/(?:Valorada|Valorado|Rated)\s+(?:con\s*)?([1-5])\s+(?:estrellas?|stars?)|Rated\s+([1-5])\s+(?:out of|of)\s+5/iu', $rating_line, $rating_match ) ) {
 				continue;
 			}
 			$review_rating = (int) ( $rating_match[1] ?: ( $rating_match[2] ?? 0 ) );
@@ -264,16 +268,16 @@ final class MDO_Reviews_Trustpilot_Scraper {
 				continue;
 			}
 			$title = self::plain_markdown_text( $lines[ $j ] );
-			if ( '' === $title || preg_match( '/^(Opinión espontánea|Invitada|Respuesta de)/iu', $title ) ) {
+			if ( '' === $title || preg_match( '/^(Opinión espontánea|Invitada|Respuesta de|Image|Imagen)$/iu', $title ) ) {
 				continue;
 			}
 			++$j;
 
 			$body_lines      = array();
 			$experienced_iso = '';
-			$block_end       = min( $count, $j + 40 );
+			$block_end       = min( $count, $j + 50 );
 			$link_start      = max( 0, $author_index - 2 );
-			$link_blob       = implode( "\n", array_slice( $lines, $link_start, min( 48, $count - $link_start ) ) );
+			$link_blob       = implode( "\n", array_slice( $lines, $link_start, min( 58, $count - $link_start ) ) );
 			for ( ; $j < $block_end; ++$j ) {
 				$current = trim( (string) $lines[ $j ] );
 				if ( '' === $current ) {
@@ -287,10 +291,10 @@ final class MDO_Reviews_Trustpilot_Scraper {
 				if ( preg_match( '/^(Opinión espontánea|Invitada|Respuesta de El Mercado de Origen)$/iu', $plain ) ) {
 					break;
 				}
-				if ( preg_match( '/(?:Valorada|Rated).*([1-5])/iu', $current ) ) {
+				if ( preg_match( '/(?:Valorada|Rated).*([1-5])/iu', $plain ) ) {
 					break;
 				}
-				if ( '' !== $plain && ! preg_match( '/^Ver \d+ reseñas? más de /iu', $plain ) ) {
+				if ( '' !== $plain && ! preg_match( '/^(Image|Imagen|Ver \d+ reseñas? más de )/iu', $plain ) ) {
 					$body_lines[] = $plain;
 				}
 			}
@@ -302,7 +306,7 @@ final class MDO_Reviews_Trustpilot_Scraper {
 			}
 			if ( '' === $id ) {
 				$stable_date = $experienced_iso ?: substr( $published_iso, 0, 10 );
-				$id = 'tp-md-' . substr( hash( 'sha256', self::normalize_identity_text( $author ) . '|' . $stable_date . '|' . self::normalize_identity_text( $title ) ), 0, 32 );
+				$id = 'tp-md-' . substr( hash( 'sha256', self::normalize_identity_text( $author ) . '|' . $stable_date . '|' . $review_rating . '|' . self::normalize_identity_text( $title ) ), 0, 32 );
 			}
 
 			$reviews[ $id ] = array(
@@ -320,7 +324,7 @@ final class MDO_Reviews_Trustpilot_Scraper {
 		}
 
 		if ( empty( $reviews ) ) {
-			return new WP_Error( 'mdo_trustpilot_reader_empty', 'No se pudieron reconocer reseñas en la salida de Reader.' );
+			return new WP_Error( 'mdo_trustpilot_reader_empty', 'No se pudieron reconocer reseñas en la salida Markdown de Reader.' );
 		}
 		return self::reviews_to_next_data( array_values( $reviews ) );
 	}
