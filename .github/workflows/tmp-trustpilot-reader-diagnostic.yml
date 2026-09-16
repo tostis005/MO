@@ -12,14 +12,25 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 12
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Diagnose EMDO importer in production
+      - uses: actions/checkout@v4
+
+      - name: Scrape current Trustpilot payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright@1.55.0 >/dev/null 2>&1
+          test -x /usr/bin/google-chrome || test -x /usr/bin/google-chrome-stable || npx playwright install chromium >/dev/null 2>&1
+          node mdo-supplier-sync/scripts/scrape-trustpilot-reviews.mjs --mode full --output /tmp/emdo-trustpilot-diag.json
+
+      - name: Trace real Trustpilot upserts with rollback
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -29,6 +40,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
           PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
             wp_bin=$(command -v wp || true)
             php_bin=$(command -v php || true)
@@ -42,41 +54,75 @@ jobs:
             done
           ')"
           : "${PROD_PATH:?production path not found}"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH'" <<'REMOTE'
+          REMOTE_FILE="/tmp/emdo-trustpilot-diag-${GITHUB_RUN_ID}.json"
+          sshpass -e scp $SCP_OPTIONS /tmp/emdo-trustpilot-diag.json "$STAGING_USER@$STAGING_HOST:$REMOTE_FILE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH' '$REMOTE_FILE'" <<'REMOTE'
           set -euo pipefail
           PROD_PATH="$1"
+          PAYLOAD_FILE="$2"
           wp_bin=$(command -v wp || true)
           php_bin=$(command -v php || true)
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          export MDO_DIAG_PAYLOAD="$PAYLOAD_FILE"
           "$php_bin" -d memory_limit=512M "$wp_bin" eval '
             global $wpdb;
+            $payload = json_decode( file_get_contents( getenv( "MDO_DIAG_PAYLOAD" ) ), true );
+            $reviews = is_array( $payload["reviews"] ?? null ) ? $payload["reviews"] : array();
             $table = MDO_Database::table( "reviews" );
-            $count_key = "mdo_trustpilot_review_count";
-            $rating_key = "mdo_trustpilot_rating";
-            $had_count = false !== get_option( $count_key, false );
-            $had_rating = false !== get_option( $rating_key, false );
-            $old_count = get_option( $count_key, null );
-            $old_rating = get_option( $rating_key, null );
-            $payload = array(
-              "source" => "trustpilot",
-              "mode" => "full",
-              "reported_count" => 2,
-              "rating" => 4.6,
-              "reviews" => array(
-                array("id"=>"emdo-diag-001","author_name"=>"EMDO Diagnostic A","rating"=>5,"title"=>"Diagnostic A","text"=>"EMDO persistence diagnostic unique text alpha 20260916","date"=>"2026-09-16T12:00:00+00:00","source_url"=>"https://example.invalid/emdo-diag-001"),
-                array("id"=>"emdo-diag-002","author_name"=>"EMDO Diagnostic B","rating"=>4,"title"=>"Diagnostic B","text"=>"EMDO persistence diagnostic unique text beta 20260916","date"=>"2026-09-16T12:01:00+00:00","source_url"=>"https://example.invalid/emdo-diag-002")
-              )
-            );
-            $result = MDO_Reviews_Scraping::import_payload( $payload );
-            echo "DIAG_IMPORT_RESULT=" . wp_json_encode( $result ) . PHP_EOL;
-            echo "DIAG_WPDB_ERROR=" . $wpdb->last_error . PHP_EOL;
-            $rows = $wpdb->get_results( "SELECT id,source,source_review_id,status,validation_method,source_key,content_fingerprint FROM {$table} WHERE source_review_id IN (\"emdo-diag-001\",\"emdo-diag-002\") ORDER BY id", ARRAY_A );
-            echo "DIAG_ROWS=" . wp_json_encode( $rows ) . PHP_EOL;
-            $wpdb->query( "DELETE FROM {$table} WHERE source_review_id IN (\"emdo-diag-001\",\"emdo-diag-002\")" );
-            if ( $had_count ) { update_option( $count_key, $old_count, false ); } else { delete_option( $count_key ); }
-            if ( $had_rating ) { update_option( $rating_key, $old_rating, false ); } else { delete_option( $rating_key ); }
-            $remaining = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE source_review_id IN (\"emdo-diag-001\",\"emdo-diag-002\")" );
-            echo "DIAG_CLEANUP_REMAINING={$remaining}" . PHP_EOL;
-            echo "DIAG_RESTORED_COUNT=" . wp_json_encode( get_option( $count_key, null ) ) . PHP_EOL;
+            $norm = new ReflectionMethod( "MDO_Reviews_Scraping", "normalize_review" );
+            $norm->setAccessible( true );
+            $ctxm = new ReflectionMethod( "MDO_Reviews", "assignment_context" );
+            $ctxm->setAccessible( true );
+            $assign = new ReflectionMethod( "MDO_Reviews", "apply_assignment" );
+            $assign->setAccessible( true );
+            $upsert = new ReflectionMethod( "MDO_Reviews", "upsert_review" );
+            $upsert->setAccessible( true );
+            $context = $ctxm->invoke( null );
+            $before = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE source=%s", "trustpilot" ) );
+            $wpdb->query( "START TRANSACTION" );
+            $normalized = 0; $saved = 0; $failed = 0; $skipped = 0; $errors = array();
+            foreach ( $reviews as $index => $review ) {
+              $data = $norm->invoke( null, "trustpilot", $review );
+              if ( ! is_array( $data ) ) { ++$skipped; continue; }
+              ++$normalized;
+              $assigned = $assign->invoke( null, $data, $context );
+              if ( ! is_array( $assigned ) ) { $assigned = $data; }
+              if ( empty( $assigned["status"] ) ) { $assigned["status"] = "pending"; }
+              $wpdb->last_error = "";
+              $ok = $upsert->invoke( null, "trustpilot", $assigned );
+              if ( $ok ) { ++$saved; }
+              else {
+                ++$failed;
+                if ( count( $errors ) < 25 ) {
+                  $errors[] = array(
+                    "index" => $index,
+                    "id" => $data["source_review_id"] ?? "",
+                    "author" => $data["author_name"] ?? "",
+                    "date" => $data["review_date"] ?? null,
+                    "text_len" => strlen( (string) ( $data["review_text"] ?? "" ) ),
+                    "payload_len" => strlen( (string) ( $data["source_payload"] ?? "" ) ),
+                    "error" => $wpdb->last_error,
+                    "query" => $wpdb->last_query,
+                  );
+                }
+              }
+            }
+            $during = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE source=%s", "trustpilot" ) );
+            echo "REAL_TP_DIAG=" . wp_json_encode( array(
+              "payload_reviews" => count( $reviews ),
+              "reported" => $payload["reported_count"] ?? null,
+              "historical" => $payload["historical_count"] ?? null,
+              "before" => $before,
+              "normalized" => $normalized,
+              "saved" => $saved,
+              "failed" => $failed,
+              "skipped" => $skipped,
+              "during" => $during,
+              "errors" => $errors,
+            ) ) . PHP_EOL;
+            $wpdb->query( "ROLLBACK" );
+            $after = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE source=%s", "trustpilot" ) );
+            echo "REAL_TP_ROLLBACK_COUNT={$after}" . PHP_EOL;
           ' --path="$PROD_PATH" --allow-root
+          rm -f "$PAYLOAD_FILE"
           REMOTE
