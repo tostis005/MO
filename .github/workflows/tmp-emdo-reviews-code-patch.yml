@@ -1,0 +1,76 @@
+name: Temporary EMDO reviews code patch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tmp-emdo-reviews-code-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch review dedupe and legacy scheduling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, found {text.count(old)}')
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              'mdo-supplier-sync/includes/class-mdo-reviews.php',
+              '$existing = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE content_fingerprint=%s LIMIT 1", $fingerprint ) );',
+              '$existing = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE source=%s AND content_fingerprint=%s LIMIT 1", $source, $fingerprint ) );'
+          )
+
+          bridge = Path('mdo-supplier-sync/includes/class-mdo-reviews-scraping.php')
+          text = bridge.read_text()
+          replacements = [
+              (
+                  "\tprivate const LEGACY_CRON_HOOK = 'mdo_reviews_daily_import';\n\tprivate const GROUP = 'mdo-supplier-sync';\n\tprivate const DISABLE_VERSION = '1.0.35';",
+                  "\tprivate const LEGACY_CRON_HOOK = 'mdo_reviews_daily_import';\n\tprivate const LEGACY_SEED_HOOK = 'mdo_reviews_seed_import';\n\tprivate const GROUP = 'mdo-supplier-sync';\n\tprivate const DISABLE_VERSION = '1.0.36';"
+              ),
+              (
+                  "\t\tremove_action( self::LEGACY_CRON_HOOK, array( 'MDO_Reviews_Integration', 'import_external' ) );\n\t\tremove_action( 'admin_post_mdo_reviews_import', array( 'MDO_Reviews_Integration', 'handle_import' ) );\n\t\tremove_action( 'action_scheduler_init', array( 'MDO_Reviews_Integration', 'ensure_schedule' ), 25 );\n\t\tremove_action( 'init', array( 'MDO_Reviews_Integration', 'ensure_schedule' ), 90 );",
+                  "\t\tremove_action( self::LEGACY_CRON_HOOK, array( 'MDO_Reviews_Integration', 'import_external' ) );\n\t\tremove_action( 'admin_post_mdo_reviews_import', array( 'MDO_Reviews_Integration', 'handle_import' ) );\n\t\tremove_action( 'action_scheduler_init', array( 'MDO_Reviews_Integration', 'ensure_schedule' ), 25 );\n\t\tremove_action( 'init', array( 'MDO_Reviews_Integration', 'ensure_schedule' ), 90 );\n\n\t\t// El transporte externo y el cron/seed heredado de MDO_Reviews quedan\n\t\t// desactivados: las fuentes locales se importan solo desde el botón EMDO.\n\t\tremove_action( self::LEGACY_CRON_HOOK, array( 'MDO_Reviews', 'import_all' ) );\n\t\tremove_action( self::LEGACY_SEED_HOOK, array( 'MDO_Reviews', 'import_all' ) );\n\t\tremove_action( 'admin_post_mdo_reviews_import', array( 'MDO_Reviews', 'handle_import' ) );\n\t\tremove_action( 'init', array( 'MDO_Reviews', 'ensure_schedule' ), 30 );\n\t\tremove_action( 'init', array( 'MDO_Reviews', 'maybe_seed' ), 31 );"
+              ),
+              (
+                  "\tpublic static function disable_legacy_schedule(): void {\n\t\tif ( self::DISABLE_VERSION === (string) get_option( 'mdo_reviews_scraping_schedule_version', '' ) ) {\n\t\t\treturn;\n\t\t}\n\t\tself::unschedule_legacy_import();\n\t\tupdate_option( 'mdo_reviews_scraping_schedule_version', self::DISABLE_VERSION, false );\n\t}",
+                  "\tpublic static function disable_legacy_schedule(): void {\n\t\t// Se ejecuta en cada init para retirar cualquier evento heredado que haya\n\t\t// quedado programado antes de que EMDO pasara al scraper de Actions.\n\t\tself::unschedule_legacy_import();\n\t\tif ( self::DISABLE_VERSION !== (string) get_option( 'mdo_reviews_scraping_schedule_version', '' ) ) {\n\t\t\tupdate_option( 'mdo_reviews_scraping_schedule_version', self::DISABLE_VERSION, false );\n\t\t}\n\t}"
+              ),
+              (
+                  "\tprivate static function unschedule_legacy_import(): void {\n\t\tif ( function_exists( 'as_unschedule_all_actions' ) ) {\n\t\t\tas_unschedule_all_actions( self::LEGACY_CRON_HOOK, array(), self::GROUP );\n\t\t}\n\t\twp_clear_scheduled_hook( self::LEGACY_CRON_HOOK );\n\t}",
+                  "\tprivate static function unschedule_legacy_import(): void {\n\t\tif ( function_exists( 'as_unschedule_all_actions' ) ) {\n\t\t\tas_unschedule_all_actions( self::LEGACY_CRON_HOOK, array(), self::GROUP );\n\t\t\tas_unschedule_all_actions( self::LEGACY_SEED_HOOK, array(), self::GROUP );\n\t\t}\n\t\twp_clear_scheduled_hook( self::LEGACY_CRON_HOOK );\n\t\twp_clear_scheduled_hook( self::LEGACY_SEED_HOOK );\n\t}"
+              ),
+          ]
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f'bridge replacement expected once, found {text.count(old)}')
+              text = text.replace(old, new, 1)
+          bridge.write_text(text)
+
+          replace_once('mdo-supplier-sync/mdo-supplier-sync.php', ' * Version: 1.0.35', ' * Version: 1.0.36')
+          replace_once('mdo-supplier-sync/mdo-supplier-sync.php', "define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.35' );", "define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.36' );")
+          PY
+          php -l mdo-supplier-sync/includes/class-mdo-reviews.php
+          php -l mdo-supplier-sync/includes/class-mdo-reviews-scraping.php
+          php -l mdo-supplier-sync/mdo-supplier-sync.php
+          git diff --check
+          git diff -- mdo-supplier-sync/includes/class-mdo-reviews.php mdo-supplier-sync/includes/class-mdo-reviews-scraping.php mdo-supplier-sync/mdo-supplier-sync.php
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add mdo-supplier-sync/includes/class-mdo-reviews.php mdo-supplier-sync/includes/class-mdo-reviews-scraping.php mdo-supplier-sync/mdo-supplier-sync.php
+          git commit -m 'Harden EMDO review dedupe and disable legacy cron'
+          git push origin HEAD:main
