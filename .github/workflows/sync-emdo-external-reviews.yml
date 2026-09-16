@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'mdo-supplier-sync/includes/class-mdo-reviews-scraping.php'
+      - 'mdo-supplier-sync/includes/class-mdo-reviews-trustpilot-scraper.php'
       - 'mdo-supplier-sync/scripts/scrape-external-reviews.mjs'
       - 'mdo-supplier-sync/mdo-supplier-sync.php'
       - '.github/workflows/sync-emdo-external-reviews.yml'
@@ -79,53 +80,15 @@ jobs:
             esac
           fi
 
-      - name: Validate scraper and PHP bridge
+      - name: Validate scraper and PHP bridges
         shell: bash
         run: |
           set -euo pipefail
           php -l mdo-supplier-sync/includes/class-mdo-reviews-scraping.php
+          php -l mdo-supplier-sync/includes/class-mdo-reviews-trustpilot-scraper.php
           node --check mdo-supplier-sync/scripts/scrape-external-reviews.mjs
 
-      - name: Install browser dependency
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm init -y >/dev/null 2>&1
-          npm install --no-save playwright@1.55.0 >/dev/null 2>&1
-          test -x /usr/bin/google-chrome || test -x /usr/bin/google-chrome-stable || npx playwright install chromium >/dev/null 2>&1
-
-      - name: Scrape public reviews
-        shell: bash
-        run: |
-          set -euo pipefail
-          for source in $MDO_SOURCES; do
-            output="/tmp/emdo-${source}.json"
-            node mdo-supplier-sync/scripts/scrape-external-reviews.mjs \
-              --source "$source" \
-              --mode "$MDO_MODE" \
-              --output "$output"
-            SOURCE="$source" MODE="$MDO_MODE" OUTPUT="$output" python3 - <<'PY'
-          import json, os
-          source=os.environ['SOURCE']; mode=os.environ['MODE']; path=os.environ['OUTPUT']
-          with open(path, encoding='utf-8') as fh: data=json.load(fh)
-          reviews=data.get('reviews') or []
-          reported=int(data.get('reported_count') or 0)
-          found=len(reviews)
-          ids=[str(x.get('id') or '') for x in reviews]
-          if not found or any(not x for x in ids): raise SystemExit(f'{source}: empty review payload or id')
-          if len(ids) != len(set(ids)): raise SystemExit(f'{source}: duplicate ids in scraper payload')
-          if mode == 'full':
-              floor=100 if source == 'trustpilot' else 150
-              if found < floor: raise SystemExit(f'{source}: full scrape too small ({found})')
-              if reported and found < int(reported * 0.90):
-                  raise SystemExit(f'{source}: full scrape incomplete ({found}/{reported})')
-          elif source == 'google' and not data.get('sorted_newest'):
-              raise SystemExit('google: incremental scrape was not sorted newest-first')
-          print(f'SCRAPER_ACCEPT source={source} mode={mode} found={found} reported={reported} rating={data.get("rating")}')
-          PY
-          done
-
-      - name: Resolve production and wait for EMDO deployment
+      - name: Resolve production and wait for deployed review bridge
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -155,34 +118,105 @@ jobs:
           ')"
           : "${PROD_PATH:?production path not found}"
           EXPECTED_VERSION="$(sed -n 's/^ \* Version: //p' mdo-supplier-sync/mdo-supplier-sync.php | head -n1 | tr -d '\r')"
+          LOCAL_TP_SHA="$(sha256sum mdo-supplier-sync/includes/class-mdo-reviews-trustpilot-scraper.php | awk '{print $1}')"
           deployed=''
+          remote_tp_sha=''
           for attempt in $(seq 1 36); do
-            deployed="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" plugin get mdo-supplier-sync --field=version --path='$PROD_PATH' --allow-root 2>/dev/null || true")"
-            [ "$deployed" = "$EXPECTED_VERSION" ] && break
+            state="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); version=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" plugin get mdo-supplier-sync --field=version --path='$PROD_PATH' --allow-root 2>/dev/null || true); helper='$PROD_PATH/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-reviews-trustpilot-scraper.php'; helper_sha=''; [ -f \"\$helper\" ] && helper_sha=\$(sha256sum \"\$helper\" | awk '{print \$1}'); printf '%s|%s' \"\$version\" \"\$helper_sha\"")"
+            deployed="${state%%|*}"
+            remote_tp_sha="${state#*|}"
+            if [ "$deployed" = "$EXPECTED_VERSION" ] && [ "$remote_tp_sha" = "$LOCAL_TP_SHA" ]; then
+              break
+            fi
             sleep 10
           done
           test "$deployed" = "$EXPECTED_VERSION"
+          test "$remote_tp_sha" = "$LOCAL_TP_SHA"
           echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
           echo "SSH_OPTIONS=$SSH_OPTIONS" >> "$GITHUB_ENV"
           echo "SCP_OPTIONS=$SCP_OPTIONS" >> "$GITHUB_ENV"
           echo "PRODUCTION_EMDO_VERSION=$deployed"
+          echo "TRUSTPILOT_BRIDGE_SHA=$remote_tp_sha"
 
-      - name: Import scraped payloads into EMDO
+      - name: Install Google browser dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          case " $MDO_SOURCES " in
+            *' google '*)
+              npm init -y >/dev/null 2>&1
+              npm install --no-save playwright@1.55.0 >/dev/null 2>&1
+              test -x /usr/bin/google-chrome || test -x /usr/bin/google-chrome-stable || npx playwright install chromium >/dev/null 2>&1
+              ;;
+            *) echo 'Google not requested; browser install skipped.' ;;
+          esac
+
+      - name: Scrape and validate Google public reviews
+        shell: bash
+        run: |
+          set -euo pipefail
+          case " $MDO_SOURCES " in
+            *' google '*)
+              output='/tmp/emdo-google.json'
+              node mdo-supplier-sync/scripts/scrape-external-reviews.mjs --source google --mode "$MDO_MODE" --output "$output"
+              MODE="$MDO_MODE" OUTPUT="$output" python3 - <<'PY'
+          import json, os
+          mode=os.environ['MODE']; path=os.environ['OUTPUT']
+          with open(path, encoding='utf-8') as fh: data=json.load(fh)
+          reviews=data.get('reviews') or []
+          reported=int(data.get('reported_count') or 0)
+          found=len(reviews)
+          ids=[str(x.get('id') or '') for x in reviews]
+          if not found or any(not x for x in ids): raise SystemExit('google: empty review payload or id')
+          if len(ids) != len(set(ids)): raise SystemExit('google: duplicate ids in scraper payload')
+          if mode == 'full':
+              if found < 150: raise SystemExit(f'google: full scrape too small ({found})')
+              if reported and found < int(reported * 0.90): raise SystemExit(f'google: full scrape incomplete ({found}/{reported})')
+          elif not data.get('sorted_newest'):
+              raise SystemExit('google: incremental scrape was not sorted newest-first')
+          print(f'SCRAPER_ACCEPT source=google mode={mode} found={found} reported={reported} rating={data.get("rating")}')
+          PY
+              ;;
+            *) echo 'Google not requested; scrape skipped.' ;;
+          esac
+          case " $MDO_SOURCES " in
+            *' trustpilot '*) echo "TRUSTPILOT_DEFERRED_TO_PRODUCTION mode=$MDO_MODE" ;;
+          esac
+
+      - name: Import external reviews into EMDO
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
           for source in $MDO_SOURCES; do
-            local_file="/tmp/emdo-${source}.json"
-            remote_file="/tmp/emdo-${source}-${GITHUB_RUN_ID}.json"
-            sshpass -e scp $SCP_OPTIONS "$local_file" "$STAGING_USER@$STAGING_HOST:$remote_file"
-            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; export MDO_REVIEW_PAYLOAD_FILE='$remote_file'; wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
-              if ( ! class_exists( "MDO_Reviews_Scraping" ) ) { fwrite( STDERR, "MDO_Reviews_Scraping missing\\n" ); exit(31); }
-              \$result = MDO_Reviews_Scraping::import_file( getenv( "MDO_REVIEW_PAYLOAD_FILE" ) );
-              if ( is_wp_error( \$result ) ) { fwrite( STDERR, \$result->get_error_code() . ":" . \$result->get_error_message() . "\\n" ); exit(32); }
-              echo "IMPORT_RESULT=" . wp_json_encode( \$result ) . PHP_EOL;
-            ' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$remote_file'; exit \$rc"
+            if [ "$source" = 'google' ]; then
+              local_file='/tmp/emdo-google.json'
+              remote_file="/tmp/emdo-google-${GITHUB_RUN_ID}.json"
+              sshpass -e scp $SCP_OPTIONS "$local_file" "$STAGING_USER@$STAGING_HOST:$remote_file"
+              sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; export MDO_REVIEW_PAYLOAD_FILE='$remote_file'; wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
+                if ( ! class_exists( "MDO_Reviews_Scraping" ) ) { fwrite( STDERR, "MDO_Reviews_Scraping missing\\n" ); exit(31); }
+                \$result = MDO_Reviews_Scraping::import_file( getenv( "MDO_REVIEW_PAYLOAD_FILE" ) );
+                if ( is_wp_error( \$result ) ) { fwrite( STDERR, \$result->get_error_code() . ":" . \$result->get_error_message() . "\\n" ); exit(32); }
+                echo "IMPORT_RESULT_GOOGLE=" . wp_json_encode( \$result ) . PHP_EOL;
+              ' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$remote_file'; exit \$rc"
+            else
+              sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH' '$MDO_MODE'" <<'REMOTE'
+          set -euo pipefail
+          PROD_PATH="$1"
+          MODE="$2"
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          MDO_SYNC_MODE="$MODE" "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            require_once WP_PLUGIN_DIR . "/mdo-supplier-sync/includes/class-mdo-reviews-trustpilot-scraper.php";
+            if ( ! class_exists( "MDO_Reviews_Trustpilot_Scraper" ) ) { fwrite( STDERR, "MDO_Reviews_Trustpilot_Scraper missing\n" ); exit(41); }
+            $result = MDO_Reviews_Trustpilot_Scraper::sync( getenv( "MDO_SYNC_MODE" ) );
+            if ( is_wp_error( $result ) ) { fwrite( STDERR, $result->get_error_code() . ":" . $result->get_error_message() . "\n" ); exit(42); }
+            echo "IMPORT_RESULT_TRUSTPILOT=" . wp_json_encode( $result ) . PHP_EOL;
+          ' --path="$PROD_PATH" --allow-root
+          REMOTE
+            fi
           done
 
       - name: Validate production review data and public route
@@ -210,10 +244,18 @@ jobs:
           test "$empty_status" = '0'
           test "$duplicate_keys" = '0'
           test "$duplicate_fp" = '0'
-          for source in google trustpilot woocommerce_product wcfm; do
-            count=$("$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT COUNT(*) FROM ${prefix}mdo_reviews WHERE source='${source}'" --skip-column-names --path="$PROD_PATH" --allow-root | tr -d '[:space:]')
-            echo "SOURCE_TOTAL_${source}=$count"
-          done
+
+          google_count=$("$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT COUNT(*) FROM ${prefix}mdo_reviews WHERE source='google'" --skip-column-names --path="$PROD_PATH" --allow-root | tr -d '[:space:]')
+          trustpilot_count=$("$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT COUNT(*) FROM ${prefix}mdo_reviews WHERE source='trustpilot'" --skip-column-names --path="$PROD_PATH" --allow-root | tr -d '[:space:]')
+          woo_count=$("$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT COUNT(*) FROM ${prefix}mdo_reviews WHERE source='woocommerce_product'" --skip-column-names --path="$PROD_PATH" --allow-root | tr -d '[:space:]')
+          wcfm_count=$("$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT COUNT(*) FROM ${prefix}mdo_reviews WHERE source='wcfm'" --skip-column-names --path="$PROD_PATH" --allow-root | tr -d '[:space:]')
+          echo "SOURCE_TOTAL_google=$google_count"
+          echo "SOURCE_TOTAL_trustpilot=$trustpilot_count"
+          echo "SOURCE_TOTAL_woocommerce_product=$woo_count"
+          echo "SOURCE_TOTAL_wcfm=$wcfm_count"
+          test "$google_count" -ge 300
+          test "$trustpilot_count" -ge 150
+          test "$woo_count" -ge 200
 
           top_vendor=$("$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT r.vendor_user_id,u.user_nicename,COUNT(*) c FROM ${prefix}mdo_reviews r INNER JOIN ${prefix}users u ON u.ID=r.vendor_user_id WHERE r.status='validated' AND r.vendor_user_id IS NOT NULL GROUP BY r.vendor_user_id,u.user_nicename ORDER BY c DESC LIMIT 1" --skip-column-names --path="$PROD_PATH" --allow-root | head -n1)
           test -n "$top_vendor"
