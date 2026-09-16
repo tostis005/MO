@@ -25,11 +25,12 @@ jobs:
           sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
           wp_bin=$(command -v wp)
           php_bin=$(command -v php)
-          root=""
+          sitepath=""
           for cfg in $(find /var/www/vhosts -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
             p=$(dirname "$cfg")
             u=$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-            case "$u" in *elmercadodeorigen.com*) root="$p"; break;; esac
+            case "$u" in *elmercadodeorigen.com*) sitepath="$p"; break;; esac
           done
-          "$php_bin" -d memory_limit=512M "$wp_bin" eval '$n=as_next_scheduled_action("mdo_reviews_daily_import",array(),"mdo-supplier-sync"); echo "INLINE=".(class_exists("MDO_Reviews_Admin_Inline")?"yes":"no").PHP_EOL; echo "INLINE_SAVE=".(false!==has_action("wp_ajax_mdo_reviews_inline_save",array("MDO_Reviews_Admin_Inline","ajax_save"))?"yes":"no").PHP_EOL; echo "OFFICIAL_CRON=".(false!==has_action("mdo_reviews_daily_import",array("MDO_Reviews_Integration","import_external"))?"yes":"no").PHP_EOL; echo "OLD_CRON=".(false!==has_action("mdo_reviews_daily_import",array("MDO_Reviews","import_all"))?"yes":"no").PHP_EOL; echo "SCHEDULE_VERSION=".get_option("mdo_reviews_external_schedule_version","").PHP_EOL; echo "NEXT_SYNC=".(is_numeric($n)?wp_date("Y-m-d H:i:s T",(int)$n):"NONE").PHP_EOL;' --path="$root" --allow-root
+          test -n "$sitepath"
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '$n=as_next_scheduled_action("mdo_reviews_daily_import",array(),"mdo-supplier-sync"); echo "INLINE=".(class_exists("MDO_Reviews_Admin_Inline")?"yes":"no").PHP_EOL; echo "INLINE_SAVE=".(false!==has_action("wp_ajax_mdo_reviews_inline_save",array("MDO_Reviews_Admin_Inline","ajax_save"))?"yes":"no").PHP_EOL; echo "OFFICIAL_CRON=".(false!==has_action("mdo_reviews_daily_import",array("MDO_Reviews_Integration","import_external"))?"yes":"no").PHP_EOL; echo "OLD_CRON=".(false!==has_action("mdo_reviews_daily_import",array("MDO_Reviews","import_all"))?"yes":"no").PHP_EOL; echo "SCHEDULE_VERSION=".get_option("mdo_reviews_external_schedule_version","").PHP_EOL; echo "NEXT_SYNC=".(is_numeric($n)?wp_date("Y-m-d H:i:s T",(int)$n):"NONE").PHP_EOL;' --path="$sitepath" --allow-root
           REMOTE
