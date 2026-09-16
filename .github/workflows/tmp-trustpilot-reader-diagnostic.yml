@@ -14,47 +14,56 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Fetch Trustpilot all-language pages
+      - name: Install Playwright
         shell: bash
         run: |
           set -euo pipefail
-          for spec in es1 es8 all1 all2 all8 all9 all10; do
-            case "$spec" in
-              es1) target='https://es.trustpilot.com/review/elmercadodeorigen.com?sort=recency' ;;
-              es8) target='https://es.trustpilot.com/review/elmercadodeorigen.com?page=8&sort=recency' ;;
-              all1) target='https://es.trustpilot.com/review/elmercadodeorigen.com?languages=all&sort=recency' ;;
-              all2) target='https://es.trustpilot.com/review/elmercadodeorigen.com?languages=all&page=2&sort=recency' ;;
-              all8) target='https://es.trustpilot.com/review/elmercadodeorigen.com?languages=all&page=8&sort=recency' ;;
-              all9) target='https://es.trustpilot.com/review/elmercadodeorigen.com?languages=all&page=9&sort=recency' ;;
-              all10) target='https://es.trustpilot.com/review/elmercadodeorigen.com?languages=all&page=10&sort=recency' ;;
-            esac
-            curl -LfsS --max-time 55 \
-              -H 'Accept: application/json' \
-              -H 'X-Engine: browser' \
-              -H 'X-Respond-With: markdown' \
-              -H 'X-Retain-Images: alt' \
-              -H 'X-No-Cache: true' \
-              -H 'X-Timeout: 35' \
-              "https://r.jina.ai/$target" -o "/tmp/$spec.json" || true
-          done
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright@1.55.0 >/dev/null 2>&1
+          test -x /usr/bin/google-chrome || test -x /usr/bin/google-chrome-stable || npx playwright install chromium >/dev/null 2>&1
 
-      - name: Summarize Reader structures
+      - name: Diagnose Trustpilot browser pagination
         shell: bash
         run: |
-          python3 - <<'PY'
-          import json, pathlib, re
-          for path in sorted(pathlib.Path('/tmp').glob('es*.json')) + sorted(pathlib.Path('/tmp').glob('all*.json')):
-              raw = path.read_text('utf-8', errors='replace')
-              try:
-                  data = json.loads(raw)
-                  text = ((data.get('data') or {}).get('content') or data.get('content') or '')
-              except Exception:
-                  text = raw
-              marker=text.lower().rfind('todas las opiniones')
-              tail=text[marker:] if marker >= 0 else text
-              ratings=re.findall(r'(?:Valorad[^\n]*?[1-5][^\n]*(?:estrella|sobre 5)|Rated[^\n]*?[1-5][^\n]*(?:star|out of 5))', tail, re.I)
-              review_links=re.findall(r'/reviews/([A-Za-z0-9_-]{8,})', tail)
-              print(f'=== {path.stem} bytes={len(text)} tail_bytes={len(tail)} ratings_after_all={len(ratings)} review_links_after_all={len(set(review_links))} ===')
-              for line in tail.splitlines()[:45]:
-                  if line.strip(): print(line[:320])
-          PY
+          node <<'NODE'
+          const { chromium } = require('playwright');
+          (async () => {
+            const executablePath = require('fs').existsSync('/usr/bin/google-chrome') ? '/usr/bin/google-chrome' : (require('fs').existsSync('/usr/bin/google-chrome-stable') ? '/usr/bin/google-chrome-stable' : undefined);
+            const browser = await chromium.launch({ headless: true, executablePath, args: ['--no-sandbox','--disable-dev-shm-usage'] });
+            const context = await browser.newContext({ locale: 'es-ES', userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36' });
+            const page = await context.newPage();
+            for (const n of [1,2,7,8,9]) {
+              const url = `https://es.trustpilot.com/review/elmercadodeorigen.com?languages=all&page=${n}&sort=recency`;
+              try {
+                await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+                await page.waitForTimeout(4000);
+                const result = await page.evaluate(() => {
+                  const selectors = [
+                    'article[data-service-review-card-paper]',
+                    '[data-service-review-card-paper]',
+                    'article',
+                    '[data-service-review-card]'
+                  ];
+                  const counts = Object.fromEntries(selectors.map(s => [s, document.querySelectorAll(s).length]));
+                  const next = document.querySelector('script#__NEXT_DATA__');
+                  let nextReviews = null, nextTotal = null, nextPages = null;
+                  if (next?.textContent) {
+                    try {
+                      const d = JSON.parse(next.textContent);
+                      const pp = d?.props?.pageProps || {};
+                      nextReviews = Array.isArray(pp.reviews) ? pp.reviews.length : null;
+                      nextTotal = pp?.businessUnit?.numberOfReviews ?? pp?.filters?.pagination?.totalCount ?? null;
+                      nextPages = pp?.filters?.pagination?.totalPages ?? null;
+                    } catch {}
+                  }
+                  const body = (document.body?.innerText || '').slice(0, 1200);
+                  return { title: document.title, href: location.href, counts, nextLength: next?.textContent?.length || 0, nextReviews, nextTotal, nextPages, body };
+                });
+                console.log('TP_PLAYWRIGHT_PAGE=' + n + ' ' + JSON.stringify(result));
+              } catch (err) {
+                console.log('TP_PLAYWRIGHT_ERROR=' + n + ' ' + String(err));
+              }
+            }
+            await browser.close();
+          })().catch(err => { console.error(err); process.exit(1); });
+          NODE
