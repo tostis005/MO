@@ -104,17 +104,30 @@ jobs:
           test "$plugin_status" = 'active'
 
           echo '=== EMDO REVIEW DIAGNOSTICS BEGIN ==='
-          "$php_bin" -d memory_limit=512M "$wp_bin" eval '$stats = MDO_Reviews::import_all(); echo "IMPORT_STATS=" . wp_json_encode( $stats ) . PHP_EOL;' --path="$PROD_PATH" --allow-root
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '$stats = MDO_Reviews_Integration::import_external(); echo "EXTERNAL_IMPORT_STATS=" . wp_json_encode( $stats ) . PHP_EOL;' --path="$PROD_PATH" --allow-root
           prefix=$("$php_bin" -d memory_limit=512M "$wp_bin" db prefix --path="$PROD_PATH" --allow-root)
+          echo '-- EMDO review counts --'
           "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT source, COALESCE(NULLIF(TRIM(status),''),'EMPTY') AS review_status, COUNT(*) AS total FROM ${prefix}mdo_reviews GROUP BY source, review_status ORDER BY source, review_status" --skip-column-names --path="$PROD_PATH" --allow-root || true
-          echo '-- review duplicate checks --'
+          echo '-- validation methods --'
+          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT COALESCE(NULLIF(validation_method,''),'NONE') AS method, status, COUNT(*) FROM ${prefix}mdo_reviews GROUP BY method,status ORDER BY method,status" --skip-column-names --path="$PROD_PATH" --allow-root || true
+          echo '-- duplicate checks --'
           "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT source, COUNT(*) AS duplicate_groups FROM (SELECT source, source_key FROM ${prefix}mdo_reviews GROUP BY source, source_key HAVING COUNT(*)>1) d GROUP BY source" --skip-column-names --path="$PROD_PATH" --allow-root || true
-          echo '-- trust/google option names and byte sizes --'
-          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT option_name, LENGTH(option_value) AS bytes FROM ${prefix}options WHERE option_name LIKE '%trustpilot%' OR option_name LIKE '%trustindex%' OR option_name LIKE '%google%review%' ORDER BY bytes DESC, option_name ASC LIMIT 200" --skip-column-names --path="$PROD_PATH" --allow-root || true
-          echo '-- related active plugins --'
-          "$php_bin" -d memory_limit=512M "$wp_bin" plugin list --status=active --fields=name,version --format=csv --path="$PROD_PATH" --allow-root | grep -Ei '^(name|.*(trust|google|review).*)' || true
-          echo '-- related tables --'
-          "$php_bin" -d memory_limit=512M "$wp_bin" db tables --all-tables-with-prefix --path="$PROD_PATH" --allow-root | grep -Ei 'trust|review' || true
+          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT source, COUNT(*) AS duplicate_fingerprints FROM (SELECT source, content_fingerprint FROM ${prefix}mdo_reviews WHERE content_fingerprint IS NOT NULL AND content_fingerprint<>'' GROUP BY source, content_fingerprint HAVING COUNT(*)>1) d GROUP BY source" --skip-column-names --path="$PROD_PATH" --allow-root || true
+          echo '-- Google local source counts --'
+          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT COUNT(*) AS all_rows, SUM(CASE WHEN hidden=0 THEN 1 ELSE 0 END) AS visible_rows, SUM(CASE WHEN hidden<>0 THEN 1 ELSE 0 END) AS hidden_rows FROM ${prefix}trustindex_google_reviews" --skip-column-names --path="$PROD_PATH" --allow-root || true
+          echo '-- Google Trustindex columns --'
+          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SHOW COLUMNS FROM ${prefix}trustindex_google_reviews" --skip-column-names --path="$PROD_PATH" --allow-root || true
+          echo '-- GRP Google source --'
+          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT COUNT(*) FROM ${prefix}grp_google_review" --skip-column-names --path="$PROD_PATH" --allow-root || true
+          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SHOW COLUMNS FROM ${prefix}grp_google_review" --skip-column-names --path="$PROD_PATH" --allow-root || true
+          echo '-- safe source metadata --'
+          printf 'MDO_GOOGLE_COUNT='; "$php_bin" -d memory_limit=512M "$wp_bin" option get mdo_google_review_count --path="$PROD_PATH" --allow-root 2>/dev/null || true
+          printf 'MDO_TRUSTPILOT_COUNT='; "$php_bin" -d memory_limit=512M "$wp_bin" option get mdo_trustpilot_review_count --path="$PROD_PATH" --allow-root 2>/dev/null || true
+          printf 'MDO_TRUSTPILOT_RATING='; "$php_bin" -d memory_limit=512M "$wp_bin" option get mdo_trustpilot_rating --path="$PROD_PATH" --allow-root 2>/dev/null || true
+          printf 'TRUSTPILOT_ACTIVE='; "$php_bin" -d memory_limit=512M "$wp_bin" option get trustindex-trustpilot-active --path="$PROD_PATH" --allow-root 2>/dev/null || true
+          echo '-- Trustpilot provider method locations --'
+          grep -Rni --include='*.php' 'function get_noreg_list_reviews' "$PROD_PATH/wp-content/plugins/review-widgets-for-trustpilot" | head -20 || true
+          grep -RniE --include='*.php' 'get_noreg_list_reviews|download.*review|review.*download|api.*review|review.*api' "$PROD_PATH/wp-content/plugins/review-widgets-for-trustpilot" | head -60 || true
           echo '=== EMDO REVIEW DIAGNOSTICS END ==='
 
           "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$PROD_PATH" --allow-root >/dev/null || true
