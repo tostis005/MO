@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * - Nunca publica: vendor_user_id permanece vacío y status permanece pending.
  */
 final class MDO_Reviews_Moderation {
-	private const VERSION = '1.1.0';
+	private const VERSION = '1.2.0';
 	private const OPTION = 'mdo_reviews_moderation_version';
 	private const HIDALGO_VENDOR_ID = 6;
 	private const OIL_VENDOR_ID = 3;
@@ -200,7 +200,7 @@ final class MDO_Reviews_Moderation {
 		} else {
 			$product = '(?:jamon|paleta|paletilla|embutido|salchichon|chorizo|lomo)';
 		}
-		$gift = '(?:de regalo|como regalo|obsequio|detalle|incluyer(?:on|a)|incluid[oa]s?)';
+		$gift = '(?:regalo|regalos|de regalo|como regalo|obsequio|obsequios|detalle|detalles|cortesia|incluyer(?:on|a)|incluid[oa]s?)';
 		return (bool) preg_match(
 			'/(?:' . $gift . ').{0,55}' . $product . '|' . $product . '.{0,55}(?:' . $gift . ')/u',
 			$text
