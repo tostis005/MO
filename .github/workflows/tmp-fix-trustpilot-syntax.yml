@@ -1,0 +1,52 @@
+name: Temporary Trustpilot syntax hotfix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tmp-fix-trustpilot-syntax.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fix missing loop braces and validate PHP
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('mdo-supplier-sync/includes/class-mdo-reviews-trustpilot-scraper.php')
+          s = p.read_text(encoding='utf-8')
+          old1 = """\tprivate static function previous_non_empty_line( array $lines, int $index ): int {\n\t\tfor ( ; $index >= 0; --$index ) {\n\t\t\tif ( '' !== trim( (string) $lines[ $index ] ) ) {\n\t\t\t\treturn $index;\n\t\t\t}\n\t\treturn -1;\n\t}\n"""
+          new1 = """\tprivate static function previous_non_empty_line( array $lines, int $index ): int {\n\t\tfor ( ; $index >= 0; --$index ) {\n\t\t\tif ( '' !== trim( (string) $lines[ $index ] ) ) {\n\t\t\t\treturn $index;\n\t\t\t}\n\t\t}\n\t\treturn -1;\n\t}\n"""
+          old2 = """\tprivate static function next_non_empty_line( array $lines, int $index ): int {\n\t\t$count = count( $lines );\n\t\tfor ( ; $index < $count; ++$index ) {\n\t\t\tif ( '' !== trim( (string) $lines[ $index ] ) ) {\n\t\t\t\treturn $index;\n\t\t\t}\n\t\treturn -1;\n\t}\n"""
+          new2 = """\tprivate static function next_non_empty_line( array $lines, int $index ): int {\n\t\t$count = count( $lines );\n\t\tfor ( ; $index < $count; ++$index ) {\n\t\t\tif ( '' !== trim( (string) $lines[ $index ] ) ) {\n\t\t\t\treturn $index;\n\t\t\t}\n\t\t}\n\t\treturn -1;\n\t}\n"""
+          if old1 not in s or old2 not in s:
+              raise SystemExit('Expected broken helper blocks were not found exactly once')
+          s = s.replace(old1, new1, 1).replace(old2, new2, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+          php -l mdo-supplier-sync/includes/class-mdo-reviews-trustpilot-scraper.php
+          find mdo-supplier-sync -type f -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
+
+      - name: Commit syntax fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add mdo-supplier-sync/includes/class-mdo-reviews-trustpilot-scraper.php
+          if git diff --cached --quiet; then
+            echo 'No syntax patch needed.'
+            exit 0
+          fi
+          git commit -m 'Fix Trustpilot parser loop braces'
+          git push origin HEAD:main
