@@ -103,6 +103,20 @@ jobs:
           test "$deployed_version" = "$EXPECTED_VERSION"
           test "$plugin_status" = 'active'
 
+          echo '=== EMDO REVIEW DIAGNOSTICS BEGIN ==='
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '$stats = MDO_Reviews::import_all(); echo "IMPORT_STATS=" . wp_json_encode( $stats ) . PHP_EOL;' --path="$PROD_PATH" --allow-root
+          prefix=$("$php_bin" -d memory_limit=512M "$wp_bin" db prefix --path="$PROD_PATH" --allow-root)
+          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT source, COALESCE(NULLIF(TRIM(status),''),'EMPTY') AS review_status, COUNT(*) AS total FROM ${prefix}mdo_reviews GROUP BY source, review_status ORDER BY source, review_status" --skip-column-names --path="$PROD_PATH" --allow-root || true
+          echo '-- review duplicate checks --'
+          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT source, COUNT(*) AS duplicate_groups FROM (SELECT source, source_key FROM ${prefix}mdo_reviews GROUP BY source, source_key HAVING COUNT(*)>1) d GROUP BY source" --skip-column-names --path="$PROD_PATH" --allow-root || true
+          echo '-- trust/google option names and byte sizes --'
+          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT option_name, LENGTH(option_value) AS bytes FROM ${prefix}options WHERE option_name LIKE '%trustpilot%' OR option_name LIKE '%trustindex%' OR option_name LIKE '%google%review%' ORDER BY bytes DESC, option_name ASC LIMIT 200" --skip-column-names --path="$PROD_PATH" --allow-root || true
+          echo '-- related active plugins --'
+          "$php_bin" -d memory_limit=512M "$wp_bin" plugin list --status=active --fields=name,version --format=csv --path="$PROD_PATH" --allow-root | grep -Ei '^(name|.*(trust|google|review).*)' || true
+          echo '-- related tables --'
+          "$php_bin" -d memory_limit=512M "$wp_bin" db tables --all-tables-with-prefix --path="$PROD_PATH" --allow-root | grep -Ei 'trust|review' || true
+          echo '=== EMDO REVIEW DIAGNOSTICS END ==='
+
           "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$PROD_PATH" --allow-root >/dev/null || true
           if "$php_bin" -d memory_limit=512M "$wp_bin" plugin is-active wp-rocket --path="$PROD_PATH" --allow-root >/dev/null 2>&1; then
             "$php_bin" -d memory_limit=512M "$wp_bin" rocket clean --confirm --path="$PROD_PATH" --allow-root >/dev/null 2>&1 || true
