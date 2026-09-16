@@ -50,10 +50,10 @@ jobs:
           wp_bin=$(command -v wp || true)
           php_bin=$(command -v php || true)
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-          version=$($php_bin $wp_bin plugin get mdo-supplier-sync --field=version --path="$PROD_PATH" --allow-root 2>/dev/null || true)
+          version=$("$php_bin" -d memory_limit=512M "$wp_bin" plugin get mdo-supplier-sync --field=version --path="$PROD_PATH" --allow-root 2>/dev/null || true)
           echo "EMDO_VERSION=$version"
           test "$version" = '1.0.42'
-          $php_bin -d memory_limit=512M $wp_bin eval '
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
             echo "PUBLIC_CLASS=" . ( class_exists("MDO_Reviews_Public") ? "1" : "0" ) . PHP_EOL;
             echo "ROUTE_VERSION=" . get_option("mdo_reviews_public_route_version", "") . PHP_EOL;
             echo "NEW_TAB_HOOK=" . (int) has_filter("wcfmmp_store_tabs", array("MDO_Reviews_Public","store_tabs")) . PHP_EOL;
@@ -80,7 +80,7 @@ jobs:
           grep -q 'mdo-review-summary-stars' "$page"
           grep -q 'mdo-store-reviews' "$page"
           grep -Eq 'sobre 5' "$page"
-          $php_bin -d memory_limit=512M $wp_bin eval '
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
             global $wpdb;
             $table=MDO_Database::table("reviews");
             foreach(array("hidalgo-de-la-jara","tolecarnes","la-huerta-de-ana-mary","1957") as $slug){
