@@ -60,6 +60,11 @@ final class MDO_Reviews_Integration {
 				$context
 			);
 		}
+		$google_expected = absint( get_option( 'mdo_google_review_count', 0 ) );
+		if ( $google_expected > 0 ) {
+			$google['expected'] = $google_expected;
+			$google['complete'] = (int) ( $google['found'] ?? 0 ) >= $google_expected;
+		}
 
 		$trustpilot = self::import_trustpilot_plugin( $context );
 		if ( empty( $trustpilot['found'] ) ) {
@@ -68,6 +73,11 @@ final class MDO_Reviews_Integration {
 				array( 'trustindex-trustpilot-review-content', 'trustindex-trustpilot-reviews', 'trustpilot_reviews' ),
 				$context
 			);
+		}
+		$trustpilot_expected = absint( get_option( 'mdo_trustpilot_review_count', 0 ) );
+		if ( $trustpilot_expected > 0 ) {
+			$trustpilot['expected'] = $trustpilot_expected;
+			$trustpilot['complete'] = (int) ( $trustpilot['found'] ?? 0 ) >= $trustpilot_expected;
 		}
 
 		$stats = array(
@@ -120,21 +130,43 @@ final class MDO_Reviews_Integration {
 	}
 
 	/**
-	 * El plugin antiguo de Trustpilot no crea tabla: parsea su fuente mediante
-	 * TrustindexPlugin::get_noreg_list_reviews(). Recuperamos la misma instancia
-	 * registrada en los callbacks de WordPress para respetar toda su configuración.
+	 * El plugin legado de Trustpilot conserva la ficha de la página y expone un
+	 * método que consulta la API de Trustindex. Usamos esa vía antes que su tabla
+	 * local porque instalaciones antiguas pueden haber perdido la tabla durante
+	 * una migración. Así evitamos scraping y reutilizamos exactamente el proveedor
+	 * ya configurado en WordPress.
 	 */
 	private static function import_trustpilot_plugin( array $context ): array {
 		$plugin = self::find_trustpilot_plugin_instance();
-		if ( ! $plugin || ! method_exists( $plugin, 'get_noreg_list_reviews' ) ) {
+		if ( ! $plugin ) {
 			return array( 'found' => 0, 'saved' => 0, 'provider' => 'trustindex_plugin' );
 		}
 
+		$raw = null;
+		$provider = 'trustindex_plugin';
 		try {
-			$raw = $plugin->get_noreg_list_reviews();
+			if ( method_exists( $plugin, 'download_noreg_reviews' ) && method_exists( $plugin, 'get_option_name' ) ) {
+				$option_name = (string) $plugin->get_option_name( 'page-details' );
+				$page_details = $option_name ? get_option( $option_name, array() ) : array();
+				if ( is_array( $page_details ) && ! empty( $page_details['id'] ) ) {
+					$raw = $plugin->download_noreg_reviews( $page_details );
+					$provider = 'trustindex_api';
+				}
+			}
+
+			$candidates = array();
+			self::collect_review_candidates( $raw, $candidates );
+			if ( empty( $candidates ) && method_exists( $plugin, 'get_noreg_list_reviews' ) ) {
+				global $wpdb;
+				$table = $wpdb->prefix . 'trustindex_trustpilot_reviews';
+				if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table ) {
+					$raw = $plugin->get_noreg_list_reviews( null, true );
+					$provider = 'trustindex_table';
+				}
+			}
 		} catch ( Throwable $error ) {
 			error_log( '[EMDO reviews] Trustpilot plugin: ' . $error->getMessage() );
-			return array( 'found' => 0, 'saved' => 0, 'provider' => 'trustindex_plugin', 'error' => 'provider_error' );
+			return array( 'found' => 0, 'saved' => 0, 'provider' => $provider, 'error' => 'provider_error' );
 		}
 
 		$candidates = array();
@@ -158,7 +190,7 @@ final class MDO_Reviews_Integration {
 			}
 		}
 
-		return array( 'found' => count( $seen ), 'saved' => $saved, 'provider' => 'trustindex_plugin' );
+		return array( 'found' => count( $seen ), 'saved' => $saved, 'provider' => $provider );
 	}
 
 	private static function find_trustpilot_plugin_instance() {
