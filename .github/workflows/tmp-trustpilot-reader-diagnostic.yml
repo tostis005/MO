@@ -13,55 +13,70 @@ jobs:
   diagnose:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Install Playwright
+      - name: Diagnose EMDO importer in production
         shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          npm init -y >/dev/null 2>&1
-          npm install --no-save playwright@1.55.0 >/dev/null 2>&1
-          test -x /usr/bin/google-chrome || test -x /usr/bin/google-chrome-stable || npx playwright install chromium >/dev/null 2>&1
-
-      - name: Inspect Trustpilot counters
-        shell: bash
-        run: |
-          node <<'NODE'
-          const fs = require('fs');
-          const { chromium } = require('playwright');
-          (async () => {
-            const executablePath = fs.existsSync('/usr/bin/google-chrome') ? '/usr/bin/google-chrome' : (fs.existsSync('/usr/bin/google-chrome-stable') ? '/usr/bin/google-chrome-stable' : undefined);
-            const browser = await chromium.launch({ headless: true, executablePath, args: ['--no-sandbox','--disable-dev-shm-usage'] });
-            const context = await browser.newContext({ locale: 'es-ES', userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36' });
-            const page = await context.newPage();
-            await page.goto('https://es.trustpilot.com/review/elmercadodeorigen.com?languages=all&sort=recency', { waitUntil: 'domcontentloaded', timeout: 45000 });
-            await page.waitForTimeout(3500);
-            const result = await page.evaluate(() => {
-              const next = document.querySelector('script#__NEXT_DATA__');
-              if (!next?.textContent) return { error: 'NEXT_DATA missing' };
-              const d = JSON.parse(next.textContent);
-              const pp = d?.props?.pageProps || {};
-              const matches = [];
-              function walk(value, path = 'pageProps', depth = 0) {
-                if (depth > 5 || value == null) return;
-                if (Array.isArray(value)) return;
-                if (typeof value !== 'object') return;
-                for (const [key, child] of Object.entries(value)) {
-                  const p = `${path}.${key}`;
-                  if (/(review|rating|score|star|count|total|page)/i.test(key) && (child == null || ['string','number','boolean'].includes(typeof child))) {
-                    matches.push([p, child]);
-                  }
-                  if (depth < 5 && child && typeof child === 'object' && !Array.isArray(child)) walk(child, p, depth + 1);
-                }
-              }
-              walk(pp);
-              return {
-                businessUnit: pp.businessUnit,
-                pagination: pp.filters?.pagination,
-                matches: matches.slice(0, 250),
-                reviewsLength: Array.isArray(pp.reviews) ? pp.reviews.length : null,
-              };
-            });
-            console.log('TP_COUNTERS=' + JSON.stringify(result));
-            await browser.close();
-          })().catch(err => { console.error(err); process.exit(1); });
-          NODE
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH'" <<'REMOTE'
+          set -euo pipefail
+          PROD_PATH="$1"
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            global $wpdb;
+            $table = MDO_Database::table( "reviews" );
+            $count_key = "mdo_trustpilot_review_count";
+            $rating_key = "mdo_trustpilot_rating";
+            $had_count = false !== get_option( $count_key, false );
+            $had_rating = false !== get_option( $rating_key, false );
+            $old_count = get_option( $count_key, null );
+            $old_rating = get_option( $rating_key, null );
+            $payload = array(
+              "source" => "trustpilot",
+              "mode" => "full",
+              "reported_count" => 2,
+              "rating" => 4.6,
+              "reviews" => array(
+                array("id"=>"emdo-diag-001","author_name"=>"EMDO Diagnostic A","rating"=>5,"title"=>"Diagnostic A","text"=>"EMDO persistence diagnostic unique text alpha 20260916","date"=>"2026-09-16T12:00:00+00:00","source_url"=>"https://example.invalid/emdo-diag-001"),
+                array("id"=>"emdo-diag-002","author_name"=>"EMDO Diagnostic B","rating"=>4,"title"=>"Diagnostic B","text"=>"EMDO persistence diagnostic unique text beta 20260916","date"=>"2026-09-16T12:01:00+00:00","source_url"=>"https://example.invalid/emdo-diag-002")
+              )
+            );
+            $result = MDO_Reviews_Scraping::import_payload( $payload );
+            echo "DIAG_IMPORT_RESULT=" . wp_json_encode( $result ) . PHP_EOL;
+            echo "DIAG_WPDB_ERROR=" . $wpdb->last_error . PHP_EOL;
+            $rows = $wpdb->get_results( "SELECT id,source,source_review_id,status,validation_method,source_key,content_fingerprint FROM {$table} WHERE source_review_id IN (\"emdo-diag-001\",\"emdo-diag-002\") ORDER BY id", ARRAY_A );
+            echo "DIAG_ROWS=" . wp_json_encode( $rows ) . PHP_EOL;
+            $wpdb->query( "DELETE FROM {$table} WHERE source_review_id IN (\"emdo-diag-001\",\"emdo-diag-002\")" );
+            if ( $had_count ) { update_option( $count_key, $old_count, false ); } else { delete_option( $count_key ); }
+            if ( $had_rating ) { update_option( $rating_key, $old_rating, false ); } else { delete_option( $rating_key ); }
+            $remaining = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE source_review_id IN (\"emdo-diag-001\",\"emdo-diag-002\")" );
+            echo "DIAG_CLEANUP_REMAINING={$remaining}" . PHP_EOL;
+            echo "DIAG_RESTORED_COUNT=" . wp_json_encode( get_option( $count_key, null ) ) . PHP_EOL;
+          ' --path="$PROD_PATH" --allow-root
+          REMOTE
