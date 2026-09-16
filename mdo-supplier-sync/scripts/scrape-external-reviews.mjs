@@ -85,9 +85,16 @@ async function googleReportedCount(page) {
 
 async function googleRating(page) {
   return page.evaluate(() => {
-    const text = document.body?.innerText || '';
-    const match = text.match(/([0-5][,.]\d)\s*(?:estrellas?|stars?)/i);
-    return match ? Number.parseFloat(match[1].replace(',', '.')) : 0;
+    const candidates = [document.body?.innerText || ''];
+    document.querySelectorAll('[aria-label]').forEach((el) => candidates.push(el.getAttribute('aria-label') || ''));
+    for (const text of candidates) {
+      const starMatch = text.match(/([0-5](?:[,.]\d)?)\s*(?:estrellas?|stars?)/i);
+      if (starMatch) {
+        const value = Number.parseFloat(starMatch[1].replace(',', '.'));
+        if (value > 0 && value <= 5) return value;
+      }
+    }
+    return 0;
   });
 }
 
@@ -173,27 +180,47 @@ async function collectGoogleCards(page) {
 
 async function scrollGoogleReviews(page) {
   return page.evaluate(() => {
-    const card = document.querySelector('.jftiEf, [data-review-id]');
-    let node = card?.parentElement || null;
-    while (node && node !== document.body) {
-      const style = getComputedStyle(node);
-      if (node.scrollHeight > node.clientHeight + 150 && /(auto|scroll)/i.test(style.overflowY || '')) {
-        const before = node.scrollTop;
-        node.scrollTop = node.scrollHeight;
-        node.dispatchEvent(new Event('scroll', { bubbles: true }));
-        return { found: true, before, after: node.scrollTop, height: node.scrollHeight };
+    const selectors = [
+      'div.m6QErb.DxyBCb.kA9KIf.dS8AEf',
+      'div.m6QErb.DxyBCb.kA9KIf',
+      'div[role="main"] div.m6QErb',
+      'div.m6QErb',
+    ];
+    const candidates = [];
+    const seen = new Set();
+    for (const selector of selectors) {
+      for (const node of document.querySelectorAll(selector)) {
+        if (seen.has(node)) continue;
+        seen.add(node);
+        if (!node.querySelector('.jftiEf, [data-review-id]')) continue;
+        if (node.scrollHeight <= node.clientHeight + 100) continue;
+        candidates.push(node);
       }
-      node = node.parentElement;
     }
-    const fallback = Array.from(document.querySelectorAll('.m6QErb')).find((el) => el.scrollHeight > el.clientHeight + 150);
-    if (fallback) {
-      const before = fallback.scrollTop;
-      fallback.scrollTop = fallback.scrollHeight;
-      fallback.dispatchEvent(new Event('scroll', { bubbles: true }));
-      return { found: true, before, after: fallback.scrollTop, height: fallback.scrollHeight };
+    const card = document.querySelector('.jftiEf, [data-review-id]');
+    let parent = card?.parentElement || null;
+    while (parent && parent !== document.body) {
+      if (!seen.has(parent) && parent.scrollHeight > parent.clientHeight + 100) candidates.push(parent);
+      parent = parent.parentElement;
     }
-    window.scrollTo(0, document.body.scrollHeight);
-    return { found: false, before: 0, after: window.scrollY, height: document.body.scrollHeight };
+    candidates.sort((a, b) => (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight));
+    const pane = candidates[0] || null;
+    if (pane) {
+      const before = pane.scrollTop;
+      const step = Math.max(4000, pane.clientHeight * 4);
+      pane.scrollBy(0, step);
+      pane.dispatchEvent(new Event('scroll', { bubbles: true }));
+      return {
+        found: true,
+        before,
+        after: pane.scrollTop,
+        height: pane.scrollHeight,
+        clientHeight: pane.clientHeight,
+        classes: pane.className || '',
+      };
+    }
+    window.scrollBy(0, Math.max(3000, window.innerHeight * 3));
+    return { found: false, before: 0, after: window.scrollY, height: document.body.scrollHeight, clientHeight: window.innerHeight, classes: '' };
   });
 }
 
@@ -234,10 +261,10 @@ async function scrapeGoogle(page) {
     if (map.size >= target) break;
     stable = map.size === previous ? stable + 1 : 0;
     previous = map.size;
-    if (stable >= (mode === 'full' ? 12 : 7)) break;
-    await scrollGoogleReviews(page);
-    await page.mouse.wheel(0, 1400).catch(() => {});
-    await page.waitForTimeout(mode === 'full' ? 700 : 850);
+    if (stable >= (mode === 'full' ? 16 : 8)) break;
+    const scroll = await scrollGoogleReviews(page);
+    if (!scroll.found) await page.mouse.wheel(0, 3000).catch(() => {});
+    await page.waitForTimeout(mode === 'full' ? 1300 : 1000);
   }
 
   if (!map.size) throw new Error('Google Maps no devolvió reseñas.');
