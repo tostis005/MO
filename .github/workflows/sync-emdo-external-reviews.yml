@@ -11,8 +11,8 @@ on:
   schedule:
     # Google: diario. En horario de verano español equivale a 02:15; en invierno, 01:15.
     - cron: '15 0 * * *'
-    # Trustpilot: semanal, domingo. Separado del pase diario de Google.
-    - cron: '45 0 * * 0'
+    # Trustpilot: semanal, domingo. En verano español equivale a 02:30.
+    - cron: '30 0 * * 0'
   workflow_dispatch:
     inputs:
       source:
@@ -61,7 +61,7 @@ jobs:
             echo 'MDO_SOURCES=google trustpilot' >> "$GITHUB_ENV"
             echo 'MDO_MODE=full' >> "$GITHUB_ENV"
           elif [ "${GITHUB_EVENT_NAME}" = 'schedule' ]; then
-            if [ "${{ github.event.schedule }}" = '45 0 * * 0' ]; then
+            if [ "${{ github.event.schedule }}" = '30 0 * * 0' ]; then
               echo 'MDO_SOURCES=trustpilot' >> "$GITHUB_ENV"
             else
               echo 'MDO_SOURCES=google' >> "$GITHUB_ENV"
