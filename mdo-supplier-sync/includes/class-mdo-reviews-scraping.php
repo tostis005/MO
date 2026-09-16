@@ -13,8 +13,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class MDO_Reviews_Scraping {
 	private const LEGACY_CRON_HOOK = 'mdo_reviews_daily_import';
+	private const LEGACY_SEED_HOOK = 'mdo_reviews_seed_import';
 	private const GROUP = 'mdo-supplier-sync';
-	private const DISABLE_VERSION = '1.0.35';
+	private const DISABLE_VERSION = '1.0.36';
 	private const GOOGLE_PROFILE_URL = 'https://www.google.com/maps/place/?q=place_id:ChIJbbIJi58nQg0RgJroXR8DG_U&hl=es';
 	private const TRUSTPILOT_PROFILE_URL = 'https://es.trustpilot.com/review/elmercadodeorigen.com';
 	private const MAX_PAYLOAD_BYTES = 12582912;
@@ -27,6 +28,14 @@ final class MDO_Reviews_Scraping {
 		remove_action( 'admin_post_mdo_reviews_import', array( 'MDO_Reviews_Integration', 'handle_import' ) );
 		remove_action( 'action_scheduler_init', array( 'MDO_Reviews_Integration', 'ensure_schedule' ), 25 );
 		remove_action( 'init', array( 'MDO_Reviews_Integration', 'ensure_schedule' ), 90 );
+
+		// El transporte externo y el cron/seed heredado de MDO_Reviews quedan
+		// desactivados: las fuentes locales se importan solo desde el botón EMDO.
+		remove_action( self::LEGACY_CRON_HOOK, array( 'MDO_Reviews', 'import_all' ) );
+		remove_action( self::LEGACY_SEED_HOOK, array( 'MDO_Reviews', 'import_all' ) );
+		remove_action( 'admin_post_mdo_reviews_import', array( 'MDO_Reviews', 'handle_import' ) );
+		remove_action( 'init', array( 'MDO_Reviews', 'ensure_schedule' ), 30 );
+		remove_action( 'init', array( 'MDO_Reviews', 'maybe_seed' ), 31 );
 
 		add_action( 'admin_post_mdo_reviews_import', array( __CLASS__, 'handle_import' ) );
 		add_action( 'init', array( __CLASS__, 'disable_legacy_schedule' ), 95 );
@@ -85,18 +94,21 @@ final class MDO_Reviews_Scraping {
 	}
 
 	public static function disable_legacy_schedule(): void {
-		if ( self::DISABLE_VERSION === (string) get_option( 'mdo_reviews_scraping_schedule_version', '' ) ) {
-			return;
-		}
+		// Se ejecuta en cada init para retirar cualquier evento heredado que haya
+		// quedado programado antes de que EMDO pasara al scraper de Actions.
 		self::unschedule_legacy_import();
-		update_option( 'mdo_reviews_scraping_schedule_version', self::DISABLE_VERSION, false );
+		if ( self::DISABLE_VERSION !== (string) get_option( 'mdo_reviews_scraping_schedule_version', '' ) ) {
+			update_option( 'mdo_reviews_scraping_schedule_version', self::DISABLE_VERSION, false );
+		}
 	}
 
 	private static function unschedule_legacy_import(): void {
 		if ( function_exists( 'as_unschedule_all_actions' ) ) {
 			as_unschedule_all_actions( self::LEGACY_CRON_HOOK, array(), self::GROUP );
+			as_unschedule_all_actions( self::LEGACY_SEED_HOOK, array(), self::GROUP );
 		}
 		wp_clear_scheduled_hook( self::LEGACY_CRON_HOOK );
+		wp_clear_scheduled_hook( self::LEGACY_SEED_HOOK );
 	}
 
 	/**

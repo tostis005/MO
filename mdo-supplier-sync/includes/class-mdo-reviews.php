@@ -450,7 +450,7 @@ final class MDO_Reviews {
 		$now = current_time( 'mysql' );
 		$existing = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE source_key=%s LIMIT 1", $source_key ) );
 		if ( ! $existing && $fingerprint ) {
-			$existing = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE content_fingerprint=%s LIMIT 1", $fingerprint ) );
+			$existing = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE source=%s AND content_fingerprint=%s LIMIT 1", $source, $fingerprint ) );
 		}
 		$resolved_status = trim( (string) ( $data['status'] ?? 'pending' ) );
 		if ( ! in_array( $resolved_status, array( 'pending', 'validated', 'rejected' ), true ) ) {
