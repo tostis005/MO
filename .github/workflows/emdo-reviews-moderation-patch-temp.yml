@@ -1,0 +1,95 @@
+name: EMDO reviews moderation patch temp
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emdo-reviews-moderation-patch-temp.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch review moderation UI and persistence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('mdo-supplier-sync/includes/class-mdo-reviews.php')
+          s = path.read_text()
+
+          replacements = [
+            (
+              "\t\t$status = sanitize_key( (string) ( $_GET['status'] ?? '' ) );\n\t\t$source = sanitize_key( (string) ( $_GET['source'] ?? '' ) );\n\t\t$vendor = absint( $_GET['vendor'] ?? 0 );\n",
+              "\t\t$status = sanitize_key( (string) ( $_GET['status'] ?? '' ) );\n\t\t$source = sanitize_key( (string) ( $_GET['source'] ?? '' ) );\n\t\t$vendor_raw = sanitize_key( (string) ( $_GET['vendor'] ?? '' ) );\n\t\t$vendor_unassigned = 'unassigned' === $vendor_raw;\n\t\t$vendor = $vendor_unassigned ? 0 : absint( $vendor_raw );\n"
+            ),
+            (
+              "\t\tif ( $vendor ) {\n\t\t\t$where[] = '(vendor_user_id=%d OR suggested_vendor_user_id=%d)';\n\t\t\t$params[] = $vendor;\n\t\t\t$params[] = $vendor;\n\t\t}\n",
+              "\t\tif ( $vendor_unassigned ) {\n\t\t\t$where[] = '(COALESCE(vendor_user_id,0)=0 AND COALESCE(suggested_vendor_user_id,0)=0)';\n\t\t} elseif ( $vendor ) {\n\t\t\t$where[] = '(vendor_user_id=%d OR suggested_vendor_user_id=%d)';\n\t\t\t$params[] = $vendor;\n\t\t\t$params[] = $vendor;\n\t\t}\n"
+            ),
+            (
+              "array( 'all' => 'Todas', 'pending' => 'Pendientes', 'validated' => 'Validadas', 'unassigned' => 'Sin tienda', 'rejected' => 'Descartadas' )",
+              "array( 'all' => 'Todas', 'pending' => 'Borradores', 'validated' => 'Publicadas', 'unassigned' => 'Sin asignar', 'rejected' => 'Descartadas' )"
+            ),
+            (
+              "array( 'pending' => 'Pendientes', 'validated' => 'Validadas', 'unassigned' => 'Sin tienda', 'rejected' => 'Descartadas' )",
+              "array( 'pending' => 'Borradores', 'validated' => 'Publicadas', 'rejected' => 'Descartadas' )"
+            ),
+            (
+              '<select name="vendor"><option value="0">Todas las tiendas</option><?php foreach ( $vendors as $vendor_id => $vendor_name ) : ?>',
+              '<select name="vendor"><option value="">Todas las tiendas</option><option value="unassigned" <?php selected( $vendor_unassigned ); ?>>Sin asignar</option><?php foreach ( $vendors as $vendor_id => $vendor_name ) : ?>'
+            ),
+            (
+              "Solo las validadas se muestran públicamente.",
+              "Solo las publicadas se muestran públicamente. Los borradores pueden tener una tienda sugerida para revisión."
+            ),
+            (
+              "<option value=\"pending\" <?php selected( $review->status, 'pending' ); ?>>Pendiente</option><option value=\"validated\" <?php selected( $review->status, 'validated' ); ?>>Validada</option>",
+              "<option value=\"pending\" <?php selected( $review->status, 'pending' ); ?>>Borrador</option><option value=\"validated\" <?php selected( $review->status, 'validated' ); ?>>Publicada</option>"
+            ),
+            (
+              "$labels = array( 'pending' => 'Pendiente', 'validated' => 'Validada', 'rejected' => 'Descartada' );",
+              "$labels = array( 'pending' => 'Borrador', 'validated' => 'Publicada', 'rejected' => 'Descartada' );"
+            ),
+            (
+              "if ( 'manual' === (string) $existing->validation_method || 'rejected' === (string) $existing->status ) {",
+              "if ( in_array( (string) $existing->validation_method, array( 'manual', 'ai_suggestion' ), true ) || 'rejected' === (string) $existing->status ) {"
+            ),
+          ]
+
+          for old, new in replacements:
+              if old not in s:
+                  raise SystemExit(f'Missing expected class-mdo-reviews.php fragment: {old[:100]!r}')
+              s = s.replace(old, new, 1)
+          path.write_text(s)
+
+          js = Path('mdo-supplier-sync/assets/reviews-admin-inline.js')
+          j = js.read_text()
+          old = "statusSelect.appendChild(option('pending', 'Pendiente', review.status === 'pending'));"
+          new = "statusSelect.appendChild(option('pending', 'Borrador', review.status === 'pending'));"
+          if old not in j:
+              raise SystemExit('Missing pending label in reviews-admin-inline.js')
+          js.write_text(j.replace(old, new, 1))
+          PY
+
+          php -l mdo-supplier-sync/includes/class-mdo-reviews.php
+          php -l mdo-supplier-sync/includes/class-mdo-reviews-moderation.php
+          node --check mdo-supplier-sync/assets/reviews-admin-inline.js
+          git diff --check
+          git diff -- mdo-supplier-sync/includes/class-mdo-reviews.php mdo-supplier-sync/assets/reviews-admin-inline.js
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add mdo-supplier-sync/includes/class-mdo-reviews.php mdo-supplier-sync/assets/reviews-admin-inline.js
+          git commit -m 'Improve EMDO review moderation filters' || exit 0
+          git push origin HEAD:main
