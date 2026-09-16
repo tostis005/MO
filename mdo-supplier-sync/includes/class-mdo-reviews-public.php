@@ -15,7 +15,7 @@ final class MDO_Reviews_Public {
 	private const QUERY_VAR = 'mdo_reviews';
 	private const TAB_KEY = 'mdo_reviews';
 	private const ENDPOINT = 'reviews';
-	private const ROUTE_VERSION = '2.0.0';
+	private const ROUTE_VERSION = '2.0.1';
 	private const ROUTE_OPTION = 'mdo_reviews_public_route_version';
 
 	public static function init(): void {
@@ -33,9 +33,14 @@ final class MDO_Reviews_Public {
 		add_filter( 'query_vars', array( __CLASS__, 'query_vars' ), 60 );
 		add_filter( 'wcfmmp_store_tabs', array( __CLASS__, 'store_tabs' ), 1000, 2 );
 		add_filter( 'wcfmp_store_tabs_url', array( __CLASS__, 'store_tab_url' ), 1000, 2 );
-		add_filter( 'wcfmp_store_default_query_vars', array( __CLASS__, 'default_query_var' ), 60 );
+
+		// WCFM 3.8.x uses both spellings while resolving a custom store tab.
+		add_filter( 'wcfmp_store_default_query_vars', array( __CLASS__, 'default_query_var' ), 60, 3 );
+		add_filter( 'wcfmmp_store_default_query_vars', array( __CLASS__, 'default_query_var' ), 60, 3 );
+		add_filter( 'wcfmp_store_default_template', array( __CLASS__, 'default_template' ), 60, 2 );
 		add_filter( 'wcfmmp_store_default_template', array( __CLASS__, 'default_template' ), 60, 2 );
-		add_filter( 'wcfmmp_store_default_template_path', array( __CLASS__, 'default_template_path' ), 60, 2 );
+		add_filter( 'wcfmp_store_default_template_path', array( __CLASS__, 'default_template_path' ), 60, 2 );
+
 		add_action( 'wp_loaded', array( __CLASS__, 'maybe_flush_rewrite_rules' ), 100 );
 	}
 
@@ -88,14 +93,14 @@ final class MDO_Reviews_Public {
 		return trailingslashit( (string) $store_tab_url ) . self::ENDPOINT . '/';
 	}
 
-	public static function default_query_var( $query_var ) {
+	public static function default_query_var( $query_var, ...$unused ) {
 		if ( get_query_var( self::QUERY_VAR ) ) {
 			return self::TAB_KEY;
 		}
 		return $query_var;
 	}
 
-	public static function default_template( string $template, string $tab ): string {
+	public static function default_template( $template, $tab ) {
 		if ( self::TAB_KEY === $tab ) {
 			return 'store/wcfmmp-view-store-mdo-reviews.php';
 		}
