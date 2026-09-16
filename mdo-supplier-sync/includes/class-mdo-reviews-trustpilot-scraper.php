@@ -214,7 +214,7 @@ final class MDO_Reviews_Trustpilot_Scraper {
 	}
 
 	private static function page_url( string $base_url, int $page_number ): string {
-		return 1 === $page_number ? $base_url : add_query_arg( array( 'page' => $page_number, 'sort' => 'recency' ), $base_url );
+		return 1 === $page_number ? $base_url : add_query_arg( array( 'page' => $page_number ), $base_url );
 	}
 
 	/** @return array|WP_Error */
