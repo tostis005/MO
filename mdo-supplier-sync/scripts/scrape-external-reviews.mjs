@@ -3,10 +3,9 @@ import process from 'node:process';
 import { createHash } from 'node:crypto';
 import { chromium } from 'playwright';
 
-const GOOGLE_PLACE_ID = 'ChIJbbIJi58nQg0RgJroXR8DG_U';
-const GOOGLE_PROFILE_URL = `https://www.google.com/maps/search/?api=1&query=El%20Mercado%20de%20Origen&query_place_id=${GOOGLE_PLACE_ID}&hl=es`;
+const GOOGLE_PROFILE_URL = 'https://www.google.com/maps/place/?q=place_id:ChIJbbIJi58nQg0RgJroXR8DG_U&hl=es';
+const GOOGLE_PUBLIC_REVIEWS_URL = 'https://www.trustindex.io/reviews/www.elmercadodeorigen.com';
 const TRUSTPILOT_PROFILE_URL = 'https://es.trustpilot.com/review/elmercadodeorigen.com';
-const GOOGLE_MOBILE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1';
 const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 
 function arg(name, fallback = '') {
@@ -29,314 +28,204 @@ const launchOptions = chromePath
   ? { headless: true, executablePath: chromePath, args: ['--no-sandbox', '--disable-dev-shm-usage'] }
   : { headless: true };
 
-function stableGoogleReviewId(review) {
-  if (review.id) return String(review.id);
-  const basis = [
-    String(review.reviewer_url || '').trim(),
-    String(review.author_name || '').trim().toLowerCase(),
-    String(review.rating || ''),
-    String(review.text || '').trim(),
-  ].join('|');
-  return `mobile-${createHash('sha256').update(basis).digest('hex')}`;
+function sha(value) {
+  return createHash('sha256').update(String(value || '')).digest('hex');
 }
 
-function toIsoRelativeDate(value, now = new Date()) {
+function toIsoDate(value) {
   const raw = String(value || '').trim();
   if (!raw) return null;
-  const text = raw.toLowerCase().replace(/\s+/g, ' ').trim();
-  const d = new Date(now.getTime());
-  const direct = Date.parse(raw);
-  if (!Number.isNaN(direct) && !/^hace\b/i.test(raw)) return new Date(direct).toISOString();
-  if (/^(ayer|yesterday)$/.test(text)) {
-    d.setUTCDate(d.getUTCDate() - 1);
-    return d.toISOString();
+  const dotted = raw.match(/\b(20\d{2})[.\/-](\d{1,2})[.\/-](\d{1,2})\b/);
+  if (dotted) {
+    const [, year, month, day] = dotted;
+    return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), 12, 0, 0)).toISOString();
   }
-  const match = text.match(/(?:hace\s+|^)(un|una|one|\d+)\s+(minuto|minutos|minute|minutes|hora|horas|hour|hours|día|dias|días|day|days|semana|semanas|week|weeks|mes|meses|month|months|año|años|year|years)/i);
-  if (!match) return null;
-  const amount = /^(un|una|one)$/i.test(match[1]) ? 1 : Number.parseInt(match[1], 10);
-  if (!Number.isFinite(amount)) return null;
-  const unit = match[2].toLowerCase();
-  if (/minut/.test(unit)) d.setUTCMinutes(d.getUTCMinutes() - amount);
-  else if (/hora|hour/.test(unit)) d.setUTCHours(d.getUTCHours() - amount);
-  else if (/día|dias|días|day/.test(unit)) d.setUTCDate(d.getUTCDate() - amount);
-  else if (/semana|week/.test(unit)) d.setUTCDate(d.getUTCDate() - amount * 7);
-  else if (/mes|month/.test(unit)) d.setUTCMonth(d.getUTCMonth() - amount);
-  else if (/año|year/.test(unit)) d.setUTCFullYear(d.getUTCFullYear() - amount);
-  return d.toISOString();
+  const direct = Date.parse(raw);
+  return Number.isNaN(direct) ? null : new Date(direct).toISOString();
 }
 
 async function clickConsent(page) {
-  const patterns = [
-    /Aceptar todo/i,
-    /Accept all/i,
-    /Estoy de acuerdo/i,
-    /I agree/i,
-    /Volver a la web/i,
-    /Go back to web/i,
-    /Continuar/i,
-    /Continue/i,
-  ];
+  const patterns = [/Aceptar todo/i, /Accept all/i, /Estoy de acuerdo/i, /I agree/i, /Continuar/i, /Continue/i];
   for (const pattern of patterns) {
     const button = page.getByRole('button', { name: pattern }).first();
     if (!await button.count()) continue;
     try {
-      if (await button.isVisible({ timeout: 700 })) {
+      if (await button.isVisible({ timeout: 500 })) {
         await button.click({ timeout: 2500 });
-        await page.waitForTimeout(450);
+        await page.waitForTimeout(350);
       }
     } catch {}
   }
 }
 
-async function googleReportedCount(page) {
+async function trustindexGoogleSummary(page) {
   return page.evaluate(() => {
-    const candidates = [document.title || '', document.body?.innerText || ''];
-    document.querySelectorAll('[aria-label]').forEach((el) => candidates.push(el.getAttribute('aria-label') || ''));
-    for (const text of candidates) {
-      const match = text.match(/(\d[\d.,\s]*)\s+(?:reseñas|reviews)\b/i);
+    const text = document.body?.innerText || '';
+    let reportedCount = 0;
+    let rating = 0;
+    const countPatterns = [
+      /([0-9][0-9.,\s]*)\s+total\b/i,
+      /([0-9][0-9.,\s]*)\s+reviews\b/i,
+      /Google\s+([0-9][0-9.,\s]*)\s+(?:pcs|reviews|reseñas)/i,
+    ];
+    for (const pattern of countPatterns) {
+      const match = text.match(pattern);
       if (!match) continue;
       const value = Number.parseInt(match[1].replace(/\D/g, ''), 10);
-      if (Number.isInteger(value) && value > 0 && value < 1000000) return value;
+      if (value > 0 && value < 1000000) { reportedCount = value; break; }
     }
-    return 0;
+    const ratingMatch = text.match(/\b([0-5][,.]\d)\s*\|\s*[0-9][0-9.,\s]*\s+reviews\b/i)
+      || text.match(/(?:rating|rating score)\D{0,20}([0-5][,.]\d)/i);
+    if (ratingMatch) rating = Number.parseFloat(ratingMatch[1].replace(',', '.'));
+    return { reportedCount, rating };
   });
 }
 
-async function googleRating(page) {
+async function collectTrustindexGoogle(page) {
   return page.evaluate(() => {
-    const candidates = [document.title || '', document.body?.innerText || ''];
-    document.querySelectorAll('[aria-label]').forEach((el) => candidates.push(el.getAttribute('aria-label') || ''));
-    for (const text of candidates) {
-      const explicit = text.match(/([0-5](?:[,.]\d)?)\s*(?:estrellas?|stars?)/i);
-      if (explicit) {
-        const value = Number.parseFloat(explicit[1].replace(',', '.'));
-        if (value > 0 && value <= 5) return value;
-      }
-    }
-    const body = candidates[1];
-    const loose = body.match(/\b([0-5][,.]\d)\b/);
-    return loose ? Number.parseFloat(loose[1].replace(',', '.')) : 0;
-  });
-}
+    const reportLinks = Array.from(document.querySelectorAll('a[href*="/review/report/"]'));
+    const reviewNodes = Array.from(document.querySelectorAll('.ti-review-item.source-Google, .ti-review-item'));
+    const candidates = [];
+    const seen = new Set();
 
-async function googleCardCount(page) {
-  return page.locator('.jftiEf, .hjmQqc, [data-review-id]').count();
-}
-
-async function openGoogleReviews(page) {
-  for (let attempt = 1; attempt <= 4; attempt += 1) {
-    await clickConsent(page);
-    await page.waitForTimeout(attempt === 1 ? 1800 : 2500);
-    if (await googleCardCount(page)) return true;
-
-    const selectors = [
-      'button[data-tab-index="1"]',
-      'button[jsaction*="pane.reviewChart.moreReviews"]',
-      'button[aria-label*="reseñas"]',
-      'button[aria-label*="reviews"]',
-    ];
-    for (const selector of selectors) {
-      const buttons = page.locator(selector);
-      const count = Math.min(await buttons.count(), 15);
-      for (let i = 0; i < count; i += 1) {
-        const button = buttons.nth(i);
-        try {
-          if (!(await button.isVisible({ timeout: 700 }))) continue;
-          const label = `${await button.getAttribute('aria-label') || ''} ${await button.innerText().catch(() => '')}`.trim();
-          if (/escribir|write a review|tu reseña|your review/i.test(label)) continue;
-          if (!/reseñas|reviews/i.test(label) && !/data-tab-index/i.test(selector)) continue;
-          await button.click({ timeout: 5000 });
-          await page.waitForTimeout(1800);
-          if (await googleCardCount(page)) return true;
-        } catch {}
-      }
+    function add(card, link = null) {
+      if (!card || seen.has(card)) return;
+      seen.add(card);
+      candidates.push({ card, link });
     }
 
-    const textButton = page.getByRole('button', { name: /\d[\d.,\s]*\s*(?:reseñas|reviews)|^(?:Reseñas|Reviews)$/i }).first();
-    try {
-      if (await textButton.count() && await textButton.isVisible({ timeout: 700 })) {
-        await textButton.click({ timeout: 5000 });
-        await page.waitForTimeout(1800);
-        if (await googleCardCount(page)) return true;
-      }
-    } catch {}
-
-    console.error(`GOOGLE_OPEN_RETRY attempt=${attempt} url=${page.url()} cards=${await googleCardCount(page)}`);
-    if (attempt < 4) {
-      await page.reload({ waitUntil: 'domcontentloaded', timeout: 90000 });
-    }
-  }
-  return false;
-}
-
-async function sortGoogleNewest(page) {
-  const sorters = page.locator('button[aria-label*="Ordenar"], button[aria-label*="Sort"], button[data-value*="Ordenar"], button:has-text("Ordenar")');
-  const count = Math.min(await sorters.count(), 10);
-  for (let i = 0; i < count; i += 1) {
-    try {
-      const sorter = sorters.nth(i);
-      if (!(await sorter.isVisible({ timeout: 700 }))) continue;
-      await sorter.click({ timeout: 3500 });
-      await page.waitForTimeout(400);
-      const newest = page.locator('[role="menuitemradio"], [role="menuitem"], button').filter({ hasText: /Más recientes|Más nuevas|Newest|Most recent/i }).first();
-      if (await newest.count() && await newest.isVisible({ timeout: 1200 })) {
-        await newest.click({ timeout: 3500 });
-        await page.waitForTimeout(1500);
-        return true;
-      }
-    } catch {}
-  }
-  return false;
-}
-
-async function collectGoogleCards(page) {
-  return page.evaluate(() => {
-    document.querySelectorAll('.jftiEf button.w8nwRe, [data-review-id] button.w8nwRe, .hjmQqc button').forEach((button) => {
-      const label = `${button.getAttribute('aria-label') || ''} ${button.textContent || ''}`;
-      if (/más|more|ver más|see more/i.test(label)) {
-        try { button.click(); } catch {}
-      }
-    });
-
-    const nodes = [];
-    const seenNodes = new Set();
-    for (const selector of ['.jftiEf', '.hjmQqc', '[data-review-id]']) {
-      for (const node of document.querySelectorAll(selector)) {
-        const card = node.closest('.jftiEf, .hjmQqc, [role="article"]') || node;
-        if (!seenNodes.has(card)) {
-          seenNodes.add(card);
-          nodes.push(card);
+    for (const link of reportLinks) {
+      let card = link.closest('.ti-review-item, article, [class*="review-item"], [class*="review-card"], li');
+      if (!card) {
+        let node = link.parentElement;
+        for (let depth = 0; node && depth < 8; depth += 1, node = node.parentElement) {
+          const text = node.textContent || '';
+          const reports = node.querySelectorAll?.('a[href*="/review/report/"]').length || 0;
+          if (reports === 1 && text.length >= 10 && text.length < 8000) card = node;
         }
       }
+      add(card || link.parentElement, link);
     }
+    for (const card of reviewNodes) add(card, card.querySelector('a[href*="/review/report/"]'));
 
     const reviews = [];
-    for (const card of nodes) {
-      const idNode = card.matches?.('[data-review-id]') ? card : card.querySelector?.('[data-review-id]');
-      const id = idNode?.getAttribute('data-review-id') || card.getAttribute?.('data-review-id') || '';
-      const author = card.querySelector?.('.d4r55')?.textContent?.trim()
-        || card.querySelector?.('[class*="author"]')?.textContent?.trim()
-        || card.querySelector?.('a[href*="/contrib/"]')?.textContent?.trim()
-        || '';
-      const text = card.querySelector?.('.wiI7pd')?.textContent?.trim()
-        || card.querySelector?.('.MyEned')?.textContent?.trim()
-        || '';
-      const dateText = card.querySelector?.('.rsqaWe')?.textContent?.trim()
-        || (card.textContent || '').match(/(?:hace\s+)?(?:un|una|\d+)\s+(?:minutos?|horas?|d[ií]as?|semanas?|meses?|a[ñn]os?)|(?:one|\d+)\s+(?:minutes?|hours?|days?|weeks?|months?|years?)\s+ago/i)?.[0]
-        || '';
-      const ratingNode = card.querySelector?.('.kvMYJc[aria-label], span[role="img"][aria-label], [aria-label*="estrella"], [aria-label*="star"]');
-      const ratingLabel = ratingNode?.getAttribute('aria-label') || '';
-      const ratingMatch = ratingLabel.match(/([1-5](?:[.,]\d)?)/);
-      let rating = ratingMatch ? Number.parseFloat(ratingMatch[1].replace(',', '.')) : 0;
+    for (const { card, link } of candidates) {
+      const href = link?.href || card.querySelector?.('a[href*="/review/report/"]')?.href || '';
+      const reportId = href.match(/\/id\/(\d+)/)?.[1] || href.match(/\/report\/(\d+)/)?.[1] || '';
+      const cardId = card.getAttribute?.('data-id') || '';
+      const author = card.querySelector?.('.ti-name, [class*="reviewer-name"], [class*="review-name"]')?.textContent?.trim() || '';
+      const dateText = card.querySelector?.('.ti-date, time, [class*="review-date"]')?.textContent?.trim() || '';
+      const textNode = card.querySelector?.('.ti-review-text-container, .ti-review-content, [class*="review-text"], [class*="review-content"]');
+      const text = textNode?.textContent?.replace(/\s+/g, ' ').trim() || '';
+      const avatar = card.querySelector?.('.ti-profile-img img[src], .ti-profile-img [data-imgurl], img[alt*="profile"]');
+      const avatarUrl = avatar?.getAttribute('src') || avatar?.getAttribute('data-imgurl') || '';
+
+      let rating = card.querySelectorAll?.('.ti-stars .ti-star.f, .ti-stars img[src*="/star/f.svg"], .ti-stars [data-imgurl*="/star/f.svg"]').length || 0;
+      if (rating < 1 || rating > 5) {
+        const labels = Array.from(card.querySelectorAll?.('[aria-label], img[alt], [alt]') || []).map((el) => `${el.getAttribute('aria-label') || ''} ${el.getAttribute('alt') || ''}`).join(' ');
+        const match = labels.match(/([1-5])\s*(?:stars?|estrellas?)/i);
+        rating = match ? Number.parseInt(match[1], 10) : 0;
+      }
       if (!rating) {
         const stars = ((card.textContent || '').match(/★/g) || []).length;
         if (stars >= 1 && stars <= 5) rating = stars;
       }
-      const image = card.querySelector?.('img[src]');
-      const reviewerLink = card.querySelector?.('a[href*="/contrib/"], a[href*="/maps/contrib/"]');
+
+      if (!rating) continue;
+      const fallback = [author.toLowerCase(), dateText, String(rating), text].join('|');
       reviews.push({
-        id,
+        id: reportId ? `trustindex-${reportId}` : (cardId ? `trustindex-card-${cardId}` : `trustindex-fallback-${fallback}`),
         author_name: author,
-        author_avatar_url: image?.src || '',
-        reviewer_url: reviewerLink?.href || '',
+        author_avatar_url: avatarUrl,
         rating,
+        title: '',
         text,
-        date_text: dateText,
+        date: dateText,
+        source_url: 'https://www.google.com/maps/place/?q=place_id:ChIJbbIJi58nQg0RgJroXR8DG_U&hl=es',
+        transport: 'trustindex_public',
+        transport_review_id: reportId || cardId,
       });
     }
     return reviews;
   });
 }
 
-async function scrollGoogleReviews(page) {
-  const last = page.locator('.jftiEf, .hjmQqc, [data-review-id]').last();
-  try {
-    if (await last.count()) await last.scrollIntoViewIfNeeded({ timeout: 2500 });
-  } catch {}
-
-  const paneScroll = await page.evaluate(() => {
-    const candidates = [];
-    const seen = new Set();
-    for (const selector of ['div.m6QErb.DxyBCb.kA9KIf.dS8AEf', 'div.m6QErb.DxyBCb', 'div[role="main"] div.m6QErb', 'div.m6QErb']) {
-      for (const node of document.querySelectorAll(selector)) {
-        if (seen.has(node)) continue;
-        seen.add(node);
-        if (!node.querySelector('.jftiEf, .hjmQqc, [data-review-id]')) continue;
-        if (node.scrollHeight <= node.clientHeight + 80) continue;
-        candidates.push(node);
-      }
+async function revealMoreTrustindex(page) {
+  const selectors = [
+    '.ti-load-more-reviews-button',
+    'button:has-text("More")',
+    '[role="button"]:has-text("More")',
+    'a:has-text("More")',
+    'button:has-text("Load more")',
+    '[role="button"]:has-text("Load more")',
+  ];
+  for (const selector of selectors) {
+    const nodes = page.locator(selector);
+    const count = Math.min(await nodes.count(), 10);
+    for (let i = 0; i < count; i += 1) {
+      const node = nodes.nth(i);
+      try {
+        if (!(await node.isVisible({ timeout: 300 }))) continue;
+        const text = (await node.innerText().catch(() => '')).trim();
+        if (text && !/^(more|load more|más|cargar más)$/i.test(text)) continue;
+        await node.scrollIntoViewIfNeeded({ timeout: 1200 }).catch(() => {});
+        await node.click({ timeout: 3000 });
+        await page.waitForTimeout(750);
+        return true;
+      } catch {}
     }
-    candidates.sort((a, b) => (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight));
-    const pane = candidates[0] || null;
-    if (!pane) return { found: false, before: 0, after: 0, height: 0 };
-    const before = pane.scrollTop;
-    pane.scrollTop = Math.min(pane.scrollHeight, pane.scrollTop + Math.max(3500, pane.clientHeight * 4));
-    pane.dispatchEvent(new Event('scroll', { bubbles: true }));
-    return { found: true, before, after: pane.scrollTop, height: pane.scrollHeight };
-  });
-
-  await page.mouse.wheel(0, 1800).catch(() => {});
-  if (!paneScroll.found) await page.keyboard.press('End').catch(() => {});
-  return paneScroll;
+  }
+  return false;
 }
 
 async function scrapeGoogle(page) {
-  await page.goto(GOOGLE_PROFILE_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
+  const response = await page.goto(GOOGLE_PUBLIC_REVIEWS_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
+  if (response && response.status() >= 400) throw new Error(`Trustindex Google HTTP ${response.status()}.`);
   await clickConsent(page);
-  await page.waitForTimeout(1800);
-  let reportedCount = await googleReportedCount(page);
-  let overallRating = await googleRating(page);
-  const opened = await openGoogleReviews(page);
-  if (!opened) throw new Error(`Google Maps no abrió el panel de reseñas (reported=${reportedCount}).`);
-  reportedCount = reportedCount || await googleReportedCount(page);
-  overallRating = overallRating || await googleRating(page);
-  const sortedNewest = await sortGoogleNewest(page);
-  if (mode === 'incremental' && !sortedNewest) throw new Error('Google Maps no permitió ordenar las reseñas por más recientes.');
-
+  await page.waitForTimeout(900);
+  const summary = await trustindexGoogleSummary(page);
   const map = new Map();
-  const target = mode === 'full' ? (reportedCount > 0 ? reportedCount : 500) : Math.min(reportedCount || 80, 80);
-  const maxLoops = mode === 'full' ? 280 : 55;
+  const target = mode === 'full' ? (summary.reportedCount || 303) : Math.min(summary.reportedCount || 20, 25);
+  const maxLoops = mode === 'full' ? 40 : 1;
   let stable = 0;
-  let previous = 0;
 
   for (let loop = 0; loop < maxLoops; loop += 1) {
-    const batch = await collectGoogleCards(page);
-    for (const item of batch) {
-      if (!item.rating) continue;
-      const id = stableGoogleReviewId(item);
-      map.set(id, {
-        id,
-        author_name: item.author_name || '',
-        author_avatar_url: item.author_avatar_url || '',
-        reviewer_url: item.reviewer_url || '',
-        rating: Math.max(1, Math.min(5, Math.round(item.rating))),
-        title: '',
-        text: item.text || '',
-        date: toIsoRelativeDate(item.date_text),
-        date_text: item.date_text || '',
-        source_url: GOOGLE_PROFILE_URL,
-      });
+    const batch = await collectTrustindexGoogle(page);
+    const before = map.size;
+    for (const review of batch) {
+      const id = review.id.startsWith('trustindex-fallback-') ? `trustindex-fallback-${sha(review.id)}` : review.id;
+      map.set(id, { ...review, id, date: toIsoDate(review.date) });
     }
     if (map.size >= target) break;
-    stable = map.size === previous ? stable + 1 : 0;
-    previous = map.size;
-    if (stable >= (mode === 'full' ? 18 : 9)) break;
-    const scroll = await scrollGoogleReviews(page);
-    if (loop === 0 || (loop + 1) % 10 === 0) {
-      console.error(`GOOGLE_PROGRESS loop=${loop + 1} reviews=${map.size}/${target} pane=${scroll.found ? 1 : 0} scroll=${scroll.before}->${scroll.after}/${scroll.height}`);
+    stable = map.size === before ? stable + 1 : 0;
+    console.error(`GOOGLE_TRUSTINDEX_PROGRESS loop=${loop + 1} reviews=${map.size}/${target} reportLinks=${await page.locator('a[href*="/review/report/"]').count()}`);
+    const clicked = await revealMoreTrustindex(page);
+    if (!clicked) {
+      await page.keyboard.press('End').catch(() => {});
+      await page.waitForTimeout(650);
     }
-    await page.waitForTimeout(mode === 'full' ? 950 : 800);
+    if (stable >= 4 && !clicked) break;
   }
 
-  if (!map.size) throw new Error('Google Maps no devolvió reseñas.');
+  if (!map.size) {
+    const diagnostics = await page.evaluate(() => ({
+      title: document.title,
+      reviewItems: document.querySelectorAll('.ti-review-item').length,
+      reportLinks: document.querySelectorAll('a[href*="/review/report/"]').length,
+      textStart: (document.body?.innerText || '').slice(0, 500).replace(/\s+/g, ' '),
+    }));
+    throw new Error(`Trustindex no devolvió reseñas Google: ${JSON.stringify(diagnostics)}`);
+  }
+
   return {
     source: 'google',
+    provider: 'trustindex_public',
     mode,
     scraped_at: new Date().toISOString(),
-    reported_count: reportedCount,
-    rating: overallRating,
+    reported_count: summary.reportedCount,
+    rating: summary.rating,
     profile_url: GOOGLE_PROFILE_URL,
-    sorted_newest: sortedNewest,
+    sorted_newest: true,
     reviews: Array.from(map.values()),
   };
 }
@@ -390,10 +279,9 @@ async function collectTrustpilotPage(page) {
       const ratingMatch = String(ratingRaw).match(/([1-5](?:[.,]\d)?)/);
       const rating = ratingMatch ? Number.parseFloat(ratingMatch[1].replace(',', '.')) : 0;
       const title = card.querySelector('[data-service-review-title-typography]')?.textContent?.trim() || '';
-      const text = card.querySelector('[data-service-review-text-typography]')?.textContent?.trim() || '';
+      const text = card.querySelector('[data-service-review-text-typography]')?.textContent?.replace(/\s+/g, ' ').trim() || '';
       const author = card.querySelector('[data-consumer-name-typography]')?.textContent?.trim() || card.querySelector('a[href*="/users/"]')?.textContent?.trim() || '';
       const time = card.querySelector('time[datetime]');
-      const date = time?.getAttribute('datetime') || '';
       reviews.push({
         id: idMatch[1],
         author_name: author,
@@ -401,7 +289,7 @@ async function collectTrustpilotPage(page) {
         rating,
         title,
         text,
-        date,
+        date: time?.getAttribute('datetime') || '',
         source_url: `https://es.trustpilot.com/reviews/${idMatch[1]}`,
       });
     }
@@ -431,9 +319,10 @@ async function scrapeTrustpilot(page) {
     let newItems = 0;
     for (const item of batch) {
       if (!item.id || !item.rating || map.has(item.id)) continue;
-      map.set(item.id, item);
+      map.set(item.id, { ...item, date: toIsoDate(item.date) || item.date });
       newItems += 1;
     }
+    console.error(`TRUSTPILOT_PROGRESS page=${pageNumber} new=${newItems} total=${map.size}/${reportedCount || '?'}`);
     if (!newItems) emptyPages += 1;
     else emptyPages = 0;
     if (mode === 'full' && reportedCount > 0 && map.size >= reportedCount) break;
@@ -443,6 +332,7 @@ async function scrapeTrustpilot(page) {
   if (!map.size) throw new Error('Trustpilot no devolvió reseñas.');
   return {
     source: 'trustpilot',
+    provider: 'trustpilot_public',
     mode,
     scraped_at: new Date().toISOString(),
     reported_count: reportedCount,
@@ -455,16 +345,14 @@ async function scrapeTrustpilot(page) {
 
 const browser = await chromium.launch(launchOptions);
 try {
-  const contextOptions = source === 'google'
-    ? { locale: 'es-ES', viewport: { width: 390, height: 844 }, isMobile: true, userAgent: GOOGLE_MOBILE_UA }
-    : { locale: 'es-ES', viewport: { width: 1440, height: 1100 }, userAgent: DESKTOP_UA };
-  const context = await browser.newContext(contextOptions);
+  const context = await browser.newContext({ locale: 'es-ES', viewport: { width: 1440, height: 1100 }, userAgent: DESKTOP_UA });
   const page = await context.newPage();
   page.setDefaultTimeout(10000);
   const payload = source === 'google' ? await scrapeGoogle(page) : await scrapeTrustpilot(page);
   fs.writeFileSync(output, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
   console.log(JSON.stringify({
     source: payload.source,
+    provider: payload.provider,
     mode: payload.mode,
     found: payload.reviews.length,
     reported_count: payload.reported_count,
