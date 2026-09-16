@@ -58,12 +58,12 @@ jobs:
             echo "DUP_GROUP_COUNT=" . count( $fps ) . PHP_EOL;
             foreach ( $fps as $fp ) {
               $rows = $wpdb->get_results( $wpdb->prepare(
-                "SELECT id,source,source_review_id,source_key,status,validation_method,vendor_user_id,suggested_vendor_user_id,product_id,order_id,author_name,rating,review_title,review_text,review_date,created_at,updated_at,content_fingerprint FROM {$table} WHERE content_fingerprint=%s ORDER BY id",
+                "SELECT id,source,source_review_id,source_key,status,validation_method,vendor_user_id,suggested_vendor_user_id,wc_product_id,source_product_id,wc_order_id,assignment_type,assignment_confidence,assignment_reason,author_name,rating,review_title,review_text,review_date,first_seen_at,last_seen_at,created_at,updated_at,content_fingerprint FROM {$table} WHERE content_fingerprint=%s ORDER BY id",
                 $fp
               ) );
               echo "DUP_GROUP=" . wp_json_encode( array( "fingerprint" => $fp, "rows" => $rows ) ) . PHP_EOL;
             }
-            $woo = $wpdb->get_row( $wpdb->prepare( "SELECT id,source_review_id,source_key,status,validation_method,product_id,vendor_user_id,author_name,rating,review_text,review_date,content_fingerprint FROM {$table} WHERE source=%s AND source_review_id=%s", "woocommerce_product", "8352" ) );
+            $woo = $wpdb->get_row( $wpdb->prepare( "SELECT id,source_review_id,source_key,status,validation_method,wc_product_id,vendor_user_id,author_name,rating,review_text,review_date,content_fingerprint FROM {$table} WHERE source=%s AND source_review_id=%s", "woocommerce_product", "8352" ) );
             echo "WOO_8352=" . wp_json_encode( $woo ) . PHP_EOL;
           ' --path="$PROD_PATH" --allow-root
           REMOTE
