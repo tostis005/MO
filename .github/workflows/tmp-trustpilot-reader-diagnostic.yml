@@ -21,16 +21,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Scrape current Trustpilot payload
+      - name: Scrape current Google payload
         shell: bash
         run: |
           set -euo pipefail
           npm init -y >/dev/null 2>&1
           npm install --no-save playwright@1.55.0 >/dev/null 2>&1
           test -x /usr/bin/google-chrome || test -x /usr/bin/google-chrome-stable || npx playwright install chromium >/dev/null 2>&1
-          node mdo-supplier-sync/scripts/scrape-trustpilot-reviews.mjs --mode full --output /tmp/emdo-trustpilot-diag.json
+          node mdo-supplier-sync/scripts/scrape-external-reviews.mjs --source google --mode full --output /tmp/emdo-google-diag.json
+          python3 - <<'PY'
+          import json
+          p=json.load(open('/tmp/emdo-google-diag.json', encoding='utf-8'))
+          rows=p.get('reviews') or []
+          print('GOOGLE_RAW_SUMMARY='+json.dumps({
+            'reviews':len(rows),
+            'invalid_rating':sum(not (1 <= int(round(float(r.get('rating') or 0))) <= 5) for r in rows),
+            'empty_author':sum(not str(r.get('author_name') or '').strip() for r in rows),
+            'empty_text':sum(not str(r.get('text') or r.get('review_text') or '').strip() for r in rows),
+            'empty_title':sum(not str(r.get('title') or r.get('review_title') or '').strip() for r in rows),
+            'all_content_empty':sum(not str(r.get('author_name') or '').strip() and not str(r.get('text') or r.get('review_text') or '').strip() and not str(r.get('title') or r.get('review_title') or '').strip() for r in rows),
+          }, ensure_ascii=False))
+          PY
 
-      - name: Trace real Trustpilot upserts with rollback
+      - name: Classify Google normalizer rejections in production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -54,8 +67,8 @@ jobs:
             done
           ')"
           : "${PROD_PATH:?production path not found}"
-          REMOTE_FILE="/tmp/emdo-trustpilot-diag-${GITHUB_RUN_ID}.json"
-          sshpass -e scp $SCP_OPTIONS /tmp/emdo-trustpilot-diag.json "$STAGING_USER@$STAGING_HOST:$REMOTE_FILE"
+          REMOTE_FILE="/tmp/emdo-google-diag-${GITHUB_RUN_ID}.json"
+          sshpass -e scp $SCP_OPTIONS /tmp/emdo-google-diag.json "$STAGING_USER@$STAGING_HOST:$REMOTE_FILE"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH' '$REMOTE_FILE'" <<'REMOTE'
           set -euo pipefail
           PROD_PATH="$1"
@@ -65,64 +78,52 @@ jobs:
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
           export MDO_DIAG_PAYLOAD="$PAYLOAD_FILE"
           "$php_bin" -d memory_limit=512M "$wp_bin" eval '
-            global $wpdb;
             $payload = json_decode( file_get_contents( getenv( "MDO_DIAG_PAYLOAD" ) ), true );
             $reviews = is_array( $payload["reviews"] ?? null ) ? $payload["reviews"] : array();
-            $table = MDO_Database::table( "reviews" );
             $norm = new ReflectionMethod( "MDO_Reviews_Scraping", "normalize_review" );
             $norm->setAccessible( true );
-            $ctxm = new ReflectionMethod( "MDO_Reviews", "assignment_context" );
-            $ctxm->setAccessible( true );
-            $assign = new ReflectionMethod( "MDO_Reviews", "apply_assignment" );
-            $assign->setAccessible( true );
-            $upsert = new ReflectionMethod( "MDO_Reviews", "upsert_review" );
-            $upsert->setAccessible( true );
-            $context = $ctxm->invoke( null );
-            $before = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE source=%s", "trustpilot" ) );
-            $wpdb->query( "START TRANSACTION" );
-            $normalized = 0; $saved = 0; $failed = 0; $skipped = 0; $errors = array();
+            $normalized = 0;
+            $rejected = array();
+            $reason_counts = array(
+              "invalid_rating" => 0,
+              "empty_identity_content" => 0,
+              "other" => 0,
+            );
             foreach ( $reviews as $index => $review ) {
-              $data = $norm->invoke( null, "trustpilot", $review );
-              if ( ! is_array( $data ) ) { ++$skipped; continue; }
-              ++$normalized;
-              $assigned = $assign->invoke( null, $data, $context );
-              if ( ! is_array( $assigned ) ) { $assigned = $data; }
-              if ( empty( $assigned["status"] ) ) { $assigned["status"] = "pending"; }
-              $wpdb->last_error = "";
-              $ok = $upsert->invoke( null, "trustpilot", $assigned );
-              if ( $ok ) { ++$saved; }
-              else {
-                ++$failed;
-                if ( count( $errors ) < 25 ) {
-                  $errors[] = array(
-                    "index" => $index,
-                    "id" => $data["source_review_id"] ?? "",
-                    "author" => $data["author_name"] ?? "",
-                    "date" => $data["review_date"] ?? null,
-                    "text_len" => strlen( (string) ( $data["review_text"] ?? "" ) ),
-                    "payload_len" => strlen( (string) ( $data["source_payload"] ?? "" ) ),
-                    "error" => $wpdb->last_error,
-                    "query" => $wpdb->last_query,
-                  );
-                }
+              $data = $norm->invoke( null, "google", $review );
+              if ( is_array( $data ) ) { ++$normalized; continue; }
+              $rating = (int) round( (float) ( $review["rating"] ?? 0 ) );
+              $author = sanitize_text_field( (string) ( $review["author_name"] ?? "" ) );
+              $text = trim( wp_strip_all_tags( (string) ( $review["text"] ?? $review["review_text"] ?? "" ) ) );
+              $title = sanitize_text_field( (string) ( $review["title"] ?? $review["review_title"] ?? "" ) );
+              if ( $rating < 1 || $rating > 5 ) { $reason = "invalid_rating"; }
+              elseif ( "" === $author && "" === $text && "" === $title ) { $reason = "empty_identity_content"; }
+              else { $reason = "other"; }
+              ++$reason_counts[ $reason ];
+              if ( count( $rejected ) < 60 ) {
+                $rejected[] = array(
+                  "index" => $index,
+                  "reason" => $reason,
+                  "id" => (string) ( $review["id"] ?? "" ),
+                  "rating" => $rating,
+                  "author_raw" => (string) ( $review["author_name"] ?? "" ),
+                  "author_sanitized" => $author,
+                  "text_len_raw" => strlen( (string) ( $review["text"] ?? $review["review_text"] ?? "" ) ),
+                  "text_len_clean" => strlen( $text ),
+                  "title_raw" => (string) ( $review["title"] ?? $review["review_title"] ?? "" ),
+                  "date" => $review["date"] ?? null,
+                  "transport_review_id" => $review["transport_review_id"] ?? null,
+                  "keys" => array_keys( $review ),
+                );
               }
             }
-            $during = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE source=%s", "trustpilot" ) );
-            echo "REAL_TP_DIAG=" . wp_json_encode( array(
+            echo "GOOGLE_NORMALIZER_DIAG=" . wp_json_encode( array(
               "payload_reviews" => count( $reviews ),
-              "reported" => $payload["reported_count"] ?? null,
-              "historical" => $payload["historical_count"] ?? null,
-              "before" => $before,
               "normalized" => $normalized,
-              "saved" => $saved,
-              "failed" => $failed,
-              "skipped" => $skipped,
-              "during" => $during,
-              "errors" => $errors,
-            ) ) . PHP_EOL;
-            $wpdb->query( "ROLLBACK" );
-            $after = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE source=%s", "trustpilot" ) );
-            echo "REAL_TP_ROLLBACK_COUNT={$after}" . PHP_EOL;
+              "rejected" => count( $reviews ) - $normalized,
+              "reason_counts" => $reason_counts,
+              "samples" => $rejected,
+            ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
           ' --path="$PROD_PATH" --allow-root
           rm -f "$PAYLOAD_FILE"
           REMOTE
