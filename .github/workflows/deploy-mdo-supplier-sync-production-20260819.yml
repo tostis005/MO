@@ -93,7 +93,6 @@ jobs:
           tar -xzf "$REMOTE_ARCHIVE" -C "$PROD_PATH/wp-content/plugins"
           rm -f "$REMOTE_ARCHIVE"
 
-          # Remove every file introduced by the failed homepage integration.
           rm -f "$PLUGIN_PATH/includes/class-mdo-home-specials.php"
           rm -f "$PLUGIN_PATH/assets/css/home-specials.css"
 
@@ -115,19 +114,24 @@ jobs:
           "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT source, COUNT(*) AS duplicate_fingerprints FROM (SELECT source, content_fingerprint FROM ${prefix}mdo_reviews WHERE content_fingerprint IS NOT NULL AND content_fingerprint<>'' GROUP BY source, content_fingerprint HAVING COUNT(*)>1) d GROUP BY source" --skip-column-names --path="$PROD_PATH" --allow-root || true
           echo '-- Google local source counts --'
           "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT COUNT(*) AS all_rows, SUM(CASE WHEN hidden=0 THEN 1 ELSE 0 END) AS visible_rows, SUM(CASE WHEN hidden<>0 THEN 1 ELSE 0 END) AS hidden_rows FROM ${prefix}trustindex_google_reviews" --skip-column-names --path="$PROD_PATH" --allow-root || true
-          echo '-- Google Trustindex columns --'
-          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SHOW COLUMNS FROM ${prefix}trustindex_google_reviews" --skip-column-names --path="$PROD_PATH" --allow-root || true
           echo '-- GRP Google source --'
           "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT COUNT(*) FROM ${prefix}grp_google_review" --skip-column-names --path="$PROD_PATH" --allow-root || true
-          "$php_bin" -d memory_limit=512M "$wp_bin" db query "SHOW COLUMNS FROM ${prefix}grp_google_review" --skip-column-names --path="$PROD_PATH" --allow-root || true
           echo '-- safe source metadata --'
           printf 'MDO_GOOGLE_COUNT='; "$php_bin" -d memory_limit=512M "$wp_bin" option get mdo_google_review_count --path="$PROD_PATH" --allow-root 2>/dev/null || true
           printf 'MDO_TRUSTPILOT_COUNT='; "$php_bin" -d memory_limit=512M "$wp_bin" option get mdo_trustpilot_review_count --path="$PROD_PATH" --allow-root 2>/dev/null || true
           printf 'MDO_TRUSTPILOT_RATING='; "$php_bin" -d memory_limit=512M "$wp_bin" option get mdo_trustpilot_rating --path="$PROD_PATH" --allow-root 2>/dev/null || true
+          printf 'MDO_TRUSTPILOT_SOURCE='; "$php_bin" -d memory_limit=512M "$wp_bin" option get mdo_trustpilot_review_source --path="$PROD_PATH" --allow-root 2>/dev/null || true
+          printf 'MDO_TRUSTPILOT_URL='; "$php_bin" -d memory_limit=512M "$wp_bin" option get mdo_trustpilot_review_source_url --path="$PROD_PATH" --allow-root 2>/dev/null || true
           printf 'TRUSTPILOT_ACTIVE='; "$php_bin" -d memory_limit=512M "$wp_bin" option get trustindex-trustpilot-active --path="$PROD_PATH" --allow-root 2>/dev/null || true
-          echo '-- Trustpilot provider method locations --'
-          grep -Rni --include='*.php' 'function get_noreg_list_reviews' "$PROD_PATH/wp-content/plugins/review-widgets-for-trustpilot" | head -20 || true
-          grep -RniE --include='*.php' 'get_noreg_list_reviews|download.*review|review.*download|api.*review|review.*api' "$PROD_PATH/wp-content/plugins/review-widgets-for-trustpilot" | head -60 || true
+          echo '-- installed review-related plugins --'
+          "$php_bin" -d memory_limit=512M "$wp_bin" plugin list --fields=name,status,version --format=csv --path="$PROD_PATH" --allow-root | grep -Ei '^(name|.*(trust|google|review).*)' || true
+          find "$PROD_PATH/wp-content/plugins" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | grep -Ei 'trust|google|review' | sort || true
+          echo '-- Trustpilot plugin DB/API implementation --'
+          grep -RniE --include='*.php' 'trustindex_trustpilot_reviews|CREATE TABLE|download_noreg_reviews|getPromoReviews|page.details|page_details' "$PROD_PATH/wp-content/plugins/review-widgets-for-trustpilot" | head -120 || true
+          echo '-- Trustpilot get_noreg_list_reviews excerpt --'
+          sed -n '1438,1565p' "$PROD_PATH/wp-content/plugins/review-widgets-for-trustpilot/trustindex-plugin.class.php" || true
+          echo '-- Trustpilot download_noreg_reviews excerpt --'
+          sed -n '1840,1895p' "$PROD_PATH/wp-content/plugins/review-widgets-for-trustpilot/trustindex-plugin.class.php" || true
           echo '=== EMDO REVIEW DIAGNOSTICS END ==='
 
           "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$PROD_PATH" --allow-root >/dev/null || true
