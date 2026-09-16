@@ -91,6 +91,10 @@ final class MDO_Reviews_Trustpilot_Scraper {
 				);
 			}
 
+			if ( defined( 'WP_CLI' ) && WP_CLI ) {
+				fwrite( STDERR, sprintf( "TRUSTPILOT_PAGE page=%d raw=%d added=%d cumulative=%d transport=%s\n", $page_number, count( $raw_reviews ), count( $reviews ) - $before, count( $reviews ), $transport ) );
+			}
+
 			if ( 'full' === $mode && $reported_count > 0 && count( $reviews ) >= $reported_count ) {
 				break;
 			}
@@ -173,47 +177,65 @@ final class MDO_Reviews_Trustpilot_Scraper {
 
 	/** @return array|WP_Error */
 	private static function fetch_page_via_jina( int $page_number ) {
-		$target_url = self::page_url( self::PROFILE_ES, $page_number );
-		$response = wp_remote_get(
-			self::JINA_READER . $target_url,
-			array(
-				'timeout'     => 55,
-				'redirection' => 3,
-				'headers'     => array(
-					'Accept'          => 'application/json',
-					'X-Engine'        => 'browser',
-					'X-Respond-With'  => 'markdown',
-					'X-Retain-Images' => 'alt',
-					'X-No-Cache'      => 'true',
-					'X-Timeout'       => '35',
-				),
-			)
-		);
-		if ( is_wp_error( $response ) ) {
-			return new WP_Error( 'mdo_trustpilot_jina_transport', $response->get_error_message() );
+		$targets = array( self::page_url( self::PROFILE_ES, $page_number ) );
+		$canonical = self::canonical_page_url( self::PROFILE_ES, $page_number );
+		if ( $canonical !== $targets[0] ) {
+			$targets[] = $canonical;
 		}
-		$code = (int) wp_remote_retrieve_response_code( $response );
-		$body = (string) wp_remote_retrieve_body( $response );
-		if ( $code < 200 || $code >= 300 || '' === $body ) {
-			return new WP_Error( 'mdo_trustpilot_jina_http', 'Jina Reader HTTP ' . $code . ' para Trustpilot página ' . $page_number . '.' );
-		}
-		$decoded = json_decode( $body, true );
-		$content = is_array( $decoded ) ? (string) ( $decoded['data']['content'] ?? $decoded['content'] ?? '' ) : $body;
-		if ( '' === trim( $content ) ) {
-			return new WP_Error( 'mdo_trustpilot_jina_empty', 'Jina Reader no devolvió contenido para Trustpilot página ' . $page_number . '.' );
+		$last_error = null;
+
+		foreach ( $targets as $target_url ) {
+			$response = wp_remote_get(
+				self::JINA_READER . $target_url,
+				array(
+					'timeout'     => 55,
+					'redirection' => 3,
+					'headers'     => array(
+						'Accept'          => 'application/json',
+						'X-Engine'        => 'browser',
+						'X-Respond-With'  => 'markdown',
+						'X-Retain-Images' => 'alt',
+						'X-No-Cache'      => 'true',
+						'X-Timeout'       => '35',
+					),
+				)
+			);
+			if ( is_wp_error( $response ) ) {
+				$last_error = new WP_Error( 'mdo_trustpilot_jina_transport', $response->get_error_message() );
+				continue;
+			}
+			$code = (int) wp_remote_retrieve_response_code( $response );
+			$body = (string) wp_remote_retrieve_body( $response );
+			if ( $code < 200 || $code >= 300 || '' === $body ) {
+				$last_error = new WP_Error( 'mdo_trustpilot_jina_http', 'Jina Reader HTTP ' . $code . ' para Trustpilot página ' . $page_number . '.' );
+				continue;
+			}
+			$decoded = json_decode( $body, true );
+			$content = is_array( $decoded ) ? (string) ( $decoded['data']['content'] ?? $decoded['content'] ?? '' ) : $body;
+			if ( '' === trim( $content ) ) {
+				$last_error = new WP_Error( 'mdo_trustpilot_jina_empty', 'Jina Reader no devolvió contenido para Trustpilot página ' . $page_number . '.' );
+				continue;
+			}
+
+			$data = self::extract_next_data( $content );
+			if ( is_wp_error( $data ) ) {
+				$data = self::reader_content_to_next_data( $content );
+			}
+			if ( is_wp_error( $data ) ) {
+				$last_error = new WP_Error( 'mdo_trustpilot_jina_parse', 'Jina Reader no devolvió reseñas interpretables en Trustpilot página ' . $page_number . ' usando ' . $target_url . '.' );
+				continue;
+			}
+			return array( 'profile_url' => self::PROFILE_ES, 'transport' => 'jina_reader', 'data' => $data );
 		}
 
-		$data = self::extract_next_data( $content );
-		if ( is_wp_error( $data ) ) {
-			$data = self::reader_content_to_next_data( $content );
-		}
-		if ( is_wp_error( $data ) ) {
-			return new WP_Error( 'mdo_trustpilot_jina_parse', 'Jina Reader no devolvió reseñas interpretables en Trustpilot página ' . $page_number . '.' );
-		}
-		return array( 'profile_url' => self::PROFILE_ES, 'transport' => 'jina_reader', 'data' => $data );
+		return $last_error instanceof WP_Error ? $last_error : new WP_Error( 'mdo_trustpilot_jina_parse', 'Jina Reader no devolvió reseñas interpretables en Trustpilot página ' . $page_number . '.' );
 	}
 
 	private static function page_url( string $base_url, int $page_number ): string {
+		return 1 === $page_number ? $base_url : add_query_arg( array( 'page' => $page_number, 'sort' => 'recency' ), $base_url );
+	}
+
+	private static function canonical_page_url( string $base_url, int $page_number ): string {
 		return 1 === $page_number ? $base_url : add_query_arg( array( 'page' => $page_number ), $base_url );
 	}
 
