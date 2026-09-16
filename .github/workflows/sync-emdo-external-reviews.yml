@@ -90,12 +90,13 @@ jobs:
           node --check mdo-supplier-sync/scripts/scrape-external-reviews.mjs
           node --check mdo-supplier-sync/scripts/scrape-trustpilot-reviews.mjs
 
-      - name: Resolve production and wait for deployed import bridge
+      - name: Resolve production and wait for completed deploy
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
+          test -n "${GITHUB_SHA:-}"
           test -n "${STAGING_HOST:-}"
           test -n "${STAGING_USER:-}"
           test -n "${STAGING_PASSWORD:-}"
@@ -123,22 +124,28 @@ jobs:
           LOCAL_BRIDGE_SHA="$(sha256sum mdo-supplier-sync/includes/class-mdo-reviews-scraping.php | awk '{print $1}')"
           deployed=''
           remote_bridge_sha=''
-          for attempt in $(seq 1 36); do
-            state="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); version=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" plugin get mdo-supplier-sync --field=version --path='$PROD_PATH' --allow-root 2>/dev/null || true); bridge='$PROD_PATH/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-reviews-scraping.php'; bridge_sha=''; [ -f \"\$bridge\" ] && bridge_sha=\$(sha256sum \"\$bridge\" | awk '{print \$1}'); printf '%s|%s' \"\$version\" \"\$bridge_sha\"")"
+          deployed_sha=''
+          for attempt in $(seq 1 60); do
+            state="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); version=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" plugin get mdo-supplier-sync --field=version --path='$PROD_PATH' --allow-root 2>/dev/null || true); plugin='$PROD_PATH/wp-content/plugins/mdo-supplier-sync'; bridge=\"\$plugin/includes/class-mdo-reviews-scraping.php\"; marker=\"\$plugin/.emdo-deployed-sha\"; bridge_sha=''; deploy_sha=''; [ -f \"\$bridge\" ] && bridge_sha=\$(sha256sum \"\$bridge\" | awk '{print \$1}'); [ -f \"\$marker\" ] && deploy_sha=\$(tr -d '\\r\\n' < \"\$marker\"); printf '%s|%s|%s' \"\$version\" \"\$bridge_sha\" \"\$deploy_sha\"")"
             deployed="${state%%|*}"
-            remote_bridge_sha="${state#*|}"
-            if [ "$deployed" = "$EXPECTED_VERSION" ] && [ "$remote_bridge_sha" = "$LOCAL_BRIDGE_SHA" ]; then
+            rest="${state#*|}"
+            remote_bridge_sha="${rest%%|*}"
+            deployed_sha="${rest#*|}"
+            if [ "$deployed" = "$EXPECTED_VERSION" ] && [ "$remote_bridge_sha" = "$LOCAL_BRIDGE_SHA" ] && [ "$deployed_sha" = "$GITHUB_SHA" ]; then
               break
             fi
+            echo "WAIT_DEPLOY attempt=$attempt version=${deployed:-none} marker=${deployed_sha:-none} expected=$GITHUB_SHA"
             sleep 10
           done
           test "$deployed" = "$EXPECTED_VERSION"
           test "$remote_bridge_sha" = "$LOCAL_BRIDGE_SHA"
+          test "$deployed_sha" = "$GITHUB_SHA"
           echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
           echo "SSH_OPTIONS=$SSH_OPTIONS" >> "$GITHUB_ENV"
           echo "SCP_OPTIONS=$SCP_OPTIONS" >> "$GITHUB_ENV"
           echo "PRODUCTION_EMDO_VERSION=$deployed"
           echo "IMPORT_BRIDGE_SHA=$remote_bridge_sha"
+          echo "PRODUCTION_DEPLOY_SHA=$deployed_sha"
 
       - name: Install browser dependency
         shell: bash
@@ -196,7 +203,7 @@ jobs:
           PY
           done
 
-      - name: Import external reviews into EMDO
+      - name: Import external reviews into EMDO and verify immediately
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -206,12 +213,41 @@ jobs:
             local_file="/tmp/emdo-${source}.json"
             remote_file="/tmp/emdo-${source}-${GITHUB_RUN_ID}.json"
             sshpass -e scp $SCP_OPTIONS "$local_file" "$STAGING_USER@$STAGING_HOST:$remote_file"
-            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; export MDO_REVIEW_PAYLOAD_FILE='$remote_file'; export MDO_REVIEW_SOURCE='$source'; wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
-              if ( ! class_exists( "MDO_Reviews_Scraping" ) ) { fwrite( STDERR, "MDO_Reviews_Scraping missing\\n" ); exit(31); }
-              \$result = MDO_Reviews_Scraping::import_file( getenv( "MDO_REVIEW_PAYLOAD_FILE" ) );
-              if ( is_wp_error( \$result ) ) { fwrite( STDERR, \$result->get_error_code() . ":" . \$result->get_error_message() . "\\n" ); exit(32); }
-              echo "IMPORT_RESULT_" . strtoupper( getenv( "MDO_REVIEW_SOURCE" ) ) . "=" . wp_json_encode( \$result ) . PHP_EOL;
-            ' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$remote_file'; exit \$rc"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH' '$remote_file' '$source' '$MDO_MODE'" <<'REMOTE'
+          set -euo pipefail
+          PROD_PATH="$1"
+          PAYLOAD_FILE="$2"
+          SOURCE="$3"
+          MODE="$4"
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          export MDO_REVIEW_PAYLOAD_FILE="$PAYLOAD_FILE"
+          export MDO_REVIEW_SOURCE="$SOURCE"
+          export MDO_REVIEW_MODE="$MODE"
+          set +e
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            global $wpdb;
+            if ( ! class_exists( "MDO_Reviews_Scraping" ) ) { fwrite( STDERR, "MDO_Reviews_Scraping missing\n" ); exit(31); }
+            $source = sanitize_key( getenv( "MDO_REVIEW_SOURCE" ) );
+            $mode = sanitize_key( getenv( "MDO_REVIEW_MODE" ) );
+            $result = MDO_Reviews_Scraping::import_file( getenv( "MDO_REVIEW_PAYLOAD_FILE" ) );
+            if ( is_wp_error( $result ) ) { fwrite( STDERR, $result->get_error_code() . ":" . $result->get_error_message() . "\n" ); exit(32); }
+            $table = MDO_Database::table( "reviews" );
+            $count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE source=%s", $source ) );
+            $expected = (int) ( $result["expected"] ?? 0 );
+            echo "IMPORT_RESULT_" . strtoupper( $source ) . "=" . wp_json_encode( $result ) . PHP_EOL;
+            echo "IMPORT_SOURCE_COUNT_" . strtoupper( $source ) . "={$count} expected={$expected} mode={$mode}" . PHP_EOL;
+            if ( "full" === $mode && $expected > 0 && $count < $expected ) {
+              fwrite( STDERR, "mdo_review_import_incomplete:{$source}:{$count}/{$expected}\n" );
+              exit(33);
+            }
+          ' --path="$PROD_PATH" --allow-root
+          rc=$?
+          set -e
+          rm -f "$PAYLOAD_FILE"
+          exit "$rc"
+          REMOTE
           done
 
       - name: Validate production review data and public route
