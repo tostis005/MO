@@ -9,11 +9,12 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * - Retira las 10 filas legacy del antiguo import de Trustindex que quedaron
  *   duplicadas frente al catálogo Google canónico actual.
- * - Sugiere tienda para borradores inequívocos según el contenido de la reseña.
+ * - Sugiere tienda únicamente para borradores con una atribución semántica
+ *   inequívoca según el contenido de la reseña.
  * - Nunca publica: vendor_user_id permanece vacío y status permanece pending.
  */
 final class MDO_Reviews_Moderation {
-	private const VERSION = '1.0.0';
+	private const VERSION = '1.1.0';
 	private const OPTION = 'mdo_reviews_moderation_version';
 	private const HIDALGO_VENDOR_ID = 6;
 	private const OIL_VENDOR_ID = 3;
@@ -39,17 +40,15 @@ final class MDO_Reviews_Moderation {
 		$wpdb->query( 'START TRANSACTION' );
 		try {
 			$deleted = self::remove_legacy_trustindex_duplicates( $table );
+			$reset = self::reset_previous_ai_suggestions( $table );
 			$suggested = self::suggest_unassigned_reviews( $table );
-			update_option(
-				self::OPTION,
-				self::VERSION,
-				false
-			);
+			update_option( self::OPTION, self::VERSION, false );
 			update_option(
 				'mdo_reviews_moderation_last_run',
 				array(
 					'at'        => time(),
 					'deleted'   => $deleted,
+					'reset'     => $reset,
 					'suggested' => $suggested,
 				),
 				false
@@ -82,6 +81,20 @@ final class MDO_Reviews_Moderation {
 			$deleted += (int) $result;
 		}
 		return $deleted;
+	}
+
+	private static function reset_previous_ai_suggestions( string $table ): int {
+		global $wpdb;
+		$updated = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$table} SET suggested_vendor_user_id=NULL, assignment_type=NULL, assignment_confidence=0, assignment_reason=NULL, validation_method=NULL, updated_at=%s WHERE status='pending' AND COALESCE(vendor_user_id,0)=0 AND validation_method='ai_suggestion'",
+				current_time( 'mysql' )
+			)
+		);
+		if ( false === $updated ) {
+			throw new RuntimeException( 'No se pudieron reiniciar las sugerencias IA anteriores.' );
+		}
+		return (int) $updated;
 	}
 
 	private static function suggest_unassigned_reviews( string $table ): array {
@@ -119,27 +132,39 @@ final class MDO_Reviews_Moderation {
 	}
 
 	private static function classify( string $text ): array {
-		$text = remove_accents( wp_strip_all_tags( $text ) );
-		$text = function_exists( 'mb_strtolower' ) ? mb_strtolower( $text, 'UTF-8' ) : strtolower( $text );
-		$text = preg_replace( '/[^a-z0-9]+/u', ' ', $text );
+		$plain = remove_accents( wp_strip_all_tags( $text ) );
+		$plain = function_exists( 'mb_strtolower' ) ? mb_strtolower( $plain, 'UTF-8' ) : strtolower( $plain );
+		$text = preg_replace( '/[^a-z0-9]+/u', ' ', $plain );
 		$text = ' ' . trim( preg_replace( '/\s+/', ' ', (string) $text ) ) . ' ';
-		if ( '  ' === $text || '' === trim( $text ) ) {
+		if ( '' === trim( $text ) ) {
 			return array( 'vendor_id' => 0 );
 		}
 
 		$ham_weights = array(
-			' jamon ' => 4, ' jamones ' => 4, ' paleta ' => 4, ' paletas ' => 4, ' paletilla ' => 4, ' paletillas ' => 4,
-			' iberic' => 3, ' bellota ' => 3, ' brida ' => 3, ' pedroches ' => 3,
-			' lomo ' => 2, ' lomito ' => 2, ' chorizo ' => 2, ' salchichon ' => 2, ' morcon ' => 2, ' sobrasada ' => 2, ' embutido' => 1,
+			' jamon ' => 5, ' jamones ' => 5, ' paleta ' => 5, ' paletas ' => 5, ' paletilla ' => 5, ' paletillas ' => 5,
+			' iberic' => 4, ' bellota ' => 4, ' brida ' => 4, ' pedroches ' => 4,
+			' lomo ' => 3, ' lomito ' => 3, ' chorizo ' => 3, ' salchichon ' => 3, ' morcon ' => 3, ' sobrasada ' => 3, ' embutido' => 2,
+			' lonchas de la maza ' => 3, ' sebo ' => 2,
 		);
 		$oil_weights = array(
-			' aceite ' => 4, ' aceites ' => 4, ' aove ' => 4, ' oliva ' => 2,
-			' arbequina ' => 3, ' martena ' => 3, ' lechin ' => 3, ' picual ' => 3, ' almazara ' => 3, ' oro liquido ' => 2,
+			' aceite ' => 5, ' aceites ' => 5, ' aove ' => 5, ' oliva ' => 3,
+			' arbequina ' => 4, ' martena ' => 4, ' lechin ' => 4, ' picual ' => 4, ' almazara ' => 4, ' oro liquido ' => 3,
+			' sin filtrar ' => 2,
 		);
-		$other_product_terms = array( ' naranja', ' queso', ' patata', ' tomate', ' pimiento', ' verdura', ' hortaliza', ' garbanzo', ' lenteja', ' ternera', ' vaca', ' burger', ' carne ' );
+		$other_product_terms = array( ' naranja', ' queso', ' patata', ' tomate', ' pimiento', ' verdura', ' hortaliza', ' garbanzo', ' lenteja', ' ternera', ' vaca', ' burger' );
 
 		$ham_score = self::score_terms( $text, $ham_weights );
 		$oil_score = self::score_terms( $text, $oil_weights );
+
+		// Un aceite o un embutido citado únicamente como obsequio no identifica
+		// la tienda de la compra principal. En esos casos retiramos esa pista.
+		if ( $oil_score > 0 && self::is_incidental_gift_reference( $plain, 'oil' ) ) {
+			$oil_score = 0;
+		}
+		if ( $ham_score > 0 && self::is_incidental_gift_reference( $plain, 'ham' ) ) {
+			$ham_score = 0;
+		}
+
 		$other = false;
 		foreach ( $other_product_terms as $term ) {
 			if ( false !== strpos( $text, $term ) ) {
@@ -148,35 +173,38 @@ final class MDO_Reviews_Moderation {
 			}
 		}
 
+		// Solo proponemos una tienda cuando hay una única familia comercial
+		// inequívoca. Las reseñas mixtas se dejan expresamente sin asignar.
 		if ( $ham_score > 0 && 0 === $oil_score && ! $other ) {
+			$confidence = $ham_score <= 2 ? 0.86 : 0.94;
 			return array(
 				'vendor_id'  => self::HIDALGO_VENDOR_ID,
-				'confidence' => 0.94,
-				'reason'     => 'Sugerencia IA para revisión: la reseña menciona explícitamente jamón, paleta o productos ibéricos asociados a Hidalgo de la Jara. Se mantiene en borrador.',
+				'confidence' => $confidence,
+				'reason'     => 'Sugerencia IA para revisión: la reseña se refiere de forma inequívoca a jamón, paleta o productos ibéricos asociados a Hidalgo de la Jara. Se mantiene en borrador.',
 			);
 		}
 		if ( $oil_score > 0 && 0 === $ham_score && ! $other ) {
+			$confidence = $oil_score <= 2 ? 0.88 : 0.94;
 			return array(
 				'vendor_id'  => self::OIL_VENDOR_ID,
-				'confidence' => 0.94,
-				'reason'     => 'Sugerencia IA para revisión: la reseña menciona explícitamente aceite/AOVE o variedades de aceite asociadas a 1957. Se mantiene en borrador.',
-			);
-		}
-		if ( ! $other && $ham_score >= $oil_score + 3 ) {
-			return array(
-				'vendor_id'  => self::HIDALGO_VENDOR_ID,
-				'confidence' => 0.86,
-				'reason'     => 'Sugerencia IA para revisión: reseña mixta, pero las referencias principales corresponden a jamón/ibéricos de Hidalgo de la Jara. Se mantiene en borrador.',
-			);
-		}
-		if ( ! $other && $oil_score >= $ham_score + 3 ) {
-			return array(
-				'vendor_id'  => self::OIL_VENDOR_ID,
-				'confidence' => 0.86,
-				'reason'     => 'Sugerencia IA para revisión: reseña mixta, pero las referencias principales corresponden a aceite/AOVE de 1957. Se mantiene en borrador.',
+				'confidence' => $confidence,
+				'reason'     => 'Sugerencia IA para revisión: la reseña se refiere de forma inequívoca a aceite/AOVE o a una variedad de aceite asociada a 1957. Se mantiene en borrador.',
 			);
 		}
 		return array( 'vendor_id' => 0 );
+	}
+
+	private static function is_incidental_gift_reference( string $text, string $family ): bool {
+		if ( 'oil' === $family ) {
+			$product = '(?:aceite|aove)';
+		} else {
+			$product = '(?:jamon|paleta|paletilla|embutido|salchichon|chorizo|lomo)';
+		}
+		$gift = '(?:de regalo|como regalo|obsequio|detalle|incluyer(?:on|a)|incluid[oa]s?)';
+		return (bool) preg_match(
+			'/(?:' . $gift . ').{0,55}' . $product . '|' . $product . '.{0,55}(?:' . $gift . ')/u',
+			$text
+		);
 	}
 
 	private static function score_terms( string $text, array $weights ): int {
