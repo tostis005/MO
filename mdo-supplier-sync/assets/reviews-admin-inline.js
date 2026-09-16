@@ -13,24 +13,16 @@
 
 	rows.forEach(function (row) {
 		var detailLink = row.querySelector('a[href*="review_id="]');
-		if (!detailLink) {
-			return;
-		}
+		if (!detailLink) return;
 		var match = detailLink.href.match(/[?&]review_id=(\d+)/);
-		if (!match) {
-			return;
-		}
+		if (!match) return;
 		var id = parseInt(match[1], 10);
-		if (!id) {
-			return;
-		}
+		if (!id) return;
 		ids.push(id);
 		rowMap[id] = { row: row, detailUrl: detailLink.href };
 	});
 
-	if (!ids.length) {
-		return;
-	}
+	if (!ids.length) return;
 
 	function request(action, payload) {
 		var body = new URLSearchParams();
@@ -60,21 +52,26 @@
 		return node;
 	}
 
+	function selectedValues(select) {
+		return Array.prototype.slice.call(select.selectedOptions || []).map(function (node) {
+			return parseInt(node.value, 10) || 0;
+		}).filter(Boolean);
+	}
+
 	function renderRow(id, review, vendors) {
 		var entry = rowMap[id];
-		if (!entry || !review) {
-			return;
-		}
+		if (!entry || !review) return;
 		var cells = entry.row.cells;
-		if (!cells || cells.length < 10) {
-			return;
-		}
+		if (!cells || cells.length < 10) return;
 
+		var current = (review.vendor_ids || []).map(String);
 		var vendorSelect = document.createElement('select');
 		vendorSelect.className = 'mdo-review-inline-select';
-		vendorSelect.appendChild(option(0, 'Sin asignar', !review.vendor_id));
+		vendorSelect.multiple = true;
+		vendorSelect.size = Math.min(4, Math.max(2, Object.keys(vendors || {}).length));
+		vendorSelect.title = 'Ctrl/Cmd + clic para seleccionar varias tiendas';
 		Object.keys(vendors || {}).forEach(function (vendorId) {
-			vendorSelect.appendChild(option(vendorId, vendors[vendorId], String(review.vendor_id) === String(vendorId)));
+			vendorSelect.appendChild(option(vendorId, vendors[vendorId], current.indexOf(String(vendorId)) !== -1));
 		});
 		cells[5].textContent = '';
 		cells[5].appendChild(vendorSelect);
@@ -106,9 +103,9 @@
 		cells[9].appendChild(actions);
 
 		saveButton.addEventListener('click', function () {
-			var vendorId = parseInt(vendorSelect.value, 10) || 0;
+			var vendorIds = selectedValues(vendorSelect);
 			var status = statusSelect.value;
-			if (status === 'validated' && !vendorId) {
+			if (status === 'validated' && !vendorIds.length) {
 				feedback.textContent = config.labels.vendorRequired;
 				feedback.classList.add('is-error');
 				return;
@@ -119,7 +116,7 @@
 			saveButton.textContent = config.labels.saving;
 			request('mdo_reviews_inline_save', {
 				review_id: id,
-				vendor_user_id: vendorId,
+				vendor_user_ids: vendorIds,
 				status: status
 			}).then(function (response) {
 				if (!response || !response.success) {
@@ -139,9 +136,7 @@
 
 	request('mdo_reviews_inline_data', { ids: ids })
 		.then(function (response) {
-			if (!response || !response.success || !response.data) {
-				return;
-			}
+			if (!response || !response.success || !response.data) return;
 			var reviews = response.data.reviews || {};
 			var vendors = response.data.vendors || {};
 			Object.keys(reviews).forEach(function (id) {
