@@ -81,7 +81,7 @@
 
 		var statusSelect = document.createElement('select');
 		statusSelect.className = 'mdo-review-inline-status';
-		statusSelect.appendChild(option('pending', 'Pendiente', review.status === 'pending'));
+		statusSelect.appendChild(option('pending', 'Borrador', review.status === 'pending'));
 		statusSelect.appendChild(option('validated', 'Publicada', review.status === 'validated'));
 		statusSelect.appendChild(option('rejected', 'Descartada', review.status === 'rejected'));
 		cells[8].textContent = '';
