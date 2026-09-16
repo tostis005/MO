@@ -34,7 +34,7 @@ final class MDO_Reviews_Migration_1038 {
 			}
 
 			$is_legacy_google = 'google' === (string) $row->source && ! str_starts_with( (string) $row->source_review_id, 'trustindex-' );
-			$is_safe_state = 'pending' === (string) $row->status && 'manual' !== (string) $row->validation_method && 'rejected' !== (string) $row->status;
+			$is_safe_state = 'pending' === (string) $row->status && 'manual' !== (string) $row->validation_method;
 			$fingerprint = (string) $row->content_fingerprint;
 			if ( ! $is_legacy_google || ! $is_safe_state || '' === $fingerprint ) {
 				$wpdb->query( 'ROLLBACK' );
@@ -64,9 +64,7 @@ final class MDO_Reviews_Migration_1038 {
 					'content_fingerprint' => null,
 					'updated_at' => current_time( 'mysql' ),
 				),
-				array( 'id' => $id ),
-				array( '%s', '%s', '%s', null, '%s' ),
-				array( '%d' )
+				array( 'id' => $id )
 			);
 			if ( false === $result ) {
 				$wpdb->query( 'ROLLBACK' );
@@ -82,7 +80,6 @@ final class MDO_Reviews_Migration_1038 {
 			$wpdb->query( 'ROLLBACK' );
 			return;
 		}
-		$wpdb->query( 'COMMIT' );
 
 		$woo_count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE source=%s", 'woocommerce_product' ) );
 		if ( $woo_count < 241 ) {
@@ -91,6 +88,7 @@ final class MDO_Reviews_Migration_1038 {
 				$method->setAccessible( true );
 				$method->invoke( null );
 			} catch ( Throwable $error ) {
+				$wpdb->query( 'ROLLBACK' );
 				error_log( '[EMDO reviews migration 1.0.38] Woo restore: ' . $error->getMessage() );
 				return;
 			}
@@ -98,9 +96,11 @@ final class MDO_Reviews_Migration_1038 {
 
 		$woo_count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE source=%s", 'woocommerce_product' ) );
 		if ( $woo_count < 241 ) {
+			$wpdb->query( 'ROLLBACK' );
 			return;
 		}
 
+		$wpdb->query( 'COMMIT' );
 		update_option( self::OPTION, 'done', false );
 	}
 }
