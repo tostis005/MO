@@ -6,6 +6,7 @@ on:
     paths:
       - 'mdo-supplier-sync/**'
       - '.github/workflows/deploy-mdo-supplier-sync-production-20260819.yml'
+      - '.github/workflows/sync-emdo-external-reviews.yml'
   workflow_dispatch:
 
 permissions:
