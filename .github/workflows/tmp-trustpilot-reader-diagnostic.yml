@@ -20,7 +20,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect star-only legacy match in production
+      - name: Inspect duplicate fingerprints in production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -52,30 +52,14 @@ jobs:
           "$php_bin" -d memory_limit=512M "$wp_bin" eval '
             global $wpdb;
             $table = MDO_Database::table( "reviews" );
-            $row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id=%d", 247 ) );
-            if ( ! $row ) { echo "STAR_ONLY_LEGACY_MISSING\n"; exit; }
-            $date = substr( (string) $row->review_date, 0, 10 );
-            $candidates = $wpdb->get_results( $wpdb->prepare(
-              "SELECT id,source_review_id,author_name,rating,review_text,review_date,status,validation_method,vendor_user_id FROM {$table} WHERE id<>%d AND source=%s AND source_review_id LIKE %s AND author_name=%s AND rating=%d AND DATE(review_date)=%s ORDER BY id",
-              247,
-              "google",
-              "trustindex-%",
-              (string) $row->author_name,
-              (int) $row->rating,
-              $date
-            ) );
-            echo "STAR_ONLY_LEGACY=" . wp_json_encode( array(
-              "id" => (int) $row->id,
-              "author" => (string) $row->author_name,
-              "rating" => (int) $row->rating,
-              "date" => $date,
-              "text" => (string) $row->review_text,
-              "status" => (string) $row->status,
-              "validation_method" => (string) $row->validation_method,
-            ) ) . PHP_EOL;
-            echo "STAR_ONLY_CANDIDATE_COUNT=" . count( $candidates ) . PHP_EOL;
-            foreach ( $candidates as $candidate ) {
-              echo "STAR_ONLY_CANDIDATE=" . wp_json_encode( $candidate ) . PHP_EOL;
+            $fps = $wpdb->get_col( "SELECT content_fingerprint FROM {$table} WHERE content_fingerprint IS NOT NULL AND content_fingerprint<>\"\" GROUP BY content_fingerprint HAVING COUNT(*)>1 ORDER BY content_fingerprint" );
+            echo "DUP_GROUP_COUNT=" . count( $fps ) . PHP_EOL;
+            foreach ( $fps as $fp ) {
+              $rows = $wpdb->get_results( $wpdb->prepare(
+                "SELECT id,source,source_review_id,status,validation_method,vendor_user_id,suggested_vendor_user_id,author_name,rating,review_text,review_date,content_fingerprint FROM {$table} WHERE content_fingerprint=%s ORDER BY id",
+                $fp
+              ) );
+              echo "DUP_GROUP=" . wp_json_encode( array( "fingerprint" => $fp, "rows" => $rows ) ) . PHP_EOL;
             }
           ' --path="$PROD_PATH" --allow-root
           REMOTE
