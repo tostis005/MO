@@ -14,18 +14,19 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Fetch canonical and recency Trustpilot pages
+      - name: Fetch Trustpilot all-language pages
         shell: bash
         run: |
           set -euo pipefail
-          for spec in canonical2 recency2 canonical8 recency8 canonical9 recency9; do
+          for spec in es1 es8 all1 all2 all8 all9 all10; do
             case "$spec" in
-              canonical2) target='https://es.trustpilot.com/review/elmercadodeorigen.com?page=2' ;;
-              recency2) target='https://es.trustpilot.com/review/elmercadodeorigen.com?page=2&sort=recency' ;;
-              canonical8) target='https://es.trustpilot.com/review/elmercadodeorigen.com?page=8' ;;
-              recency8) target='https://es.trustpilot.com/review/elmercadodeorigen.com?page=8&sort=recency' ;;
-              canonical9) target='https://es.trustpilot.com/review/elmercadodeorigen.com?page=9' ;;
-              recency9) target='https://es.trustpilot.com/review/elmercadodeorigen.com?page=9&sort=recency' ;;
+              es1) target='https://es.trustpilot.com/review/elmercadodeorigen.com?sort=recency' ;;
+              es8) target='https://es.trustpilot.com/review/elmercadodeorigen.com?page=8&sort=recency' ;;
+              all1) target='https://es.trustpilot.com/review/elmercadodeorigen.com?languages=all&sort=recency' ;;
+              all2) target='https://es.trustpilot.com/review/elmercadodeorigen.com?languages=all&page=2&sort=recency' ;;
+              all8) target='https://es.trustpilot.com/review/elmercadodeorigen.com?languages=all&page=8&sort=recency' ;;
+              all9) target='https://es.trustpilot.com/review/elmercadodeorigen.com?languages=all&page=9&sort=recency' ;;
+              all10) target='https://es.trustpilot.com/review/elmercadodeorigen.com?languages=all&page=10&sort=recency' ;;
             esac
             curl -LfsS --max-time 55 \
               -H 'Accept: application/json' \
@@ -42,20 +43,18 @@ jobs:
         run: |
           python3 - <<'PY'
           import json, pathlib, re
-          for path in sorted(pathlib.Path('/tmp').glob('canonical*.json')) + sorted(pathlib.Path('/tmp').glob('recency*.json')):
+          for path in sorted(pathlib.Path('/tmp').glob('es*.json')) + sorted(pathlib.Path('/tmp').glob('all*.json')):
               raw = path.read_text('utf-8', errors='replace')
               try:
                   data = json.loads(raw)
                   text = ((data.get('data') or {}).get('content') or data.get('content') or '')
               except Exception:
                   text = raw
-              lines=[x.strip() for x in text.replace('\r','').split('\n')]
-              ratings=[(i,x) for i,x in enumerate(lines) if re.search(r'(Valorad|Rated).*?[1-5].*(estrella|star|out of|de 5)',x,re.I)]
-              review_links=re.findall(r'/reviews/([A-Za-z0-9_-]{8,})', text)
-              print(f'=== {path.stem} bytes={len(text)} ratings={len(ratings)} review_links={len(set(review_links))} ===')
-              for i,line in ratings[:4]:
-                  lo=max(0,i-4); hi=min(len(lines),i+7)
-                  print(f'--- rating at line {i} ---')
-                  for j in range(lo,hi):
-                      print(f'{j}: {lines[j][:300]}')
+              marker=text.lower().rfind('todas las opiniones')
+              tail=text[marker:] if marker >= 0 else text
+              ratings=re.findall(r'(?:Valorad[^\n]*?[1-5][^\n]*(?:estrella|sobre 5)|Rated[^\n]*?[1-5][^\n]*(?:star|out of 5))', tail, re.I)
+              review_links=re.findall(r'/reviews/([A-Za-z0-9_-]{8,})', tail)
+              print(f'=== {path.stem} bytes={len(text)} tail_bytes={len(tail)} ratings_after_all={len(ratings)} review_links_after_all={len(set(review_links))} ===')
+              for line in tail.splitlines()[:45]:
+                  if line.strip(): print(line[:320])
           PY
