@@ -1,0 +1,45 @@
+name: Apply exact EMDO review status fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emdo-review-status-fix-20260916.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch and commit status fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('mdo-supplier-sync/includes/class-mdo-reviews.php')
+          s = p.read_text()
+          old = "\t\t$row = array(\n"
+          new = "\t\t$resolved_status = trim( (string) ( $data['status'] ?? 'pending' ) );\n\t\tif ( ! in_array( $resolved_status, array( 'pending', 'validated', 'rejected' ), true ) ) {\n\t\t\t$resolved_status = 'pending';\n\t\t}\n\t\t$row = array(\n"
+          if old not in s:
+              raise SystemExit('row marker not found')
+          s = s.replace(old, new, 1)
+          old_status = "\t\t\t'status' => in_array( (string) ( $data['status'] ?? 'pending' ), array( 'pending', 'validated', 'rejected' ), true ) ? (string) $data['status'] : 'pending',"
+          new_status = "\t\t\t'status' => $resolved_status,"
+          if old_status not in s:
+              raise SystemExit('status expression not found')
+          s = s.replace(old_status, new_status, 1)
+          p.write_text(s)
+          PY
+          php -l mdo-supplier-sync/includes/class-mdo-reviews.php
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add mdo-supplier-sync/includes/class-mdo-reviews.php
+          git commit -m 'Fix default status for imported EMDO reviews'
+          git push origin HEAD:main
