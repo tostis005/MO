@@ -19,6 +19,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo 'Applying EMDO review safety patch'
           python3 - <<'PY'
           from pathlib import Path
 
