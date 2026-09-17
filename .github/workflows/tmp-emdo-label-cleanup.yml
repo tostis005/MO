@@ -1,0 +1,47 @@
+name: Temporary EMDO review label cleanup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tmp-emdo-label-cleanup.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Remove deferred source labels
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          public = Path('mdo-supplier-sync/includes/class-mdo-reviews-public.php')
+          text = public.read_text()
+          text = text.replace("array( 'google', 'trustpilot', 'forocoches' )", "array( 'google', 'trustpilot' )")
+          text = text.replace("\t\t\t'woocommerce_product' => 'EMDO',\n\t\t\t'wcfm' => 'EMDO',\n\t\t\t'external' => 'EMDO',\n\t\t\t'google' => 'Google',\n\t\t\t'trustpilot' => 'Trustpilot',\n\t\t\t'forocoches' => 'Foro Coches',", "\t\t\t'emdo' => 'EMDO',\n\t\t\t'google' => 'Google',\n\t\t\t'trustpilot' => 'Trustpilot',")
+          public.write_text(text)
+
+          admin = Path('mdo-supplier-sync/includes/class-mdo-reviews-admin-multi.php')
+          text = admin.read_text()
+          text = text.replace('Modera reseñas de EMDO, Google, Trustpilot y Foro Coches. Una reseña puede pertenecer a varias tiendas; solo las publicadas aparecen en sus páginas públicas.', 'Modera reseñas de EMDO, Google y Trustpilot. Una reseña puede pertenecer a varias tiendas; solo las publicadas aparecen en sus páginas públicas.')
+          text = text.replace('Importar fuentes locales', 'Consolidar reseñas EMDO')
+          text = text.replace("array( 'woocommerce_product' => 'EMDO', 'wcfm' => 'EMDO', 'google' => 'Google', 'trustpilot' => 'Trustpilot', 'forocoches' => 'Foro Coches', 'external' => 'EMDO' )", "array( 'emdo' => 'EMDO', 'google' => 'Google', 'trustpilot' => 'Trustpilot' )")
+          admin.write_text(text)
+          PY
+          php -l mdo-supplier-sync/includes/class-mdo-reviews-public.php
+          php -l mdo-supplier-sync/includes/class-mdo-reviews-admin-multi.php
+          ! grep -R -n -i 'forocoches\|Foro Coches' mdo-supplier-sync/includes/class-mdo-reviews-public.php mdo-supplier-sync/includes/class-mdo-reviews-admin-multi.php
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add mdo-supplier-sync/includes/class-mdo-reviews-public.php mdo-supplier-sync/includes/class-mdo-reviews-admin-multi.php
+          git commit -m 'Remove deferred Foro Coches labels from reviews'
+          git push origin HEAD:main
