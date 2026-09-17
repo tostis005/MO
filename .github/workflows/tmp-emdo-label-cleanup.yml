@@ -1,6 +1,7 @@
 name: Temporary EMDO review label cleanup
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
