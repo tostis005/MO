@@ -160,9 +160,9 @@ final class MDO_Reviews_Admin_Multi {
 		?>
 		<div class="wrap mdo-sync-wrap mdo-reviews-admin">
 			<h1>Reseñas</h1>
-			<p>Modera reseñas de EMDO, Google, Trustpilot y Foro Coches. Una reseña puede pertenecer a varias tiendas; solo las publicadas aparecen en sus páginas públicas.</p>
+			<p>Modera reseñas de EMDO, Google y Trustpilot. Una reseña puede pertenecer a varias tiendas; solo las publicadas aparecen en sus páginas públicas.</p>
 			<?php self::notice(); ?>
-			<div class="mdo-review-toolbar"><form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>"><input type="hidden" name="action" value="mdo_reviews_import"><?php wp_nonce_field( 'mdo_reviews_import' ); ?><button class="button button-primary">Importar fuentes locales</button></form></div>
+			<div class="mdo-review-toolbar"><form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>"><input type="hidden" name="action" value="mdo_reviews_import"><?php wp_nonce_field( 'mdo_reviews_import' ); ?><button class="button button-primary">Consolidar reseñas EMDO</button></form></div>
 			<div class="mdo-review-cards"><?php foreach ( array( 'all' => 'Todas', 'pending' => 'Borradores', 'validated' => 'Publicadas', 'unassigned' => 'Sin asignar', 'rejected' => 'Descartadas' ) as $key => $label ) : ?><a class="mdo-review-card" href="<?php echo esc_url( add_query_arg( array( 'page' => 'mdo-reviews', 'status' => 'all' === $key || 'unassigned' === $key ? false : $key, 'vendor' => 'unassigned' === $key ? 'unassigned' : false ), admin_url( 'admin.php' ) ) ); ?>"><strong><?php echo esc_html( (string) ( $counts[ $key ] ?? 0 ) ); ?></strong><span><?php echo esc_html( $label ); ?></span></a><?php endforeach; ?></div>
 			<form method="get" class="mdo-review-filters"><input type="hidden" name="page" value="mdo-reviews"><select name="status"><option value="">Todos los estados</option><?php foreach ( array( 'pending' => 'Borradores', 'validated' => 'Publicadas', 'rejected' => 'Descartadas' ) as $key => $label ) : ?><option value="<?php echo esc_attr( $key ); ?>" <?php selected( $status, $key ); ?>><?php echo esc_html( $label ); ?></option><?php endforeach; ?></select><select name="source"><option value="">Todas las fuentes</option><?php foreach ( $sources as $source_name ) : ?><option value="<?php echo esc_attr( $source_name ); ?>" <?php selected( $source, $source_name ); ?>><?php echo esc_html( self::source_label( $source_name ) ); ?></option><?php endforeach; ?></select><select name="vendor"><option value="">Todas las tiendas</option><option value="unassigned" <?php selected( $vendor_unassigned ); ?>>Sin asignar</option><?php foreach ( $vendors as $vendor_id => $vendor_name ) : ?><option value="<?php echo esc_attr( (string) $vendor_id ); ?>" <?php selected( $vendor, $vendor_id ); ?>><?php echo esc_html( $vendor_name ); ?></option><?php endforeach; ?></select><input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="Persona, reseña o motivo"><button class="button">Filtrar</button></form>
 			<div class="mdo-review-table-wrap"><table class="widefat striped mdo-review-table"><thead><tr><th>Fecha</th><th>Fuente</th><th>Persona</th><th>Puntuación</th><th>Reseña</th><th>Tienda(s)</th><th>Producto / pedido</th><th>Confianza</th><th>Estado</th><th></th></tr></thead><tbody>
@@ -227,7 +227,7 @@ final class MDO_Reviews_Admin_Multi {
 	}
 
 	private static function source_label( string $source ): string {
-		$labels = array( 'woocommerce_product' => 'EMDO', 'wcfm' => 'EMDO', 'google' => 'Google', 'trustpilot' => 'Trustpilot', 'forocoches' => 'Foro Coches', 'external' => 'EMDO' );
+		$labels = array( 'emdo' => 'EMDO', 'google' => 'Google', 'trustpilot' => 'Trustpilot' );
 		return $labels[ $source ] ?? ucfirst( str_replace( '_', ' ', $source ) );
 	}
 

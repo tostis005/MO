@@ -178,7 +178,7 @@ final class MDO_Reviews_Public {
 	private static function source_badge( $row ): string {
 		$label = self::source_label( (string) $row->source );
 		$badge = '<span class="mdo-source-badge">' . esc_html( $label ) . '</span>';
-		if ( in_array( (string) $row->source, array( 'google', 'trustpilot', 'forocoches' ), true ) && ! empty( $row->source_url ) ) {
+		if ( in_array( (string) $row->source, array( 'google', 'trustpilot' ), true ) && ! empty( $row->source_url ) ) {
 			return '<a class="mdo-source-link" href="' . esc_url( $row->source_url ) . '" target="_blank" rel="noopener noreferrer" aria-label="Ver reseña original en ' . esc_attr( $label ) . '">' . $badge . '</a>';
 		}
 		return $badge;
@@ -186,12 +186,9 @@ final class MDO_Reviews_Public {
 
 	private static function source_label( string $source ): string {
 		$labels = array(
-			'woocommerce_product' => 'EMDO',
-			'wcfm' => 'EMDO',
-			'external' => 'EMDO',
+			'emdo' => 'EMDO',
 			'google' => 'Google',
 			'trustpilot' => 'Trustpilot',
-			'forocoches' => 'Foro Coches',
 		);
 		return $labels[ $source ] ?? ucfirst( str_replace( '_', ' ', $source ) );
 	}
