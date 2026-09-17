@@ -12,11 +12,11 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Nunca cambia una decisión manual.
  */
 final class MDO_Reviews_External_Dedupe {
-	private const VERSION = '1.0.0';
+	private const VERSION = '1.1.0';
 	private const VERSION_OPTION = 'mdo_reviews_external_dedupe_version';
 	private const LAST_OPTION = 'mdo_reviews_external_dedupe_last';
 	private const EXTERNAL_SOURCES = array( 'google', 'trustpilot' );
-	private const NATIVE_SOURCES = array( 'woocommerce_product', 'wcfm' );
+	private const NATIVE_SOURCES = array( 'emdo' );
 
 	public static function init(): void {
 		add_action( 'updated_option', array( __CLASS__, 'on_updated_option' ), 10, 3 );
@@ -63,7 +63,6 @@ final class MDO_Reviews_External_Dedupe {
 			'skipped_native_only' => 0,
 		);
 
-		// Una fila ya descartada no debe volver a participar en deduplicación.
 		$cleared = $wpdb->query(
 			$wpdb->prepare(
 				"UPDATE {$table} SET content_fingerprint=NULL,updated_at=%s WHERE status=%s AND content_fingerprint IS NOT NULL AND content_fingerprint<>''",
@@ -102,8 +101,6 @@ final class MDO_Reviews_External_Dedupe {
 				continue;
 			}
 
-			// Nunca anulamos automáticamente una decisión manual. Si hay una fila
-			// nativa y una externa manual idéntica, el grupo queda para moderación.
 			$manual_external = array_values( array_filter( $external_rows, static fn( $row ) => 'manual' === (string) $row->validation_method ) );
 			if ( $native_rows && $manual_external ) {
 				++$stats['skipped_manual'];
@@ -174,8 +171,7 @@ final class MDO_Reviews_External_Dedupe {
 
 	private static function source_priority( string $source ): int {
 		$priorities = array(
-			'wcfm' => 400,
-			'woocommerce_product' => 350,
+			'emdo' => 400,
 			'trustpilot' => 200,
 			'google' => 100,
 		);
@@ -184,8 +180,7 @@ final class MDO_Reviews_External_Dedupe {
 
 	private static function source_label( string $source ): string {
 		$labels = array(
-			'wcfm' => 'WCFM',
-			'woocommerce_product' => 'WooCommerce',
+			'emdo' => 'EMDO',
 			'trustpilot' => 'Trustpilot',
 			'google' => 'Google',
 		);
