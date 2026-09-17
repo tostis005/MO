@@ -1,0 +1,104 @@
+name: Temporary EMDO reviews final audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tmp-emdo-reviews-final-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit production review model
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH'" <<'REMOTE'
+          set -euo pipefail
+          PROD_PATH="$1"
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          test -n "$wp_bin"
+          test -n "$php_bin"
+
+          version=$("$php_bin" -d memory_limit=512M "$wp_bin" plugin get mdo-supplier-sync --field=version --path="$PROD_PATH" --allow-root)
+          status=$("$php_bin" -d memory_limit=512M "$wp_bin" plugin get mdo-supplier-sync --field=status --path="$PROD_PATH" --allow-root)
+          echo "AUDIT_PLUGIN version=$version status=$status"
+          test "$version" = '1.0.49'
+          test "$status" = 'active'
+
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            global $wpdb;
+            $table = MDO_Database::table("reviews");
+            $vendor_table = MDO_Reviews_Vendors::table();
+            $counts = $wpdb->get_results("SELECT source,status,COUNT(*) AS total FROM {$table} GROUP BY source,status ORDER BY source,status", ARRAY_A);
+            echo "AUDIT_COUNTS=" . wp_json_encode($counts) . PHP_EOL;
+            $sources = $wpdb->get_col("SELECT DISTINCT source FROM {$table} ORDER BY source");
+            echo "AUDIT_SOURCES=" . wp_json_encode($sources) . PHP_EOL;
+            $bad = array_values(array_diff($sources, array("emdo","google","trustpilot")));
+            echo "AUDIT_BAD_SOURCES=" . wp_json_encode($bad) . PHP_EOL;
+            if ($bad) { exit(31); }
+            $fc = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$table} WHERE source=\"forocoches\"");
+            echo "AUDIT_FOROCOCHES=$fc" . PHP_EOL;
+            if ($fc !== 0) { exit(32); }
+            $migration = (string) get_option("mdo_reviews_emdo_source_version", "");
+            echo "AUDIT_MIGRATION=$migration" . PHP_EOL;
+            if ($migration !== "1.0.0") { exit(33); }
+            echo "AUDIT_SUBMISSION_CLASS=" . (class_exists("MDO_Reviews_Submission") ? "1" : "0") . PHP_EOL;
+            echo "AUDIT_SUBMIT_AUTH=" . (has_action("admin_post_mdo_store_review_submit", array("MDO_Reviews_Submission","handle_submit")) ? "1" : "0") . PHP_EOL;
+            echo "AUDIT_SUBMIT_GUEST=" . (has_action("admin_post_nopriv_mdo_store_review_submit", array("MDO_Reviews_Submission","handle_submit")) ? "1" : "0") . PHP_EOL;
+            if (!class_exists("MDO_Reviews_Submission") || !has_action("admin_post_mdo_store_review_submit", array("MDO_Reviews_Submission","handle_submit")) || !has_action("admin_post_nopriv_mdo_store_review_submit", array("MDO_Reviews_Submission","handle_submit"))) { exit(34); }
+            $users = get_users(array("role"=>"wcfm_vendor","fields"=>array("ID","user_nicename","display_name")));
+            $zero = null;
+            foreach ($users as $u) {
+              $id=(int)$u->ID;
+              $n=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$table} r WHERE r.status=\"validated\" AND (r.vendor_user_id=%d OR r.suggested_vendor_user_id=%d OR EXISTS (SELECT 1 FROM {$vendor_table} rv WHERE rv.review_id=r.id AND rv.vendor_user_id=%d))",$id,$id,$id));
+              if ($n===0) { $zero=array("id"=>$id,"slug"=>$u->user_nicename,"name"=>$u->display_name); break; }
+            }
+            echo "AUDIT_ZERO_VENDOR=" . wp_json_encode($zero) . PHP_EOL;
+          ' --path="$PROD_PATH" --allow-root
+
+          for slug in hidalgo-de-la-jara 1957; do
+            url="https://www.elmercadodeorigen.com/tienda/$slug/reviews/"
+            html=$(curl -k -L -sS --connect-timeout 5 --max-time 45 "$url")
+            test -n "$html"
+            printf '%s' "$html" | grep -q 'mdo-review-form-section'
+            printf '%s' "$html" | grep -q 'mdo_store_review_submit'
+            printf '%s' "$html" | grep -q 'Deja tu reseña'
+            if printf '%s' "$html" | grep -qi 'Foro Coches'; then exit 41; fi
+            echo "AUDIT_PUBLIC slug=$slug form=1 forocoches=0"
+          done
+          REMOTE
