@@ -91,14 +91,14 @@ jobs:
             echo "AUDIT_ZERO_VENDOR=" . wp_json_encode($zero) . PHP_EOL;
           ' --path="$PROD_PATH" --allow-root
 
-          for slug in hidalgo-de-la-jara 1957; do
+          for slug in hidalgo-de-la-jara 1957 la-huerta-de-ana-mary; do
             url="https://www.elmercadodeorigen.com/tienda/$slug/reviews/"
             html=$(curl -k -L -sS --connect-timeout 5 --max-time 45 "$url")
             test -n "$html"
-            printf '%s' "$html" | grep -q 'mdo-review-form-section'
-            printf '%s' "$html" | grep -q 'mdo_store_review_submit'
-            printf '%s' "$html" | grep -q 'Deja tu reseña'
-            if printf '%s' "$html" | grep -qi 'Foro Coches'; then exit 41; fi
+            [[ "$html" == *'mdo-review-form-section'* ]]
+            [[ "$html" == *'mdo_store_review_submit'* ]]
+            [[ "$html" == *'Deja tu reseña'* ]]
+            [[ "$html" != *'Foro Coches'* ]]
             echo "AUDIT_PUBLIC slug=$slug form=1 forocoches=0"
           done
           REMOTE
