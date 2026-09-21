@@ -128,3 +128,51 @@ if ( count( $rows ) < 1 ) {
 }
 
 echo "AUDIT_OK\n";
+
+
+echo "=== EMDO_HUERTA_MAPPING ===\n";
+$emdo_rows = array();
+foreach ( get_posts( array(
+    'post_type'      => 'product',
+    'post_status'    => array( 'publish', 'draft', 'pending', 'private', 'future' ),
+    'posts_per_page' => -1,
+    'orderby'        => 'ID',
+    'order'          => 'ASC',
+    'fields'         => 'ids',
+    'no_found_rows'  => true,
+) ) as $product_id ) {
+    $source_url = trim( (string) get_post_meta( $product_id, '_emdo_source_url', true ) );
+    $supplier_id = absint( get_post_meta( $product_id, '_emdo_supplier_id', true ) );
+    $host = strtolower( (string) wp_parse_url( $source_url, PHP_URL_HOST ) );
+    $is_huerta = in_array( $host, array( 'lahuertadeanamary.com', 'www.lahuertadeanamary.com' ), true );
+
+    if ( ! $is_huerta && $supplier_id && class_exists( 'MDO_Supplier_Repository' ) ) {
+        $supplier = MDO_Supplier_Repository::find( $supplier_id );
+        $is_huerta = $supplier && 'la-huerta-ana-mary' === (string) ( $supplier['connector'] ?? '' );
+    }
+    if ( ! $is_huerta ) {
+        continue;
+    }
+
+    $product = wc_get_product( $product_id );
+    if ( ! $product ) {
+        continue;
+    }
+    $emdo_rows[] = array(
+        'id' => (int) $product_id,
+        'name' => $product->get_name(),
+        'status' => get_post_status( $product_id ),
+        'source_url' => $source_url,
+        'supplier_id' => $supplier_id,
+        'tax_status' => $product->get_tax_status(),
+        'tax_class' => $product->get_tax_class() === '' ? '(standard)' : $product->get_tax_class(),
+        'variation_ids' => $product->is_type( 'variable' ) ? array_map( 'intval', $product->get_children() ) : array(),
+    );
+}
+$status_counts = array();
+foreach ( $emdo_rows as $row ) {
+    $status_counts[ $row['status'] ] = ( $status_counts[ $row['status'] ] ?? 0 ) + 1;
+}
+echo 'emdo_huerta_products=' . count( $emdo_rows ) . "\n";
+echo 'status_counts=' . wp_json_encode( $status_counts, JSON_UNESCAPED_UNICODE ) . "\n";
+echo wp_json_encode( $emdo_rows, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . "\n";
