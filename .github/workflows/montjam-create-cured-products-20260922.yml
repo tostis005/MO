@@ -1,0 +1,90 @@
+name: Montjam cured products 2026-09-22
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/montjam-create-cured-products-20260922.yml'
+      - '.github/scripts/montjam-create-cured-products-20260922.php'
+      - '.github/assets/montjam-20260922/**'
+      - '.deploy-triggers/montjam-create-cured-products-20260922.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  create:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate script and image assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/montjam-create-cured-products-20260922.php >/dev/null
+
+          for n in lomo chorizo salchichon; do
+            test -s ".github/assets/montjam-20260922/$n.jpg.b64"
+            base64 -d ".github/assets/montjam-20260922/$n.jpg.b64" > "/tmp/montjam-$n.jpg"
+            test -s "/tmp/montjam-$n.jpg"
+            file "/tmp/montjam-$n.jpg" | grep -qi 'JPEG image data'
+          done
+
+          cat             .github/assets/montjam-20260922/jabuguito.part1.b64             .github/assets/montjam-20260922/jabuguito.part2.b64             .github/assets/montjam-20260922/jabuguito.part3.b64             .github/assets/montjam-20260922/jabuguito.part4.b64             > /tmp/montjam-jabuguito.b64
+          base64 -d /tmp/montjam-jabuguito.b64 > /tmp/montjam-jabuguito.jpg
+          test -s /tmp/montjam-jabuguito.jpg
+          file /tmp/montjam-jabuguito.jpg | grep -qi 'JPEG image data'
+
+          : "${STAGING_HOST:?}"
+          : "${STAGING_USER:?}"
+          : "${STAGING_PASSWORD:?}"
+
+      - name: Create four Montjam products in production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          # Rebuild local image files deterministically from repository assets.
+          for n in lomo chorizo salchichon; do
+            base64 -d ".github/assets/montjam-20260922/$n.jpg.b64" > "/tmp/montjam-$n.jpg"
+          done
+          cat             .github/assets/montjam-20260922/jabuguito.part1.b64             .github/assets/montjam-20260922/jabuguito.part2.b64             .github/assets/montjam-20260922/jabuguito.part3.b64             .github/assets/montjam-20260922/jabuguito.part4.b64             | base64 -d > /tmp/montjam-jabuguito.jpg
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          REMOTE_SCRIPT="/tmp/montjam-create-cured-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/montjam-create-cured-products-20260922.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+          for n in lomo chorizo salchichon jabuguito; do
+            sshpass -e scp $SCP_OPTIONS "/tmp/montjam-$n.jpg" "$STAGING_USER@$STAGING_HOST:/tmp/montjam-$n.jpg"
+          done
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_SCRIPT' /tmp/montjam-lomo.jpg /tmp/montjam-chorizo.jpg /tmp/montjam-salchichon.jpg /tmp/montjam-jabuguito.jpg; exit \$rc"
