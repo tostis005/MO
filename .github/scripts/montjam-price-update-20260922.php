@@ -4,7 +4,7 @@
  * Source: supplier table supplied 2026-09-22 ("Con margen").
  *
  * Safety:
- * - requires exactly seven published Montjam variable products for vendor #4723;
+ * - requires exactly seven published Montjam variable products assigned to the Montjam producer taxonomy;
  * - classifies each product by its current public title;
  * - updates ONLY published variation regular prices;
  * - does not create/remove variations or touch content, images, taxonomies, stock, SKU or sale prices;
@@ -20,7 +20,6 @@ if ( ! class_exists( 'WooCommerce' ) || ! function_exists( 'wc_get_product' ) ) 
     exit( 3 );
 }
 
-const MDO_MONTJAM_VENDOR_ID = 4723;
 
 $price_table = [
     'jamon_negra_dop' => [
@@ -98,19 +97,31 @@ function mdo_montjam_parent_snapshot( int $product_id ): array {
     ];
 }
 
+$producer = get_term_by( 'slug', 'montjam', 'pa_productor' );
+if ( ! $producer || is_wp_error( $producer ) ) {
+    fwrite( STDERR, "ABORT: Montjam producer term was not found\n" );
+    exit( 4 );
+}
+
 $ids = get_posts( [
     'post_type'      => 'product',
     'post_status'    => 'publish',
-    'author'         => MDO_MONTJAM_VENDOR_ID,
     'posts_per_page' => -1,
     'fields'         => 'ids',
     'orderby'        => 'ID',
     'order'          => 'ASC',
+    'tax_query'      => [
+        [
+            'taxonomy' => 'pa_productor',
+            'field'    => 'term_id',
+            'terms'    => [ (int) $producer->term_id ],
+        ],
+    ],
 ] );
 $ids = array_values( array_map( 'intval', $ids ) );
 
 if ( count( $ids ) !== 7 ) {
-    fwrite( STDERR, 'ABORT: expected exactly 7 published Montjam products for vendor #4723, found ' . count( $ids ) . "\n" );
+    fwrite( STDERR, 'ABORT: expected exactly 7 published Montjam products from pa_productor=montjam, found ' . count( $ids ) . "\n" );
     exit( 4 );
 }
 
