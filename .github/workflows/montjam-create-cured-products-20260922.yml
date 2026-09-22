@@ -6,7 +6,6 @@ on:
     paths:
       - '.github/workflows/montjam-create-cured-products-20260922.yml'
       - '.github/scripts/montjam-create-cured-products-20260922.php'
-      - '.github/assets/montjam-20260922/**'
       - '.deploy-triggers/montjam-create-cured-products-20260922.txt'
   workflow_dispatch:
 
@@ -26,27 +25,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate script and image assets
+      - name: Validate creator
         shell: bash
         run: |
           set -euo pipefail
           php -l .github/scripts/montjam-create-cured-products-20260922.php >/dev/null
-
-          for n in lomo chorizo salchichon; do
-            test -s ".github/assets/montjam-20260922/$n.jpg.b64"
-            base64 -d ".github/assets/montjam-20260922/$n.jpg.b64" > "/tmp/montjam-$n.jpg"
-            test -s "/tmp/montjam-$n.jpg"
-            file "/tmp/montjam-$n.jpg" | grep -qi 'JPEG image data'
-          done
-
-          cat             .github/assets/montjam-20260922/jabuguito.part1.b64             .github/assets/montjam-20260922/jabuguito.part2.b64             .github/assets/montjam-20260922/jabuguito.part3.b64             .github/assets/montjam-20260922/jabuguito.part4.b64             > /tmp/montjam-jabuguito.b64
-          base64 -d /tmp/montjam-jabuguito.b64 > /tmp/montjam-jabuguito.jpg
-          test -s /tmp/montjam-jabuguito.jpg
-          file /tmp/montjam-jabuguito.jpg | grep -qi 'JPEG image data'
-
           : "${STAGING_HOST:?}"
           : "${STAGING_USER:?}"
           : "${STAGING_PASSWORD:?}"
+
+      - name: Download temporary product images
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --connect-timeout 20 -o /tmp/montjam-lomo.jpg 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-1588-820e-b76c-acd1329440d7/raw?se=2026-09-22T10%3A25%3A29Z&sp=r&sv=2026-02-06&sr=b&scid=2e6e2aff-e2b9-51ab-ad3d-e1e1ef938c26&skoid=4a431cd2-eafd-49c7-90be-bbb4d45e696d&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-22T09%3A48%3A26Z&ske=2026-09-23T09%3A48%3A26Z&sks=b&skv=2026-02-06&sig=VR2cQSeupyvqSbdEZI0l%2FTTTTpuzrhBk5GLwjySx53E%3D'
+          curl -fL --retry 3 --connect-timeout 20 -o /tmp/montjam-chorizo.jpg 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-6838-820e-bce2-4fa79d82bb28/raw?se=2026-09-22T10%3A25%3A29Z&sp=r&sv=2026-02-06&sr=b&scid=153ac124-09b4-5fcd-806a-5ac7e3b6d4ac&skoid=4a431cd2-eafd-49c7-90be-bbb4d45e696d&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-22T09%3A48%3A26Z&ske=2026-09-23T09%3A48%3A26Z&sks=b&skv=2026-02-06&sig=suHGPka4mA88OAVTfibT1Lo5XU7kXabjutxvcb6e1kg%3D'
+          curl -fL --retry 3 --connect-timeout 20 -o /tmp/montjam-salchichon.jpg 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-a314-820e-b652-dea4083acece/raw?se=2026-09-22T10%3A25%3A30Z&sp=r&sv=2026-02-06&sr=b&scid=7f77b684-cdf6-56f1-80ac-a8ec06db1b44&skoid=4a431cd2-eafd-49c7-90be-bbb4d45e696d&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-22T08%3A54%3A14Z&ske=2026-09-23T08%3A54%3A14Z&sks=b&skv=2026-02-06&sig=BVLbVbdLQFBkdJpFsNuW39JAJLwJAtVpWBTV9yPN3DM%3D'
+          curl -fL --retry 3 --connect-timeout 20 -o /tmp/montjam-jabuguito.jpg 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-e47c-820e-b2ff-5ae7f866e3b5/raw?se=2026-09-22T10%3A25%3A31Z&sp=r&sv=2026-02-06&sr=b&scid=fd5942d6-f50d-59c4-b3a9-c2490eb8419c&skoid=4a431cd2-eafd-49c7-90be-bbb4d45e696d&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-22T09%3A22%3A19Z&ske=2026-09-23T09%3A22%3A19Z&sks=b&skv=2026-02-06&sig=ZLJ%2Fa1XKcA66CGSe%2B0yMR%2B8bQEnzmmcispftRCvCfZ4%3D'
+          for n in lomo chorizo salchichon jabuguito; do
+            test -s "/tmp/montjam-$n.jpg"
+            file "/tmp/montjam-$n.jpg" | grep -qi 'JPEG image data'
+          done
 
       - name: Create four Montjam products in production
         shell: bash
@@ -60,12 +59,6 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
           SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
-
-          # Rebuild local image files deterministically from repository assets.
-          for n in lomo chorizo salchichon; do
-            base64 -d ".github/assets/montjam-20260922/$n.jpg.b64" > "/tmp/montjam-$n.jpg"
-          done
-          cat             .github/assets/montjam-20260922/jabuguito.part1.b64             .github/assets/montjam-20260922/jabuguito.part2.b64             .github/assets/montjam-20260922/jabuguito.part3.b64             .github/assets/montjam-20260922/jabuguito.part4.b64             | base64 -d > /tmp/montjam-jabuguito.jpg
 
           PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
             wp_bin=$(command -v wp || true)
