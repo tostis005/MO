@@ -46,3 +46,25 @@ jobs:
           REMOTE="/tmp/montjam-normalize-format-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/montjam-normalize-format-addon-20260923.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc"
+
+      - name: Verify FORMAT on all seven public product pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          urls=(
+            "https://www.elmercadodeorigen.com/producto/jamon-de-bellota-100-iberico-montjam/"
+            "https://www.elmercadodeorigen.com/producto/jamon-de-bellota-iberico-50-montjam/"
+            "https://www.elmercadodeorigen.com/producto/jamon-bellota-100-iberico-dop-jabugo-montjam/"
+            "https://www.elmercadodeorigen.com/producto/jamon-cebo-de-campo-iberico-50-montjam/"
+            "https://www.elmercadodeorigen.com/producto/paleta-de-bellota-100-iberica-montjam/"
+            "https://www.elmercadodeorigen.com/producto/paleta-bellota-100-iberica-dop-jabugo-montjam/"
+            "https://www.elmercadodeorigen.com/producto/paleta-cebo-de-campo-iberica-50-montjam/"
+          )
+          for url in "${urls[@]}"; do
+            html="$(curl -fsSL --retry 3 -H 'Cache-Control: no-cache' "${url}?format-check=${GITHUB_RUN_ID}")"
+            grep -Fq 'FORMATO' <<<"$html"
+            grep -Fq 'Pieza entera' <<<"$html"
+            grep -Fq 'Loncheado a cuchillo' <<<"$html"
+            grep -Fq 'Deshuesado' <<<"$html"
+            echo "FORMAT_OK $url"
+          done
