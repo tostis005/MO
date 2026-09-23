@@ -44,18 +44,22 @@ try:
     for key, url, sizes in products:
         driver.get(url + "?audit=20260923")
         wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, 'select[name="attribute_pa_tamano"]'))
-        sel_el = driver.find_element(By.CSS_SELECTOR, 'select[name="attribute_pa_tamano"]')
-        available = [o.get_attribute("value") for o in sel_el.find_elements(By.TAG_NAME, "option") if o.get_attribute("value")]
+        available = driver.execute_script("""
+          const s=document.querySelector('select[name="attribute_pa_tamano"]');
+          return s ? [...s.options].map(o=>o.value).filter(Boolean) : [];
+        """)
         for size in sizes:
             if size not in available:
                 results.append({"product":key,"size":size,"status":"FAIL","reason":"weight option missing","url":url})
                 continue
             driver.execute_script("""
-              const s=arguments[0], val=arguments[1];
+              const s=document.querySelector('select[name="attribute_pa_tamano"]'), val=arguments[0];
+              if (!s) return false;
               s.value=val;
               s.dispatchEvent(new Event('change',{bubbles:true}));
-            """, sel_el, size)
-            time.sleep(1.2)
+              return true;
+            """, size)
+            time.sleep(1.5)
             checks = {
                 "FORMATO": visible_text_exists("FORMATO"),
                 "Pieza entera": visible_text_exists("Pieza entera"),
@@ -64,8 +68,7 @@ try:
             }
             status = "PASS" if all(checks.values()) else "FAIL"
             results.append({"product":key,"size":size,"status":status,"checks":checks,"url":url})
-            # refresh element reference after WooCommerce/YITH DOM updates
-            sel_el = driver.find_element(By.CSS_SELECTOR, 'select[name="attribute_pa_tamano"]')
+            # Re-query via JavaScript on each loop to avoid stale DOM references.
 finally:
     driver.quit()
 
