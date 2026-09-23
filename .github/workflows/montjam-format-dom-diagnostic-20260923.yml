@@ -1,0 +1,20 @@
+name: Montjam format DOM diagnostic 2026-09-23
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/montjam-format-dom-diagnostic-20260923.yml'
+      - '.github/scripts/montjam-format-dom-diagnostic-20260923.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diag:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          python3 -m pip install --quiet selenium
+          google-chrome --version
+      - run: python3 .github/scripts/montjam-format-dom-diagnostic-20260923.py
