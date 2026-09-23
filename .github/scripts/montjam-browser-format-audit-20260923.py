@@ -26,18 +26,10 @@ driver.set_page_load_timeout(60)
 wait = WebDriverWait(driver, 15)
 results = []
 
-def visible_text_exists(txt):
+def container_has_text(txt):
     return driver.execute_script("""
-      const target = arguments[0];
-      const nodes = [...document.querySelectorAll('body *')];
-      return nodes.some(e => {
-        const style = getComputedStyle(e);
-        const r = e.getBoundingClientRect();
-        const vis = style.display !== 'none' && style.visibility !== 'hidden' && r.width > 0 && r.height > 0;
-        if (!vis) return false;
-        if (e.children.length > 0) return false;
-        return (e.textContent || '').trim().includes(target);
-      });
+      const c = document.querySelector('#yith-wapo-container');
+      return !!c && (c.innerText || '').includes(arguments[0]);
     """, txt)
 
 try:
@@ -61,10 +53,10 @@ try:
             """, size)
             time.sleep(1.5)
             checks = {
-                "FORMATO": visible_text_exists("FORMATO"),
-                "Pieza entera": visible_text_exists("Pieza entera"),
-                "Loncheado a cuchillo": visible_text_exists("Loncheado a cuchillo"),
-                "Deshuesado": visible_text_exists("Deshuesado"),
+                "FORMATO": container_has_text("FORMATO"),
+                "Pieza entera": container_has_text("Pieza entera"),
+                "Loncheado a cuchillo": container_has_text("Loncheado a cuchillo"),
+                "Deshuesado": container_has_text("Deshuesado"),
             }
             status = "PASS" if all(checks.values()) else "FAIL"
             results.append({"product":key,"size":size,"status":status,"checks":checks,"url":url})
