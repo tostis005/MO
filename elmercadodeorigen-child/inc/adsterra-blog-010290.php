@@ -278,7 +278,8 @@ function elmercado_adsterra_frame_response_010291(): void {
 		exit;
 	}
 
-	$type = sanitize_key( wp_unslash( (string) $_GET['emo_adsterra_frame'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$type  = sanitize_key( wp_unslash( (string) $_GET['emo_adsterra_frame'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$token = isset( $_GET['emo_adsterra_token'] ) ? sanitize_key( wp_unslash( (string) $_GET['emo_adsterra_token'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 	$units = array(
 		'responsive-desktop' => array( 'key' => '4e02d145fdb84842713b24a4bade6244', 'width' => 728, 'height' => 90 ),
 		'responsive-mobile'  => array( 'key' => '3de18866861c081d6eb282ad00fe2bee', 'width' => 320, 'height' => 50 ),
@@ -317,6 +318,43 @@ function elmercado_adsterra_frame_response_010291(): void {
 	<style>html,body{margin:0;padding:0;overflow:hidden;background:transparent}body{display:flex;justify-content:center;align-items:flex-start}</style>
 </head>
 <body>
+<script>
+(function () {
+	var token = <?php echo wp_json_encode( $token ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>;
+	var sent = false;
+
+	function hasCreative() {
+		if (document.body.querySelector('iframe,object,embed,img,video,canvas')) {
+			return true;
+		}
+		var nodes = Array.prototype.slice.call(document.body.children);
+		return nodes.some(function (node) {
+			if (!node || node.tagName === 'SCRIPT' || node.tagName === 'STYLE') {
+				return false;
+			}
+			return node.children.length > 0 || (node.textContent || '').trim() !== '';
+		});
+	}
+
+	function announceWhenReady() {
+		if (sent || !hasCreative()) {
+			return;
+		}
+		sent = true;
+		window.parent.postMessage({
+			type: 'emo-adsterra-rendered',
+			token: token
+		}, window.location.origin);
+	}
+
+	new MutationObserver(announceWhenReady).observe(document.body, {
+		childList: true,
+		subtree: true,
+		attributes: true
+	});
+	window.addEventListener('load', announceWhenReady);
+})();
+</script>
 <script>
 window.atOptions = <?php echo wp_json_encode( array(
 	'key'    => $unit['key'],
