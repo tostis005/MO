@@ -92,7 +92,7 @@ jobs:
             await sp.setContent('<iframe id="blank" src="about:blank"></iframe><iframe id="blocked" src="https://blocked.example/ad"></iframe><iframe id="ok" src="https://example.com/"></iframe>');
             await sp.waitForTimeout(3000);
             const iframeState = await sp.evaluate(() => {
-              return ['blank','blocked','ok'].map(id => {
+              const frames = ['blank','blocked','ok'].map(id => {
                 const f = document.getElementById(id);
                 let href = null, hrefError = null;
                 try { href = f.contentWindow.location.href; } catch (e) { hrefError = String(e); }
@@ -104,6 +104,15 @@ jobs:
                   hrefError
                 };
               });
+              const resources = performance.getEntriesByType('resource').map(e => ({
+                name: e.name,
+                initiatorType: e.initiatorType,
+                duration: e.duration,
+                transferSize: e.transferSize,
+                encodedBodySize: e.encodedBodySize,
+                decodedBodySize: e.decodedBodySize
+              })).filter(e => /blocked\.example|example\.com/.test(e.name));
+              return { frames, resources };
             });
             console.log('\n=== SYNTHETIC IFRAME STATES ===');
             console.log(JSON.stringify(iframeState, null, 2));
