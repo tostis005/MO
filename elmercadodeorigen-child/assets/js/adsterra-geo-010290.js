@@ -75,14 +75,23 @@
 		if (!slot || slot.classList.contains('is-eligible')) return;
 		slot.classList.add('is-eligible');
 		slot.setAttribute('aria-hidden', 'false');
+		var nativeShell = slot.closest('.emo-adsterra-native-shell');
+		if (nativeShell) nativeShell.classList.add('is-eligible');
 		debug.hydrated += 1;
 		renderDebug();
 	}
 
+	function collapseSlot(slot) {
+		if (!slot) return;
+		slot.classList.remove('is-eligible');
+		slot.setAttribute('aria-hidden', 'true');
+		var nativeShell = slot.closest('.emo-adsterra-native-shell');
+		if (nativeShell) nativeShell.classList.remove('is-eligible');
+	}
+
 	window.addEventListener('message', function (event) {
-		if (event.origin !== window.location.origin || !event.data || event.data.type !== 'emo-adsterra-rendered') {
-			return;
-		}
+		if (event.origin !== window.location.origin || !event.data) return;
+		if (event.data.type !== 'emo-adsterra-rendered' && event.data.type !== 'emo-adsterra-blocked') return;
 
 		var token = typeof event.data.token === 'string' ? event.data.token : '';
 		if (!token) return;
@@ -91,7 +100,11 @@
 		for (var i = 0; i < frames.length; i += 1) {
 			if (frames[i].getAttribute('data-emo-adsterra-token') !== token) continue;
 			var slot = frames[i].closest('[data-emo-adsterra-slot]');
-			revealSlot(slot);
+			if (event.data.type === 'emo-adsterra-rendered') {
+				revealSlot(slot);
+			} else {
+				collapseSlot(slot);
+			}
 			break;
 		}
 	});
@@ -156,6 +169,9 @@
 		script.async = true;
 		script.setAttribute('data-cfasync', 'false');
 		script.src = 'https://pl31502847.profitableratecpmnetwork.com/a83b8ce6c354e77b2ae5f266936bd60f/invoke.js';
+		script.addEventListener('error', function () {
+			collapseSlot(slot);
+		}, { once: true });
 		mount.insertBefore(script, container);
 	}
 
