@@ -247,7 +247,7 @@
 			}
 
 			if (type === 'skyscraper' && window.matchMedia('(max-width: 1160px)').matches) return;
-			if (type === 'tall-rectangle' && window.matchMedia('(max-width: 767px)').matches) return;
+			if ((type === 'rectangle' || type === 'tall-rectangle') && window.matchMedia('(max-width: 767px)').matches) return;
 			if (type === 'footer-banner' && window.matchMedia('(max-width: 519px)').matches) return;
 
 			if (type === 'responsive-top') {
