@@ -3,6 +3,9 @@
 
 	var config = window.ElMercadoAdsterraGeo || {};
 	var frameCounter = 0;
+	var adBlockDetected = false;
+	var adBlockCheckDone = false;
+	var hydrationPending = false;
 	var debugMode = /(?:^|[?&])adsterra_debug=1(?:&|$)/.test(window.location.search);
 	var debug = window.ElMercadoAdsterraGeoDebug = {
 		phase: 'initializing',
@@ -46,6 +49,50 @@
 		}
 	};
 
+	function finishAdBlockCheck(blocked) {
+		adBlockDetected = blocked === true;
+		adBlockCheckDone = true;
+
+		if (adBlockDetected) {
+			document.documentElement.classList.add('emo-adblock-detected');
+			debug.phase = 'adblock_detected_no_ads';
+			document.querySelectorAll('[data-emo-adsterra-slot]').forEach(function (slot) {
+				collapseSlot(slot);
+			});
+			hydrationPending = false;
+			renderDebug();
+			return;
+		}
+
+		document.documentElement.classList.remove('emo-adblock-detected');
+		if (hydrationPending) {
+			hydrationPending = false;
+			hydrateEligibleSlots();
+		}
+	}
+
+	function detectCosmeticAdBlock() {
+		if (!document.body) return;
+
+		var bait = document.createElement('div');
+		bait.className = 'adsbox ad-banner ad-placement ad-unit ad-zone';
+		bait.setAttribute('aria-hidden', 'true');
+		bait.style.cssText = 'position:absolute!important;left:-10000px!important;top:-10000px!important;width:10px!important;height:10px!important;pointer-events:none!important;';
+		document.body.appendChild(bait);
+
+		window.requestAnimationFrame(function () {
+			window.requestAnimationFrame(function () {
+				var style = window.getComputedStyle(bait);
+				var blocked = style.display === 'none'
+					|| style.visibility === 'hidden'
+					|| bait.offsetWidth === 0
+					|| bait.offsetHeight === 0;
+				bait.remove();
+				finishAdBlockCheck(blocked);
+			});
+		});
+	}
+
 	function renderDebug() {
 		if (!debugMode || !document.body) return;
 		var panel = document.getElementById('elmercado-adsterra-debug');
@@ -72,6 +119,10 @@
 	}
 
 	function revealSlot(slot) {
+		if (adBlockDetected) {
+			collapseSlot(slot);
+			return;
+		}
 		if (!slot || slot.classList.contains('is-eligible')) return;
 		slot.classList.add('is-eligible');
 		slot.setAttribute('aria-hidden', 'false');
@@ -176,6 +227,15 @@
 	}
 
 	function hydrateEligibleSlots() {
+		if (!adBlockCheckDone) {
+			hydrationPending = true;
+			return;
+		}
+		if (adBlockDetected) {
+			setPhase('adblock_detected_no_ads');
+			return;
+		}
+
 		var slots = Array.prototype.slice.call(document.querySelectorAll('[data-emo-adsterra-slot]'));
 
 		slots.forEach(function (slot) {
@@ -247,6 +307,12 @@
 		} else {
 			renderDebug();
 		}
+	}
+
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', detectCosmeticAdBlock, { once: true });
+	} else {
+		detectCosmeticAdBlock();
 	}
 
 	if (!config.endpoint || !config.frameEndpoint || typeof window.fetch !== 'function') {
