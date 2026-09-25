@@ -261,6 +261,79 @@ function elmercado_adsterra_styles_010290(): void {
 }
 add_action( 'wp_head', 'elmercado_adsterra_styles_010290', 21 );
 
+/**
+ * Devuelve un documento publicitario mínimo del propio dominio.
+ *
+ * Los banners estándar de Adsterra funcionan con document.write durante la
+ * carga. Servirlos desde un iframe con URL real evita las diferencias de
+ * compatibilidad de about:srcdoc observadas en algunos navegadores móviles.
+ */
+function elmercado_adsterra_frame_response_010291(): void {
+	if ( ! isset( $_GET['emo_adsterra_frame'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		return;
+	}
+
+	if ( 'adsterra' !== elmercado_blog_ad_provider_010290() ) {
+		status_header( 404 );
+		exit;
+	}
+
+	$type = sanitize_key( wp_unslash( (string) $_GET['emo_adsterra_frame'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$units = array(
+		'responsive-desktop' => array( 'key' => '4e02d145fdb84842713b24a4bade6244', 'width' => 728, 'height' => 90 ),
+		'responsive-mobile'  => array( 'key' => '3de18866861c081d6eb282ad00fe2bee', 'width' => 320, 'height' => 50 ),
+		'rectangle'          => array( 'key' => 'c1f547d5b9552a71fae2de32c69f2d66', 'width' => 300, 'height' => 250 ),
+		'tall-rectangle'     => array( 'key' => 'bd307b1985a219b2694f34d17ceebe8e', 'width' => 160, 'height' => 300 ),
+		'skyscraper'         => array( 'key' => '040427a877ae83cac71362a8c92eb779', 'width' => 160, 'height' => 600 ),
+		'footer-banner'      => array( 'key' => '985360811e3cd3c3d7d50e3a9ea81484', 'width' => 468, 'height' => 60 ),
+	);
+
+	if ( ! isset( $units[ $type ] ) ) {
+		status_header( 404 );
+		exit;
+	}
+
+	$country = function_exists( 'elmercado_adsense_get_visitor_country' ) ? elmercado_adsense_get_visitor_country() : '';
+	$eligible = '' !== $country
+		&& function_exists( 'elmercado_adsense_country_is_shippable' )
+		&& ! elmercado_adsense_country_is_shippable( $country );
+
+	if ( ! $eligible ) {
+		status_header( 204 );
+		nocache_headers();
+		exit;
+	}
+
+	$unit = $units[ $type ];
+	nocache_headers();
+	header( 'Content-Type: text/html; charset=UTF-8' );
+	header( 'X-Robots-Tag: noindex, nofollow, noarchive', true );
+	?>
+<!doctype html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<style>html,body{margin:0;padding:0;overflow:hidden;background:transparent}body{display:flex;justify-content:center;align-items:flex-start}</style>
+</head>
+<body>
+<script>
+window.atOptions = <?php echo wp_json_encode( array(
+	'key'    => $unit['key'],
+	'format' => 'iframe',
+	'height' => (int) $unit['height'],
+	'width'  => (int) $unit['width'],
+	'params' => (object) array(),
+) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>;
+</script>
+<script src="https://www.highrevenueformat.com/<?php echo esc_attr( $unit['key'] ); ?>/invoke.js"></script>
+</body>
+</html>
+	<?php
+	exit;
+}
+add_action( 'template_redirect', 'elmercado_adsterra_frame_response_010291', 0 );
+
 function elmercado_adsterra_enqueue_controller_010290(): void {
 	if ( ! elmercado_adsterra_is_blog_post_request_010290() ) {
 		return;
@@ -276,7 +349,8 @@ function elmercado_adsterra_enqueue_controller_010290(): void {
 		$handle,
 		'ElMercadoAdsterraGeo',
 		array(
-			'endpoint' => esc_url_raw( rest_url( 'elmercado/v1/blog-ad-eligibility' ) ),
+			'endpoint'      => esc_url_raw( rest_url( 'elmercado/v1/blog-ad-eligibility' ) ),
+			'frameEndpoint' => esc_url_raw( home_url( '/' ) ),
 		)
 	);
 }
