@@ -243,10 +243,12 @@ function elmercado_adsterra_styles_010290(): void {
 			.emo-adsterra-slot--responsive-top {
 				margin-top: 22px;
 			}
-			.emo-adsterra-slot--rectangle,
-			.emo-adsterra-slot--tall-rectangle {
+			.emo-adsterra-slot--rectangle {
 				margin-top: 30px;
 				margin-bottom: 30px;
+			}
+			.emo-adsterra-slot--tall-rectangle {
+				display: none !important;
 			}
 		}
 		@media (max-width: 519px) {
