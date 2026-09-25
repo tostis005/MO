@@ -1,0 +1,139 @@
+name: Diagnose mobile Adsterra block
+
+on:
+  push:
+    branches:
+      - adsterra-mobile-debug-20260925
+    paths:
+      - .github/workflows/adsterra-mobile-diagnostic.yml
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Playwright
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0 >/dev/null 2>&1
+          npx playwright install --with-deps chromium >/dev/null
+
+      - name: Reproduce mobile Adsterra with and without blocked downstream ads
+        run: |
+          node <<'NODE'
+          const { chromium } = require('playwright');
+
+          const article = 'https://www.elmercadodeorigen.com/historia-wagyu-origen-evolucion-japon/?adsterra_debug=1';
+
+          async function inspect(page, label) {
+            await page.goto(article, { waitUntil: 'domcontentloaded', timeout: 60000 });
+            await page.waitForTimeout(20000);
+
+            const info = await page.evaluate(() => {
+              return Array.from(document.querySelectorAll('[data-emo-adsterra-slot]')).map((slot) => {
+                const rect = slot.getBoundingClientRect();
+                const style = getComputedStyle(slot);
+                const outerFrame = slot.querySelector('iframe[data-emo-adsterra-token]');
+                let inner = null;
+                if (outerFrame) {
+                  try {
+                    const doc = outerFrame.contentDocument;
+                    inner = {
+                      bodyText: doc && doc.body ? doc.body.innerText.slice(0, 200) : null,
+                      bodyHTML: doc && doc.body ? doc.body.innerHTML.slice(0, 1200) : null,
+                      nestedFrames: doc ? Array.from(doc.querySelectorAll('iframe')).map(f => ({
+                        src: f.getAttribute('src'),
+                        width: f.getAttribute('width'),
+                        height: f.getAttribute('height'),
+                        display: getComputedStyle(f).display,
+                        rectHeight: f.getBoundingClientRect().height
+                      })) : []
+                    };
+                  } catch (e) {
+                    inner = { error: String(e) };
+                  }
+                }
+
+                return {
+                  type: slot.getAttribute('data-emo-adsterra-slot'),
+                  eligibleClass: slot.classList.contains('is-eligible'),
+                  display: style.display,
+                  height: rect.height,
+                  width: rect.width,
+                  ariaHidden: slot.getAttribute('aria-hidden'),
+                  outerFrame: outerFrame ? {
+                    src: outerFrame.getAttribute('src'),
+                    height: outerFrame.getBoundingClientRect().height,
+                    display: getComputedStyle(outerFrame).display
+                  } : null,
+                  inner
+                };
+              });
+            });
+
+            console.log('\n=== ' + label + ' SLOTS ===');
+            console.log(JSON.stringify(info, null, 2));
+            console.log('DEBUG=', await page.evaluate(() => window.ElMercadoAdsterraGeoDebug || null));
+            return info;
+          }
+
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+
+            const ctx1 = await browser.newContext({
+              viewport: { width: 360, height: 800 },
+              userAgent: 'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/26.0 Chrome/122.0.0.0 Mobile Safari/537.36'
+            });
+            const p1 = await ctx1.newPage();
+            const hosts = new Set();
+            p1.on('request', r => {
+              try {
+                const u = new URL(r.url());
+                if (!u.hostname.endsWith('elmercadodeorigen.com')) hosts.add(u.hostname);
+              } catch (_) {}
+            });
+            await inspect(p1, 'NORMAL');
+            console.log('\n=== EXTERNAL HOSTS NORMAL ===');
+            console.log(JSON.stringify(Array.from(hosts).sort(), null, 2));
+            await ctx1.close();
+
+            const ctx2 = await browser.newContext({
+              viewport: { width: 360, height: 800 },
+              userAgent: 'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/26.0 Chrome/122.0.0.0 Mobile Safari/537.36'
+            });
+            const p2 = await ctx2.newPage();
+
+            await p2.route('**/*', async route => {
+              let host = '';
+              try { host = new URL(route.request().url()).hostname; } catch (_) {}
+              const own = host.endsWith('elmercadodeorigen.com');
+              const loader = host === 'www.highrevenueformat.com' || host.endsWith('profitableratecpmnetwork.com');
+              if (own || loader) {
+                await route.continue();
+              } else {
+                await route.abort('blockedbyclient');
+              }
+            });
+
+            await inspect(p2, 'BLOCK_DOWNSTREAM');
+            await p2.screenshot({ path: 'mobile-adsterra-blocked.png', fullPage: false });
+            await ctx2.close();
+
+            await browser.close();
+          })().catch(err => {
+            console.error(err);
+            process.exit(1);
+          });
+          NODE
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: adsterra-mobile-diagnostic
+          path: mobile-adsterra-blocked.png
