@@ -125,6 +125,23 @@ jobs:
             await p2.screenshot({ path: 'mobile-adsterra-blocked.png', fullPage: false });
             await ctx2.close();
 
+            const ctx3 = await browser.newContext({
+              viewport: { width: 360, height: 800 },
+              userAgent: 'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/26.0 Chrome/122.0.0.0 Mobile Safari/537.36'
+            });
+            await ctx3.addInitScript(() => {
+              document.addEventListener('DOMContentLoaded', () => {
+                const style = document.createElement('style');
+                style.textContent = '.adsbox,.ad-banner,.ad-placement,.ad-unit,.ad-zone{display:none!important}';
+                document.head.appendChild(style);
+              }, { once: true });
+            });
+            const p3 = await ctx3.newPage();
+            await inspect(p3, 'COSMETIC_BLOCK');
+            console.log('HTML_CLASS=', await p3.evaluate(() => document.documentElement.className));
+            await p3.screenshot({ path: 'mobile-adsterra-cosmetic-block.png', fullPage: false });
+            await ctx3.close();
+
             await browser.close();
           })().catch(err => {
             console.error(err);
@@ -136,6 +153,8 @@ jobs:
         if: always()
         with:
           name: adsterra-mobile-diagnostic
-          path: mobile-adsterra-blocked.png
+          path: |
+            mobile-adsterra-blocked.png
+            mobile-adsterra-cosmetic-block.png
 
 # trigger diagnostic
