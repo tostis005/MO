@@ -84,6 +84,49 @@
 			'</body></html>';
 	}
 
+	function hideEmptySlot(slot) {
+		if (!slot) return;
+		slot.classList.remove('is-eligible');
+		slot.setAttribute('aria-hidden', 'true');
+		var mount = slot.querySelector('.emo-adsterra-mount');
+		if (mount) mount.innerHTML = '';
+	}
+
+	function iframeHasCreative(frame) {
+		try {
+			var doc = frame.contentDocument;
+			if (!doc || !doc.body) return false;
+			if (doc.body.querySelector('iframe, object, embed, img, video, canvas')) return true;
+			var nodes = Array.prototype.slice.call(doc.body.children).filter(function (node) {
+				return node.tagName !== 'SCRIPT' && node.tagName !== 'STYLE';
+			});
+			return nodes.some(function (node) {
+				return (node.textContent || '').trim() !== '' || node.children.length > 0;
+			});
+		} catch (error) {
+			return true;
+		}
+	}
+
+	function revealWhenCreativeAppears(slot, frame) {
+		var attempts = 0;
+		var timer = window.setInterval(function () {
+			attempts += 1;
+			if (iframeHasCreative(frame)) {
+				window.clearInterval(timer);
+				slot.classList.add('is-eligible');
+				slot.setAttribute('aria-hidden', 'false');
+				debug.hydrated += 1;
+				renderDebug();
+				return;
+			}
+			if (attempts >= 16) {
+				window.clearInterval(timer);
+				hideEmptySlot(slot);
+			}
+		}, 500);
+	}
+
 	function hydrateBanner(slot, unit) {
 		if (!slot || !unit || slot.getAttribute('data-emo-adsterra-hydrated') === '1') return;
 
@@ -99,11 +142,9 @@
 		frame.style.cssText = 'display:block;border:0;max-width:100%;overflow:hidden;background:transparent;';
 		frame.srcdoc = bannerDocument(unit);
 
-		mount.appendChild(frame);
-		slot.classList.add('is-eligible');
-		slot.setAttribute('aria-hidden', 'false');
 		slot.setAttribute('data-emo-adsterra-hydrated', '1');
-		debug.hydrated += 1;
+		mount.appendChild(frame);
+		revealWhenCreativeAppears(slot, frame);
 	}
 
 	function hydrateNative(slot) {
@@ -121,11 +162,24 @@
 		script.setAttribute('data-cfasync', 'false');
 		script.src = 'https://pl31502847.profitableratecpmnetwork.com/a83b8ce6c354e77b2ae5f266936bd60f/invoke.js';
 		mount.insertBefore(script, container);
-
-		slot.classList.add('is-eligible');
-		slot.setAttribute('aria-hidden', 'false');
 		slot.setAttribute('data-emo-adsterra-hydrated', '1');
-		debug.hydrated += 1;
+
+		var attempts = 0;
+		var timer = window.setInterval(function () {
+			attempts += 1;
+			if (container.children.length > 0 || (container.textContent || '').trim() !== '') {
+				window.clearInterval(timer);
+				slot.classList.add('is-eligible');
+				slot.setAttribute('aria-hidden', 'false');
+				debug.hydrated += 1;
+				renderDebug();
+				return;
+			}
+			if (attempts >= 16) {
+				window.clearInterval(timer);
+				hideEmptySlot(slot);
+			}
+		}, 500);
 	}
 
 	function hydrateEligibleSlots() {
@@ -140,6 +194,7 @@
 			}
 
 			if (type === 'skyscraper' && window.matchMedia('(max-width: 1160px)').matches) return;
+			if (type === 'tall-rectangle' && window.matchMedia('(max-width: 767px)').matches) return;
 			if (type === 'footer-banner' && window.matchMedia('(max-width: 519px)').matches) return;
 
 			if (type === 'responsive-top') {
