@@ -180,6 +180,16 @@ function elmercado_adsterra_styles_010290(): void {
 		.emo-adsterra-slot.is-eligible {
 			display: block;
 		}
+		html.emo-adblock-detected .emo-adsterra-slot,
+		html.emo-adblock-detected .emo-adsterra-native-shell {
+			display: none !important;
+			height: 0 !important;
+			min-height: 0 !important;
+			max-height: 0 !important;
+			margin: 0 !important;
+			padding: 0 !important;
+			overflow: hidden !important;
+		}
 		.emo-adsterra-label {
 			display: block;
 			margin: 0 0 7px;
