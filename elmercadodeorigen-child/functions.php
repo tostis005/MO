@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.292' );
-/* 0.10.292 muestra Adsterra solo tras render real, sin timeouts de corte. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.293' );
+/* 0.10.293 colapsa slots bloqueados y espera la carga real sin timeouts. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
 	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsterra' ); // 'adsense' | 'adsterra'
 }
