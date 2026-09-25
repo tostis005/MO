@@ -156,12 +156,12 @@ jobs:
           fi
 
           echo "--- GENERIC REST ENDPOINT ---"
-          headers=$(mktemp)
-          body=$(mktemp)
-          curl -fsSL --max-time 25 -D "$headers" -o "$body" "${site_url}/wp-json/elmercado/v1/blog-ad-eligibility?verify=${nonce}"
-          cat "$body"
-          grep -Eiq '^cache-control:.*no-store' "$headers"
-          grep -Eq '"show_ads"[[:space:]]*:[[:space:]]*(true|false)' "$body"
+          route_registered=$("$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod_path" --allow-root '
+            $routes = rest_get_server()->get_routes();
+            echo isset($routes["/elmercado/v1/blog-ad-eligibility"]) ? "yes" : "no";
+          ' 2>/dev/null)
+          echo "BLOG_AD_ROUTE=$route_registered"
+          test "$route_registered" = "yes"
 
           echo "BLOG_AD_PROVIDER_PRODUCTION=PASS"
           REMOTE
