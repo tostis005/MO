@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.294' );
-/* 0.10.294 detecta bloqueo cosmético y fuerza slots Adsterra a 0 px. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.295' );
+/* 0.10.295 retira rectángulos altos del móvil para evitar huecos bloqueados. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
 	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsterra' ); // 'adsense' | 'adsterra'
 }
