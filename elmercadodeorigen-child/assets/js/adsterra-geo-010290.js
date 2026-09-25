@@ -70,22 +70,9 @@
 		renderDebug();
 	}
 
-	function bannerDocument(unit) {
-		var options = {
-			key: unit.key,
-			format: 'iframe',
-			height: unit.height,
-			width: unit.width,
-			params: {}
-		};
-		return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;padding:0;overflow:hidden;background:transparent}body{display:flex;justify-content:center;align-items:flex-start}</style></head><body>' +
-			'<script>atOptions=' + JSON.stringify(options) + ';<\/script>' +
-			'<script src="https://www.highrevenueformat.com/' + unit.key + '/invoke.js"><\/script>' +
-			'</body></html>';
-	}
-
-	function hydrateBanner(slot, unit) {
-		if (!slot || !unit || slot.getAttribute('data-emo-adsterra-hydrated') === '1') return;
+	function hydrateBanner(slot, unit, unitName) {
+		if (!slot || !unit || !unitName || slot.getAttribute('data-emo-adsterra-hydrated') === '1') return;
+		if (!config.frameEndpoint) return;
 
 		var mount = slot.querySelector('.emo-adsterra-mount');
 		if (!mount) return;
@@ -97,7 +84,9 @@
 		frame.setAttribute('scrolling', 'no');
 		frame.setAttribute('frameborder', '0');
 		frame.style.cssText = 'display:block;border:0;max-width:100%;overflow:hidden;background:transparent;';
-		frame.srcdoc = bannerDocument(unit);
+
+		var separator = config.frameEndpoint.indexOf('?') === -1 ? '?' : '&';
+		frame.src = config.frameEndpoint + separator + 'emo_adsterra_frame=' + encodeURIComponent(unitName) + '&_=' + Date.now();
 
 		mount.appendChild(frame);
 		slot.classList.add('is-eligible');
@@ -144,14 +133,14 @@
 			if (type === 'footer-banner' && window.matchMedia('(max-width: 519px)').matches) return;
 
 			if (type === 'responsive-top') {
-				var responsiveUnit = window.matchMedia('(max-width: 767px)').matches
-					? units['responsive-mobile']
-					: units['responsive-desktop'];
-				hydrateBanner(slot, responsiveUnit);
+				var responsiveName = window.matchMedia('(max-width: 767px)').matches
+					? 'responsive-mobile'
+					: 'responsive-desktop';
+				hydrateBanner(slot, units[responsiveName], responsiveName);
 				return;
 			}
 
-			if (units[type]) hydrateBanner(slot, units[type]);
+			if (units[type]) hydrateBanner(slot, units[type], type);
 		});
 
 		setPhase('eligible_adsterra_loaded');
@@ -202,8 +191,8 @@
 		}
 	}
 
-	if (!config.endpoint || typeof window.fetch !== 'function') {
-		debug.error = 'Missing endpoint or Fetch API';
+	if (!config.endpoint || !config.frameEndpoint || typeof window.fetch !== 'function') {
+		debug.error = 'Missing endpoint, frame endpoint or Fetch API';
 		setPhase('configuration_error');
 		return;
 	}
