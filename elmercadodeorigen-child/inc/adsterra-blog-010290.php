@@ -213,6 +213,11 @@ function elmercado_adsterra_styles_010290(): void {
 			margin: 30px auto 0;
 		}
 		.emo-adsterra-native-shell {
+			display: none;
+			margin: 0;
+		}
+		.emo-adsterra-native-shell.is-eligible {
+			display: block;
 			margin-top: clamp(34px, 5vw, 58px);
 			margin-bottom: clamp(34px, 5vw, 58px);
 		}
@@ -323,36 +328,41 @@ function elmercado_adsterra_frame_response_010291(): void {
 	var token = <?php echo wp_json_encode( $token ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>;
 	var sent = false;
 
-	function hasCreative() {
-		if (document.body.querySelector('iframe,object,embed,img,video,canvas')) {
-			return true;
+	function notify(type) {
+		if (sent && type === 'emo-adsterra-rendered') return;
+		if (type === 'emo-adsterra-rendered') sent = true;
+		window.parent.postMessage({ type: type, token: token }, window.location.origin);
+	}
+
+	function watchMedia(node) {
+		if (!node || node.getAttribute('data-emo-adsterra-watch') === '1') return;
+		node.setAttribute('data-emo-adsterra-watch', '1');
+		node.addEventListener('load', function () { notify('emo-adsterra-rendered'); }, { once: true });
+		node.addEventListener('error', function () { notify('emo-adsterra-blocked'); }, { once: true });
+
+		if (node.tagName === 'IMG' && node.complete && node.naturalWidth > 0) {
+			notify('emo-adsterra-rendered');
 		}
-		var nodes = Array.prototype.slice.call(document.body.children);
-		return nodes.some(function (node) {
-			if (!node || node.tagName === 'SCRIPT' || node.tagName === 'STYLE') {
-				return false;
-			}
-			return node.children.length > 0 || (node.textContent || '').trim() !== '';
+	}
+
+	function inspect() {
+		if (sent) return;
+
+		Array.prototype.slice.call(document.body.querySelectorAll('iframe,img,video,object,embed')).forEach(watchMedia);
+
+		var visibleText = Array.prototype.slice.call(document.body.children).some(function (node) {
+			if (!node || node.tagName === 'SCRIPT' || node.tagName === 'STYLE') return false;
+			if (node.querySelector && node.querySelector('iframe,img,video,object,embed')) return false;
+			return (node.textContent || '').trim() !== '';
 		});
+		if (visibleText) notify('emo-adsterra-rendered');
 	}
 
-	function announceWhenReady() {
-		if (sent || !hasCreative()) {
-			return;
-		}
-		sent = true;
-		window.parent.postMessage({
-			type: 'emo-adsterra-rendered',
-			token: token
-		}, window.location.origin);
-	}
-
-	new MutationObserver(announceWhenReady).observe(document.body, {
+	new MutationObserver(inspect).observe(document.body, {
 		childList: true,
-		subtree: true,
-		attributes: true
+		subtree: true
 	});
-	window.addEventListener('load', announceWhenReady);
+	inspect();
 })();
 </script>
 <script>
@@ -364,7 +374,7 @@ window.atOptions = <?php echo wp_json_encode( array(
 	'params' => (object) array(),
 ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>;
 </script>
-<script src="https://www.highrevenueformat.com/<?php echo esc_attr( $unit['key'] ); ?>/invoke.js"></script>
+<script src="https://www.highrevenueformat.com/<?php echo esc_attr( $unit['key'] ); ?>/invoke.js" onerror="window.parent.postMessage({type:'emo-adsterra-blocked',token:<?php echo esc_attr( wp_json_encode( $token ) ); ?>},window.location.origin)"></script>
 </body>
 </html>
 	<?php
