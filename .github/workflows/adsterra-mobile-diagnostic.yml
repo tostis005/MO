@@ -86,6 +86,29 @@ jobs:
           (async () => {
             const browser = await chromium.launch({ headless: true });
 
+            const synthetic = await browser.newContext({ viewport: { width: 360, height: 800 } });
+            const sp = await synthetic.newPage();
+            await sp.route('https://blocked.example/**', route => route.abort('blockedbyclient'));
+            await sp.setContent('<iframe id="blank" src="about:blank"></iframe><iframe id="blocked" src="https://blocked.example/ad"></iframe><iframe id="ok" src="https://example.com/"></iframe>');
+            await sp.waitForTimeout(3000);
+            const iframeState = await sp.evaluate(() => {
+              return ['blank','blocked','ok'].map(id => {
+                const f = document.getElementById(id);
+                let href = null, hrefError = null;
+                try { href = f.contentWindow.location.href; } catch (e) { hrefError = String(e); }
+                return {
+                  id,
+                  src: f.getAttribute('src'),
+                  contentDocumentNull: f.contentDocument === null,
+                  href,
+                  hrefError
+                };
+              });
+            });
+            console.log('\n=== SYNTHETIC IFRAME STATES ===');
+            console.log(JSON.stringify(iframeState, null, 2));
+            await synthetic.close();
+
             const ctx1 = await browser.newContext({
               viewport: { width: 360, height: 800 },
               userAgent: 'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/26.0 Chrome/122.0.0.0 Mobile Safari/537.36'
