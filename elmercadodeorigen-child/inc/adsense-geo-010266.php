@@ -29,7 +29,8 @@ if ( ! defined( 'ELMERCADO_ADSENSE_INARTICLE_SLOT' ) ) {
  * @return bool
  */
 function elmercado_adsense_is_blog_post_request(): bool {
-	return ! is_admin() && is_singular( 'post' ) && ! is_feed() && ! is_preview();
+	$provider = defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ? strtolower( (string) ELMERCADO_BLOG_AD_PROVIDER ) : 'adsense';
+	return 'adsense' === $provider && ! is_admin() && is_singular( 'post' ) && ! is_feed() && ! is_preview();
 }
 
 /**
@@ -228,6 +229,16 @@ add_action(
 		register_rest_route(
 			'elmercado/v1',
 			'/adsense-eligibility',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => 'elmercado_adsense_rest_eligibility',
+				'permission_callback' => '__return_true',
+			)
+		);
+
+		register_rest_route(
+			'elmercado/v1',
+			'/blog-ad-eligibility',
 			array(
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => 'elmercado_adsense_rest_eligibility',

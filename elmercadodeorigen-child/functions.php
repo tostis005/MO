@@ -9,8 +9,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.267' );
-/* 0.10.267 ajusta los productos del blog a 4 → 2 → 1 y añade el acceso dinámico a su categoría. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.290' );
+/* 0.10.290 añade un switch de proveedor publicitario para el blog. */
+if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
+	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsterra' ); // 'adsense' | 'adsterra'
+}
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -168,6 +171,7 @@ $elmercado_modules = array(
 	'inc/blog-default-image-010264.php',
 	'inc/seo-meta-descriptions-010265.php',
 	'inc/adsense-geo-010266.php',
+	'inc/adsterra-blog-010290.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {

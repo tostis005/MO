@@ -222,8 +222,11 @@ while ( have_posts() ) :
 				<?php endif; ?>
 			</div>
 
+			<?php if ( function_exists( 'elmercado_adsterra_render_responsive_top_010290' ) ) { elmercado_adsterra_render_responsive_top_010290(); } ?>
+
 			<div class="emo-article-main">
-				<div class="emo-shell">
+				<div class="emo-shell emo-article-main-shell">
+					<?php if ( function_exists( 'elmercado_adsterra_render_skyscraper_010290' ) ) { elmercado_adsterra_render_skyscraper_010290(); } ?>
 					<div class="emo-article-content">
 						<?php
 						$content_html = apply_filters( 'the_content', get_the_content() );
@@ -289,6 +292,7 @@ while ( have_posts() ) :
 							<?php endif; ?>
 						</nav>
 					</footer>
+					<?php if ( function_exists( 'elmercado_adsterra_render_footer_banner_010290' ) ) { elmercado_adsterra_render_footer_banner_010290(); } ?>
 				</div>
 			</div>
 		</article>
@@ -326,6 +330,8 @@ while ( have_posts() ) :
 		<?php if ( '' !== $specials_html ) : ?>
 			<?php echo $specials_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 		<?php endif; ?>
+
+		<?php if ( function_exists( 'elmercado_adsterra_render_native_010290' ) ) { elmercado_adsterra_render_native_010290(); } ?>
 
 		<?php if ( $related->have_posts() ) : ?>
 			<div class="emo-related-reading" data-emo-related-root="1">
