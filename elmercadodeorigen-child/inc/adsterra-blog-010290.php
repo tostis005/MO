@@ -258,12 +258,15 @@ function elmercado_adsterra_styles_010290(): void {
 			.emo-adsterra-slot--responsive-top {
 				margin-top: 22px;
 			}
-			.emo-adsterra-slot--rectangle {
-				margin-top: 30px;
-				margin-bottom: 30px;
-			}
+			.emo-adsterra-slot--rectangle,
 			.emo-adsterra-slot--tall-rectangle {
 				display: none !important;
+				height: 0 !important;
+				min-height: 0 !important;
+				max-height: 0 !important;
+				margin: 0 !important;
+				padding: 0 !important;
+				overflow: hidden !important;
 			}
 		}
 		@media (max-width: 519px) {
