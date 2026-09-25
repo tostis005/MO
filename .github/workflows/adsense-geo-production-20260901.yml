@@ -1,13 +1,16 @@
-name: Deploy geo-aware AdSense to production
+name: Deploy switchable blog ads to production
 
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/adsense-geo-production-20260901.yml'
+      - 'elmercadodeorigen-child/functions.php'
+      - 'elmercadodeorigen-child/single.php'
       - 'elmercadodeorigen-child/inc/adsense-geo-010266.php'
       - 'elmercadodeorigen-child/assets/js/adsense-geo-010266.js'
-      - 'elmercadodeorigen-child/functions.php'
+      - 'elmercadodeorigen-child/inc/adsterra-blog-010290.php'
+      - 'elmercadodeorigen-child/assets/js/adsterra-geo-010290.js'
   workflow_dispatch:
 
 permissions:
@@ -26,18 +29,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate release files
+      - name: Validate blog advertising files
         shell: bash
         run: |
           set -euo pipefail
+          php -l elmercadodeorigen-child/functions.php
+          php -l elmercadodeorigen-child/single.php
           php -l elmercadodeorigen-child/inc/adsense-geo-010266.php
+          php -l elmercadodeorigen-child/inc/adsterra-blog-010290.php
           node --check elmercadodeorigen-child/assets/js/adsense-geo-010266.js
-          grep -q 'ca-pub-3168527008181132' elmercadodeorigen-child/inc/adsense-geo-010266.php
-          grep -q 'loadGoogleScript' elmercadodeorigen-child/assets/js/adsense-geo-010266.js
-          grep -q 'eligible_loading_adsense' elmercadodeorigen-child/assets/js/adsense-geo-010266.js
-          grep -q 'not_eligible_no_adsense' elmercadodeorigen-child/assets/js/adsense-geo-010266.js
+          node --check elmercadodeorigen-child/assets/js/adsterra-geo-010290.js
+          grep -q "ELMERCADO_BLOG_AD_PROVIDER', 'adsterra'" elmercadodeorigen-child/functions.php
+          grep -q 'a83b8ce6c354e77b2ae5f266936bd60f' elmercadodeorigen-child/assets/js/adsterra-geo-010290.js
+          grep -q '4e02d145fdb84842713b24a4bade6244' elmercadodeorigen-child/assets/js/adsterra-geo-010290.js
+          grep -q '3de18866861c081d6eb282ad00fe2bee' elmercadodeorigen-child/assets/js/adsterra-geo-010290.js
 
-      - name: Deploy and verify production
+      - name: Deploy provider switch and verify production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -50,25 +57,18 @@ jobs:
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
           SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
 
-          EXPECTED_FUNCTIONS_SHA=$(sha256sum elmercadodeorigen-child/functions.php | awk '{print $1}')
-          EXPECTED_PHP_SHA=$(sha256sum elmercadodeorigen-child/inc/adsense-geo-010266.php | awk '{print $1}')
-          EXPECTED_JS_SHA=$(sha256sum elmercadodeorigen-child/assets/js/adsense-geo-010266.js | awk '{print $1}')
+          tmp_root="/tmp/elmercado-blog-ads-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$tmp_root/inc' '$tmp_root/assets/js'"
 
-          remote_php="/tmp/elmercado-adsense-geo-010266-${GITHUB_RUN_ID}.php"
-          remote_js="/tmp/elmercado-adsense-geo-010266-${GITHUB_RUN_ID}.js"
+          for file in             functions.php             single.php             inc/adsense-geo-010266.php             inc/adsterra-blog-010290.php             assets/js/adsense-geo-010266.js             assets/js/adsterra-geo-010290.js
+          do
+            sshpass -e scp $SCP_OPTIONS "elmercadodeorigen-child/$file" "$STAGING_USER@$STAGING_HOST:$tmp_root/$file"
+          done
 
-          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/adsense-geo-010266.php "$STAGING_USER@$STAGING_HOST:$remote_php"
-          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/assets/js/adsense-geo-010266.js "$STAGING_USER@$STAGING_HOST:$remote_js"
-
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$EXPECTED_FUNCTIONS_SHA' '$EXPECTED_PHP_SHA' '$EXPECTED_JS_SHA' '$remote_php' '$remote_js'" <<'REMOTE'
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$tmp_root'" <<'REMOTE'
           set -euo pipefail
-          expected_functions_sha="$1"
-          expected_php_sha="$2"
-          expected_js_sha="$3"
-          remote_php="$4"
-          remote_js="$5"
-
-          cleanup() { rm -f "$remote_php" "$remote_js"; }
+          tmp_root="$1"
+          cleanup() { rm -rf "$tmp_root"; }
           trap cleanup EXIT
 
           wp_bin=$(command -v wp || true)
@@ -88,42 +88,31 @@ jobs:
 
           stylesheet=$("$php_bin" -d memory_limit=256M "$wp_bin" option get stylesheet --path="$prod_path" --skip-plugins --skip-themes --allow-root 2>/dev/null)
           theme_path="$prod_path/wp-content/themes/$stylesheet"
-          functions_file="$theme_path/functions.php"
-          php_file="$theme_path/inc/adsense-geo-010266.php"
-          js_file="$theme_path/assets/js/adsense-geo-010266.js"
-
-          live_functions_sha=$(sha256sum "$functions_file" | awk '{print $1}')
-          echo "FUNCTIONS_SHA repo=$expected_functions_sha live=$live_functions_sha"
-          if [ "$live_functions_sha" != "$expected_functions_sha" ]; then
-            echo "Live functions.php differs from repository; refusing selective deployment."
-            exit 1
-          fi
-
-          "$php_bin" -l "$remote_php"
-          grep -q 'ca-pub-3168527008181132' "$remote_php"
-          grep -q 'pagead2.googlesyndication.com/pagead/js/adsbygoogle.js' "$remote_php"
-          grep -q 'loadGoogleScript' "$remote_js"
-          grep -q 'eligible_loading_adsense' "$remote_js"
-          grep -q 'not_eligible_no_adsense' "$remote_js"
-          grep -q 'ElMercadoAdsenseGeoDebug' "$remote_js"
-
           stamp=$(date +%Y%m%d%H%M%S)
-          mkdir -p "$(dirname "$php_file")" "$(dirname "$js_file")"
-          [ ! -f "$php_file" ] || cp -p "$php_file" "${php_file}.bak-${stamp}"
-          [ ! -f "$js_file" ] || cp -p "$js_file" "${js_file}.bak-${stamp}"
 
-          install -m 0644 "$remote_php" "$php_file"
-          install -m 0644 "$remote_js" "$js_file"
+          "$php_bin" -l "$tmp_root/functions.php"
+          "$php_bin" -l "$tmp_root/single.php"
+          "$php_bin" -l "$tmp_root/inc/adsense-geo-010266.php"
+          "$php_bin" -l "$tmp_root/inc/adsterra-blog-010290.php"
 
-          live_php_sha=$(sha256sum "$php_file" | awk '{print $1}')
-          live_js_sha=$(sha256sum "$js_file" | awk '{print $1}')
-          echo "PHP_SHA repo=$expected_php_sha live=$live_php_sha"
-          echo "JS_SHA repo=$expected_js_sha live=$live_js_sha"
-          test "$live_php_sha" = "$expected_php_sha"
-          test "$live_js_sha" = "$expected_js_sha"
-          "$php_bin" -l "$php_file"
+          for file in             functions.php             single.php             inc/adsense-geo-010266.php             inc/adsterra-blog-010290.php             assets/js/adsense-geo-010266.js             assets/js/adsterra-geo-010290.js
+          do
+            destination="$theme_path/$file"
+            mkdir -p "$(dirname "$destination")"
+            [ ! -f "$destination" ] || cp -p "$destination" "${destination}.bak-${stamp}"
+            install -m 0644 "$tmp_root/$file" "$destination"
+          done
+
+          "$php_bin" -l "$theme_path/functions.php"
+          "$php_bin" -l "$theme_path/single.php"
+          "$php_bin" -l "$theme_path/inc/adsense-geo-010266.php"
+          "$php_bin" -l "$theme_path/inc/adsterra-blog-010290.php"
 
           "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod_path" --allow-root >/dev/null 2>&1 || true
+
+          provider=$("$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod_path" --allow-root 'echo defined("ELMERCADO_BLOG_AD_PROVIDER") ? ELMERCADO_BLOG_AD_PROVIDER : "missing";' 2>/dev/null)
+          echo "BLOG_AD_PROVIDER=$provider"
+          test "$provider" = "adsterra"
 
           echo "--- COUNTRY LOGIC ---"
           country_results=$("$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod_path" --allow-root '
@@ -141,7 +130,6 @@ jobs:
           grep -qx 'GB=ADS' <<< "$country_results"
           grep -qx 'ZA=ADS' <<< "$country_results"
 
-          echo "--- FRONTEND SCOPE ---"
           post_url=$("$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod_path" --allow-root '
             $ids = get_posts(["post_type" => "post", "post_status" => "publish", "numberposts" => 1, "fields" => "ids"]);
             if ($ids) echo get_permalink($ids[0]);
@@ -149,41 +137,31 @@ jobs:
           site_url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get home --path="$prod_path" --skip-plugins --skip-themes --allow-root 2>/dev/null)
           test -n "$post_url"
           nonce=$(date +%s)
-          post_html=$(curl -fsSL --max-time 25 "${post_url}?adsense_verify=${nonce}")
-          home_html=$(curl -fsSL --max-time 25 "${site_url}/?adsense_verify=${nonce}")
+          post_html=$(curl -fsSL --max-time 25 "${post_url}?blog_ads_verify=${nonce}")
           head_html="${post_html%%</head>*}"
 
-          grep -q 'adsense-geo-010266.js' <<< "$head_html"
+          grep -q 'adsterra-geo-010290.js' <<< "$head_html"
+          grep -q 'data-emo-adsterra-slot=' <<< "$post_html"
+          if grep -q 'adsense-geo-010266.js' <<< "$head_html"; then
+            echo "AdSense controller is active while provider=adsterra"
+            exit 1
+          fi
           if grep -q 'pagead2.googlesyndication.com/pagead/js/adsbygoogle.js' <<< "$head_html"; then
-            echo "AdSense loader is still eager on the initial blog HTML"
+            echo "Google ad loader is active while provider=adsterra"
+            exit 1
+          fi
+          if grep -q 'profitableratecpmnetwork.com/a83b8ce6c354e77b2ae5f266936bd60f/invoke.js' <<< "$post_html"; then
+            echo "Adsterra network script loaded before geography eligibility"
             exit 1
           fi
 
-          if grep -q 'adsense-geo-010266.js' <<< "$home_html"; then
-            echo "AdSense geo controller unexpectedly present on home"
-            exit 1
-          fi
-          if grep -q 'pagead2.googlesyndication.com/pagead/js/adsbygoogle.js' <<< "$home_html"; then
-            echo "AdSense loader unexpectedly present on home"
-            exit 1
-          fi
-
-          echo "--- REST ENDPOINT ---"
+          echo "--- GENERIC REST ENDPOINT ---"
           headers=$(mktemp)
           body=$(mktemp)
-          curl -fsSL --max-time 25 -D "$headers" -o "$body" "${site_url}/wp-json/elmercado/v1/adsense-eligibility?verify=${nonce}"
+          curl -fsSL --max-time 25 -D "$headers" -o "$body" "${site_url}/wp-json/elmercado/v1/blog-ad-eligibility?verify=${nonce}"
           cat "$body"
           grep -Eiq '^cache-control:.*no-store' "$headers"
           grep -Eq '"show_ads"[[:space:]]*:[[:space:]]*(true|false)' "$body"
 
-          echo "--- SYNTHETIC GEO HEADERS ---"
-          es_body=$(curl -fsSL --max-time 25 -H 'X-Country-Code: ES' "${site_url}/wp-json/elmercado/v1/adsense-eligibility?verify=${nonce}es")
-          za_body=$(curl -fsSL --max-time 25 -H 'X-Country-Code: ZA' "${site_url}/wp-json/elmercado/v1/adsense-eligibility?verify=${nonce}za")
-          printf 'ES %s\nZA %s\n' "$es_body" "$za_body"
-          grep -Eq '"country"[[:space:]]*:[[:space:]]*"ES"' <<< "$es_body"
-          grep -Eq '"show_ads"[[:space:]]*:[[:space:]]*false' <<< "$es_body"
-          grep -Eq '"country"[[:space:]]*:[[:space:]]*"ZA"' <<< "$za_body"
-          grep -Eq '"show_ads"[[:space:]]*:[[:space:]]*true' <<< "$za_body"
-
-          echo "ADSENSE_GEO_PRODUCTION=PASS"
+          echo "BLOG_AD_PROVIDER_PRODUCTION=PASS"
           REMOTE
