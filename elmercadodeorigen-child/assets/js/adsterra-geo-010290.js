@@ -2,6 +2,7 @@
 	'use strict';
 
 	var config = window.ElMercadoAdsterraGeo || {};
+	var frameCounter = 0;
 	var debugMode = /(?:^|[?&])adsterra_debug=1(?:&|$)/.test(window.location.search);
 	var debug = window.ElMercadoAdsterraGeoDebug = {
 		phase: 'initializing',
@@ -70,6 +71,31 @@
 		renderDebug();
 	}
 
+	function revealSlot(slot) {
+		if (!slot || slot.classList.contains('is-eligible')) return;
+		slot.classList.add('is-eligible');
+		slot.setAttribute('aria-hidden', 'false');
+		debug.hydrated += 1;
+		renderDebug();
+	}
+
+	window.addEventListener('message', function (event) {
+		if (event.origin !== window.location.origin || !event.data || event.data.type !== 'emo-adsterra-rendered') {
+			return;
+		}
+
+		var token = typeof event.data.token === 'string' ? event.data.token : '';
+		if (!token) return;
+
+		var frames = document.querySelectorAll('iframe[data-emo-adsterra-token]');
+		for (var i = 0; i < frames.length; i += 1) {
+			if (frames[i].getAttribute('data-emo-adsterra-token') !== token) continue;
+			var slot = frames[i].closest('[data-emo-adsterra-slot]');
+			revealSlot(slot);
+			break;
+		}
+	});
+
 	function hydrateBanner(slot, unit, unitName) {
 		if (!slot || !unit || !unitName || slot.getAttribute('data-emo-adsterra-hydrated') === '1') return;
 		if (!config.frameEndpoint) return;
@@ -77,22 +103,25 @@
 		var mount = slot.querySelector('.emo-adsterra-mount');
 		if (!mount) return;
 
+		frameCounter += 1;
+		var token = unitName + '-' + Date.now().toString(36) + '-' + frameCounter.toString(36);
 		var frame = document.createElement('iframe');
 		frame.width = String(unit.width);
 		frame.height = String(unit.height);
 		frame.setAttribute('title', 'Publicidad');
 		frame.setAttribute('scrolling', 'no');
 		frame.setAttribute('frameborder', '0');
+		frame.setAttribute('data-emo-adsterra-token', token);
 		frame.style.cssText = 'display:block;border:0;max-width:100%;overflow:hidden;background:transparent;';
 
 		var separator = config.frameEndpoint.indexOf('?') === -1 ? '?' : '&';
-		frame.src = config.frameEndpoint + separator + 'emo_adsterra_frame=' + encodeURIComponent(unitName) + '&_=' + Date.now();
+		frame.src = config.frameEndpoint + separator
+			+ 'emo_adsterra_frame=' + encodeURIComponent(unitName)
+			+ '&emo_adsterra_token=' + encodeURIComponent(token)
+			+ '&_=' + Date.now();
 
-		mount.appendChild(frame);
-		slot.classList.add('is-eligible');
-		slot.setAttribute('aria-hidden', 'false');
 		slot.setAttribute('data-emo-adsterra-hydrated', '1');
-		debug.hydrated += 1;
+		mount.appendChild(frame);
 	}
 
 	function hydrateNative(slot) {
@@ -104,17 +133,30 @@
 		var container = document.createElement('div');
 		container.id = 'container-a83b8ce6c354e77b2ae5f266936bd60f';
 		mount.appendChild(container);
+		slot.setAttribute('data-emo-adsterra-hydrated', '1');
+
+		function nativeHasCreative() {
+			return container.children.length > 0 || (container.textContent || '').trim() !== '';
+		}
+
+		function revealNativeWhenReady() {
+			if (!nativeHasCreative()) return;
+			revealSlot(slot);
+			observer.disconnect();
+		}
+
+		var observer = new MutationObserver(revealNativeWhenReady);
+		observer.observe(container, {
+			childList: true,
+			subtree: true,
+			attributes: true
+		});
 
 		var script = document.createElement('script');
 		script.async = true;
 		script.setAttribute('data-cfasync', 'false');
 		script.src = 'https://pl31502847.profitableratecpmnetwork.com/a83b8ce6c354e77b2ae5f266936bd60f/invoke.js';
 		mount.insertBefore(script, container);
-
-		slot.classList.add('is-eligible');
-		slot.setAttribute('aria-hidden', 'false');
-		slot.setAttribute('data-emo-adsterra-hydrated', '1');
-		debug.hydrated += 1;
 	}
 
 	function hydrateEligibleSlots() {
