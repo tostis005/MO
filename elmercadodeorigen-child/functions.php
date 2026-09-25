@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.293' );
-/* 0.10.293 colapsa slots bloqueados y espera la carga real sin timeouts. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.294' );
+/* 0.10.294 detecta bloqueo cosmético y fuerza slots Adsterra a 0 px. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
 	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsterra' ); // 'adsense' | 'adsterra'
 }
