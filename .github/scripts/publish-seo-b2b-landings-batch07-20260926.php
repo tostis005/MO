@@ -111,6 +111,12 @@ array(
 <h2>Presupuesto y percepción</h2>
 <p>Un presupuesto alto no garantiza sorpresa. A veces un producto pequeño pero difícil de encontrar genera más interés que una propuesta costosa y genérica.</p>
 <p>El objetivo debería ser descubrir, disfrutar o compartir.</p>
+<h2>Ideas para quien disfruta descubriendo sabores</h2>
+<p>Si la persona suele probar cosas nuevas, puede funcionar mejor una referencia menos obvia que un producto muy conocido. Una conserva especial, un AOVE de variedad concreta o un pack de productor pueden aportar ese componente de descubrimiento.</p>
+<p>La clave es que el producto tenga una historia verificable y no depender únicamente de una presentación llamativa.</p>
+<h2>Regalos para compartir</h2>
+<p>Cuando no sabes exactamente qué le gustará, elegir algo que pueda abrirse y compartirse reduce el riesgo. Una selección de aperitivo, ibéricos o conservas puede disfrutarse en compañía y generar una experiencia más amplia.</p>
+<p>También evita que el regalo dependa de un gusto extremadamente individual.</p>
 <h2>Qué información necesitamos</h2>
 <p>Presupuesto, ocasión, gustos generales, restricciones y fecha. Con esos datos podemos revisar qué productos disponibles pueden aportar algo diferente.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Sorprende con algo que se disfruta y desaparece</h2><p>Cuéntanos el perfil de la persona y revisaremos opciones gastronómicas con personalidad.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Ir a contacto</a></p></div>
@@ -158,6 +164,12 @@ array(
 <h2>Presentación y mensaje</h2>
 <p>Una nota breve que explique el origen del aceite o el motivo del regalo puede aportar más que un exceso de decoración.</p>
 <p>Si se necesita personalización específica, debe revisarse según vendedor, cantidades y plazo.</p>
+<h2>Ideas para quien cocina a diario</h2>
+<p>En este perfil, el AOVE tiene una ventaja clara: no es un producto ornamental. Puede utilizarse en cocina, aliños o acabados y se integra fácilmente en el día a día.</p>
+<p>Por eso, una botella bien elegida puede tener más utilidad que un regalo gastronómico pensado únicamente para una ocasión especial.</p>
+<h2>Cómo hacer que el regalo parezca más especial sin complicarlo</h2>
+<p>Una selección cuidada, una nota breve sobre el productor o una combinación con una conserva pueden elevar la percepción del regalo sin necesidad de añadir demasiados elementos.</p>
+<p>La información sobre origen y variedad aporta más valor que llenar la caja de referencias secundarias.</p>
 <h2>Qué información necesitamos</h2>
 <p>Presupuesto, número de regalos si son varios, destinatario, fecha y lugar de entrega. Con esos datos podremos revisar los AOVE disponibles y posibles combinaciones.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Convierte el AOVE en un regalo con origen</h2><p>Dinos para quién es y qué presupuesto manejas y revisaremos opciones disponibles.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Contactar</a></p></div>
@@ -205,6 +217,12 @@ array(
 <h2>Qué evitar</h2>
 <p>Evita regalar una pieza a alguien que no consume carne, no dispone de espacio o no quiere cortarla. También evita elegir únicamente por tamaño sin revisar la categoría y procedencia.</p>
 <p>La comodidad del destinatario forma parte del valor del regalo.</p>
+<h2>Qué formato regalar según el tipo de persona</h2>
+<p>Para alguien acostumbrado a cortar jamón, una pieza puede ser una buena elección. Para quien busca comodidad, el loncheado resulta más práctico. Para una familia o grupo, una paleta puede ofrecer un equilibrio interesante entre tamaño, presencia y consumo compartido.</p>
+<p>Elegir el formato adecuado mejora mucho la experiencia sin necesidad de aumentar el presupuesto.</p>
+<h2>Cómo acompañar el jamón sin restarle protagonismo</h2>
+<p>Si quieres añadir algo más, conviene elegir uno o dos complementos sencillos, como AOVE o alguna conserva. El objetivo es reforzar la experiencia, no convertir el regalo en una mezcla sin foco.</p>
+<p>Cuando el jamón es el protagonista, el resto debería ocupar un papel secundario.</p>
 <h2>Qué información necesitamos</h2>
 <p>Presupuesto, formato preferido, fecha, destino y perfil del destinatario. Con esos datos podemos revisar qué opciones reales encajan mejor.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Elige el formato de jamón que mejor encaje</h2><p>Dinos para quién es el regalo y revisaremos piezas, paletas, loncheados y posibles complementos.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Ir al formulario de contacto</a></p></div>
@@ -252,6 +270,12 @@ array(
 <h2>Presupuesto</h2>
 <p>Con un presupuesto contenido, apuesta por una referencia interesante. Con un rango medio, crea una pequeña selección. En presupuestos altos, mejora categoría o construye una experiencia de comparación.</p>
 <p>La cantidad de productos no debería ser el criterio principal.</p>
+<h2>Cómo elegir un regalo que no resulte previsible</h2>
+<p>Para alguien muy aficionado a la gastronomía, las categorías conocidas pueden seguir funcionando si el enfoque es distinto. En lugar de regalar “aceite”, puedes elegir una variedad concreta; en lugar de “ibéricos”, una selección pensada para comparar formatos o productores.</p>
+<p>La diferencia está en el criterio de selección, no necesariamente en buscar productos extraños.</p>
+<h2>Regalar conocimiento además de producto</h2>
+<p>La experiencia mejora cuando el destinatario puede saber de dónde viene lo que recibe, quién lo produce y qué características tiene. Esa información convierte el regalo en una oportunidad de descubrir algo nuevo.</p>
+<p>En El Mercado de Origen procuramos que el productor y la procedencia estén visibles precisamente para que esa parte del regalo no se pierda.</p>
 <h2>Qué información necesitamos</h2>
 <p>Presupuesto, ocasión, categorías que le gustan o que quieres evitar, fecha y destino. Con esos datos podemos revisar qué opciones del catálogo tienen más sentido.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Regala algo que invite a descubrir</h2><p>Cuéntanos qué tipo de gastronomía disfruta la persona y revisaremos propuestas con origen y productor visibles.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Contactar</a></p></div>
