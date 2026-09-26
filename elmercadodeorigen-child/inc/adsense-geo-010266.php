@@ -503,9 +503,11 @@ function elmercado_adsense_enqueue_geo_controller(): void {
 		$handle,
 		'ElMercadoAdsenseGeo',
 		array(
-			'endpoint'      => esc_url_raw( rest_url( 'elmercado/v1/adsense-eligibility' ) ),
-			'publisher'     => ELMERCADO_ADSENSE_PUBLISHER,
-			'inArticleSlot' => ELMERCADO_ADSENSE_INARTICLE_SLOT,
+			'endpoint'           => esc_url_raw( rest_url( 'elmercado/v1/adsense-eligibility' ) ),
+			'fastGeoEndpoint'    => esc_url_raw( ELMERCADO_THEME_URL . '/assets/ad-geo-fast.php' ),
+			'shippableCountries' => elmercado_adsense_get_shippable_countries(),
+			'publisher'          => ELMERCADO_ADSENSE_PUBLISHER,
+			'inArticleSlot'      => ELMERCADO_ADSENSE_INARTICLE_SLOT,
 		)
 	);
 }
