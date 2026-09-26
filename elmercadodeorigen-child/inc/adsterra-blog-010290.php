@@ -447,11 +447,14 @@ function elmercado_adsterra_styles_010290(): void {
 				margin-top: 22px;
 			}
 			.emo-adsterra-slot--rectangle,
-			.emo-adsterra-slot--tall-rectangle,
+			.emo-adsterra-slot--tall-rectangle {
+				margin-top: 30px;
+				margin-bottom: 30px;
+			}
+		}
+		@media (max-width: 519px) {
 			.emo-adsterra-slot--footer-banner {
-				width: 100%;
-				max-width: 100%;
-				margin: clamp(24px, 7vw, 36px) auto;
+				display: none !important;
 			}
 		}
 	</style>
