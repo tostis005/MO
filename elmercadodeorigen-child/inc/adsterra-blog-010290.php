@@ -180,6 +180,33 @@ function elmercado_adsterra_styles_010290(): void {
 		.emo-adsterra-slot.is-eligible {
 			display: block;
 		}
+		html.emo-adsterra-adsense-fallback .emo-adsterra-slot.is-adsense-fallback {
+			display: block !important;
+			position: static !important;
+			width: 100% !important;
+			max-width: 100% !important;
+			height: auto !important;
+			min-height: 0 !important;
+			margin: clamp(28px, 5vw, 46px) auto !important;
+			padding: 0 !important;
+			overflow: visible !important;
+		}
+		html.emo-adsterra-adsense-fallback .emo-adsterra-native-shell.is-adsense-fallback {
+			display: block !important;
+			margin-top: clamp(34px, 5vw, 58px);
+			margin-bottom: clamp(34px, 5vw, 58px);
+		}
+		html.emo-adsterra-adsense-fallback .emo-adsterra-slot.is-adsense-fallback > .emo-adsterra-mount {
+			display: block;
+			overflow: visible;
+		}
+		html.emo-adsterra-adsense-fallback .emo-adsterra-slot.is-adsense-fallback ins.adsbygoogle[data-ad-status="unfilled"] {
+			display: none !important;
+			height: 0 !important;
+			min-height: 0 !important;
+			margin: 0 !important;
+			padding: 0 !important;
+		}
 		html.emo-adblock-detected .emo-adsterra-slot,
 		html.emo-adblock-detected .emo-adsterra-native-shell {
 			display: none !important;
@@ -342,8 +369,8 @@ function elmercado_adsterra_frame_response_010291(): void {
 	var sent = false;
 
 	function notify(type) {
-		if (sent && type === 'emo-adsterra-rendered') return;
-		if (type === 'emo-adsterra-rendered') sent = true;
+		if (sent) return;
+		sent = true;
 		window.parent.postMessage({ type: type, token: token }, window.location.origin);
 	}
 
@@ -351,7 +378,11 @@ function elmercado_adsterra_frame_response_010291(): void {
 		if (!node || node.getAttribute('data-emo-adsterra-watch') === '1') return;
 		node.setAttribute('data-emo-adsterra-watch', '1');
 		node.addEventListener('load', function () { notify('emo-adsterra-rendered'); }, { once: true });
-		node.addEventListener('error', function () { notify('emo-adsterra-blocked'); }, { once: true });
+
+		if (node.tagName === 'IFRAME' && (node.getAttribute('src') || '').trim() !== '') {
+			notify('emo-adsterra-rendered');
+			return;
+		}
 
 		if (node.tagName === 'IMG' && node.complete && node.naturalWidth > 0) {
 			notify('emo-adsterra-rendered');
@@ -376,6 +407,9 @@ function elmercado_adsterra_frame_response_010291(): void {
 		subtree: true
 	});
 	inspect();
+	window.setTimeout(function () {
+		if (!sent) notify('emo-adsterra-blocked');
+	}, 6000);
 })();
 </script>
 <script>
@@ -410,8 +444,11 @@ function elmercado_adsterra_enqueue_controller_010290(): void {
 		$handle,
 		'ElMercadoAdsterraGeo',
 		array(
-			'endpoint'      => esc_url_raw( rest_url( 'elmercado/v1/blog-ad-eligibility' ) ),
-			'frameEndpoint' => esc_url_raw( home_url( '/' ) ),
+			'endpoint'             => esc_url_raw( rest_url( 'elmercado/v1/blog-ad-eligibility' ) ),
+			'frameEndpoint'        => esc_url_raw( home_url( '/' ) ),
+			'adsensePublisher'     => defined( 'ELMERCADO_ADSENSE_PUBLISHER' ) ? ELMERCADO_ADSENSE_PUBLISHER : '',
+			'adsenseInArticleSlot' => defined( 'ELMERCADO_ADSENSE_INARTICLE_SLOT' ) ? ELMERCADO_ADSENSE_INARTICLE_SLOT : '',
+			'fallbackTimeout'      => 6500,
 		)
 	);
 }
