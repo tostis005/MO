@@ -5,6 +5,8 @@
 	var frameCounter = 0;
 	var adBlockDetected = false;
 	var adBlockCheckDone = false;
+	var adBlockCheckStarted = false;
+	var finalHydrationScheduled = false;
 	var hydrationPending = false;
 	var fallbackTimer = null;
 	var fallbackStarted = false;
@@ -70,6 +72,27 @@
 
 	function googleScriptExists() {
 		return !!document.querySelector('script[src*="pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"]');
+	}
+
+	function preconnect(origin) {
+		if (!origin || !document.head) return;
+		if (document.querySelector('link[data-emo-ad-preconnect="' + origin + '"]')) return;
+		var link = document.createElement('link');
+		link.rel = 'preconnect';
+		link.href = origin;
+		link.crossOrigin = 'anonymous';
+		link.setAttribute('data-emo-ad-preconnect', origin);
+		document.head.appendChild(link);
+	}
+
+	function preconnectAdsterra() {
+		preconnect('https://www.highrevenueformat.com');
+		preconnect('https://pl31502847.profitableratecpmnetwork.com');
+	}
+
+	function preconnectGoogle() {
+		preconnect('https://pagead2.googlesyndication.com');
+		preconnect('https://googleads.g.doubleclick.net');
 	}
 
 	function loadAdsenseFallbackScript() {
@@ -193,6 +216,7 @@
 		}
 
 		fallbackStarted = true;
+		preconnectGoogle();
 		if (fallbackTimer) {
 			window.clearTimeout(fallbackTimer);
 			fallbackTimer = null;
@@ -282,7 +306,8 @@
 	}
 
 	function detectCosmeticAdBlock() {
-		if (!document.body) return;
+		if (adBlockCheckStarted || !document.body) return;
+		adBlockCheckStarted = true;
 
 		var bait = document.createElement('div');
 		bait.className = 'adsbox ad-banner ad-placement ad-unit ad-zone';
@@ -301,6 +326,36 @@
 				finishAdBlockCheck(blocked);
 			});
 		});
+	}
+
+	function scheduleCosmeticAdBlockCheck() {
+		if (document.body) {
+			detectCosmeticAdBlock();
+			return;
+		}
+
+		if (!document.documentElement) {
+			window.setTimeout(scheduleCosmeticAdBlockCheck, 0);
+			return;
+		}
+
+		var observer = new MutationObserver(function () {
+			if (!document.body) return;
+			observer.disconnect();
+			detectCosmeticAdBlock();
+		});
+		observer.observe(document.documentElement, { childList: true });
+	}
+
+	function scheduleFinalHydration() {
+		if (finalHydrationScheduled || document.readyState !== 'loading') return;
+		finalHydrationScheduled = true;
+		document.addEventListener('DOMContentLoaded', function () {
+			finalHydrationScheduled = false;
+			if (debug.showAds === true && adBlockCheckDone && !adBlockDetected) {
+				hydrateEligibleSlots();
+			}
+		}, { once: true });
 	}
 
 	function renderDebug() {
@@ -395,6 +450,8 @@
 		frame.setAttribute('scrolling', 'no');
 		frame.setAttribute('frameborder', '0');
 		frame.setAttribute('data-emo-adsterra-token', token);
+		frame.setAttribute('loading', 'eager');
+		if (unitName.indexOf('responsive-') === 0) frame.setAttribute('fetchpriority', 'high');
 		frame.style.cssText = 'display:block;border:0;max-width:100%;overflow:hidden;background:transparent;';
 
 		var separator = config.frameEndpoint.indexOf('?') === -1 ? '?' : '&';
@@ -541,7 +598,9 @@
 		debug.error = null;
 
 		if (debug.showAds) {
+			preconnectAdsterra();
 			setPhase('eligible');
+			scheduleFinalHydration();
 			hydrateEligibleSlots();
 		} else {
 			setPhase('not_eligible_no_ads');
@@ -641,11 +700,7 @@
 		}
 	}
 
-	if (document.readyState === 'loading') {
-		document.addEventListener('DOMContentLoaded', detectCosmeticAdBlock, { once: true });
-	} else {
-		detectCosmeticAdBlock();
-	}
+	scheduleCosmeticAdBlockCheck();
 
 	if (!config.endpoint || !config.frameEndpoint || typeof window.fetch !== 'function') {
 		debug.error = 'Missing endpoint, frame endpoint or Fetch API';
