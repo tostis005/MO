@@ -13,6 +13,7 @@ on:
       - 'elmercadodeorigen-child/assets/js/adsterra-geo-010290.js'
       - 'elmercadodeorigen-child/assets/ad-geo-fast.php'
       - 'elmercadodeorigen-child/assets/adsterra-frame.html'
+      - 'elmercadodeorigen-child/dropins/advanced-cache.php'
   workflow_dispatch:
 
 permissions:
@@ -46,6 +47,7 @@ jobs:
           node --check elmercadodeorigen-child/assets/js/adsense-geo-010266.js
           node --check elmercadodeorigen-child/assets/js/adsterra-geo-010290.js
           php -l elmercadodeorigen-child/assets/ad-geo-fast.php
+          php -l elmercadodeorigen-child/dropins/advanced-cache.php
           grep -q 'highrevenueformat.com' elmercadodeorigen-child/assets/adsterra-frame.html
           grep -q "ELMERCADO_BLOG_AD_PROVIDER', 'adsterra'" elmercadodeorigen-child/functions.php
           grep -q 'a83b8ce6c354e77b2ae5f266936bd60f' elmercadodeorigen-child/assets/js/adsterra-geo-010290.js
@@ -66,12 +68,13 @@ jobs:
           SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
 
           tmp_root="/tmp/elmercado-blog-ads-${GITHUB_RUN_ID}"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$tmp_root/inc' '$tmp_root/assets/js'"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$tmp_root/inc' '$tmp_root/assets/js' '$tmp_root/dropins'"
 
           for file in             functions.php             single.php             inc/adsense-geo-010266.php             inc/adsterra-blog-010290.php             assets/js/adsense-geo-010266.js             assets/js/adsterra-geo-010290.js             assets/ad-geo-fast.php             assets/adsterra-frame.html
           do
             sshpass -e scp $SCP_OPTIONS "elmercadodeorigen-child/$file" "$STAGING_USER@$STAGING_HOST:$tmp_root/$file"
           done
+          sshpass -e scp $SCP_OPTIONS "elmercadodeorigen-child/dropins/advanced-cache.php" "$STAGING_USER@$STAGING_HOST:$tmp_root/dropins/advanced-cache.php"
 
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$tmp_root'" <<'REMOTE'
           set -euo pipefail
@@ -103,6 +106,7 @@ jobs:
           "$php_bin" -l "$tmp_root/inc/adsense-geo-010266.php"
           "$php_bin" -l "$tmp_root/inc/adsterra-blog-010290.php"
           "$php_bin" -l "$tmp_root/assets/ad-geo-fast.php"
+          "$php_bin" -l "$tmp_root/dropins/advanced-cache.php"
 
           for file in             functions.php             single.php             inc/adsense-geo-010266.php             inc/adsterra-blog-010290.php             assets/js/adsense-geo-010266.js             assets/js/adsterra-geo-010290.js             assets/ad-geo-fast.php             assets/adsterra-frame.html
           do
@@ -112,11 +116,17 @@ jobs:
             install -m 0644 "$tmp_root/$file" "$destination"
           done
 
+          advanced_cache="$prod_path/wp-content/advanced-cache.php"
+          [ ! -f "$advanced_cache" ] || cp -p "$advanced_cache" "${advanced_cache}.bak-${stamp}"
+          install -m 0644 "$tmp_root/dropins/advanced-cache.php" "$advanced_cache"
+          rm -rf "$prod_path/wp-content/uploads/elmercado-blog-static-v1"
+
           "$php_bin" -l "$theme_path/functions.php"
           "$php_bin" -l "$theme_path/single.php"
           "$php_bin" -l "$theme_path/inc/adsense-geo-010266.php"
           "$php_bin" -l "$theme_path/inc/adsterra-blog-010290.php"
           "$php_bin" -l "$theme_path/assets/ad-geo-fast.php"
+          "$php_bin" -l "$prod_path/wp-content/advanced-cache.php"
 
           "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod_path" --allow-root >/dev/null 2>&1 || true
 
@@ -175,6 +185,35 @@ jobs:
           echo "--- STATIC AD FRAME ---"
           frame_html=$(curl -fsSL --max-time 5 "${site_url}/wp-content/themes/${stylesheet}/assets/adsterra-frame.html?unit=rectangle&token=verify")
           grep -q 'highrevenueformat.com' <<< "$frame_html"
+
+          echo "--- BLOG EARLY CACHE ---"
+          post_path=$(printf '%s' "$post_url" | sed -E 's#https?://[^/]+##')
+          rm -rf "$prod_path/wp-content/uploads/elmercado-blog-static-v1"
+
+          curl -ksS --resolve www.elmercadodeorigen.com:443:127.0.0.1 --max-time 45             -D /tmp/blog-cache-prime.h -o /tmp/blog-cache-prime.html             -w 'prime_http=%{http_code} prime_ttfb=%{time_starttransfer} prime_total=%{time_total}\n'             "https://www.elmercadodeorigen.com${post_path}"
+          grep -q 'data-emo-adsterra-slot=' /tmp/blog-cache-prime.html
+          if grep -qi '^X-El-Mercado-Blog-Early-Cache: HIT' /tmp/blog-cache-prime.h; then
+            echo "Unexpected early HIT on prime"
+            exit 31
+          fi
+
+          curl -ksS --resolve www.elmercadodeorigen.com:443:127.0.0.1 --max-time 15             -D /tmp/blog-cache-hit.h -o /tmp/blog-cache-hit.html             -w 'hit_http=%{http_code} hit_ttfb=%{time_starttransfer} hit_total=%{time_total}\n'             "https://www.elmercadodeorigen.com${post_path}"
+          grep -qi '^X-El-Mercado-Blog-Early-Cache: HIT' /tmp/blog-cache-hit.h
+          grep -q 'data-emo-adsterra-slot=' /tmp/blog-cache-hit.html
+
+          curl -ksS --resolve www.elmercadodeorigen.com:443:127.0.0.1 --max-time 45             -H 'Cookie: emo_cache_bypass=1' -D /tmp/blog-cache-cookie.h -o /dev/null             "https://www.elmercadodeorigen.com${post_path}"
+          if grep -qi '^X-El-Mercado-Blog-Early-Cache: HIT' /tmp/blog-cache-cookie.h; then
+            echo "Cookie request was early cached"
+            exit 32
+          fi
+
+          curl -ksS --resolve www.elmercadodeorigen.com:443:127.0.0.1 --max-time 45             -D /tmp/blog-cache-query.h -o /dev/null             "https://www.elmercadodeorigen.com${post_path}?emo_cache_bypass=1"
+          if grep -qi '^X-El-Mercado-Blog-Early-Cache: HIT' /tmp/blog-cache-query.h; then
+            echo "Query request was early cached"
+            exit 33
+          fi
+
+          echo "BLOG_EARLY_CACHE_QA=PASS"
 
           echo "--- GENERIC REST ENDPOINT ---"
           route_registered=$("$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod_path" --allow-root '
