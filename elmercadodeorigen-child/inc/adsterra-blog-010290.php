@@ -368,33 +368,6 @@ function elmercado_adsterra_styles_010290(): void {
 		.emo-adsterra-slot.is-eligible {
 			display: block;
 		}
-		html.emo-adsterra-adsense-fallback .emo-adsterra-slot.is-adsense-fallback {
-			display: block !important;
-			position: static !important;
-			width: 100% !important;
-			max-width: 100% !important;
-			height: auto !important;
-			min-height: 0 !important;
-			margin: clamp(28px, 5vw, 46px) auto !important;
-			padding: 0 !important;
-			overflow: visible !important;
-		}
-		html.emo-adsterra-adsense-fallback .emo-adsterra-native-shell.is-adsense-fallback {
-			display: block !important;
-			margin-top: clamp(34px, 5vw, 58px);
-			margin-bottom: clamp(34px, 5vw, 58px);
-		}
-		html.emo-adsterra-adsense-fallback .emo-adsterra-slot.is-adsense-fallback > .emo-adsterra-mount {
-			display: block;
-			overflow: visible;
-		}
-		html.emo-adsterra-adsense-fallback .emo-adsterra-slot.is-adsense-fallback ins.adsbygoogle[data-ad-status="unfilled"] {
-			display: none !important;
-			height: 0 !important;
-			min-height: 0 !important;
-			margin: 0 !important;
-			padding: 0 !important;
-		}
 		html.emo-adblock-detected .emo-adsterra-slot,
 		html.emo-adblock-detected .emo-adsterra-native-shell {
 			display: none !important;
@@ -679,9 +652,7 @@ function elmercado_adsterra_enqueue_controller_010290(): void {
 			'frameEndpoint'        => esc_url_raw( ELMERCADO_THEME_URL . '/assets/adsterra-frame.html' ),
 			'shippableCountries'   => function_exists( 'elmercado_adsense_get_shippable_countries' ) ? elmercado_adsense_get_shippable_countries() : array(),
 			'adsensePublisher'     => defined( 'ELMERCADO_ADSENSE_PUBLISHER' ) ? ELMERCADO_ADSENSE_PUBLISHER : '',
-			'adsenseInArticleSlot' => defined( 'ELMERCADO_ADSENSE_INARTICLE_SLOT' ) ? ELMERCADO_ADSENSE_INARTICLE_SLOT : '',
 			'slotTimeout'          => 2600,
-			'fallbackTimeout'      => 0,
 		)
 	);
 }
