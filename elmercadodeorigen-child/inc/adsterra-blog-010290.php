@@ -41,6 +41,58 @@ function elmercado_blog_static_cache_file_010299( string $path ): string {
 	return elmercado_blog_static_cache_dir_010299() . '/' . $key . '.html';
 }
 
+/**
+ * Permite cachear cookies que no cambian el HTML editorial ni el estado de compra.
+ *
+ * Cualquier cookie no reconocida sigue forzando WordPress completo. Esto evita
+ * compartir HTML de sesiones, login, carrito, wishlist o integraciones futuras.
+ */
+function elmercado_blog_static_cache_has_stateful_cookie_010300(): bool {
+	if ( empty( $_COOKIE ) ) {
+		return false;
+	}
+
+	$harmless_prefixes = array(
+		'_ga',
+		'_gid',
+		'_gat',
+		'_gcl_',
+		'_fbp',
+		'_fbc',
+		'_pin_unauth',
+		'cookielawinfo-',
+		'sbjs_',
+		'tk_',
+	);
+	$harmless_exact = array(
+		'CookieLawInfoConsent',
+		'viewed_cookie_policy',
+		'total_page',
+	);
+
+	foreach ( array_keys( $_COOKIE ) as $cookie_name ) {
+		$cookie_name = (string) $cookie_name;
+
+		if ( in_array( $cookie_name, $harmless_exact, true ) ) {
+			continue;
+		}
+
+		$harmless = false;
+		foreach ( $harmless_prefixes as $prefix ) {
+			if ( 0 === strpos( $cookie_name, $prefix ) ) {
+				$harmless = true;
+				break;
+			}
+		}
+
+		if ( ! $harmless ) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 function elmercado_blog_static_cache_request_010299(): bool {
 	if ( is_admin() || ! is_singular( 'post' ) || is_preview() || is_customize_preview() || is_user_logged_in() ) {
 		return false;
@@ -52,8 +104,9 @@ function elmercado_blog_static_cache_request_010299(): bool {
 		return false;
 	}
 
-	// Máxima seguridad: cualquier cookie implica que WordPress debe responder.
-	if ( ! empty( $_COOKIE ) ) {
+	// Solo las cookies analíticas/consentimiento conocidas pueden reutilizar HTML.
+	// Cualquier cookie de estado real o desconocida mantiene el bypass seguro.
+	if ( elmercado_blog_static_cache_has_stateful_cookie_010300() ) {
 		return false;
 	}
 
