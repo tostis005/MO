@@ -624,8 +624,6 @@ function elmercado_adsterra_preload_controller_010301(): void {
 	$fast_geo  = ELMERCADO_THEME_URL . '/assets/ad-geo-fast.php';
 
 	printf(
-		'<link rel="preconnect" href="https://www.highrevenueformat.com" crossorigin>' . "\n" .
-		'<link rel="preconnect" href="https://pl31502847.profitableratecpmnetwork.com" crossorigin>' . "\n" .
 		'<link rel="preload" as="script" href="%1$s" fetchpriority="high">' . "\n",
 		esc_url( $src )
 	);
