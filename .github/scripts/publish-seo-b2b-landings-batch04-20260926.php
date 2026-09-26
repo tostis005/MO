@@ -106,6 +106,12 @@ array(
 <h2>Entrega y discreción</h2>
 <p>La dirección debe confirmarse y, si se trata de una oficina, conviene saber quién puede recibir el paquete. Para domicilios particulares, la empresa debe gestionar los datos de manera adecuada.</p>
 <p>Si existe una fecha vinculada a una reunión, aniversario o cierre de proyecto, indícala desde el principio.</p>
+<h2>Cuándo conviene evitar un regalo demasiado personal</h2>
+<p>Que el cliente sea importante no significa que debamos conocer o utilizar detalles de su vida privada. Si no existe confianza suficiente, es mejor elegir un producto gastronómico de calidad y fácil de entender que intentar acertar con gustos muy específicos.</p>
+<p>También conviene evitar regalos que puedan generar incomodidad por su valor o por la normativa interna de la empresa receptora. Ante la duda, una propuesta sobria, bien seleccionada y acompañada de un mensaje profesional suele funcionar mejor.</p>
+<h2>Cómo elegir entre una pieza y una selección</h2>
+<p>Una pieza protagonista transmite más presencia y puede ser adecuada para un cliente con el que existe una relación consolidada. Una selección de varios productos, en cambio, ofrece variedad y puede resultar más fácil de compartir con un equipo.</p>
+<p>La decisión debería depender del contexto, del presupuesto y de cómo se espera que el destinatario disfrute el regalo, no simplemente de cuál ocupa más espacio.</p>
 <h2>Qué información nos ayuda a recomendar mejor</h2>
 <p>Presupuesto, ocasión, relación con el cliente, fecha, lugar de entrega y cualquier preferencia conocida. Con esos datos podemos revisar qué productos reales están disponibles y qué formato puede funcionar mejor.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Haz que el regalo tenga una razón detrás</h2><p>Explícanos el contexto y revisaremos una propuesta gastronómica acorde al cliente y al presupuesto.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Contactar</a></p></div>
@@ -150,6 +156,12 @@ array(
 <h2>Planifica con margen</h2>
 <p>Especialmente en Navidad, los productos y formatos con mejor relación calidad-precio pueden agotarse o quedar limitados en grandes cantidades.</p>
 <p>Cuanto antes se conozca el presupuesto y el volumen, más opciones hay para comparar.</p>
+<h2>Ejemplos de cómo repartir el presupuesto</h2>
+<p>Si el presupuesto es contenido, puede concentrarse casi todo el valor en una referencia principal y utilizar un complemento pequeño. En un rango medio, se puede repartir entre dos o tres categorías para ganar variedad. En un presupuesto alto, puede resultar más coherente mejorar la categoría de la pieza protagonista que añadir productos secundarios sin demasiado interés.</p>
+<p>Este enfoque ayuda a que cada euro contribuya al valor percibido del regalo. La composición final debe revisarse siempre con precios y disponibilidad reales.</p>
+<h2>Presupuesto anual frente a regalo puntual</h2>
+<p>Si la empresa hace varios regalos durante el año, conviene pensar el presupuesto de forma global. Navidad, reconocimientos, aniversarios o incorporaciones pueden competir por la misma partida.</p>
+<p>Definir una política sencilla de rangos por ocasión facilita tomar decisiones coherentes y evita improvisar cada vez que surge la necesidad de regalar.</p>
 <h2>Qué datos necesitamos</h2>
 <p>Número de empleados, rango de presupuesto por persona, fecha, forma de entrega y cualquier requisito especial. Con esos datos podremos revisar propuestas realistas.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Dinos tu presupuesto y construimos desde ahí</h2><p>Revisaremos qué productos disponibles ofrecen más valor dentro del rango indicado.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Ir a contacto</a></p></div>
@@ -194,6 +206,14 @@ array(
 <h2>Evita complicar el pedido innecesariamente</h2>
 <p>La flexibilidad de una pyme no significa que convenga crear diez variantes distintas. Incluso con equipos pequeños, mantener una selección sencilla reduce errores y facilita la entrega.</p>
 <p>Una propuesta clara suele funcionar mejor.</p>
+<h2>Ventajas de comprar pocas unidades</h2>
+<p>Los pedidos pequeños permiten reaccionar con más facilidad a la disponibilidad real y explorar referencias que quizá no serían viables para cientos de personas. También hacen posible dedicar más tiempo a comparar formatos y a elegir una propuesta con mayor personalidad.</p>
+<p>Esto no significa que todos los productores puedan personalizar o preparar cualquier cantidad, pero sí que existe más margen para estudiar alternativas.</p>
+<h2>Regalos para clientes de una pyme</h2>
+<p>Las pequeñas empresas suelen tener relaciones muy directas con determinados clientes. Un regalo gastronómico puede funcionar bien para agradecer una colaboración importante sin recurrir a merchandising.</p>
+<p>En estos casos puede ser suficiente un producto protagonista acompañado de una nota breve que explique el motivo del detalle.</p>
+<h2>Cómo no sobredimensionar el regalo</h2>
+<p>Una pyme no necesita competir con los presupuestos de una gran corporación. El valor del gesto está en la elección y en la relación con el destinatario. Un detalle proporcionado y bien pensado suele tener más sentido que una propuesta excesiva que no encaja con la cultura de la empresa.</p>
 <h2>Qué información necesitamos</h2>
 <p>Número de personas, presupuesto, ocasión, fecha y forma de entrega. Si conoces preferencias generales del equipo, también puedes indicarlas.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Haz que un pedido pequeño tenga personalidad</h2><p>Envíanos cantidades y presupuesto y revisaremos qué productos pueden encajar mejor.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Hablar con nosotros</a></p></div>
@@ -238,6 +258,12 @@ array(
 <h2>Clientes y empleados: diferencias de gestión</h2>
 <p>En empleados, la empresa suele disponer de un canal directo para confirmar datos. En clientes, puede ser necesario coordinar con equipos comerciales o validar previamente que la dirección sea adecuada para recibir un regalo.</p>
 <p>En ambos casos, cuanto más limpia esté la base de datos, menos incidencias habrá.</p>
+<h2>Cómo preparar una base de datos de envíos</h2>
+<p>Antes de pasar las direcciones a producción conviene hacer una revisión final. Elimina duplicados, comprueba códigos postales, valida teléfonos cuando sean necesarios y separa claramente la dirección de facturación de la de entrega.</p>
+<p>Si existen varios grupos de destinatarios, añade una columna que identifique qué regalo corresponde a cada uno. Esto reduce errores cuando hay más de una propuesta.</p>
+<h2>Qué hacer con direcciones pendientes</h2>
+<p>No conviene retrasar todo el proyecto porque falten dos o tres domicilios. Puede establecerse una fecha de cierre y gestionar las excepciones de forma separada, siempre que la logística lo permita.</p>
+<p>Lo importante es comunicar cualquier cambio antes de que los pedidos entren en preparación. Una vez expedido un paquete, modificar el destino puede ser difícil o imposible.</p>
 <h2>Qué necesitamos para valorar el envío</h2>
 <p>Número de destinatarios, provincias o zonas aproximadas, presupuesto por regalo, fecha objetivo y productos o categorías preferidas. No hace falta enviar datos personales en la primera consulta; basta con entender la escala y distribución.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Planifica los envíos antes de elegir el regalo</h2><p>Cuéntanos el volumen y la distribución aproximada y revisaremos qué opciones pueden funcionar.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Ir al formulario de contacto</a></p></div>
