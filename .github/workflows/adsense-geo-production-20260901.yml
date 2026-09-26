@@ -52,18 +52,11 @@ jobs:
           grep -q 'a83b8ce6c354e77b2ae5f266936bd60f' elmercadodeorigen-child/assets/js/adsterra-geo-010290.js
           grep -q '4e02d145fdb84842713b24a4bade6244' elmercadodeorigen-child/assets/js/adsterra-geo-010290.js
           grep -q '3de18866861c081d6eb282ad00fe2bee' elmercadodeorigen-child/assets/js/adsterra-geo-010290.js
-          if grep -q 'pagead2.googlesyndication.com' elmercadodeorigen-child/assets/js/adsterra-geo-010290.js; then
-            echo "Google script reference found in Adsterra controller"
-            exit 1
-          fi
-          if grep -q 'adsensePublisher\|loadGoogleAnchorScript\|preconnectGoogle' elmercadodeorigen-child/assets/js/adsterra-geo-010290.js; then
-            echo "Google/AdSense runtime found in Adsterra controller"
-            exit 1
-          fi
-          if grep -q 'adsensePublisher' elmercadodeorigen-child/inc/adsterra-blog-010290.php; then
-            echo "AdSense config found in Adsterra PHP"
-            exit 1
-          fi
+          grep -q 'pagead2.googlesyndication.com/pagead/js/adsbygoogle.js' elmercadodeorigen-child/assets/js/adsterra-geo-010290.js
+          grep -q 'activateGoogleFallback' elmercadodeorigen-child/assets/js/adsterra-geo-010290.js
+          grep -q 'adsenseInArticleSlot' elmercadodeorigen-child/assets/js/adsterra-geo-010290.js
+          grep -q 'adsensePublisher' elmercadodeorigen-child/inc/adsterra-blog-010290.php
+          grep -q 'adsenseInArticleSlot' elmercadodeorigen-child/inc/adsterra-blog-010290.php
 
       - name: Deploy provider switch and verify production
         shell: bash
