@@ -1,0 +1,85 @@
+name: Audit Adsterra slot lifecycle
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/adsterra-slot-audit-20260926.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --quiet selenium
+      - name: Audit every ad slot
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,time
+          from selenium import webdriver
+          from selenium.common.exceptions import TimeoutException
+          from selenium.webdriver.chrome.options import Options
+
+          url='https://www.elmercadodeorigen.com/dop-jabugo-que-garantiza-territorio-como-reconocer-jamon/?adsterra_debug=1&slot_audit=1'
+          o=Options(); o.page_load_strategy='none'
+          for a in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1440,1800','--lang=en-US'):
+              o.add_argument(a)
+          d=webdriver.Chrome(options=o); d.set_page_load_timeout(45)
+          d.execute_cdp_cmd('Network.enable',{})
+          d.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument',{'source':"""
+          (()=>{const f=window.fetch;window.fetch=function(input,init){
+            const u=typeof input==='string'?input:(input&&input.url)||'';
+            if(u.includes('/assets/ad-geo-fast.php')||u.includes('/wp-json/elmercado/v1/blog-ad-eligibility')){
+              init=Object.assign({},init||{});const h=new Headers(init.headers||{});
+              h.set('X-Country-Code','ZA');init.headers=h;
+            }
+            return f.call(this,input,init);
+          };})();"""})
+          started=time.time()
+          try:
+              d.get(url)
+          except TimeoutException:
+              pass
+
+          def snap(label):
+              state=d.execute_script(r"""
+                return {
+                  t:Math.round(performance.now()),
+                  readyState:document.readyState,
+                  debug:window.ElMercadoAdsterraGeoDebug||null,
+                  slots:Array.from(document.querySelectorAll('[data-emo-adsterra-slot]')).map((s,i)=>({
+                    i,
+                    type:s.getAttribute('data-emo-adsterra-slot'),
+                    state:s.getAttribute('data-emo-adsterra-state'),
+                    hydrated:s.getAttribute('data-emo-adsterra-hydrated'),
+                    eligible:s.classList.contains('is-eligible'),
+                    fallback:s.classList.contains('is-adsense-fallback'),
+                    display:getComputedStyle(s).display,
+                    h:Math.round(s.getBoundingClientRect().height),
+                    frames:s.querySelectorAll('iframe').length,
+                    adStatus:(s.querySelector('ins.adsbygoogle')||{}).getAttribute?.('data-ad-status')||null
+                  }))
+                };
+              """)
+              print(label+'='+json.dumps(state,sort_keys=True),flush=True)
+
+          for target in (1,2,3,4,5,7,10,13):
+              remain=target-(time.time()-started)
+              if remain>0: time.sleep(remain)
+              snap('T'+str(target))
+
+          perf=d.execute_script(r"""
+            return performance.getEntriesByType('resource').map(r=>({
+              name:r.name,start:Math.round(r.startTime),dur:Math.round(r.duration),initiator:r.initiatorType
+            })).filter(r=>/adsterra|highrevenueformat|profitableratecpmnetwork|googlesyndication|doubleclick|ad-geo-fast/.test(r.name));
+          """)
+          print('RESOURCES='+json.dumps(perf,sort_keys=True),flush=True)
+          d.quit()
+          PY
