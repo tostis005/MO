@@ -49,7 +49,7 @@ jobs:
           php -l elmercadodeorigen-child/assets/ad-geo-fast.php
           php -l elmercadodeorigen-child/dropins/advanced-cache.php
           grep -q 'highrevenueformat.com' elmercadodeorigen-child/assets/adsterra-frame.html
-          grep -q "ELMERCADO_BLOG_AD_PROVIDER', 'adsterra'" elmercadodeorigen-child/functions.php
+          grep -q "ELMERCADO_BLOG_AD_PROVIDER', 'adsense'" elmercadodeorigen-child/functions.php
           grep -q 'a83b8ce6c354e77b2ae5f266936bd60f' elmercadodeorigen-child/assets/js/adsterra-geo-010290.js
           grep -q '4e02d145fdb84842713b24a4bade6244' elmercadodeorigen-child/assets/js/adsterra-geo-010290.js
           grep -q '3de18866861c081d6eb282ad00fe2bee' elmercadodeorigen-child/assets/js/adsterra-geo-010290.js
@@ -132,7 +132,7 @@ jobs:
 
           provider=$("$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod_path" --allow-root 'echo defined("ELMERCADO_BLOG_AD_PROVIDER") ? ELMERCADO_BLOG_AD_PROVIDER : "missing";' 2>/dev/null)
           echo "BLOG_AD_PROVIDER=$provider"
-          test "$provider" = "adsterra"
+          test "$provider" = "adsense"
 
           echo "--- COUNTRY LOGIC ---"
           country_results=$("$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod_path" --allow-root '
@@ -160,20 +160,15 @@ jobs:
           post_html=$(curl -fsSL --max-time 25 "${post_url}?blog_ads_verify=${nonce}")
           head_html="${post_html%%</head>*}"
 
-          grep -q 'adsterra-geo-010290.js' <<< "$head_html"
+          grep -q 'adsense-geo-010266.js' <<< "$head_html"
           grep -q 'ad-geo-fast.php' <<< "$head_html"
-          grep -q 'adsterra-frame.html' <<< "$head_html"
-          grep -q 'data-emo-adsterra-slot=' <<< "$post_html"
-          if grep -q 'adsense-geo-010266.js' <<< "$head_html"; then
-            echo "AdSense controller is active while provider=adsterra"
+          grep -q 'pagead2.googlesyndication.com/pagead/js/adsbygoogle.js' <<< "$head_html"
+          if grep -q 'adsterra-geo-010290.js' <<< "$head_html"; then
+            echo "Adsterra controller is active while provider=adsense"
             exit 1
           fi
-          if grep -q 'pagead2.googlesyndication.com/pagead/js/adsbygoogle.js' <<< "$head_html"; then
-            echo "Google ad loader is active while provider=adsterra"
-            exit 1
-          fi
-          if grep -q 'profitableratecpmnetwork.com/a83b8ce6c354e77b2ae5f266936bd60f/invoke.js' <<< "$post_html"; then
-            echo "Adsterra network script loaded before geography eligibility"
+          if grep -q 'data-emo-adsterra-slot=' <<< "$post_html"; then
+            echo "Adsterra placeholders are active while provider=adsense"
             exit 1
           fi
 
@@ -191,7 +186,7 @@ jobs:
           rm -rf "$prod_path/wp-content/uploads/elmercado-blog-static-v1"
 
           curl -ksS --max-time 45             -D /tmp/blog-cache-prime.h -o /tmp/blog-cache-prime.html             -w 'prime_http=%{http_code} prime_ttfb=%{time_starttransfer} prime_total=%{time_total}\n'             "${site_url}${post_path}"
-          grep -q 'data-emo-adsterra-slot=' /tmp/blog-cache-prime.html
+          grep -q 'adsense-geo-010266.js' /tmp/blog-cache-prime.html
           if grep -qi '^X-El-Mercado-Blog-Early-Cache: HIT' /tmp/blog-cache-prime.h; then
             echo "Unexpected early HIT on prime"
             exit 31
@@ -199,7 +194,7 @@ jobs:
 
           curl -ksS --max-time 15             -D /tmp/blog-cache-hit.h -o /tmp/blog-cache-hit.html             -w 'hit_http=%{http_code} hit_ttfb=%{time_starttransfer} hit_total=%{time_total}\n'             "${site_url}${post_path}"
           grep -qi '^X-El-Mercado-Blog-Early-Cache: HIT' /tmp/blog-cache-hit.h
-          grep -q 'data-emo-adsterra-slot=' /tmp/blog-cache-hit.html
+          grep -q 'adsense-geo-010266.js' /tmp/blog-cache-hit.html
 
           curl -ksS --max-time 45             -H 'Cookie: emo_cache_bypass=1' -D /tmp/blog-cache-cookie.h -o /dev/null             "${site_url}${post_path}"
           if grep -qi '^X-El-Mercado-Blog-Early-Cache: HIT' /tmp/blog-cache-cookie.h; then
