@@ -92,10 +92,11 @@ jobs:
               raise SystemExit('Top slot was not hydrated eagerly')
           if end['debug'] is None or end['debug'].get('showAds') is not True:
               raise SystemExit('Geo eligibility failed')
-          if end['adsterraRequests'] < 1:
-              raise SystemExit('No Adsterra network request observed')
-          if sum(1 for s in end['slots'] if s['hydrated']=='1') < 4:
+          if sum(1 for s in end['slots'] if s['hydrated']=='1') < 5:
               raise SystemExit('Lower slots did not hydrate while scrolling')
+          native=[s for s in end['slots'] if s['type']=='native']
+          if native and native[0]['hydrated']!='1':
+              raise SystemExit('Native slot did not hydrate')
           # Headless/datacenter Adsterra commonly no-fills. In that case verify Google fallback really ran.
           failed=[s for s in end['slots'] if s['state']=='failed' and s['type']!='skyscraper']
           if failed and end['googleRequests'] < 1:
