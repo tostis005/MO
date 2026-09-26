@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.302' );
-/* 0.10.302 restaura formatos Adsterra distintos por posicion y dispositivo. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.303' );
+/* 0.10.303 amplía la ventana de carga de Adsterra sin ocultar el hueco durante la espera. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
 	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsterra' ); // 'adsense' | 'adsterra'
 }
