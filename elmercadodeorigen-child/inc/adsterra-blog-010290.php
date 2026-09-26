@@ -423,6 +423,34 @@ function elmercado_adsterra_styles_010290(): void {
 			display: block;
 			overflow: visible;
 		}
+		.emo-article-content .emo-inarticle-ad-slot {
+			display: none;
+			width: 100%;
+			min-width: 0;
+			min-height: 0;
+			margin: 0;
+			padding: 0;
+			box-sizing: border-box;
+		}
+		.emo-article-content .emo-inarticle-ad-slot.is-requested {
+			display: block;
+		}
+		.emo-article-content .emo-inarticle-ad-slot.is-filled {
+			margin: clamp(28px, 5vw, 46px) 0;
+		}
+		.emo-article-content .emo-inarticle-ad-slot > ins.adsbygoogle {
+			display: block;
+			width: 100%;
+			text-align: center;
+		}
+		body.single-post ins.adsbygoogle[data-ad-status="unfilled"],
+		body.single-post .emo-inarticle-ad-slot:has(> ins.adsbygoogle[data-ad-status="unfilled"]) {
+			display: none !important;
+			height: 0 !important;
+			min-height: 0 !important;
+			margin: 0 !important;
+			padding: 0 !important;
+		}
 		html body.single-post main#primary.emo-article-page .emo-article-main-shell {
 			position: relative;
 		}
@@ -653,6 +681,8 @@ function elmercado_adsterra_enqueue_controller_010290(): void {
 			'endpoint'             => esc_url_raw( rest_url( 'elmercado/v1/blog-ad-eligibility' ) ),
 			'fastGeoEndpoint'      => esc_url_raw( ELMERCADO_THEME_URL . '/assets/ad-geo-fast.php' ),
 			'shippableCountries'   => function_exists( 'elmercado_adsense_get_shippable_countries' ) ? elmercado_adsense_get_shippable_countries() : array(),
+			'adsensePublisher'     => defined( 'ELMERCADO_ADSENSE_PUBLISHER' ) ? ELMERCADO_ADSENSE_PUBLISHER : '',
+			'adsenseInArticleSlot' => defined( 'ELMERCADO_ADSENSE_INARTICLE_SLOT' ) ? ELMERCADO_ADSENSE_INARTICLE_SLOT : '',
 		)
 	);
 }
