@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.310' );
-/* 0.10.310 inserta directamente los snippets originales de Adsterra en cada hueco, sin iframe intermedio ni Google. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.311' );
+/* 0.10.311 usa Adsterra primero y restaura Auto Ads + In-article de Google si invoke.js falla. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
 	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsterra' ); // 'adsense' | 'adsterra'
 }
