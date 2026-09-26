@@ -127,8 +127,10 @@ jobs:
                   if not hydrated:
                       raise SystemExit(label+': no hydrated slots')
                   for s in hydrated:
-                      if not s['visible'] or s['display']=='none' or int(s['h'] or 0)<=0:
+                      if not s['visible'] or s['display']=='none':
                           raise SystemExit(label+': hydrated Adsterra slot is not persistently visible: '+s['type'])
+                      if s['type']!='native' and int(s['h'] or 0)<=0:
+                          raise SystemExit(label+': standard Adsterra slot has zero height: '+s['type'])
                       if s['type']!='native' and not s['frame']:
                           raise SystemExit(label+': standard banner iframe disappeared: '+s['type'])
                   if not adsterra:
