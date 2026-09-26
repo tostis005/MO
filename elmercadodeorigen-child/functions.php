@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.307' );
-/* 0.10.307 deja el blog en modo Adsterra puro, sin cargar Google/AdSense. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.308' );
+/* 0.10.308 mantiene Adsterra puro y deja sus iframes visibles/persistentes desde la hidratacion. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
 	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsterra' ); // 'adsense' | 'adsterra'
 }
