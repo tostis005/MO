@@ -24,10 +24,7 @@
 	};
 
 	var params = new URLSearchParams(window.location.search);
-	var type = params.get('unit') || '';
-	var token = params.get('token') || '';
-	var unit = units[type];
-
+	var unit = units[params.get('unit') || ''];
 	if (!unit) return;
 
 	window.atOptions = {
@@ -42,9 +39,7 @@
 	document.write(
 		'<script src="https://www.highrevenueformat.com/' +
 		encodeURIComponent(unit.key) +
-		'/invoke.js" onload="try{parent.postMessage({type:\'emo-adsterra-script-loaded\',token:' +
-		JSON.stringify(token) +
-		'},location.origin)}catch(e){}">' +
+		'/invoke.js">' +
 		closeScript
 	);
 }());
