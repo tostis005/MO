@@ -9,10 +9,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.298' );
-/* 0.10.298 adelanta el primer anuncio y prioriza la ruta crítica de Adsterra. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.299' );
+/* 0.10.299 restaura AdSense como proveedor principal y acelera su geolocalización. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
-	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsterra' ); // 'adsense' | 'adsterra'
+	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsense' ); // 'adsense' | 'adsterra'
 }
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
