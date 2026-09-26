@@ -1,0 +1,145 @@
+name: Simulate Adsterra to AdSense fallback
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/adsterra-fallback-simulation-20260926.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  simulate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Selenium
+        run: python -m pip install --quiet selenium
+
+      - name: Simulate production ad delivery
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, time, urllib.request
+          from selenium import webdriver
+          from selenium.common.exceptions import TimeoutException
+          from selenium.webdriver.chrome.options import Options
+
+          SITE = 'https://www.elmercadodeorigen.com'
+          api = SITE + '/wp-json/wp/v2/posts?per_page=1&status=publish&_fields=link'
+          with urllib.request.urlopen(urllib.request.Request(api, headers={'User-Agent':'Mozilla/5.0'}), timeout=30) as r:
+              POST = json.load(r)[0]['link']
+          print('POST_URL=' + POST, flush=True)
+
+          ADSTERRA_HOSTS = (
+              'highrevenueformat.com',
+              'profitableratecpmnetwork.com',
+              'profitablecpmrate.com',
+              'adsterra.com'
+          )
+
+          def run(label, country, block_adsterra=False):
+              o = Options()
+              o.page_load_strategy = 'eager'
+              for arg in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1440,1800','--lang=en-US'):
+                  o.add_argument(arg)
+              o.set_capability('goog:loggingPrefs', {'performance':'ALL','browser':'ALL'})
+              d = webdriver.Chrome(options=o)
+              d.set_page_load_timeout(60)
+              try:
+                  d.execute_cdp_cmd('Network.enable', {})
+                  if block_adsterra:
+                      d.execute_cdp_cmd('Network.setBlockedURLs', {'urls': [
+                          '*://*.highrevenueformat.com/*',
+                          '*://*.profitableratecpmnetwork.com/*',
+                          '*://*.profitablecpmrate.com/*',
+                          '*://*.adsterra.com/*'
+                      ]})
+                  source = """(() => {
+                    const f = window.fetch;
+                    window.fetch = function(input, init) {
+                      const u = typeof input === 'string' ? input : (input && input.url) || '';
+                      if (u.includes('/wp-json/elmercado/v1/blog-ad-eligibility')) {
+                        init = Object.assign({}, init || {});
+                        const h = new Headers(init.headers || {});
+                        h.set('X-Country-Code', '__COUNTRY__');
+                        init.headers = h;
+                      }
+                      return f.call(this, input, init);
+                    };
+                  })();""".replace('__COUNTRY__', country)
+                  d.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': source})
+
+                  url = POST + ('&' if '?' in POST else '?') + 'adsterra_debug=1&simulation=' + label
+                  try:
+                      d.get(url)
+                  except TimeoutException:
+                      print(label + '_PAGE_LOAD_TIMEOUT=1', flush=True)
+                      d.execute_script('window.stop();')
+                  time.sleep(16)
+
+                  state = d.execute_script(r"""
+                    const slots = Array.from(document.querySelectorAll('[data-emo-adsterra-slot]'));
+                    return {
+                      debug: window.ElMercadoAdsterraGeoDebug || null,
+                      rootFallback: document.documentElement.classList.contains('emo-adsterra-adsense-fallback'),
+                      slots: slots.map(s => ({
+                        type: s.getAttribute('data-emo-adsterra-slot'),
+                        state: s.getAttribute('data-emo-adsterra-state'),
+                        hydrated: s.getAttribute('data-emo-adsterra-hydrated'),
+                        eligible: s.classList.contains('is-eligible'),
+                        fallback: s.classList.contains('is-adsense-fallback'),
+                        adsenseFilled: s.classList.contains('is-adsense-filled'),
+                        display: getComputedStyle(s).display,
+                        height: Math.round(s.getBoundingClientRect().height),
+                        adStatus: (s.querySelector('ins.adsbygoogle') || {}).getAttribute ? s.querySelector('ins.adsbygoogle').getAttribute('data-ad-status') : null
+                      })),
+                      googleScripts: Array.from(document.scripts).map(s=>s.src||'').filter(u=>u.includes('googlesyndication.com/pagead/js/adsbygoogle.js')),
+                      adsterraFrames: document.querySelectorAll('iframe[data-emo-adsterra-token]').length
+                    };
+                  """)
+                  print(label + '_STATE=' + json.dumps(state, sort_keys=True), flush=True)
+
+                  reqs = []
+                  for e in d.get_log('performance'):
+                      try: m = json.loads(e['message'])['message']
+                      except Exception: continue
+                      if m.get('method') != 'Network.requestWillBeSent':
+                          continue
+                      u = m.get('params',{}).get('request',{}).get('url','')
+                      if any(h in u for h in ADSTERRA_HOSTS) or 'googlesyndication.com' in u or 'doubleclick.net' in u:
+                          reqs.append(u)
+                  print(label + '_AD_REQUESTS=' + str(len(reqs)), flush=True)
+                  print(label + '_ADSTERRA_REQUESTS=' + str(sum(any(h in u for h in ADSTERRA_HOSTS) for u in reqs)), flush=True)
+                  print(label + '_GOOGLE_REQUESTS=' + str(sum(('googlesyndication.com' in u or 'doubleclick.net' in u) for u in reqs)), flush=True)
+                  return state
+              finally:
+                  d.quit()
+
+          es = run('ES_NO_ADS', 'ES', False)
+          za = run('ZA_NORMAL', 'ZA', False)
+          forced = run('ZA_FORCED_ADSTERRA_FAIL', 'ZA', True)
+
+          assert es['debug']['showAds'] is False, es
+          assert not es['rootFallback'], es
+          assert not es['googleScripts'], es
+          assert all(s['hydrated'] is None for s in es['slots']), es
+
+          assert za['debug']['showAds'] is True, za
+          assert za['debug']['attempted'] >= 1, za
+
+          assert forced['debug']['showAds'] is True, forced
+          assert forced['debug']['fallback'] is True, forced
+          assert forced['rootFallback'] is True, forced
+          assert len(forced['googleScripts']) >= 1, forced
+          assert any(s['fallback'] for s in forced['slots']), forced
+
+          print('SIMULATION_RESULT=PASS', flush=True)
+          PY
