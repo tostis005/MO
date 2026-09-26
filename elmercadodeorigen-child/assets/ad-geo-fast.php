@@ -2,9 +2,9 @@
 /**
  * Endpoint geográfico ultraligero para publicidad.
  *
- * No carga WordPress ni WooCommerce. Solo aprovecha cabeceras de país ya
- * resueltas por CDN/proxy/servidor. Si no hay una cabecera fiable, devuelve
- * país vacío y el navegador recurre al endpoint REST completo.
+ * Evita arrancar WordPress. Primero usa cabeceras de país del proxy/CDN y,
+ * si no existen, resuelve la IP del visitante contra la misma base MaxMind
+ * que mantiene WooCommerce.
  */
 
 header( 'Content-Type: application/json; charset=UTF-8' );
@@ -13,23 +13,84 @@ header( 'Pragma: no-cache' );
 header( 'Expires: 0' );
 header( 'X-Robots-Tag: noindex, nofollow, noarchive', true );
 
+function emo_ad_geo_country_code_010298( $value ): string {
+	$value = strtoupper( trim( (string) $value ) );
+	return preg_match( '/^[A-Z]{2}$/', $value ) && ! in_array( $value, array( 'XX', 'T1' ), true ) ? $value : '';
+}
+
+function emo_ad_geo_ip_010298( $value ): string {
+	$value = trim( explode( ',', (string) $value )[0] ?? '' );
+
+	if ( preg_match( '/^\[([^\]]+)\](?::\d+)?$/', $value, $matches ) ) {
+		$value = $matches[1];
+	} elseif ( preg_match( '/^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/', $value, $matches ) ) {
+		$value = $matches[1];
+	}
+
+	return filter_var( $value, FILTER_VALIDATE_IP ) ? $value : '';
+}
+
 $candidates = array(
-	'cf'         => $_SERVER['HTTP_CF_IPCOUNTRY'] ?? '',
-	'x_country'  => $_SERVER['HTTP_X_COUNTRY_CODE'] ?? '',
-	'cloudfront' => $_SERVER['HTTP_CLOUDFRONT_VIEWER_COUNTRY'] ?? '',
-	'geoip'      => $_SERVER['GEOIP_COUNTRY_CODE'] ?? '',
-	'geoip_redir'=> $_SERVER['REDIRECT_GEOIP_COUNTRY_CODE'] ?? '',
+	'cf'          => $_SERVER['HTTP_CF_IPCOUNTRY'] ?? '',
+	'x_country'   => $_SERVER['HTTP_X_COUNTRY_CODE'] ?? '',
+	'cloudfront'  => $_SERVER['HTTP_CLOUDFRONT_VIEWER_COUNTRY'] ?? '',
+	'geoip'       => $_SERVER['GEOIP_COUNTRY_CODE'] ?? '',
+	'geoip_redir' => $_SERVER['REDIRECT_GEOIP_COUNTRY_CODE'] ?? '',
+	'mm'          => $_SERVER['MM_COUNTRY_CODE'] ?? '',
 );
 
 $country = '';
 $source  = 'none';
 
 foreach ( $candidates as $candidate_source => $candidate ) {
-	$candidate = strtoupper( trim( (string) $candidate ) );
-	if ( preg_match( '/^[A-Z]{2}$/', $candidate ) && ! in_array( $candidate, array( 'XX', 'T1' ), true ) ) {
-		$country = $candidate;
-		$source  = $candidate_source;
+	$country = emo_ad_geo_country_code_010298( $candidate );
+	if ( '' !== $country ) {
+		$source = $candidate_source;
 		break;
+	}
+}
+
+if ( '' === $country ) {
+	$ip_candidates = array(
+		$_SERVER['HTTP_CF_CONNECTING_IP'] ?? '',
+		$_SERVER['HTTP_X_REAL_IP'] ?? '',
+		$_SERVER['HTTP_X_FORWARDED_FOR'] ?? '',
+		$_SERVER['REMOTE_ADDR'] ?? '',
+	);
+
+	$ip = '';
+	foreach ( $ip_candidates as $candidate ) {
+		$ip = emo_ad_geo_ip_010298( $candidate );
+		if ( '' !== $ip ) {
+			break;
+		}
+	}
+
+	if ( '' !== $ip ) {
+		$wp_content = dirname( __DIR__, 3 );
+		$autoload   = $wp_content . '/plugins/woocommerce/vendor/autoload.php';
+		$databases  = glob( $wp_content . '/uploads/woocommerce_uploads/*GeoLite2-Country.mmdb' );
+
+		if ( is_file( $autoload ) && ! empty( $databases ) ) {
+			try {
+				require_once $autoload;
+
+				if ( class_exists( 'MaxMind\\Db\\Reader' ) ) {
+					$reader = new MaxMind\Db\Reader( $databases[0] );
+					$data   = $reader->get( $ip );
+					$reader->close();
+
+					if ( isset( $data['country']['iso_code'] ) ) {
+						$country = emo_ad_geo_country_code_010298( $data['country']['iso_code'] );
+						if ( '' !== $country ) {
+							$source = 'maxmind';
+						}
+					}
+				}
+			} catch ( Throwable $error ) {
+				// Fallo seguro: el navegador recurrirá al endpoint REST completo.
+			}
+		}
 	}
 }
 
