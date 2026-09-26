@@ -133,9 +133,9 @@
 
 		var type = slot.getAttribute('data-emo-adsterra-slot') || '';
 		var configured = parseInt(config.slotTimeout, 10);
-		var timeout = configured && configured >= 1800 ? configured : 2600;
-		if (type === 'responsive-top') timeout = Math.min(timeout, 2500);
-		if (type === 'native') timeout = Math.max(timeout, 3000);
+		var timeout = configured && configured >= 4000 ? configured : 6500;
+		if (type === 'responsive-top') timeout = Math.min(timeout, 6000);
+		if (type === 'native') timeout = Math.max(timeout, 7500);
 
 		window.setTimeout(function () {
 			if (slot.getAttribute('data-emo-adsterra-state') !== 'pending') return;
@@ -290,6 +290,7 @@
 			return;
 		}
 		if (!slot || slot.classList.contains('is-eligible')) return;
+		slot.classList.remove('is-loading');
 		slot.classList.add('is-eligible');
 		slot.setAttribute('aria-hidden', 'false');
 		var nativeShell = slot.closest('.emo-adsterra-native-shell');
@@ -301,7 +302,7 @@
 
 	function collapseSlot(slot) {
 		if (!slot) return;
-		slot.classList.remove('is-eligible');
+		slot.classList.remove('is-eligible', 'is-loading');
 		slot.setAttribute('aria-hidden', 'true');
 		var nativeShell = slot.closest('.emo-adsterra-native-shell');
 		if (nativeShell) nativeShell.classList.remove('is-eligible');
@@ -355,6 +356,10 @@
 			+ '&_=' + Date.now();
 
 		registerSlotAttempt(slot);
+		slot.classList.add('is-loading');
+		slot.setAttribute('aria-hidden', 'false');
+		var shell = slot.closest('.emo-adsterra-native-shell');
+		if (shell) shell.classList.add('is-loading');
 		slot.setAttribute('data-emo-adsterra-hydrated', '1');
 		mount.appendChild(frame);
 	}
