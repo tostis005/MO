@@ -586,7 +586,8 @@ function elmercado_adsterra_enqueue_controller_010290(): void {
 			'shippableCountries'   => function_exists( 'elmercado_adsense_get_shippable_countries' ) ? elmercado_adsense_get_shippable_countries() : array(),
 			'adsensePublisher'     => defined( 'ELMERCADO_ADSENSE_PUBLISHER' ) ? ELMERCADO_ADSENSE_PUBLISHER : '',
 			'adsenseInArticleSlot' => defined( 'ELMERCADO_ADSENSE_INARTICLE_SLOT' ) ? ELMERCADO_ADSENSE_INARTICLE_SLOT : '',
-			'fallbackTimeout'      => 3200,
+			'slotTimeout'          => 2800,
+			'fallbackTimeout'      => 4200,
 		)
 	);
 }
