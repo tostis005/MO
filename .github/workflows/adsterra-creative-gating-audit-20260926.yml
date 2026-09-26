@@ -109,6 +109,26 @@ jobs:
                     }));
                   """)
                   print(label+'_REQUESTED='+json.dumps(requested,sort_keys=True),flush=True)
+                  inner=d.execute_script(r"""
+                    return Array.from(document.querySelectorAll('[data-emo-adsterra-slot]')).map(s=>{
+                      const f=s.querySelector('iframe[data-emo-adsterra-token]');
+                      if(!f) return {type:s.getAttribute('data-emo-adsterra-slot'), frame:false};
+                      try{
+                        const doc=f.contentDocument;
+                        return {
+                          type:s.getAttribute('data-emo-adsterra-slot'),
+                          frame:true,
+                          ready:doc&&doc.readyState,
+                          scripts:doc?Array.from(doc.scripts).map(x=>({src:x.src||'',inline:(x.textContent||'').slice(0,180)})):[],
+                          body:(doc&&doc.body?doc.body.innerHTML:'').slice(0,1200)
+                        };
+                      }catch(e){return {type:s.getAttribute('data-emo-adsterra-slot'),frame:true,error:String(e)};}
+                    });
+                  """)
+                  print(label+'_INNER='+json.dumps(inner,sort_keys=True),flush=True)
+                  time.sleep(1.5)
+                  browser_now=d.get_log('browser')
+                  print(label+'_BROWSER_EARLY='+json.dumps(browser_now,sort_keys=True),flush=True)
 
                   by_type={x['type']:x for x in requested}
                   for slot_type,size in expected_sizes.items():
