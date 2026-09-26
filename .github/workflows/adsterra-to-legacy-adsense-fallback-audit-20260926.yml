@@ -1,0 +1,141 @@
+name: Audit Adsterra to legacy AdSense fallback
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/adsterra-to-legacy-adsense-fallback-audit-20260926.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --quiet selenium requests
+      - name: Verify 403 fallback restores Auto Ads and manual In-article
+        shell: bash
+        run: |
+          xvfb-run -a python - <<'PY'
+          import json,time,requests
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+
+          BASE='https://www.elmercadodeorigen.com'
+          JS=BASE+'/wp-content/themes/elmercadodeorigen-child/assets/js/adsterra-geo-010290.js?fallback=010311'
+          PAGE=BASE+'/dop-jabugo-que-garantiza-territorio-como-reconocer-jamon/?adsterra_debug=1&fallback=010311'
+
+          deadline=time.time()+300
+          while time.time()<deadline:
+              try:
+                  body=requests.get(JS,timeout=15,headers={'Cache-Control':'no-cache'}).text
+              except Exception:
+                  body=''
+              if ('activateGoogleFallback' in body
+                  and 'fallback_adsense_active' in body
+                  and 'adsenseInArticleSlot' in body
+                  and '2804638564' not in body):
+                  print('FALLBACK_CONTROLLER_READY=1',flush=True)
+                  break
+              time.sleep(5)
+          else:
+              raise SystemExit('Production did not serve 0.10.311 fallback controller')
+
+          o=Options()
+          o.page_load_strategy='none'
+          for a in ('--no-sandbox','--disable-dev-shm-usage','--window-size=1440,1000','--lang=en-US'):
+              o.add_argument(a)
+          o.set_capability('goog:loggingPrefs', {'performance':'ALL','browser':'ALL'})
+          d=webdriver.Chrome(options=o)
+          try:
+              d.execute_cdp_cmd('Network.enable',{})
+              d.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument',{'source':r"""
+              try {
+                sessionStorage.setItem('emo-blog-ad-eligibility-v3', JSON.stringify({
+                  country:'ZA',
+                  ts:Date.now()
+                }));
+              } catch (e) {}
+              """})
+              d.get(PAGE)
+
+              deadline=time.time()+30
+              while time.time()<deadline:
+                  dbg=d.execute_script('return window.ElMercadoAdsterraGeoDebug||null')
+                  if dbg and dbg.get('googleFallback') is True:
+                      break
+                  time.sleep(.25)
+              else:
+                  snapshot=d.execute_script('return {debug:window.ElMercadoAdsterraGeoDebug||null,html:document.documentElement.outerHTML.slice(0,12000)}')
+                  print('FALLBACK_TIMEOUT='+json.dumps(snapshot,sort_keys=True),flush=True)
+                  raise SystemExit('Google fallback did not activate')
+
+              for ratio in (0,.25,.5,.75,1,0):
+                  d.execute_script('window.scrollTo(0,Math.max(0,(document.documentElement.scrollHeight-window.innerHeight)*arguments[0]))',ratio)
+                  time.sleep(.5)
+              time.sleep(12)
+
+              urls=[]
+              statuses={}
+              for item in d.get_log('performance'):
+                  try: msg=json.loads(item['message'])['message']
+                  except Exception: continue
+                  if msg.get('method')=='Network.requestWillBeSent':
+                      u=msg.get('params',{}).get('request',{}).get('url','')
+                      urls.append(u)
+                  elif msg.get('method')=='Network.responseReceived':
+                      resp=msg.get('params',{}).get('response',{})
+                      u=resp.get('url','')
+                      if 'highrevenueformat.com' in u or 'googlesyndication.com' in u or 'doubleclick.net' in u:
+                          statuses[u]=resp.get('status')
+
+              state=d.execute_script(r"""
+                return {
+                  debug:window.ElMercadoAdsterraGeoDebug||null,
+                  adsterraSlots:document.querySelectorAll('[data-emo-adsterra-slot]').length,
+                  fallbackScript:Array.from(document.scripts).filter(s=>s.getAttribute('data-emo-adsense-fallback')==='1').map(s=>s.src),
+                  googleScripts:Array.from(document.scripts).map(s=>s.src||'').filter(u=>/pagead2\.googlesyndication\.com\/pagead\/js\/adsbygoogle\.js/.test(u)),
+                  googleAutoPlaced:document.querySelectorAll('.google-auto-placed').length,
+                  manualIns:Array.from(document.querySelectorAll('ins.adsbygoogle[data-ad-slot="2804638564"]')).map(x=>({
+                    status:x.getAttribute('data-ad-status'),
+                    client:x.getAttribute('data-ad-client'),
+                    layout:x.getAttribute('data-ad-layout'),
+                    format:x.getAttribute('data-ad-format')
+                  })),
+                  placeholders:document.querySelectorAll('.emo-inarticle-ad-slot[data-emo-inarticle-ad]').length,
+                  adsbygooglePresent:typeof window.adsbygoogle!=='undefined'
+                };
+              """)
+              console=d.get_log('browser')
+              adsterra=[u for u in urls if 'highrevenueformat.com' in u or 'profitableratecpmnetwork.com' in u]
+              google=[u for u in urls if 'googlesyndication.com' in u or 'doubleclick.net' in u]
+              print('FALLBACK_NETWORK='+json.dumps({'adsterra':sorted(set(adsterra)),'google':sorted(set(google)),'statuses':statuses},sort_keys=True),flush=True)
+              print('FALLBACK_STATE='+json.dumps(state,sort_keys=True),flush=True)
+              print('FALLBACK_CONSOLE='+json.dumps(console[-30:],sort_keys=True),flush=True)
+
+              if not state['debug'] or state['debug'].get('googleFallback') is not True:
+                  raise SystemExit('Fallback debug flag is false')
+              if state['debug'].get('phase') not in ('fallback_adsense_active','fallback_adsense_loading'):
+                  raise SystemExit('Unexpected fallback phase')
+              if state['adsterraSlots'] != 0:
+                  raise SystemExit('Adsterra containers remained after fallback')
+              if not state['fallbackScript'] or not state['googleScripts']:
+                  raise SystemExit('AdSense Auto Ads script not loaded')
+              if state['placeholders'] < 1 or len(state['manualIns']) < 1:
+                  raise SystemExit('Legacy manual In-article ad not restored')
+              if state['manualIns'][0]['client'] != 'ca-pub-3168527008181132':
+                  raise SystemExit('Wrong AdSense publisher')
+              if state['manualIns'][0]['layout'] != 'in-article' or state['manualIns'][0]['format'] != 'fluid':
+                  raise SystemExit('Legacy In-article format differs')
+              if not google:
+                  raise SystemExit('No Google advertising network requests observed')
+
+              print('ADSTERRA_TO_LEGACY_ADSENSE_FALLBACK=PASS',flush=True)
+          finally:
+              d.quit()
+          PY
