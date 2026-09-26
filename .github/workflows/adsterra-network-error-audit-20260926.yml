@@ -1,0 +1,75 @@
+name: Audit Adsterra network errors
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/adsterra-network-error-audit-20260926.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --quiet selenium
+      - name: Capture network and browser errors
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,time
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
+
+          URL='https://www.elmercadodeorigen.com/dop-jabugo-que-garantiza-territorio-como-reconocer-jamon/?adsterra_debug=1&network_error_audit=1'
+          o=Options(); o.page_load_strategy='none'
+          for a in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1440,1000','--lang=en-US'):
+              o.add_argument(a)
+          o.set_capability('goog:loggingPrefs', {'browser':'ALL','performance':'ALL'})
+          d=webdriver.Chrome(options=o)
+          try:
+              d.execute_cdp_cmd('Network.enable',{})
+              d.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument',{'source':"""
+              (()=>{const f=window.fetch;window.fetch=function(input,init){
+                const u=typeof input==='string'?input:(input&&input.url)||'';
+                if(u.includes('/assets/ad-geo-fast.php')||u.includes('/wp-json/elmercado/v1/blog-ad-eligibility')){
+                  init=Object.assign({},init||{});const h=new Headers(init.headers||{});
+                  h.set('X-Country-Code','ZA');init.headers=h;
+                }
+                return f.call(this,input,init);
+              };})();"""})
+              d.get(URL)
+              time.sleep(8)
+
+              responses=[]
+              failures=[]
+              for item in d.get_log('performance'):
+                  try:
+                      msg=json.loads(item['message'])['message']
+                  except Exception:
+                      continue
+                  m=msg.get('method')
+                  p=msg.get('params',{})
+                  if m=='Network.responseReceived':
+                      r=p.get('response',{})
+                      u=r.get('url','')
+                      if 'highrevenueformat.com' in u or 'profitableratecpmnetwork.com' in u:
+                          responses.append({'url':u,'status':r.get('status'),'mime':r.get('mimeType'),'fromDisk':r.get('fromDiskCache'),'fromServiceWorker':r.get('fromServiceWorker')})
+                  elif m=='Network.loadingFailed':
+                      u=p.get('url','')
+                      if 'highrevenueformat.com' in u or 'profitableratecpmnetwork.com' in u:
+                          failures.append({'url':u,'error':p.get('errorText'),'blocked':p.get('blockedReason')})
+              browser=[x for x in d.get_log('browser') if 'highrevenue' in x.get('message','').lower() or 'adsterra' in x.get('message','').lower() or x.get('level') in ('SEVERE','WARNING')]
+              print('RESPONSES='+json.dumps(responses,sort_keys=True),flush=True)
+              print('FAILURES='+json.dumps(failures,sort_keys=True),flush=True)
+              print('BROWSER='+json.dumps(browser,sort_keys=True),flush=True)
+              print('DEBUG='+json.dumps(d.execute_script('return window.ElMercadoAdsterraGeoDebug||null'),sort_keys=True),flush=True)
+          finally:
+              d.quit()
+          PY
