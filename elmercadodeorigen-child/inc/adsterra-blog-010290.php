@@ -365,8 +365,7 @@ function elmercado_adsterra_styles_010290(): void {
 			max-width: 100%;
 			text-align: center;
 		}
-		.emo-adsterra-slot.is-eligible,
-		.emo-adsterra-slot.is-loading {
+		.emo-adsterra-slot.is-eligible {
 			display: block;
 		}
 		html.emo-adblock-detected .emo-adsterra-slot,
@@ -656,7 +655,7 @@ function elmercado_adsterra_enqueue_controller_010290(): void {
 			'frameEndpoint'        => esc_url_raw( ELMERCADO_THEME_URL . '/assets/adsterra-frame.html' ),
 			'shippableCountries'   => function_exists( 'elmercado_adsense_get_shippable_countries' ) ? elmercado_adsense_get_shippable_countries() : array(),
 			'adsensePublisher'     => defined( 'ELMERCADO_ADSENSE_PUBLISHER' ) ? ELMERCADO_ADSENSE_PUBLISHER : '',
-			'slotTimeout'          => 6500,
+			'slotTimeout'          => 7000,
 		)
 	);
 }
