@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.295' );
-/* 0.10.295 retira rectángulos altos del móvil para evitar huecos bloqueados. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.296' );
+/* 0.10.296 añade detección de no-fill de Adsterra y fallback a AdSense. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
 	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsterra' ); // 'adsense' | 'adsterra'
 }
