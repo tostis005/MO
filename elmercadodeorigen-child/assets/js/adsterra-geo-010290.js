@@ -2,7 +2,8 @@
 	'use strict';
 
 	var config = window.ElMercadoAdsterraGeo || {};
-	var frameCounter = 0;
+	var bannerQueue = [];
+	var bannerQueueBusy = false;
 	var adBlockDetected = false;
 	var adBlockCheckDone = false;
 	var adBlockCheckStarted = false;
@@ -255,31 +256,48 @@
 		if (nativeShell) nativeShell.classList.remove('is-eligible', 'is-loading');
 	}
 
-	window.addEventListener('message', function (event) {
-		if (event.origin !== window.location.origin || !event.data) return;
+	function processBannerQueue() {
+		if (bannerQueueBusy || bannerQueue.length === 0) return;
+		bannerQueueBusy = true;
 
-		var token = typeof event.data.token === 'string' ? event.data.token : '';
-		if (!token) return;
+		var job = bannerQueue.shift();
+		var mount = job.mount;
+		var slot = job.slot;
+		var unit = job.unit;
 
-		var frames = document.querySelectorAll('iframe[data-emo-adsterra-token]');
-		for (var i = 0; i < frames.length; i += 1) {
-			if (frames[i].getAttribute('data-emo-adsterra-token') !== token) continue;
-			var frame = frames[i];
+		var optionsScript = document.createElement('script');
+		optionsScript.text = [
+			'atOptions = {',
+			"  'key' : '" + unit.key + "',",
+			"  'format' : 'iframe',",
+			"  'height' : " + String(unit.height) + ',',
+			"  'width' : " + String(unit.width) + ',',
+			"  'params' : {}",
+			'};'
+		].join('\n');
 
-			if (event.data.type === 'emo-adsterra-script-loaded' && frame.getAttribute('data-emo-adsterra-script-loaded') !== '1') {
-				frame.setAttribute('data-emo-adsterra-script-loaded', '1');
+		var invokeScript = document.createElement('script');
+		invokeScript.async = false;
+		invokeScript.src = 'https://www.highrevenueformat.com/' + unit.key + '/invoke.js';
+
+		function next() {
+			bannerQueueBusy = false;
+			processBannerQueue();
+		}
+
+		invokeScript.addEventListener('load', function () {
+			if (slot.getAttribute('data-emo-adsterra-script-loaded') !== '1') {
+				slot.setAttribute('data-emo-adsterra-script-loaded', '1');
 				debug.invokeLoaded += 1;
 				renderDebug();
 			}
+			next();
+		}, { once: true });
+		invokeScript.addEventListener('error', next, { once: true });
 
-			if (event.data.type === 'emo-adsterra-creative-inserted' && frame.getAttribute('data-emo-adsterra-creative-inserted') !== '1') {
-				frame.setAttribute('data-emo-adsterra-creative-inserted', '1');
-				debug.creativeInserted += 1;
-				renderDebug();
-			}
-			break;
-		}
-	});
+		mount.appendChild(optionsScript);
+		mount.appendChild(invokeScript);
+	}
 
 	function hydrateBanner(slot, unit, unitName) {
 		if (!slot || !unit || !unitName || slot.getAttribute('data-emo-adsterra-hydrated') === '1') return;
@@ -287,31 +305,18 @@
 		var mount = slot.querySelector('.emo-adsterra-mount');
 		if (!mount) return;
 
-		frameCounter += 1;
-		var token = unitName + '-' + Date.now().toString(36) + '-' + frameCounter.toString(36);
-		var frame = document.createElement('iframe');
-		frame.width = String(unit.width);
-		frame.height = String(unit.height);
-		frame.setAttribute('title', 'Publicidad');
-		frame.setAttribute('scrolling', 'no');
-		frame.setAttribute('frameborder', '0');
-		frame.setAttribute('data-emo-adsterra-token', token);
-		frame.setAttribute('loading', 'eager');
-		if (unitName.indexOf('responsive-') === 0) frame.setAttribute('fetchpriority', 'high');
-		frame.style.cssText = 'display:block;border:0;max-width:100%;overflow:hidden;background:transparent;';
-		var separator = config.frameEndpoint.indexOf('?') === -1 ? '?' : '&';
-		frame.src = config.frameEndpoint
-			+ separator
-			+ 'unit=' + encodeURIComponent(unitName)
-			+ '&token=' + encodeURIComponent(token)
-			+ '&v=' + encodeURIComponent(String(config.frameVersion || ''));
-
 		registerSlotAttempt(slot);
 		slot.setAttribute('data-emo-adsterra-unit', unitName);
 		slot.setAttribute('data-emo-adsterra-size', String(unit.width) + 'x' + String(unit.height));
 		slot.setAttribute('data-emo-adsterra-hydrated', '1');
-		mount.appendChild(frame);
 		revealSlot(slot);
+
+		bannerQueue.push({
+			mount: mount,
+			slot: slot,
+			unit: unit
+		});
+		processBannerQueue();
 	}
 
 	function hydrateNative(slot) {
@@ -320,17 +325,18 @@
 		var mount = slot.querySelector('.emo-adsterra-mount');
 		if (!mount) return;
 
-		var container = document.createElement('div');
-		container.id = 'container-a83b8ce6c354e77b2ae5f266936bd60f';
-		mount.appendChild(container);
-
 		registerSlotAttempt(slot);
 		slot.setAttribute('data-emo-adsterra-hydrated', '1');
+		revealSlot(slot);
 
 		var script = document.createElement('script');
 		script.async = true;
 		script.setAttribute('data-cfasync', 'false');
 		script.src = 'https://pl31502847.profitableratecpmnetwork.com/a83b8ce6c354e77b2ae5f266936bd60f/invoke.js';
+
+		var container = document.createElement('div');
+		container.id = 'container-a83b8ce6c354e77b2ae5f266936bd60f';
+
 		script.addEventListener('load', function () {
 			if (slot.getAttribute('data-emo-adsterra-script-loaded') !== '1') {
 				slot.setAttribute('data-emo-adsterra-script-loaded', '1');
@@ -338,9 +344,9 @@
 				renderDebug();
 			}
 		}, { once: true });
-		mount.insertBefore(script, container);
 
-		revealSlot(slot);
+		mount.appendChild(script);
+		mount.appendChild(container);
 	}
 
 	function slotIsSupported(type) {
@@ -652,8 +658,8 @@
 
 	scheduleCosmeticAdBlockCheck();
 
-	if (!config.endpoint || !config.frameEndpoint || typeof window.fetch !== 'function') {
-		debug.error = 'Missing endpoint, frame endpoint or Fetch API';
+	if (!config.endpoint || typeof window.fetch !== 'function') {
+		debug.error = 'Missing endpoint or Fetch API';
 		setPhase('configuration_error');
 		return;
 	}
