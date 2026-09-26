@@ -50,7 +50,14 @@ jobs:
               time.sleep(3)
               state=d.execute_script(r"""
                 const all=performance.getEntriesByType('resource').map(r=>({
-                  name:r.name,start:Math.round(r.startTime),dur:Math.round(r.duration),
+                  name:r.name,
+                  start:Math.round(r.startTime),
+                  dur:Math.round(r.duration),
+                  requestStart:Math.round(r.requestStart||0),
+                  responseStart:Math.round(r.responseStart||0),
+                  responseEnd:Math.round(r.responseEnd||0),
+                  transfer:r.transferSize||0,
+                  encoded:r.encodedBodySize||0,
                   initiator:r.initiatorType
                 }));
                 const scripts=Array.from(document.scripts).filter(s=>(s.src||'').includes('adsterra-geo-010290.js')).map(s=>({
