@@ -31,9 +31,46 @@ if ( '' !== $query ) {
 	return;
 }
 
-// Conservative first-visit cache: any cookie bypasses the shared HTML.
+// Cookies analíticas/consentimiento observadas no cambian el HTML editorial.
+// Cualquier cookie desconocida o de estado real mantiene el bypass seguro.
 if ( ! empty( $_COOKIE ) ) {
-	return;
+	$harmless_prefixes = array(
+		'_ga',
+		'_gid',
+		'_gat',
+		'_gcl_',
+		'_fbp',
+		'_fbc',
+		'_pin_unauth',
+		'cookielawinfo-',
+		'sbjs_',
+		'tk_',
+	);
+	$harmless_exact = array(
+		'CookieLawInfoConsent',
+		'viewed_cookie_policy',
+		'total_page',
+	);
+
+	foreach ( array_keys( $_COOKIE ) as $cookie_name ) {
+		$cookie_name = (string) $cookie_name;
+
+		if ( in_array( $cookie_name, $harmless_exact, true ) ) {
+			continue;
+		}
+
+		$harmless = false;
+		foreach ( $harmless_prefixes as $prefix ) {
+			if ( 0 === strpos( $cookie_name, $prefix ) ) {
+				$harmless = true;
+				break;
+			}
+		}
+
+		if ( ! $harmless ) {
+			return;
+		}
+	}
 }
 
 $host = isset( $_SERVER['HTTP_HOST'] ) ? strtolower( (string) $_SERVER['HTTP_HOST'] ) : '';
