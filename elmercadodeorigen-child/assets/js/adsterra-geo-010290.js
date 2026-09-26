@@ -9,9 +9,7 @@
 	var finalHydrationScheduled = false;
 	var hydrationPending = false;
 	var slotObserver = null;
-	var fallbackTimer = null;
-	var fallbackStarted = false;
-	var adsenseFallbackPromise = null;
+	var googleAnchorPromise = null;
 	var lazySlotObserver = null;
 	var attemptedSlots = 0;
 	var resolvedSlots = 0;
@@ -28,8 +26,7 @@
 		attempted: 0,
 		resolved: 0,
 		rendered: 0,
-		fallback: false,
-		fallbackReason: null,
+		googleAnchor: false,
 		geoSource: null,
 		eligibilityMs: null,
 		error: null
@@ -68,11 +65,6 @@
 		}
 	};
 
-	function adsbygoogleQueue() {
-		window.adsbygoogle = window.adsbygoogle || [];
-		return window.adsbygoogle;
-	}
-
 	function googleScriptExists() {
 		return !!document.querySelector('script[src*="pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"]');
 	}
@@ -98,174 +90,39 @@
 		preconnect('https://googleads.g.doubleclick.net');
 	}
 
-	function loadAdsenseFallbackScript() {
-		adsbygoogleQueue().pauseAdRequests = 0;
-
-		if (googleScriptExists() && !adsenseFallbackPromise) {
+	function loadGoogleAnchorScript() {
+		if (googleScriptExists()) {
+			debug.googleAnchor = true;
+			renderDebug();
 			return Promise.resolve();
 		}
 
-		if (adsenseFallbackPromise) {
-			return adsenseFallbackPromise;
-		}
-
+		if (googleAnchorPromise) return googleAnchorPromise;
 		if (!config.adsensePublisher) {
-			return Promise.reject(new Error('Missing AdSense fallback publisher'));
+			return Promise.reject(new Error('Missing AdSense publisher for anchor ad'));
 		}
 
-		adsenseFallbackPromise = new Promise(function (resolve, reject) {
+		googleAnchorPromise = new Promise(function (resolve, reject) {
 			var script = document.createElement('script');
 			script.async = true;
 			script.crossOrigin = 'anonymous';
-			script.setAttribute('data-emo-adsense-fallback', '1');
+			script.setAttribute('data-emo-google-anchor', '1');
 			script.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' + encodeURIComponent(config.adsensePublisher);
-			script.addEventListener('load', resolve, { once: true });
+			script.addEventListener('load', function () {
+				debug.googleAnchor = true;
+				renderDebug();
+				resolve();
+			}, { once: true });
 			script.addEventListener('error', function () {
-				adsenseFallbackPromise = null;
-				reject(new Error('AdSense fallback script failed to load'));
+				googleAnchorPromise = null;
+				reject(new Error('Google anchor script failed to load'));
 			}, { once: true });
 			(document.head || document.documentElement).appendChild(script);
 		});
 
-		return adsenseFallbackPromise;
+		return googleAnchorPromise;
 	}
 
-	function cleanupAdsenseFallbackSlot(slot) {
-		if (!slot) return;
-		slot.classList.remove('is-adsense-fallback', 'is-adsense-filled');
-		slot.setAttribute('aria-hidden', 'true');
-		var nativeShell = slot.closest('.emo-adsterra-native-shell');
-		if (nativeShell) nativeShell.classList.remove('is-adsense-fallback');
-	}
-
-	function prepareAdsenseFallbackSlot(slot) {
-		if (!slot || slot.getAttribute('data-emo-adsterra-state') !== 'failed') return null;
-		if (slot.getAttribute('data-emo-adsense-fallback-requested') === '1') return null;
-
-		var type = slot.getAttribute('data-emo-adsterra-slot') || '';
-		if (type === 'skyscraper' || type === 'native') return null;
-
-		var mount = slot.querySelector('.emo-adsterra-mount');
-		if (!mount) return null;
-
-		slot.setAttribute('data-emo-adsense-fallback-requested', '1');
-		mount.innerHTML = '';
-
-		var ins = document.createElement('ins');
-		ins.className = 'adsbygoogle';
-		ins.style.display = 'block';
-		ins.style.textAlign = 'center';
-		ins.setAttribute('data-ad-layout', 'in-article');
-		ins.setAttribute('data-ad-format', 'fluid');
-		ins.setAttribute('data-ad-client', config.adsensePublisher);
-		ins.setAttribute('data-ad-slot', config.adsenseInArticleSlot);
-		mount.appendChild(ins);
-
-		slot.classList.remove('is-eligible');
-		slot.classList.add('is-adsense-fallback');
-		slot.setAttribute('aria-hidden', 'false');
-
-		var nativeShell = slot.closest('.emo-adsterra-native-shell');
-		if (nativeShell) nativeShell.classList.add('is-adsense-fallback');
-
-		return { slot: slot, ins: ins };
-	}
-
-	function requestAdsenseFallbackUnits(units) {
-		units.forEach(function (unit) {
-			var settled = false;
-			var pushed = false;
-			var observer = new MutationObserver(function () {
-				var status = unit.ins.getAttribute('data-ad-status');
-				if (status === 'filled' || status === 'unfill-optimized') {
-					settled = true;
-					unit.slot.classList.add('is-adsense-filled');
-					unit.slot.setAttribute('aria-hidden', 'false');
-					return;
-				}
-				if (status === 'unfilled') {
-					settled = true;
-					cleanupAdsenseFallbackSlot(unit.slot);
-				}
-			});
-			observer.observe(unit.ins, {
-				attributes: true,
-				attributeFilter: ['data-ad-status']
-			});
-
-			function pushWhenSized(attempt) {
-				if (settled || pushed) return;
-				var width = Math.max(
-					unit.slot.getBoundingClientRect().width || 0,
-					unit.ins.getBoundingClientRect().width || 0
-				);
-
-				if (width < 80 && attempt < 8) {
-					window.setTimeout(function () { pushWhenSized(attempt + 1); }, 60);
-					return;
-				}
-
-				if (width < 80) {
-					settled = true;
-					cleanupAdsenseFallbackSlot(unit.slot);
-					debug.error = 'AdSense fallback slot has no measurable width';
-					return;
-				}
-
-				try {
-					pushed = true;
-					adsbygoogleQueue().push({});
-				} catch (error) {
-					settled = true;
-					cleanupAdsenseFallbackSlot(unit.slot);
-					debug.error = error && error.message ? error.message : String(error || 'adsense_fallback_push_error');
-				}
-			}
-
-			window.requestAnimationFrame(function () {
-				window.requestAnimationFrame(function () {
-					pushWhenSized(0);
-				});
-			});
-
-			window.setTimeout(function () {
-				if (!settled && !unit.ins.getAttribute('data-ad-status')) {
-					cleanupAdsenseFallbackSlot(unit.slot);
-				}
-				observer.disconnect();
-			}, 10000);
-		});
-	}
-
-	function startAdsenseFallbackForSlot(slot, reason) {
-		if (adBlockDetected || !slot) return;
-		if (!config.adsensePublisher || !config.adsenseInArticleSlot) {
-			debug.error = 'Missing AdSense fallback configuration';
-			setPhase('adsterra_failed_no_fallback_config');
-			return;
-		}
-
-		var unit = prepareAdsenseFallbackSlot(slot);
-		if (!unit) return;
-
-		fallbackStarted = true;
-		debug.fallback = true;
-		debug.fallbackReason = reason || 'adsterra_slot_failed';
-		document.documentElement.classList.add('emo-adsterra-adsense-fallback');
-		preconnectGoogle();
-		setPhase('adsterra_slot_failed_loading_adsense');
-
-		loadAdsenseFallbackScript()
-			.then(function () {
-				setPhase('adsense_fallback_loaded');
-				requestAdsenseFallbackUnits([unit]);
-			})
-			.catch(function (error) {
-				debug.error = error && error.message ? error.message : String(error || 'adsense_fallback_load_error');
-				cleanupAdsenseFallbackSlot(unit.slot);
-				setPhase('adsense_fallback_error');
-			});
-	}
 
 	function registerSlotAttempt(slot) {
 		if (!slot || slot.getAttribute('data-emo-adsterra-state')) return;
@@ -299,12 +156,9 @@
 		renderDebug();
 
 		if (state === 'failed') {
-			startAdsenseFallbackForSlot(slot, renderedSlots > 0 ? 'partial_adsterra_no_fill' : 'adsterra_slot_failed');
+			collapseSlot(slot);
+			setPhase(renderedSlots > 0 ? 'eligible_adsterra_partial_fill' : 'eligible_adsterra_no_fill');
 		}
-	}
-
-	function scheduleAdsenseFallback() {
-		// Cada hueco controla su timeout y fallback de forma independiente.
 	}
 
 	function finishAdBlockCheck(blocked) {
@@ -312,8 +166,6 @@
 		adBlockCheckDone = true;
 
 		if (adBlockDetected) {
-			if (fallbackTimer) window.clearTimeout(fallbackTimer);
-			fallbackTimer = null;
 			document.documentElement.classList.add('emo-adblock-detected');
 			debug.phase = 'adblock_detected_no_ads';
 			document.querySelectorAll('[data-emo-adsterra-slot]').forEach(function (slot) {
@@ -420,8 +272,7 @@
 			'attempted: ' + String(debug.attempted),
 			'resolved: ' + String(debug.resolved),
 			'rendered: ' + String(debug.rendered),
-			'fallback: ' + String(debug.fallback),
-			'fallback_reason: ' + (debug.fallbackReason || 'none'),
+			'google_anchor: ' + String(debug.googleAnchor),
 			'geo_source: ' + (debug.geoSource || 'none'),
 			'eligibility_ms: ' + String(debug.eligibilityMs),
 			'error: ' + (debug.error || 'none')
@@ -733,6 +584,10 @@
 			preconnectAdsterra();
 			preconnectGoogle();
 			setPhase('eligible');
+			loadGoogleAnchorScript().catch(function (error) {
+				debug.error = error && error.message ? error.message : String(error || 'google_anchor_load_error');
+				renderDebug();
+			});
 			watchForAdSlots();
 			scheduleFinalHydration();
 			hydrateEligibleSlots();
