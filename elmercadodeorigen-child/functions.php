@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.296' );
-/* 0.10.296 añade detección de no-fill de Adsterra y fallback a AdSense. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.297' );
+/* 0.10.297 acelera geolocalización, frames de Adsterra y fallback publicitario. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
 	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsterra' ); // 'adsense' | 'adsterra'
 }
