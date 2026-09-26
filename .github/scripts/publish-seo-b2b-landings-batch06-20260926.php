@@ -170,6 +170,9 @@ array(
 <h2>Cómo evitar que el regalo parezca una obligación</h2>
 <p>El detalle gana valor cuando va acompañado de un mensaje sencillo y coherente con la cultura de la empresa. No hace falta un discurso largo: explicar que se trata de un agradecimiento por el trabajo del año puede ser suficiente.</p>
 <p>El producto debería reforzar ese gesto, no sustituirlo.</p>
+<h2>Cómo decidir entre un regalo tradicional y uno más práctico</h2>
+<p>Una pieza de jamón o una cesta amplia tienen un componente tradicional muy fuerte, mientras que un pack compacto o un AOVE pueden ser más fáciles de transportar y almacenar. La mejor opción depende de la cultura del equipo y de cómo se entregará el regalo.</p>
+<p>Si la empresa duda entre ambas vías, conviene priorizar la facilidad de disfrute para la mayoría de empleados.</p>
 <h2>Qué información necesitamos para ayudar</h2>
 <p>Número de empleados, presupuesto por persona, fecha, destinos y cualquier preferencia importante. Con esos datos podemos revisar alternativas disponibles y plantear una propuesta realista.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Elige el regalo en función de tu equipo</h2><p>Envíanos cantidades y presupuesto y revisaremos qué opciones gastronómicas pueden funcionar mejor.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Contactar</a></p></div>
