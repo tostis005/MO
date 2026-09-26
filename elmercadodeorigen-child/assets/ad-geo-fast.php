@@ -69,7 +69,15 @@ if ( '' === $country ) {
 	if ( '' !== $ip ) {
 		$wp_content = dirname( __DIR__, 3 );
 		$autoload   = $wp_content . '/plugins/woocommerce/vendor/autoload.php';
-		$databases  = glob( $wp_content . '/uploads/woocommerce_uploads/*GeoLite2-Country.mmdb' );
+		$databases  = array(
+			$wp_content . '/plugins/wordfence/lib/geoip.mmdb',
+			$wp_content . '/wflogs/GeoLite2-Country.mmdb',
+		);
+		$woocommerce_databases = glob( $wp_content . '/uploads/woocommerce_uploads/*GeoLite2-Country.mmdb' );
+		if ( is_array( $woocommerce_databases ) ) {
+			$databases = array_merge( $woocommerce_databases, $databases );
+		}
+		$databases = array_values( array_filter( array_unique( $databases ), 'is_file' ) );
 
 		if ( is_file( $autoload ) && ! empty( $databases ) ) {
 			try {
