@@ -395,11 +395,12 @@
 			'}());'
 		].join('');
 
+		var closeScript = '</scr' + 'ipt>';
 		return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
 			'<style>html,body{margin:0;padding:0;overflow:hidden;background:transparent}body{display:flex;justify-content:center;align-items:flex-start}</style>' +
 			'</head><body>' +
-			'<script>window.atOptions=' + JSON.stringify(options) + ';' + detector + '<\\/script>' +
-			'<script src="https://www.highrevenueformat.com/' + encodeURIComponent(unit.key) + '/invoke.js" onload="window.__emoAdsterraInvokeLoaded()" onerror="window.__emoAdsterraInvokeFailed()"><\\/script>' +
+			'<script>window.atOptions=' + JSON.stringify(options) + ';' + detector + closeScript +
+			'<script src="https://www.highrevenueformat.com/' + encodeURIComponent(unit.key) + '/invoke.js" onload="window.__emoAdsterraInvokeLoaded()" onerror="window.__emoAdsterraInvokeFailed()">' + closeScript +
 			'</body></html>';
 	}
 
