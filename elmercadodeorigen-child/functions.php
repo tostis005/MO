@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.300' );
-/* 0.10.300 optimiza Adsterra como proveedor principal con fallback por hueco. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.301' );
+/* 0.10.301 deja Adsterra en pagina y Google solo para Auto Ads/ancla. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
 	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsterra' ); // 'adsense' | 'adsterra'
 }
