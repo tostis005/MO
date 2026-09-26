@@ -60,8 +60,11 @@ jobs:
           "$php_bin" -r '
             $root=$argv[1];
             require $root . "/wp-content/plugins/woocommerce/vendor/autoload.php";
-            $db=$root . "/wp-content/plugins/wordfence/lib/geoip.mmdb";
-            $r=new GeoIp2\\Database\\Reader($db);
+            $files=glob($root . "/wp-content/uploads/woocommerce_uploads/*GeoLite2-Country.mmdb");
+            $db=$files ? $files[0] : $root . "/wp-content/plugins/wordfence/lib/geoip.mmdb";
+            $cls="GeoIp2\\Database\\Reader";
+            $r=new $cls($db);
+            echo "DIRECT_DB=".$db."\n";
             foreach (["8.8.8.8","1.1.1.1","41.0.0.1"] as $ip) {
               try { echo "TEST_IP=".$ip." COUNTRY=".$r->country($ip)->country->isoCode."\n"; }
               catch (Throwable $e) { echo "TEST_IP=".$ip." ERROR=".$e->getMessage()."\n"; }
