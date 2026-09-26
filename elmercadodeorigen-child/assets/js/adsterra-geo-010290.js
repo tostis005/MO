@@ -281,24 +281,6 @@
 		}
 	});
 
-	function bannerDocument(unit) {
-		var options = {
-			key: unit.key,
-			format: 'iframe',
-			height: unit.height,
-			width: unit.width,
-			params: {}
-		};
-		var closeScript = '</scr' + 'ipt>';
-
-		return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-			'<style>html,body{margin:0;padding:0;overflow:hidden;background:transparent}body{display:flex;justify-content:center;align-items:flex-start}</style>' +
-			'</head><body>' +
-			'<script>window.atOptions=' + JSON.stringify(options) + ';' + closeScript +
-			'<script src="https://www.highrevenueformat.com/' + encodeURIComponent(unit.key) + '/invoke.js">' + closeScript +
-			'</body></html>';
-	}
-
 	function hydrateBanner(slot, unit, unitName) {
 		if (!slot || !unit || !unitName || slot.getAttribute('data-emo-adsterra-hydrated') === '1') return;
 
@@ -317,7 +299,12 @@
 		frame.setAttribute('loading', 'eager');
 		if (unitName.indexOf('responsive-') === 0) frame.setAttribute('fetchpriority', 'high');
 		frame.style.cssText = 'display:block;border:0;max-width:100%;overflow:hidden;background:transparent;';
-		frame.srcdoc = bannerDocument(unit);
+		var separator = config.frameEndpoint.indexOf('?') === -1 ? '?' : '&';
+		frame.src = config.frameEndpoint
+			+ separator
+			+ 'unit=' + encodeURIComponent(unitName)
+			+ '&token=' + encodeURIComponent(token)
+			+ '&v=' + encodeURIComponent(String(config.frameVersion || ''));
 
 		registerSlotAttempt(slot);
 		slot.setAttribute('data-emo-adsterra-unit', unitName);
