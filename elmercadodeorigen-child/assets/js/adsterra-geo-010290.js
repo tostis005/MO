@@ -26,6 +26,8 @@
 		attempted: 0,
 		resolved: 0,
 		rendered: 0,
+		invokeLoaded: 0,
+		creativeInserted: 0,
 		googleAnchor: false,
 		geoSource: null,
 		eligibilityMs: null,
@@ -133,9 +135,9 @@
 
 		var type = slot.getAttribute('data-emo-adsterra-slot') || '';
 		var configured = parseInt(config.slotTimeout, 10);
-		var timeout = configured && configured >= 4000 ? configured : 6500;
-		if (type === 'responsive-top') timeout = Math.min(timeout, 6000);
-		if (type === 'native') timeout = Math.max(timeout, 7500);
+		var timeout = configured && configured >= 4500 ? configured : 7000;
+		if (type === 'responsive-top') timeout = Math.min(timeout, 7000);
+		if (type === 'native') timeout = Math.max(timeout, 8000);
 
 		window.setTimeout(function () {
 			if (slot.getAttribute('data-emo-adsterra-state') !== 'pending') return;
@@ -271,7 +273,9 @@
 			'hydrated: ' + String(debug.hydrated),
 			'attempted: ' + String(debug.attempted),
 			'resolved: ' + String(debug.resolved),
-			'rendered: ' + String(debug.rendered),
+			'invoke_loaded: ' + String(debug.invokeLoaded),
+			'creative_inserted: ' + String(debug.creativeInserted),
+			'rendered_visible: ' + String(debug.rendered),
 			'google_anchor: ' + String(debug.googleAnchor),
 			'geo_source: ' + (debug.geoSource || 'none'),
 			'eligibility_ms: ' + String(debug.eligibilityMs),
@@ -313,7 +317,14 @@
 
 	window.addEventListener('message', function (event) {
 		if (event.origin !== window.location.origin || !event.data) return;
-		if (event.data.type !== 'emo-adsterra-rendered' && event.data.type !== 'emo-adsterra-blocked') return;
+
+		var allowed = {
+			'emo-adsterra-script-loaded': true,
+			'emo-adsterra-creative-inserted': true,
+			'emo-adsterra-rendered': true,
+			'emo-adsterra-blocked': true
+		};
+		if (!allowed[event.data.type]) return;
 
 		var token = typeof event.data.token === 'string' ? event.data.token : '';
 		if (!token) return;
@@ -321,8 +332,29 @@
 		var frames = document.querySelectorAll('iframe[data-emo-adsterra-token]');
 		for (var i = 0; i < frames.length; i += 1) {
 			if (frames[i].getAttribute('data-emo-adsterra-token') !== token) continue;
-			var slot = frames[i].closest('[data-emo-adsterra-slot]');
+			var frame = frames[i];
+			var slot = frame.closest('[data-emo-adsterra-slot]');
+
+			if (event.data.type === 'emo-adsterra-script-loaded') {
+				if (frame.getAttribute('data-emo-adsterra-script-loaded') !== '1') {
+					frame.setAttribute('data-emo-adsterra-script-loaded', '1');
+					debug.invokeLoaded += 1;
+					renderDebug();
+				}
+				break;
+			}
+
+			if (event.data.type === 'emo-adsterra-creative-inserted') {
+				if (frame.getAttribute('data-emo-adsterra-creative-inserted') !== '1') {
+					frame.setAttribute('data-emo-adsterra-creative-inserted', '1');
+					debug.creativeInserted += 1;
+					renderDebug();
+				}
+				break;
+			}
+
 			if (event.data.type === 'emo-adsterra-rendered') {
+				frame.setAttribute('data-emo-adsterra-visible', '1');
 				revealSlot(slot);
 			} else {
 				markSlotResolved(slot, 'failed');
@@ -332,7 +364,7 @@
 		}
 	});
 
-	function bannerDocument(unit) {
+	function bannerDocument(unit, token) {
 		var options = {
 			key: unit.key,
 			format: 'iframe',
@@ -341,11 +373,33 @@
 			params: {}
 		};
 
+		var detector = [
+			'(function(){',
+			'"use strict";',
+			'var token=' + JSON.stringify(token) + ';',
+			'var settled=false,inserted=false;',
+			'function post(type){try{window.parent.postMessage({type:type,token:token},window.location.origin);}catch(e){}}',
+			'function markInserted(){if(inserted)return;inserted=true;post("emo-adsterra-creative-inserted");}',
+			'function rendered(){if(settled)return;settled=true;markInserted();post("emo-adsterra-rendered");}',
+			'function watch(node){if(!node||node.nodeType!==1||node.getAttribute("data-emo-adsterra-watch")==="1")return;var tag=node.tagName;node.setAttribute("data-emo-adsterra-watch","1");markInserted();',
+			'if(tag==="IMG"){if(node.complete&&node.naturalWidth>0){rendered();return;}node.addEventListener("load",function(){if(node.naturalWidth>0)rendered();},{once:true});return;}',
+			'if(tag==="VIDEO"){if(node.readyState>=2){rendered();return;}node.addEventListener("loadeddata",rendered,{once:true});return;}',
+			'if(tag==="IFRAME"||tag==="OBJECT"||tag==="EMBED"){node.addEventListener("load",function(){setTimeout(rendered,60);},{once:true});setTimeout(function(){if(!settled&&node.isConnected){var src=node.getAttribute("src")||node.getAttribute("data")||"";if(src&&src!=="about:blank")rendered();}},900);return;}',
+			'setTimeout(function(){if(!settled&&node.isConnected)rendered();},120);}',
+			'function inspect(){if(settled)return;var nodes=document.body.querySelectorAll("iframe,img,video,object,embed,canvas,svg,a[href]");for(var i=0;i<nodes.length;i+=1)watch(nodes[i]);}',
+			'window.__emoAdsterraInvokeLoaded=function(){post("emo-adsterra-script-loaded");inspect();};',
+			'window.__emoAdsterraInvokeFailed=function(){if(settled)return;settled=true;post("emo-adsterra-blocked");};',
+			'new MutationObserver(inspect).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:["src","href","data"]});',
+			'setTimeout(function(){if(!settled){settled=true;post("emo-adsterra-blocked");}},6200);',
+			'inspect();',
+			'}());'
+		].join('');
+
 		return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
 			'<style>html,body{margin:0;padding:0;overflow:hidden;background:transparent}body{display:flex;justify-content:center;align-items:flex-start}</style>' +
 			'</head><body>' +
-			'<script>window.atOptions=' + JSON.stringify(options) + ';<\\/script>' +
-			'<script src="https://www.highrevenueformat.com/' + encodeURIComponent(unit.key) + '/invoke.js"><\\/script>' +
+			'<script>window.atOptions=' + JSON.stringify(options) + ';' + detector + '<\\/script>' +
+			'<script src="https://www.highrevenueformat.com/' + encodeURIComponent(unit.key) + '/invoke.js" onload="window.__emoAdsterraInvokeLoaded()" onerror="window.__emoAdsterraInvokeFailed()"><\\/script>' +
 			'</body></html>';
 	}
 
@@ -367,16 +421,11 @@
 		frame.setAttribute('loading', 'eager');
 		if (unitName.indexOf('responsive-') === 0) frame.setAttribute('fetchpriority', 'high');
 		frame.style.cssText = 'display:block;border:0;max-width:100%;overflow:hidden;background:transparent;';
-		frame.srcdoc = bannerDocument(unit);
+		frame.srcdoc = bannerDocument(unit, token);
 
 		registerSlotAttempt(slot);
 		slot.setAttribute('data-emo-adsterra-hydrated', '1');
 		mount.appendChild(frame);
-
-		// La primera implementación de Adsterra que funcionó en producción
-		// mostraba el iframe inmediatamente. No esperamos una señal interna que
-		// algunos creativos de Adsterra no emiten aunque se hayan servido.
-		revealSlot(slot);
 	}
 
 	function hydrateNative(slot) {
@@ -392,11 +441,18 @@
 		slot.setAttribute('data-emo-adsterra-hydrated', '1');
 
 		function nativeHasCreative() {
-			return container.children.length > 0 || (container.textContent || '').trim() !== '';
+			if (container.querySelector('iframe,img,video,object,embed,canvas,svg,a[href]')) return true;
+			return Array.prototype.slice.call(container.children).some(function (node) {
+				return node.tagName !== 'SCRIPT' && node.tagName !== 'STYLE' && (node.textContent || '').trim() !== '';
+			});
 		}
 
 		function revealNativeWhenReady() {
 			if (!nativeHasCreative()) return;
+			if (slot.getAttribute('data-emo-adsterra-creative-inserted') !== '1') {
+				slot.setAttribute('data-emo-adsterra-creative-inserted', '1');
+				debug.creativeInserted += 1;
+			}
 			revealSlot(slot);
 			observer.disconnect();
 		}
@@ -412,6 +468,13 @@
 		script.async = true;
 		script.setAttribute('data-cfasync', 'false');
 		script.src = 'https://pl31502847.profitableratecpmnetwork.com/a83b8ce6c354e77b2ae5f266936bd60f/invoke.js';
+		script.addEventListener('load', function () {
+			if (slot.getAttribute('data-emo-adsterra-script-loaded') !== '1') {
+				slot.setAttribute('data-emo-adsterra-script-loaded', '1');
+				debug.invokeLoaded += 1;
+				renderDebug();
+			}
+		}, { once: true });
 		script.addEventListener('error', function () {
 			markSlotResolved(slot, 'failed');
 			collapseSlot(slot);
