@@ -58,6 +58,12 @@ array(
 <h2>Cuándo empezar a plantearla</h2>
 <p>Cuanto más personalizada sea la cesta, más antelación hace falta. Elegir productos estándar disponibles en volumen es más sencillo que coordinar formatos especiales, mensajes y varios grupos de destinatarios.</p>
 <p>Si la campaña es navideña, iniciar la consulta antes de diciembre permite trabajar con más margen.</p>
+<h2>Qué conviene personalizar y qué conviene mantener estándar</h2>
+<p>No todo necesita adaptarse. En pedidos corporativos suele ser más eficiente mantener estándar aquello que no aporta valor al destinatario y personalizar únicamente los elementos que sí cambian la experiencia: selección, nivel de presupuesto, mensaje o alguna restricción relevante.</p>
+<p>Este criterio reduce errores, facilita la preparación y evita que la personalización se convierta en complejidad sin beneficio real.</p>
+<h2>Cómo priorizar cuando hay muchas ideas</h2>
+<p>Si la empresa quiere cambiar productos, caja, mensaje, formatos y destinos al mismo tiempo, conviene ordenar las prioridades. Primero deben resolverse presupuesto, disponibilidad y logística; después, los elementos estéticos o de presentación.</p>
+<p>Así la propuesta se construye sobre una base viable y no sobre expectativas difíciles de ejecutar en campaña alta.</p>
 <h2>Qué información necesitamos</h2>
 <p>Número de cestas, presupuesto, grupos de destinatarios, fecha, destinos y qué elementos quieres personalizar. Si algo es imprescindible —por ejemplo, una determinada categoría de producto— indícalo claramente.</p>
 <p>Con esa información podemos separar lo viable de lo que requeriría una operativa que no esté disponible.</p>
@@ -103,6 +109,12 @@ array(
 <h2>Cuándo conviene pedirlo</h2>
 <p>Aunque el pedido sea pequeño, esperar a los últimos días puede limitar formatos y disponibilidad. Si quieres comparar opciones, noviembre suele ofrecer más margen que la segunda mitad de diciembre.</p>
 <p>Si existe una fecha concreta de comida o cierre de oficina, debe comunicarse desde el principio.</p>
+<h2>Pedidos pequeños y disponibilidad real</h2>
+<p>Trabajar con pocas unidades no garantiza que cualquier producto esté disponible, pero sí permite considerar referencias con stock más limitado. Aun así, conviene evitar depender de una única opción si la campaña está avanzada.</p>
+<p>Una buena estrategia es definir el tipo de regalo y mantener dos o tres alternativas posibles dentro del mismo presupuesto.</p>
+<h2>Cómo aprovechar mejor un presupuesto pequeño</h2>
+<p>En una empresa reducida, una pequeña mejora por persona puede cambiar mucho la percepción del regalo sin disparar el gasto total. Puede ser preferible subir la categoría del producto principal o elegir una referencia con mejor presentación antes que añadir más unidades secundarias.</p>
+<p>El objetivo debe ser que el conjunto parezca elegido, no simplemente abundante.</p>
 <h2>Qué necesitamos para preparar una propuesta</h2>
 <p>Número de personas, presupuesto por empleado, fecha, forma de entrega y cualquier preferencia de producto. Con esos datos podemos revisar alternativas pensadas para un pedido pequeño, sin sobredimensionarlo.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Un equipo pequeño también puede tener un regalo bien pensado</h2><p>Envíanos cantidades y presupuesto y revisaremos qué productos pueden ofrecer más valor.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Contactar</a></p></div>
@@ -147,6 +159,12 @@ array(
 <h2>Cómo evitar una cesta genérica</h2>
 <p>El hilo conductor puede ser una categoría —ibéricos, AOVE—, una procedencia o una experiencia de consumo. Tener una idea central hace que el regalo se perciba como una selección y no como una acumulación.</p>
 <p>También facilita explicar el motivo de la elección al cliente.</p>
+<h2>Premium también significa reducir incertidumbre</h2>
+<p>En un regalo para un cliente estratégico, la fiabilidad forma parte de la experiencia. No sirve elegir un producto excelente si la entrega es incierta, el formato no está confirmado o la presentación depende de una condición que todavía no se ha validado.</p>
+<p>Por eso, una propuesta premium debe ser sólida también en disponibilidad, preparación y fecha.</p>
+<h2>Cómo justificar un presupuesto mayor</h2>
+<p>Si el regalo tiene un coste elevado, conviene que el aumento se perciba en aspectos concretos: categoría del producto, productor, formato, procedencia o selección. Añadir referencias sin criterio no convierte automáticamente una cesta en premium.</p>
+<p>La diferencia debe poder explicarse de forma sencilla y visible para el destinatario.</p>
 <h2>Qué información necesitamos</h2>
 <p>Número de clientes, presupuesto por destinatario, fecha, destino y cualquier preferencia conocida. Si hay varios niveles de cliente, separa cantidades y presupuestos para cada grupo.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Haz que la cesta premium tenga criterio</h2><p>Envíanos el contexto y el presupuesto y revisaremos qué productos disponibles pueden construir una propuesta de mayor nivel.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Ir al formulario de contacto</a></p></div>
@@ -191,6 +209,12 @@ array(
 <h2>Logística en pedidos con varios destinatarios</h2>
 <p>El Mercado de Origen funciona como marketplace y cada vendedor prepara y expide directamente su pedido. Si existen muchos destinos o productos de varios vendedores, necesitamos revisar la operativa antes de confirmarla.</p>
 <p>Cuanto antes conozcamos cantidades y ubicaciones, mejor podremos valorar las alternativas.</p>
+<h2>Proveedores estratégicos frente a colaboradores puntuales</h2>
+<p>Puede tener sentido diferenciar entre relaciones de largo plazo y colaboraciones puntuales. Un proveedor crítico con años de relación puede recibir un detalle distinto de un profesional con el que se ha trabajado en un proyecto concreto.</p>
+<p>La segmentación ayuda a mantener proporcionalidad y a usar mejor el presupuesto disponible.</p>
+<h2>Un regalo compartido para equipos proveedores</h2>
+<p>Cuando la relación es con una empresa y no con una persona concreta, puede ser más adecuado enviar un regalo pensado para compartir entre varias personas. Esto evita personalizar en exceso y reconoce al equipo completo que participa en la colaboración.</p>
+<p>En esos casos conviene elegir formatos fáciles de repartir y consumir en oficina.</p>
 <h2>Qué información necesitamos</h2>
 <p>Número de proveedores o colaboradores, presupuesto, fecha, direcciones aproximadas y cualquier preferencia de producto. Con esos datos podemos estudiar una propuesta proporcionada a la ocasión.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Agradece la colaboración con un regalo pensado</h2><p>Cuéntanos el contexto y revisaremos qué opciones gastronómicas pueden encajar.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Contactar</a></p></div>
@@ -238,6 +262,12 @@ array(
 <h2>Qué evitar</h2>
 <p>Evita regalos excesivos, demasiadas referencias sin relación, productos demasiado personales si no conoces bien al cliente y promesas de personalización que no estén confirmadas.</p>
 <p>También conviene revisar posibles políticas de compliance del destinatario.</p>
+<h2>Cómo elegir entre una idea clásica y una más original</h2>
+<p>Los regalos clásicos funcionan porque son fáciles de entender, pero pueden resultar previsibles. Las opciones más originales pueden sorprender, aunque exigen conocer mejor al destinatario. Cuando no hay suficiente información, suele ser más seguro innovar dentro de categorías reconocibles.</p>
+<p>Por ejemplo, un AOVE de productor poco conocido o una selección de conservas singulares puede aportar novedad sin alejarse de productos familiares.</p>
+<h2>Ideas para distintos momentos del año</h2>
+<p>No todas las propuestas tienen que reservarse para diciembre. AOVE, conservas o packs compactos pueden funcionar bien durante todo el año, mientras que jamón, paleta o lotes más amplios suelen tener una presencia especialmente fuerte en Navidad.</p>
+<p>Relacionar el tipo de regalo con la ocasión ayuda a que el detalle resulte más natural.</p>
 <h2>Qué información nos ayuda a convertir ideas en una propuesta</h2>
 <p>Número de clientes, presupuesto por persona, ocasión, fecha, destinos y cualquier preferencia conocida. Con esos datos podemos filtrar las ideas y revisar productos disponibles.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Pasa de las ideas a una selección concreta</h2><p>Envíanos cantidades y presupuesto y revisaremos qué opciones del catálogo pueden encajar.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Ir al formulario de contacto</a></p></div>
