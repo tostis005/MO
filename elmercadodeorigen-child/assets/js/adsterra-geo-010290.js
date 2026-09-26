@@ -11,6 +11,8 @@
 	var attemptedSlots = 0;
 	var resolvedSlots = 0;
 	var renderedSlots = 0;
+	var geoCacheKey = 'emo-blog-ad-eligibility-v3';
+	var geoCacheMaxAge = 30 * 60 * 1000;
 	var debugMode = /(?:^|[?&])adsterra_debug=1(?:&|$)/.test(window.location.search);
 	var debug = window.ElMercadoAdsterraGeoDebug = {
 		phase: 'initializing',
@@ -23,6 +25,8 @@
 		rendered: 0,
 		fallback: false,
 		fallbackReason: null,
+		geoSource: null,
+		eligibilityMs: null,
 		error: null
 	};
 
@@ -320,6 +324,8 @@
 			'rendered: ' + String(debug.rendered),
 			'fallback: ' + String(debug.fallback),
 			'fallback_reason: ' + (debug.fallbackReason || 'none'),
+			'geo_source: ' + (debug.geoSource || 'none'),
+			'eligibility_ms: ' + String(debug.eligibilityMs),
 			'error: ' + (debug.error || 'none')
 		].join('\n');
 	}
@@ -393,8 +399,8 @@
 
 		var separator = config.frameEndpoint.indexOf('?') === -1 ? '?' : '&';
 		frame.src = config.frameEndpoint + separator
-			+ 'emo_adsterra_frame=' + encodeURIComponent(unitName)
-			+ '&emo_adsterra_token=' + encodeURIComponent(token)
+			+ 'unit=' + encodeURIComponent(unitName)
+			+ '&token=' + encodeURIComponent(token)
 			+ '&_=' + Date.now();
 
 		registerSlotAttempt(slot);
@@ -481,8 +487,68 @@
 		setPhase('eligible_adsterra_loaded');
 	}
 
-	function requestEligibility(attempt) {
-		setPhase('checking_eligibility');
+	function normalizeCountry(value) {
+		var country = String(value || '').trim().toUpperCase();
+		return /^[A-Z]{2}$/.test(country) && country !== 'XX' && country !== 'T1' ? country : '';
+	}
+
+	function countryIsShippable(country) {
+		var countries = Array.isArray(config.shippableCountries) ? config.shippableCountries : [];
+		country = normalizeCountry(country);
+		if (!country) return true;
+		return countries.indexOf('*') !== -1 || countries.indexOf(country) !== -1;
+	}
+
+	function readEligibilityCache() {
+		try {
+			var raw = window.sessionStorage.getItem(geoCacheKey);
+			if (!raw) return null;
+			var cached = JSON.parse(raw);
+			if (!cached || !cached.ts || Date.now() - cached.ts > geoCacheMaxAge) {
+				window.sessionStorage.removeItem(geoCacheKey);
+				return null;
+			}
+			var country = normalizeCountry(cached.country);
+			if (!country || typeof cached.showAds !== 'boolean') return null;
+			return {
+				country: country,
+				canBuy: cached.showAds === false,
+				showAds: cached.showAds
+			};
+		} catch (error) {
+			return null;
+		}
+	}
+
+	function writeEligibilityCache(data) {
+		try {
+			window.sessionStorage.setItem(geoCacheKey, JSON.stringify({
+				country: data.country,
+				showAds: data.showAds === true,
+				ts: Date.now()
+			}));
+		} catch (error) {
+			// sessionStorage puede estar bloqueado; la publicidad sigue funcionando.
+		}
+	}
+
+	function applyEligibility(data, source, startedAt) {
+		debug.country = normalizeCountry(data.country) || null;
+		debug.canBuy = typeof data.canBuy === 'boolean' ? data.canBuy : null;
+		debug.showAds = data.showAds === true;
+		debug.geoSource = source || 'unknown';
+		debug.eligibilityMs = Math.max(0, Math.round(performance.now() - startedAt));
+		debug.error = null;
+
+		if (debug.showAds) {
+			setPhase('eligible');
+			hydrateEligibleSlots();
+		} else {
+			setPhase('not_eligible_no_ads');
+		}
+	}
+
+	function requestRestEligibility(attempt, startedAt) {
 		var separator = config.endpoint.indexOf('?') === -1 ? '?' : '&';
 		var url = config.endpoint + separator + '_blog_ad_geo=' + Date.now();
 
@@ -497,25 +563,74 @@
 				return response.json();
 			})
 			.then(function (data) {
-				debug.country = data && data.country ? data.country : null;
-				debug.canBuy = data && typeof data.can_buy !== 'undefined' ? data.can_buy : null;
-				debug.showAds = data && data.show_ads === true;
-
-				if (debug.showAds) {
-					setPhase('eligible');
-					hydrateEligibleSlots();
-				} else {
-					setPhase('not_eligible_no_ads');
-				}
+				var country = normalizeCountry(data && data.country);
+				var result = {
+					country: country,
+					canBuy: data && typeof data.can_buy === 'boolean' ? data.can_buy : null,
+					showAds: data && data.show_ads === true
+				};
+				if (country) writeEligibilityCache(result);
+				applyEligibility(result, 'wordpress_rest', startedAt);
 			})
 			.catch(function (error) {
 				debug.error = error && error.message ? error.message : String(error || 'unknown_error');
 				if (attempt < 2) {
-					window.setTimeout(function () { requestEligibility(attempt + 1); }, 250);
+					window.setTimeout(function () { requestRestEligibility(attempt + 1, startedAt); }, 150);
 					return;
 				}
+				debug.eligibilityMs = Math.max(0, Math.round(performance.now() - startedAt));
 				setPhase('eligibility_error_no_ads');
 			});
+	}
+
+	function requestFastEligibility(startedAt) {
+		if (!config.fastGeoEndpoint || !Array.isArray(config.shippableCountries)) {
+			requestRestEligibility(1, startedAt);
+			return;
+		}
+
+		var controller = typeof window.AbortController === 'function' ? new AbortController() : null;
+		var timer = window.setTimeout(function () {
+			if (controller) controller.abort();
+		}, 900);
+
+		fetch(config.fastGeoEndpoint + (config.fastGeoEndpoint.indexOf('?') === -1 ? '?' : '&') + '_=' + Date.now(), {
+			method: 'GET',
+			credentials: 'same-origin',
+			cache: 'no-store',
+			headers: { 'Accept': 'application/json' },
+			signal: controller ? controller.signal : undefined
+		})
+			.then(function (response) {
+				if (!response.ok) throw new Error('Fast geo failed with HTTP ' + response.status);
+				return response.json();
+			})
+			.then(function (data) {
+				window.clearTimeout(timer);
+				var country = normalizeCountry(data && data.country);
+				if (!country) throw new Error('Fast geo returned no country');
+				var canBuy = countryIsShippable(country);
+				var result = { country: country, canBuy: canBuy, showAds: !canBuy };
+				writeEligibilityCache(result);
+				applyEligibility(result, 'fast_' + String((data && data.source) || 'header'), startedAt);
+			})
+			.catch(function () {
+				window.clearTimeout(timer);
+				requestRestEligibility(1, startedAt);
+			});
+	}
+
+	function requestEligibility() {
+		var startedAt = performance.now();
+		setPhase('checking_eligibility');
+
+		var cached = readEligibilityCache();
+		if (cached) {
+			applyEligibility(cached, 'session_cache', startedAt);
+			return;
+		}
+
+		requestFastEligibility(startedAt);
 	}
 
 	if (debugMode) {
@@ -538,5 +653,5 @@
 		return;
 	}
 
-	requestEligibility(1);
+	requestEligibility();
 }());
