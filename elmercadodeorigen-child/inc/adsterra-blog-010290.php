@@ -617,6 +617,26 @@ window.atOptions = <?php echo wp_json_encode( array(
 }
 add_action( 'template_redirect', 'elmercado_adsterra_frame_response_010291', 0 );
 
+/**
+ * Descubre el controlador publicitario al principio del head para evitar que
+ * compita con scripts de analítica y plugins antes de iniciar su descarga.
+ */
+function elmercado_adsterra_preload_controller_010301(): void {
+	if ( ! elmercado_adsterra_is_blog_post_request_010290() ) {
+		return;
+	}
+
+	$path = ELMERCADO_THEME_PATH . '/assets/js/adsterra-geo-010290.js';
+	$ver  = is_readable( $path ) ? (string) filemtime( $path ) : ELMERCADO_THEME_VERSION;
+	$src  = add_query_arg( 'ver', $ver, ELMERCADO_THEME_URL . '/assets/js/adsterra-geo-010290.js' );
+
+	printf(
+		'<link rel="preload" as="script" href="%1$s" fetchpriority="high">' . "\n",
+		esc_url( $src )
+	);
+}
+add_action( 'wp_head', 'elmercado_adsterra_preload_controller_010301', 1 );
+
 function elmercado_adsterra_enqueue_controller_010290(): void {
 	if ( ! elmercado_adsterra_is_blog_post_request_010290() ) {
 		return;
@@ -645,3 +665,16 @@ function elmercado_adsterra_enqueue_controller_010290(): void {
 	);
 }
 add_action( 'wp_enqueue_scripts', 'elmercado_adsterra_enqueue_controller_010290', 1 );
+
+add_filter(
+	'script_loader_tag',
+	static function ( string $tag, string $handle ): string {
+		if ( 'elmercado-adsterra-geo-010290' !== $handle || str_contains( $tag, ' fetchpriority=' ) ) {
+			return $tag;
+		}
+
+		return str_replace( '<script ', '<script fetchpriority="high" ', $tag );
+	},
+	5,
+	2
+);
