@@ -11,6 +11,8 @@ on:
       - 'elmercadodeorigen-child/assets/js/adsense-geo-010266.js'
       - 'elmercadodeorigen-child/inc/adsterra-blog-010290.php'
       - 'elmercadodeorigen-child/assets/js/adsterra-geo-010290.js'
+      - 'elmercadodeorigen-child/assets/ad-geo-fast.php'
+      - 'elmercadodeorigen-child/assets/adsterra-frame.html'
   workflow_dispatch:
 
 permissions:
@@ -39,6 +41,8 @@ jobs:
           php -l elmercadodeorigen-child/inc/adsterra-blog-010290.php
           node --check elmercadodeorigen-child/assets/js/adsense-geo-010266.js
           node --check elmercadodeorigen-child/assets/js/adsterra-geo-010290.js
+          php -l elmercadodeorigen-child/assets/ad-geo-fast.php
+          grep -q 'highrevenueformat.com' elmercadodeorigen-child/assets/adsterra-frame.html
           grep -q "ELMERCADO_BLOG_AD_PROVIDER', 'adsterra'" elmercadodeorigen-child/functions.php
           grep -q 'a83b8ce6c354e77b2ae5f266936bd60f' elmercadodeorigen-child/assets/js/adsterra-geo-010290.js
           grep -q '4e02d145fdb84842713b24a4bade6244' elmercadodeorigen-child/assets/js/adsterra-geo-010290.js
@@ -60,7 +64,7 @@ jobs:
           tmp_root="/tmp/elmercado-blog-ads-${GITHUB_RUN_ID}"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$tmp_root/inc' '$tmp_root/assets/js'"
 
-          for file in             functions.php             single.php             inc/adsense-geo-010266.php             inc/adsterra-blog-010290.php             assets/js/adsense-geo-010266.js             assets/js/adsterra-geo-010290.js
+          for file in             functions.php             single.php             inc/adsense-geo-010266.php             inc/adsterra-blog-010290.php             assets/js/adsense-geo-010266.js             assets/js/adsterra-geo-010290.js             assets/ad-geo-fast.php             assets/adsterra-frame.html
           do
             sshpass -e scp $SCP_OPTIONS "elmercadodeorigen-child/$file" "$STAGING_USER@$STAGING_HOST:$tmp_root/$file"
           done
@@ -94,8 +98,9 @@ jobs:
           "$php_bin" -l "$tmp_root/single.php"
           "$php_bin" -l "$tmp_root/inc/adsense-geo-010266.php"
           "$php_bin" -l "$tmp_root/inc/adsterra-blog-010290.php"
+          "$php_bin" -l "$tmp_root/assets/ad-geo-fast.php"
 
-          for file in             functions.php             single.php             inc/adsense-geo-010266.php             inc/adsterra-blog-010290.php             assets/js/adsense-geo-010266.js             assets/js/adsterra-geo-010290.js
+          for file in             functions.php             single.php             inc/adsense-geo-010266.php             inc/adsterra-blog-010290.php             assets/js/adsense-geo-010266.js             assets/js/adsterra-geo-010290.js             assets/ad-geo-fast.php             assets/adsterra-frame.html
           do
             destination="$theme_path/$file"
             mkdir -p "$(dirname "$destination")"
@@ -107,6 +112,7 @@ jobs:
           "$php_bin" -l "$theme_path/single.php"
           "$php_bin" -l "$theme_path/inc/adsense-geo-010266.php"
           "$php_bin" -l "$theme_path/inc/adsterra-blog-010290.php"
+          "$php_bin" -l "$theme_path/assets/ad-geo-fast.php"
 
           "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod_path" --allow-root >/dev/null 2>&1 || true
 
@@ -141,6 +147,8 @@ jobs:
           head_html="${post_html%%</head>*}"
 
           grep -q 'adsterra-geo-010290.js' <<< "$head_html"
+          grep -q 'ad-geo-fast.php' <<< "$head_html"
+          grep -q 'adsterra-frame.html' <<< "$head_html"
           grep -q 'data-emo-adsterra-slot=' <<< "$post_html"
           if grep -q 'adsense-geo-010266.js' <<< "$head_html"; then
             echo "AdSense controller is active while provider=adsterra"
@@ -154,6 +162,15 @@ jobs:
             echo "Adsterra network script loaded before geography eligibility"
             exit 1
           fi
+
+          echo "--- FAST GEO ENDPOINT ---"
+          fast_geo=$(curl -fsSL --max-time 5 -H 'X-Country-Code: ZA' "${site_url}/wp-content/themes/${stylesheet}/assets/ad-geo-fast.php?verify=${nonce}")
+          echo "$fast_geo"
+          grep -q '"country":"ZA"' <<< "$fast_geo"
+
+          echo "--- STATIC AD FRAME ---"
+          frame_html=$(curl -fsSL --max-time 5 "${site_url}/wp-content/themes/${stylesheet}/assets/adsterra-frame.html?unit=rectangle&token=verify")
+          grep -q 'highrevenueformat.com' <<< "$frame_html"
 
           echo "--- GENERIC REST ENDPOINT ---"
           route_registered=$("$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod_path" --allow-root '
