@@ -1,0 +1,89 @@
+name: Audit Adsterra format mapping
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/adsterra-format-audit-20260926.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --quiet selenium
+      - name: Audit desktop and mobile Adsterra units
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,time
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+
+          URL='https://www.elmercadodeorigen.com/dop-jabugo-que-garantiza-territorio-como-reconocer-jamon/?adsterra_debug=1&format_audit=1'
+
+          def run(label,w,h):
+              o=Options(); o.page_load_strategy='none'
+              for a in ('--headless=new','--no-sandbox','--disable-dev-shm-usage',f'--window-size={w},{h}','--lang=en-US'):
+                  o.add_argument(a)
+              d=webdriver.Chrome(options=o)
+              try:
+                  d.execute_cdp_cmd('Network.enable',{})
+                  d.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument',{'source':"""
+                  (()=>{const f=window.fetch;window.fetch=function(input,init){
+                    const u=typeof input==='string'?input:(input&&input.url)||'';
+                    if(u.includes('/assets/ad-geo-fast.php')||u.includes('/wp-json/elmercado/v1/blog-ad-eligibility')){
+                      init=Object.assign({},init||{});const h=new Headers(init.headers||{});
+                      h.set('X-Country-Code','ZA');init.headers=h;
+                    }
+                    return f.call(this,input,init);
+                  };})();"""})
+                  d.get(URL+'&view='+label)
+                  time.sleep(6)
+                  d.execute_script('window.scrollTo(0, Math.floor(document.documentElement.scrollHeight*0.55))')
+                  time.sleep(4)
+                  d.execute_script('window.scrollTo(0, document.documentElement.scrollHeight)')
+                  time.sleep(4)
+                  state=d.execute_script(r"""
+                    const res=performance.getEntriesByType('resource').map(r=>r.name);
+                    return {
+                      viewport:[innerWidth,innerHeight],
+                      debug:window.ElMercadoAdsterraGeoDebug||null,
+                      slots:Array.from(document.querySelectorAll('[data-emo-adsterra-slot]')).map((s,i)=>{
+                        const f=s.querySelector('iframe[data-emo-adsterra-token]');
+                        const u=f?new URL(f.src):null;
+                        return {
+                          i,
+                          declared:s.getAttribute('data-emo-adsterra-slot'),
+                          state:s.getAttribute('data-emo-adsterra-state'),
+                          hydrated:s.getAttribute('data-emo-adsterra-hydrated'),
+                          visible:getComputedStyle(s).display!=='none',
+                          slotW:Math.round(s.getBoundingClientRect().width),
+                          slotH:Math.round(s.getBoundingClientRect().height),
+                          frameW:f?parseInt(f.getAttribute('width')||'0'):0,
+                          frameH:f?parseInt(f.getAttribute('height')||'0'):0,
+                          unit:u?u.searchParams.get('unit'):null,
+                          frameSrc:f?f.src:null
+                        };
+                      }),
+                      adsterraKeys:res.filter(x=>x.includes('highrevenueformat.com/')).map(x=>{
+                        const m=x.match(/highrevenueformat\.com\/([^/]+)\/invoke\.js/);
+                        return m?m[1]:x;
+                      }),
+                      nativeRequests:res.filter(x=>x.includes('profitableratecpmnetwork.com'))
+                    };
+                  """)
+                  print(label+'='+json.dumps(state,sort_keys=True),flush=True)
+              finally:
+                  d.quit()
+
+          run('DESKTOP',1440,1000)
+          run('MOBILE',390,844)
+          print('FORMAT_AUDIT_DONE=1',flush=True)
+          PY
