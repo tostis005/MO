@@ -190,24 +190,24 @@ jobs:
           post_path=$(printf '%s' "$post_url" | sed -E 's#https?://[^/]+##')
           rm -rf "$prod_path/wp-content/uploads/elmercado-blog-static-v1"
 
-          curl -ksS --resolve www.elmercadodeorigen.com:443:127.0.0.1 --max-time 45             -D /tmp/blog-cache-prime.h -o /tmp/blog-cache-prime.html             -w 'prime_http=%{http_code} prime_ttfb=%{time_starttransfer} prime_total=%{time_total}\n'             "https://www.elmercadodeorigen.com${post_path}"
+          curl -ksS --max-time 45             -D /tmp/blog-cache-prime.h -o /tmp/blog-cache-prime.html             -w 'prime_http=%{http_code} prime_ttfb=%{time_starttransfer} prime_total=%{time_total}\n'             "${site_url}${post_path}"
           grep -q 'data-emo-adsterra-slot=' /tmp/blog-cache-prime.html
           if grep -qi '^X-El-Mercado-Blog-Early-Cache: HIT' /tmp/blog-cache-prime.h; then
             echo "Unexpected early HIT on prime"
             exit 31
           fi
 
-          curl -ksS --resolve www.elmercadodeorigen.com:443:127.0.0.1 --max-time 15             -D /tmp/blog-cache-hit.h -o /tmp/blog-cache-hit.html             -w 'hit_http=%{http_code} hit_ttfb=%{time_starttransfer} hit_total=%{time_total}\n'             "https://www.elmercadodeorigen.com${post_path}"
+          curl -ksS --max-time 15             -D /tmp/blog-cache-hit.h -o /tmp/blog-cache-hit.html             -w 'hit_http=%{http_code} hit_ttfb=%{time_starttransfer} hit_total=%{time_total}\n'             "${site_url}${post_path}"
           grep -qi '^X-El-Mercado-Blog-Early-Cache: HIT' /tmp/blog-cache-hit.h
           grep -q 'data-emo-adsterra-slot=' /tmp/blog-cache-hit.html
 
-          curl -ksS --resolve www.elmercadodeorigen.com:443:127.0.0.1 --max-time 45             -H 'Cookie: emo_cache_bypass=1' -D /tmp/blog-cache-cookie.h -o /dev/null             "https://www.elmercadodeorigen.com${post_path}"
+          curl -ksS --max-time 45             -H 'Cookie: emo_cache_bypass=1' -D /tmp/blog-cache-cookie.h -o /dev/null             "${site_url}${post_path}"
           if grep -qi '^X-El-Mercado-Blog-Early-Cache: HIT' /tmp/blog-cache-cookie.h; then
             echo "Cookie request was early cached"
             exit 32
           fi
 
-          curl -ksS --resolve www.elmercadodeorigen.com:443:127.0.0.1 --max-time 45             -D /tmp/blog-cache-query.h -o /dev/null             "https://www.elmercadodeorigen.com${post_path}?emo_cache_bypass=1"
+          curl -ksS --max-time 45             -D /tmp/blog-cache-query.h -o /dev/null             "${site_url}${post_path}?emo_cache_bypass=1"
           if grep -qi '^X-El-Mercado-Blog-Early-Cache: HIT' /tmp/blog-cache-query.h; then
             echo "Query request was early cached"
             exit 33
