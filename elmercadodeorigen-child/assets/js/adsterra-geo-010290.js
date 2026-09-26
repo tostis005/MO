@@ -401,6 +401,7 @@
 
 	function slotIsSupported(type) {
 		if (type === 'skyscraper' && window.matchMedia('(max-width: 1160px)').matches) return false;
+		if (type === 'footer-banner' && window.matchMedia('(max-width: 519px)').matches) return false;
 		return true;
 	}
 
@@ -418,10 +419,6 @@
 				? 'responsive-mobile'
 				: 'responsive-desktop';
 			hydrateBanner(slot, units[topName], topName);
-		} else if (type === 'tall-rectangle' && window.matchMedia('(max-width: 767px)').matches) {
-			hydrateBanner(slot, units['responsive-mobile'], 'responsive-mobile');
-		} else if (type === 'footer-banner' && window.matchMedia('(max-width: 519px)').matches) {
-			hydrateBanner(slot, units['responsive-mobile'], 'responsive-mobile');
 		} else if (units[type]) {
 			hydrateBanner(slot, units[type], type);
 		}
