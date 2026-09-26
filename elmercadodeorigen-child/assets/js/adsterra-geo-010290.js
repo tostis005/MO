@@ -9,7 +9,6 @@
 	var finalHydrationScheduled = false;
 	var hydrationPending = false;
 	var slotObserver = null;
-	var googleAnchorPromise = null;
 	var lazySlotObserver = null;
 	var attemptedSlots = 0;
 	var resolvedSlots = 0;
@@ -28,7 +27,6 @@
 		rendered: 0,
 		invokeLoaded: 0,
 		creativeInserted: 0,
-		googleAnchor: false,
 		geoSource: null,
 		eligibilityMs: null,
 		error: null
@@ -67,10 +65,6 @@
 		}
 	};
 
-	function googleScriptExists() {
-		return !!document.querySelector('script[src*="pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"]');
-	}
-
 	function preconnect(origin) {
 		if (!origin || !document.head) return;
 		if (document.querySelector('link[data-emo-ad-preconnect="' + origin + '"]')) return;
@@ -86,45 +80,6 @@
 		preconnect('https://www.highrevenueformat.com');
 		preconnect('https://pl31502847.profitableratecpmnetwork.com');
 	}
-
-	function preconnectGoogle() {
-		preconnect('https://pagead2.googlesyndication.com');
-		preconnect('https://googleads.g.doubleclick.net');
-	}
-
-	function loadGoogleAnchorScript() {
-		if (googleScriptExists()) {
-			debug.googleAnchor = true;
-			renderDebug();
-			return Promise.resolve();
-		}
-
-		if (googleAnchorPromise) return googleAnchorPromise;
-		if (!config.adsensePublisher) {
-			return Promise.reject(new Error('Missing AdSense publisher for anchor ad'));
-		}
-
-		googleAnchorPromise = new Promise(function (resolve, reject) {
-			var script = document.createElement('script');
-			script.async = true;
-			script.crossOrigin = 'anonymous';
-			script.setAttribute('data-emo-google-anchor', '1');
-			script.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' + encodeURIComponent(config.adsensePublisher);
-			script.addEventListener('load', function () {
-				debug.googleAnchor = true;
-				renderDebug();
-				resolve();
-			}, { once: true });
-			script.addEventListener('error', function () {
-				googleAnchorPromise = null;
-				reject(new Error('Google anchor script failed to load'));
-			}, { once: true });
-			(document.head || document.documentElement).appendChild(script);
-		});
-
-		return googleAnchorPromise;
-	}
-
 
 	function registerSlotAttempt(slot) {
 		if (!slot || slot.getAttribute('data-emo-adsterra-state')) return;
@@ -276,7 +231,6 @@
 			'invoke_loaded: ' + String(debug.invokeLoaded),
 			'creative_inserted: ' + String(debug.creativeInserted),
 			'rendered_visible: ' + String(debug.rendered),
-			'google_anchor: ' + String(debug.googleAnchor),
 			'geo_source: ' + (debug.geoSource || 'none'),
 			'eligibility_ms: ' + String(debug.eligibilityMs),
 			'error: ' + (debug.error || 'none')
@@ -665,12 +619,7 @@
 
 		if (debug.showAds) {
 			preconnectAdsterra();
-			preconnectGoogle();
 			setPhase('eligible');
-			loadGoogleAnchorScript().catch(function (error) {
-				debug.error = error && error.message ? error.message : String(error || 'google_anchor_load_error');
-				renderDebug();
-			});
 			watchForAdSlots();
 			scheduleFinalHydration();
 			hydrateEligibleSlots();
