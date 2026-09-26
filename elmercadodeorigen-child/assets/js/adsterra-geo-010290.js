@@ -14,6 +14,8 @@
 	var attemptedSlots = 0;
 	var resolvedSlots = 0;
 	var renderedSlots = 0;
+	var adsenseFallbackCount = 0;
+	var adsenseFallbackLimit = 3;
 	var geoCacheKey = 'emo-blog-ad-eligibility-v3';
 	var geoCacheMaxAge = 30 * 60 * 1000;
 	var debugMode = /(?:^|[?&])adsterra_debug=1(?:&|$)/.test(window.location.search);
@@ -139,9 +141,13 @@
 		};
 		var mobile = window.matchMedia('(max-width: 767px)').matches;
 		var smallMobile = window.matchMedia('(max-width: 519px)').matches;
+		var remaining = Math.max(0, adsenseFallbackLimit - adsenseFallbackCount);
+		if (!remaining) return [];
+
 		var candidates = Array.prototype.slice.call(document.querySelectorAll('[data-emo-adsterra-slot]'))
 			.filter(function (slot) {
 				if (slot.getAttribute('data-emo-adsterra-state') !== 'failed') return false;
+				if (slot.getAttribute('data-emo-adsense-fallback-requested') === '1') return false;
 				var type = slot.getAttribute('data-emo-adsterra-slot') || '';
 				if (typeof priority[type] === 'undefined') return false;
 				if (mobile && (type === 'rectangle' || type === 'tall-rectangle')) return false;
@@ -152,10 +158,12 @@
 				return priority[a.getAttribute('data-emo-adsterra-slot')] - priority[b.getAttribute('data-emo-adsterra-slot')];
 			});
 
-		return candidates.slice(0, 3).map(function (slot) {
+		return candidates.slice(0, remaining).map(function (slot) {
 			var mount = slot.querySelector('.emo-adsterra-mount');
 			if (!mount) return null;
 
+			slot.setAttribute('data-emo-adsense-fallback-requested', '1');
+			adsenseFallbackCount += 1;
 			mount.innerHTML = '';
 			var ins = document.createElement('ins');
 			ins.className = 'adsbygoogle';
@@ -217,7 +225,7 @@
 	}
 
 	function startAdsenseFallback(reason) {
-		if (fallbackStarted || adBlockDetected) return;
+		if (adBlockDetected) return;
 		if (!config.adsensePublisher || !config.adsenseInArticleSlot) {
 			debug.error = 'Missing AdSense fallback configuration';
 			setPhase('adsterra_failed_no_fallback_config');
@@ -238,7 +246,7 @@
 		}
 
 		debug.fallback = true;
-		debug.fallbackReason = reason || 'adsterra_no_render';
+		if (!debug.fallbackReason) debug.fallbackReason = reason || 'adsterra_no_render';
 		document.documentElement.classList.add('emo-adsterra-adsense-fallback');
 		setPhase('adsterra_failed_loading_adsense');
 
@@ -281,13 +289,13 @@
 		debug.rendered = renderedSlots;
 		renderDebug();
 
-		if (attemptedSlots > 0 && resolvedSlots >= attemptedSlots && resolvedSlots > renderedSlots) {
-			startAdsenseFallback(renderedSlots === 0 ? 'all_adsterra_slots_failed' : 'partial_adsterra_no_fill');
+		if (state === 'failed') {
+			startAdsenseFallback(renderedSlots > 0 ? 'partial_adsterra_no_fill' : 'adsterra_slot_failed');
 		}
 	}
 
 	function scheduleAdsenseFallback() {
-		if (fallbackStarted || fallbackTimer || attemptedSlots < 1) return;
+		if (fallbackTimer || attemptedSlots < 1) return;
 		var timeout = parseInt(config.fallbackTimeout, 10);
 		if (!timeout || timeout < 3200) timeout = 4200;
 		fallbackTimer = window.setTimeout(function () {
@@ -582,7 +590,7 @@
 			var delay = type === 'responsive-top' ? 0 : Math.min(900, 160 * (index + 1));
 			window.setTimeout(function () {
 				slot.removeAttribute('data-emo-adsterra-scheduled');
-				if (adBlockDetected || fallbackStarted || slot.getAttribute('data-emo-adsterra-hydrated') === '1') return;
+				if (adBlockDetected || slot.getAttribute('data-emo-adsterra-hydrated') === '1') return;
 
 				if (type === 'native') {
 					hydrateNative(slot);
