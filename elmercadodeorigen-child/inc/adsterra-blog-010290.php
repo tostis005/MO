@@ -440,6 +440,7 @@ function elmercado_adsterra_enqueue_controller_010290(): void {
 	$ver    = is_readable( $path ) ? (string) filemtime( $path ) : ELMERCADO_THEME_VERSION;
 
 	wp_enqueue_script( $handle, $src, array(), $ver, false );
+	wp_script_add_data( $handle, 'strategy', 'async' );
 	wp_localize_script(
 		$handle,
 		'ElMercadoAdsterraGeo',
@@ -450,8 +451,8 @@ function elmercado_adsterra_enqueue_controller_010290(): void {
 			'shippableCountries'   => function_exists( 'elmercado_adsense_get_shippable_countries' ) ? elmercado_adsense_get_shippable_countries() : array(),
 			'adsensePublisher'     => defined( 'ELMERCADO_ADSENSE_PUBLISHER' ) ? ELMERCADO_ADSENSE_PUBLISHER : '',
 			'adsenseInArticleSlot' => defined( 'ELMERCADO_ADSENSE_INARTICLE_SLOT' ) ? ELMERCADO_ADSENSE_INARTICLE_SLOT : '',
-			'fallbackTimeout'      => 3500,
+			'fallbackTimeout'      => 3200,
 		)
 	);
 }
-add_action( 'wp_enqueue_scripts', 'elmercado_adsterra_enqueue_controller_010290', 41 );
+add_action( 'wp_enqueue_scripts', 'elmercado_adsterra_enqueue_controller_010290', 1 );
