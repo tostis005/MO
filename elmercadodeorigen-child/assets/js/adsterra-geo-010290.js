@@ -424,6 +424,8 @@
 		frame.srcdoc = bannerDocument(unit, token);
 
 		registerSlotAttempt(slot);
+		slot.setAttribute('data-emo-adsterra-unit', unitName);
+		slot.setAttribute('data-emo-adsterra-size', String(unit.width) + 'x' + String(unit.height));
 		slot.setAttribute('data-emo-adsterra-hydrated', '1');
 		mount.appendChild(frame);
 	}
