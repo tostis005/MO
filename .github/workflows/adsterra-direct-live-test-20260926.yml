@@ -54,16 +54,7 @@ jobs:
               d=webdriver.Chrome(options=o)
               try:
                   d.execute_cdp_cmd('Network.enable',{})
-                  d.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument',{'source':r"""
-                  (()=>{const f=window.fetch;window.fetch=function(input,init){
-                    const u=typeof input==='string'?input:(input&&input.url)||'';
-                    if(u.includes('/assets/ad-geo-fast.php')||u.includes('/wp-json/elmercado/v1/blog-ad-eligibility')){
-                      init=Object.assign({},init||{});const h=new Headers(init.headers||{});
-                      h.set('X-Country-Code','ZA');init.headers=h;
-                    }
-                    return f.call(this,input,init);
-                  };})();
-                  """})
+                  d.execute_cdp_cmd('Network.setExtraHTTPHeaders',{'headers':{'X-Country-Code':'ZA'}})
                   d.get(PAGE+'&viewport='+label)
 
                   deadline=time.time()+25
@@ -73,6 +64,17 @@ jobs:
                           break
                       time.sleep(.25)
                   else:
+                      snapshot=d.execute_script(r"""
+                        return {
+                          href:location.href,
+                          title:document.title,
+                          readyState:document.readyState,
+                          debug:window.ElMercadoAdsterraGeoDebug||null,
+                          controller:!!window.ElMercadoAdsterraGeo,
+                          bodyHtml:document.body?document.body.innerHTML.slice(0,5000):''
+                        };
+                      """)
+                      print(label.upper()+'_ELIGIBILITY_FAILURE='+json.dumps(snapshot,sort_keys=True),flush=True)
                       raise SystemExit(label+': eligibility did not resolve')
 
                   for ratio in (0,.15,.3,.5,.7,.85,1,0):
