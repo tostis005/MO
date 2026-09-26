@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.297' );
-/* 0.10.297 acelera geolocalización, frames de Adsterra y fallback publicitario. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.298' );
+/* 0.10.298 adelanta el primer anuncio y prioriza la ruta crítica de Adsterra. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
 	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsterra' ); // 'adsense' | 'adsterra'
 }
