@@ -1,0 +1,142 @@
+name: Audit persistent Adsterra rendering
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/adsterra-persistent-render-audit-20260926.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --quiet selenium requests
+      - name: Verify persistent visible Adsterra slots
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,time,requests
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+
+          BASE='https://www.elmercadodeorigen.com'
+          JS=BASE+'/wp-content/themes/elmercadodeorigen-child/assets/js/adsterra-geo-010290.js?persistent=010308'
+          PAGE=BASE+'/dop-jabugo-que-garantiza-territorio-como-reconocer-jamon/?adsterra_debug=1&persistent=010308'
+
+          deadline=time.time()+240
+          while time.time()<deadline:
+              try:
+                  body=requests.get(JS,timeout=15,headers={'Cache-Control':'no-cache'}).text
+              except Exception:
+                  body=''
+              if ('mount.innerHTML = \'\'' not in body
+                  and 'emo-adsterra-blocked' not in body
+                  and 'pagead2.googlesyndication.com' not in body
+                  and 'bannerDocument(unit)' in body):
+                  break
+              time.sleep(5)
+          else:
+              raise SystemExit('Production did not serve persistent Adsterra controller')
+
+          def audit(label,width,height,min_attempted):
+              o=Options(); o.page_load_strategy='none'
+              for a in ('--headless=new','--no-sandbox','--disable-dev-shm-usage',f'--window-size={width},{height}','--lang=en-US'):
+                  o.add_argument(a)
+              o.set_capability('goog:loggingPrefs', {'performance':'ALL'})
+              d=webdriver.Chrome(options=o)
+              try:
+                  d.execute_cdp_cmd('Network.enable',{})
+                  d.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument',{'source':r"""
+                  (()=>{const f=window.fetch;window.fetch=function(input,init){
+                    const u=typeof input==='string'?input:(input&&input.url)||'';
+                    if(u.includes('/assets/ad-geo-fast.php')||u.includes('/wp-json/elmercado/v1/blog-ad-eligibility')){
+                      init=Object.assign({},init||{});const h=new Headers(init.headers||{});
+                      h.set('X-Country-Code','ZA');init.headers=h;
+                    }
+                    return f.call(this,input,init);
+                  };})();
+                  """})
+                  d.get(PAGE+'&viewport='+label)
+                  deadline=time.time()+20
+                  while time.time()<deadline:
+                      dbg=d.execute_script('return window.ElMercadoAdsterraGeoDebug||null')
+                      if dbg and dbg.get('showAds') is True: break
+                      time.sleep(.25)
+                  else:
+                      raise SystemExit(label+': ZA eligibility failed')
+
+                  for ratio in (0,.25,.5,.75,1,0):
+                      d.execute_script('window.scrollTo(0,Math.max(0,(document.documentElement.scrollHeight-window.innerHeight)*arguments[0]))',ratio)
+                      time.sleep(.5)
+                  time.sleep(10)
+
+                  urls=[]
+                  for item in d.get_log('performance'):
+                      try: msg=json.loads(item['message'])['message']
+                      except Exception: continue
+                      if msg.get('method')!='Network.requestWillBeSent': continue
+                      urls.append(msg.get('params',{}).get('request',{}).get('url',''))
+
+                  state=d.execute_script(r"""
+                    return {
+                      debug:window.ElMercadoAdsterraGeoDebug||null,
+                      slots:Array.from(document.querySelectorAll('[data-emo-adsterra-slot]')).map(s=>{
+                        const f=s.querySelector('iframe[data-emo-adsterra-token]');
+                        let inner=null;
+                        if(f){
+                          try{
+                            const doc=f.contentDocument;
+                            inner={
+                              scripts:doc?Array.from(doc.scripts).map(x=>x.src||''):[],
+                              creativeCount:doc?doc.querySelectorAll('iframe,img,video,object,embed,canvas,svg,a[href]').length:null
+                            };
+                          }catch(e){}
+                        }
+                        return {
+                          type:s.getAttribute('data-emo-adsterra-slot'),
+                          hydrated:s.getAttribute('data-emo-adsterra-hydrated'),
+                          state:s.getAttribute('data-emo-adsterra-state'),
+                          visible:s.classList.contains('is-eligible'),
+                          display:getComputedStyle(s).display,
+                          h:Math.round(s.getBoundingClientRect().height),
+                          frame:!!f,
+                          inner
+                        };
+                      }),
+                      googleScripts:Array.from(document.scripts).map(s=>s.src||'').filter(u=>/googlesyndication|doubleclick/.test(u)),
+                      googleAutoPlaced:document.querySelectorAll('.google-auto-placed').length,
+                      adsbygoogle:document.querySelectorAll('ins.adsbygoogle').length
+                    };
+                  """)
+                  adsterra=sorted(set(u for u in urls if 'highrevenueformat.com' in u or 'profitableratecpmnetwork.com' in u))
+                  google=[u for u in urls if 'googlesyndication' in u or 'doubleclick.net' in u]
+                  print(label.upper()+'='+json.dumps({'state':state,'adsterraRequests':adsterra,'googleRequests':google},sort_keys=True),flush=True)
+
+                  if google or state['googleScripts'] or state['googleAutoPlaced'] or state['adsbygoogle']:
+                      raise SystemExit(label+': Google advertising detected')
+                  if int((state['debug'] or {}).get('attempted') or 0)<min_attempted:
+                      raise SystemExit(label+': too few Adsterra attempts')
+                  hydrated=[s for s in state['slots'] if s['hydrated']=='1']
+                  if not hydrated:
+                      raise SystemExit(label+': no hydrated slots')
+                  for s in hydrated:
+                      if not s['visible'] or s['display']=='none' or int(s['h'] or 0)<=0:
+                          raise SystemExit(label+': hydrated Adsterra slot is not persistently visible: '+s['type'])
+                      if s['type']!='native' and not s['frame']:
+                          raise SystemExit(label+': standard banner iframe disappeared: '+s['type'])
+                  if not adsterra:
+                      raise SystemExit(label+': no Adsterra network requests')
+              finally:
+                  d.quit()
+
+          audit('desktop',1440,1000,6)
+          audit('mobile',390,844,4)
+          print('PERSISTENT_ADSTERRA_RENDER=PASS',flush=True)
+          PY
