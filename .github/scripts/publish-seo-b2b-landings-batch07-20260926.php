@@ -170,6 +170,7 @@ array(
 <h2>Cómo hacer que el regalo parezca más especial sin complicarlo</h2>
 <p>Una selección cuidada, una nota breve sobre el productor o una combinación con una conserva pueden elevar la percepción del regalo sin necesidad de añadir demasiados elementos.</p>
 <p>La información sobre origen y variedad aporta más valor que llenar la caja de referencias secundarias.</p>
+<p>Si el regalo forma parte de una campaña con varias unidades, también conviene indicar si todas deben ser iguales o si habrá distintos niveles de presupuesto.</p>
 <h2>Qué información necesitamos</h2>
 <p>Presupuesto, número de regalos si son varios, destinatario, fecha y lugar de entrega. Con esos datos podremos revisar los AOVE disponibles y posibles combinaciones.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Convierte el AOVE en un regalo con origen</h2><p>Dinos para quién es y qué presupuesto manejas y revisaremos opciones disponibles.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Contactar</a></p></div>
@@ -276,6 +277,7 @@ array(
 <h2>Regalar conocimiento además de producto</h2>
 <p>La experiencia mejora cuando el destinatario puede saber de dónde viene lo que recibe, quién lo produce y qué características tiene. Esa información convierte el regalo en una oportunidad de descubrir algo nuevo.</p>
 <p>En El Mercado de Origen procuramos que el productor y la procedencia estén visibles precisamente para que esa parte del regalo no se pierda.</p>
+<p>Si conoces alguna categoría que la persona colecciona, compara o sigue con especial interés, indícalo: puede ayudar a orientar mucho mejor la selección.</p>
 <h2>Qué información necesitamos</h2>
 <p>Presupuesto, ocasión, categorías que le gustan o que quieres evitar, fecha y destino. Con esos datos podemos revisar qué opciones del catálogo tienen más sentido.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Regala algo que invite a descubrir</h2><p>Cuéntanos qué tipo de gastronomía disfruta la persona y revisaremos propuestas con origen y productor visibles.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Contactar</a></p></div>
