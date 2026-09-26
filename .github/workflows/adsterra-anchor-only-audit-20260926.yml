@@ -1,0 +1,100 @@
+name: Audit Adsterra plus Google anchor only
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/adsterra-anchor-only-audit-20260926.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --quiet selenium
+      - name: Audit production browser behavior
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,time
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+
+          URL='https://www.elmercadodeorigen.com/dop-jabugo-que-garantiza-territorio-como-reconocer-jamon/?adsterra_debug=1&anchor_only_audit=1'
+
+          def run(country):
+              o=Options(); o.page_load_strategy='none'
+              for a in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1440,1800','--lang=en-US'):
+                  o.add_argument(a)
+              d=webdriver.Chrome(options=o)
+              try:
+                  d.execute_cdp_cmd('Network.enable',{})
+                  d.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument',{'source':f"""
+                  (()=>{{const f=window.fetch;window.fetch=function(input,init){{
+                    const u=typeof input==='string'?input:(input&&input.url)||'';
+                    if(u.includes('/assets/ad-geo-fast.php')||u.includes('/wp-json/elmercado/v1/blog-ad-eligibility')){{
+                      init=Object.assign({{}},init||{{}});const h=new Headers(init.headers||{{}});
+                      h.set('X-Country-Code','{country}');init.headers=h;
+                    }}
+                    return f.call(this,input,init);
+                  }};}})();"""})
+                  d.get(URL+'&country='+country)
+                  time.sleep(8)
+                  state=d.execute_script(r"""
+                    const auto=Array.from(document.querySelectorAll('.google-auto-placed')).map((el,i)=>({
+                      i,
+                      tag:el.tagName,
+                      cls:el.className,
+                      id:el.id||'',
+                      pos:getComputedStyle(el).position,
+                      top:Math.round(el.getBoundingClientRect().top),
+                      h:Math.round(el.getBoundingClientRect().height),
+                      html:el.outerHTML.slice(0,500)
+                    }));
+                    const anchorish=Array.from(document.querySelectorAll('ins.adsbygoogle, [data-anchor-status], [id*="google"], [class*="google"]')).filter(el=>{
+                      const s=getComputedStyle(el);
+                      return s.position==='fixed' || el.hasAttribute('data-anchor-status');
+                    }).slice(0,20).map(el=>({
+                      tag:el.tagName,id:el.id||'',cls:String(el.className||''),
+                      anchor:el.getAttribute('data-anchor-status'),
+                      pos:getComputedStyle(el).position,
+                      top:Math.round(el.getBoundingClientRect().top),
+                      h:Math.round(el.getBoundingClientRect().height)
+                    }));
+                    return {
+                      debug:window.ElMercadoAdsterraGeoDebug||null,
+                      googleAnchorScript:!!document.querySelector('script[data-emo-google-anchor="1"]'),
+                      googleScripts:Array.from(document.scripts).filter(s=>(s.src||'').includes('googlesyndication')).length,
+                      explicitManualSlot:document.querySelectorAll('ins.adsbygoogle[data-ad-slot="2804638564"]').length,
+                      anyExplicitSlots:document.querySelectorAll('ins.adsbygoogle[data-ad-slot]').length,
+                      fallbackClasses:document.querySelectorAll('.is-adsense-fallback').length,
+                      adsterraSlots:document.querySelectorAll('[data-emo-adsterra-slot]').length,
+                      adsterraHydrated:document.querySelectorAll('[data-emo-adsterra-hydrated="1"]').length,
+                      autoPlaced:auto,
+                      anchorish:anchorish
+                    };
+                  """)
+                  print(country+'='+json.dumps(state,sort_keys=True),flush=True)
+                  if country=='ES':
+                      if state['googleAnchorScript']:
+                          raise SystemExit('Google loaded in shippable country')
+                  else:
+                      if not state['googleAnchorScript']:
+                          raise SystemExit('Google anchor script missing')
+                      if state['explicitManualSlot'] != 0 or state['fallbackClasses'] != 0:
+                          raise SystemExit('Manual/fallback Google unit still present')
+                      if not state['debug'] or state['debug'].get('showAds') is not True:
+                          raise SystemExit('Ad geo eligibility failed')
+              finally:
+                  d.quit()
+
+          run('ES')
+          run('ZA')
+          print('ADSTERRA_GOOGLE_ANCHOR_CODE_AUDIT=PASS',flush=True)
+          PY
