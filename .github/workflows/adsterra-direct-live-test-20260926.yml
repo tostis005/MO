@@ -54,7 +54,14 @@ jobs:
               d=webdriver.Chrome(options=o)
               try:
                   d.execute_cdp_cmd('Network.enable',{})
-                  d.execute_cdp_cmd('Network.setExtraHTTPHeaders',{'headers':{'X-Country-Code':'ZA'}})
+                  d.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument',{'source':r"""
+                  try {
+                    sessionStorage.setItem('emo-blog-ad-eligibility-v3', JSON.stringify({
+                      country:'ZA',
+                      ts:Date.now()
+                    }));
+                  } catch (e) {}
+                  """})
                   d.get(PAGE+'&viewport='+label)
 
                   deadline=time.time()+25
