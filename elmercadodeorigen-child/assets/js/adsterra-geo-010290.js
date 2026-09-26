@@ -8,6 +8,7 @@
 	var adBlockCheckStarted = false;
 	var finalHydrationScheduled = false;
 	var hydrationPending = false;
+	var slotObserver = null;
 	var fallbackTimer = null;
 	var fallbackStarted = false;
 	var attemptedSlots = 0;
@@ -129,19 +130,27 @@
 	}
 
 	function prepareAdsenseFallbackSlots() {
-		var candidates = Array.prototype.slice.call(document.querySelectorAll(
-			'.emo-adsterra-slot--rectangle, .emo-adsterra-slot--tall-rectangle'
-		));
-
-		if (!candidates.length) {
-			var nativeSlot = document.querySelector('.emo-adsterra-slot--native');
-			if (nativeSlot) candidates.push(nativeSlot);
-		}
-
-		if (!candidates.length) {
-			var topSlot = document.querySelector('.emo-adsterra-slot--responsive-top');
-			if (topSlot) candidates.push(topSlot);
-		}
+		var priority = {
+			'responsive-top': 0,
+			'rectangle': 1,
+			'tall-rectangle': 2,
+			'native': 3,
+			'footer-banner': 4
+		};
+		var mobile = window.matchMedia('(max-width: 767px)').matches;
+		var smallMobile = window.matchMedia('(max-width: 519px)').matches;
+		var candidates = Array.prototype.slice.call(document.querySelectorAll('[data-emo-adsterra-slot]'))
+			.filter(function (slot) {
+				if (slot.getAttribute('data-emo-adsterra-state') !== 'failed') return false;
+				var type = slot.getAttribute('data-emo-adsterra-slot') || '';
+				if (typeof priority[type] === 'undefined') return false;
+				if (mobile && (type === 'rectangle' || type === 'tall-rectangle')) return false;
+				if (smallMobile && type === 'footer-banner') return false;
+				return true;
+			})
+			.sort(function (a, b) {
+				return priority[a.getAttribute('data-emo-adsterra-slot')] - priority[b.getAttribute('data-emo-adsterra-slot')];
+			});
 
 		return candidates.slice(0, 3).map(function (slot) {
 			var mount = slot.querySelector('.emo-adsterra-mount');
@@ -208,10 +217,16 @@
 	}
 
 	function startAdsenseFallback(reason) {
-		if (fallbackStarted || adBlockDetected || renderedSlots > 0) return;
+		if (fallbackStarted || adBlockDetected) return;
 		if (!config.adsensePublisher || !config.adsenseInArticleSlot) {
 			debug.error = 'Missing AdSense fallback configuration';
 			setPhase('adsterra_failed_no_fallback_config');
+			return;
+		}
+
+		var units = prepareAdsenseFallbackSlots();
+		if (!units.length) {
+			setPhase(renderedSlots > 0 ? 'adsterra_partial_fill_no_adsense_slot' : 'adsterra_no_fill_no_adsense_slot');
 			return;
 		}
 
@@ -226,14 +241,6 @@
 		debug.fallbackReason = reason || 'adsterra_no_render';
 		document.documentElement.classList.add('emo-adsterra-adsense-fallback');
 		setPhase('adsterra_failed_loading_adsense');
-
-		document.querySelectorAll('[data-emo-adsterra-slot]').forEach(function (slot) {
-			collapseSlot(slot);
-			var mount = slot.querySelector('.emo-adsterra-mount');
-			if (mount) mount.innerHTML = '';
-		});
-
-		var units = prepareAdsenseFallbackSlots();
 
 		loadAdsenseFallbackScript()
 			.then(function () {
@@ -253,6 +260,16 @@
 		attemptedSlots += 1;
 		debug.attempted = attemptedSlots;
 		renderDebug();
+
+		var timeout = parseInt(config.slotTimeout, 10);
+		if (!timeout || timeout < 1800) timeout = 2800;
+		window.setTimeout(function () {
+			if (slot.getAttribute('data-emo-adsterra-state') !== 'pending') return;
+			var mount = slot.querySelector('.emo-adsterra-mount');
+			if (mount) mount.innerHTML = '';
+			collapseSlot(slot);
+			markSlotResolved(slot, 'failed');
+		}, timeout);
 	}
 
 	function markSlotResolved(slot, state) {
@@ -264,20 +281,23 @@
 		debug.rendered = renderedSlots;
 		renderDebug();
 
-		if (attemptedSlots > 0 && resolvedSlots >= attemptedSlots && renderedSlots === 0) {
-			startAdsenseFallback('all_adsterra_slots_failed');
+		if (attemptedSlots > 0 && resolvedSlots >= attemptedSlots && resolvedSlots > renderedSlots) {
+			startAdsenseFallback(renderedSlots === 0 ? 'all_adsterra_slots_failed' : 'partial_adsterra_no_fill');
 		}
 	}
 
 	function scheduleAdsenseFallback() {
 		if (fallbackStarted || fallbackTimer || attemptedSlots < 1) return;
 		var timeout = parseInt(config.fallbackTimeout, 10);
-		if (!timeout || timeout < 2500) timeout = 6000;
+		if (!timeout || timeout < 3200) timeout = 4200;
 		fallbackTimer = window.setTimeout(function () {
 			fallbackTimer = null;
-			if (renderedSlots === 0) {
-				startAdsenseFallback('adsterra_render_timeout');
-			}
+			document.querySelectorAll('[data-emo-adsterra-state="pending"]').forEach(function (slot) {
+				var mount = slot.querySelector('.emo-adsterra-mount');
+				if (mount) mount.innerHTML = '';
+				collapseSlot(slot);
+				markSlotResolved(slot, 'failed');
+			});
 		}, timeout);
 	}
 
@@ -347,11 +367,28 @@
 		observer.observe(document.documentElement, { childList: true });
 	}
 
+	function watchForAdSlots() {
+		if (slotObserver || !document.documentElement) return;
+		slotObserver = new MutationObserver(function () {
+			if (debug.showAds === true && adBlockCheckDone && !adBlockDetected) {
+				hydrateEligibleSlots();
+			}
+		});
+		slotObserver.observe(document.documentElement, {
+			childList: true,
+			subtree: true
+		});
+	}
+
 	function scheduleFinalHydration() {
 		if (finalHydrationScheduled || document.readyState !== 'loading') return;
 		finalHydrationScheduled = true;
 		document.addEventListener('DOMContentLoaded', function () {
 			finalHydrationScheduled = false;
+			if (slotObserver) {
+				slotObserver.disconnect();
+				slotObserver = null;
+			}
 			if (debug.showAds === true && adBlockCheckDone && !adBlockDetected) {
 				hydrateEligibleSlots();
 			}
@@ -515,33 +552,53 @@
 			return;
 		}
 
-		var slots = Array.prototype.slice.call(document.querySelectorAll('[data-emo-adsterra-slot]'));
+		var priority = {
+			'responsive-top': 0,
+			'rectangle': 1,
+			'skyscraper': 2,
+			'tall-rectangle': 3,
+			'footer-banner': 4,
+			'native': 5
+		};
+		var slots = Array.prototype.slice.call(document.querySelectorAll('[data-emo-adsterra-slot]'))
+			.filter(function (slot) {
+				return slot.getAttribute('data-emo-adsterra-hydrated') !== '1'
+					&& slot.getAttribute('data-emo-adsterra-scheduled') !== '1';
+			})
+			.sort(function (a, b) {
+				var aType = a.getAttribute('data-emo-adsterra-slot') || '';
+				var bType = b.getAttribute('data-emo-adsterra-slot') || '';
+				return (priority[aType] || 99) - (priority[bType] || 99);
+			});
 
-		slots.forEach(function (slot) {
+		slots.forEach(function (slot, index) {
 			var type = slot.getAttribute('data-emo-adsterra-slot');
-
-			if (type === 'native') {
-				hydrateNative(slot);
-				return;
-			}
 
 			if (type === 'skyscraper' && window.matchMedia('(max-width: 1160px)').matches) return;
 			if ((type === 'rectangle' || type === 'tall-rectangle') && window.matchMedia('(max-width: 767px)').matches) return;
 			if (type === 'footer-banner' && window.matchMedia('(max-width: 519px)').matches) return;
 
-			if (type === 'responsive-top') {
-				var responsiveName = window.matchMedia('(max-width: 767px)').matches
-					? 'responsive-mobile'
-					: 'responsive-desktop';
-				hydrateBanner(slot, units[responsiveName], responsiveName);
-				return;
-			}
+			slot.setAttribute('data-emo-adsterra-scheduled', '1');
+			var delay = type === 'responsive-top' ? 0 : Math.min(900, 160 * (index + 1));
+			window.setTimeout(function () {
+				slot.removeAttribute('data-emo-adsterra-scheduled');
+				if (adBlockDetected || fallbackStarted || slot.getAttribute('data-emo-adsterra-hydrated') === '1') return;
 
-			if (units[type]) hydrateBanner(slot, units[type], type);
+				if (type === 'native') {
+					hydrateNative(slot);
+				} else if (type === 'responsive-top') {
+					var responsiveName = window.matchMedia('(max-width: 767px)').matches
+						? 'responsive-mobile'
+						: 'responsive-desktop';
+					hydrateBanner(slot, units[responsiveName], responsiveName);
+				} else if (units[type]) {
+					hydrateBanner(slot, units[type], type);
+				}
+
+				scheduleAdsenseFallback();
+				if (attemptedSlots > 0) setPhase('eligible_adsterra_loaded');
+			}, delay);
 		});
-
-		scheduleAdsenseFallback();
-		setPhase('eligible_adsterra_loaded');
 	}
 
 	function normalizeCountry(value) {
@@ -600,6 +657,7 @@
 		if (debug.showAds) {
 			preconnectAdsterra();
 			setPhase('eligible');
+			watchForAdSlots();
 			scheduleFinalHydration();
 			hydrateEligibleSlots();
 		} else {
