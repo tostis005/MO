@@ -161,7 +161,37 @@ jobs:
                       adsenseFallbackClasses:document.querySelectorAll('.is-adsense-fallback').length
                     };
                   """)
+                  cdp_requests=[]
+                  for item in d.get_log('performance'):
+                      try:
+                          msg=json.loads(item['message'])['message']
+                      except Exception:
+                          continue
+                      if msg.get('method') != 'Network.requestWillBeSent':
+                          continue
+                      url=msg.get('params',{}).get('request',{}).get('url','')
+                      if 'highrevenueformat.com' in url or 'profitableratecpmnetwork.com' in url:
+                          cdp_requests.append(url)
+                  state['cdpAdsterraRequests']=sorted(set(cdp_requests))
                   print(label+'_FINAL='+json.dumps(state,sort_keys=True),flush=True)
+
+                  unit_keys={
+                      'responsive-desktop':'4e02d145fdb84842713b24a4bade6244',
+                      'responsive-mobile':'3de18866861c081d6eb282ad00fe2bee',
+                      'rectangle':'c1f547d5b9552a71fae2de32c69f2d66',
+                      'tall-rectangle':'bd307b1985a219b2694f34d17ceebe8e',
+                      'skyscraper':'040427a877ae83cac71362a8c92eb779',
+                      'footer-banner':'985360811e3cd3c3d7d50e3a9ea81484'
+                  }
+                  for s in requested:
+                      unit=s.get('unit')
+                      if s.get('hydrated')!='1' or not unit:
+                          continue
+                      key=unit_keys[unit]
+                      if not any(key in url for url in state['cdpAdsterraRequests']):
+                          raise SystemExit(f"{label}: no real network request observed for {unit} / {key}")
+                  if not any('a83b8ce6c354e77b2ae5f266936bd60f' in url for url in state['cdpAdsterraRequests']):
+                      raise SystemExit(label+': no real native Adsterra request observed')
 
                   dbg=state['debug'] or {}
                   if dbg.get('country')!='ZA' or dbg.get('showAds') is not True:
