@@ -174,6 +174,7 @@
 	function requestAdsenseFallbackUnits(units) {
 		units.forEach(function (unit) {
 			var settled = false;
+			var pushed = false;
 			var observer = new MutationObserver(function () {
 				var status = unit.ins.getAttribute('data-ad-status');
 				if (status === 'filled' || status === 'unfill-optimized') {
@@ -192,13 +193,40 @@
 				attributeFilter: ['data-ad-status']
 			});
 
-			try {
-				adsbygoogleQueue().push({});
-			} catch (error) {
-				settled = true;
-				cleanupAdsenseFallbackSlot(unit.slot);
-				debug.error = error && error.message ? error.message : String(error || 'adsense_fallback_push_error');
+			function pushWhenSized(attempt) {
+				if (settled || pushed) return;
+				var width = Math.max(
+					unit.slot.getBoundingClientRect().width || 0,
+					unit.ins.getBoundingClientRect().width || 0
+				);
+
+				if (width < 80 && attempt < 8) {
+					window.setTimeout(function () { pushWhenSized(attempt + 1); }, 60);
+					return;
+				}
+
+				if (width < 80) {
+					settled = true;
+					cleanupAdsenseFallbackSlot(unit.slot);
+					debug.error = 'AdSense fallback slot has no measurable width';
+					return;
+				}
+
+				try {
+					pushed = true;
+					adsbygoogleQueue().push({});
+				} catch (error) {
+					settled = true;
+					cleanupAdsenseFallbackSlot(unit.slot);
+					debug.error = error && error.message ? error.message : String(error || 'adsense_fallback_push_error');
+				}
 			}
+
+			window.requestAnimationFrame(function () {
+				window.requestAnimationFrame(function () {
+					pushWhenSized(0);
+				});
+			});
 
 			window.setTimeout(function () {
 				if (!settled && !unit.ins.getAttribute('data-ad-status')) {
