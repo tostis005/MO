@@ -99,5 +99,37 @@ jobs:
             echo
           done
 
+
+      - name: Consistency check on South Africa networks
+        shell: bash
+        run: |
+          set -euo pipefail
+          UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'
+          REF='https://www.elmercadodeorigen.com/dop-jabugo-que-garantiza-territorio-como-reconocer-jamon/'
+
+          run_case() {
+            LABEL="$1"; HOST="$2"; PATHNAME="$3"; LOC="$4"; LIMIT="$5"
+            echo "=== CONSISTENCY $LABEL ==="
+            globalping http "$HOST"               --path "$PATHNAME"               --method GET               --header "Referer: $REF"               --header "User-Agent: $UA"               --from "$LOC"               --limit "$LIMIT"               --timeout 20               --json --ci > "/tmp/$LABEL.json"
+            jq -c --arg label "$LABEL" '
+              .results[]? | {
+                label:$label,
+                country:.probe.country,
+                city:.probe.city,
+                network:.probe.network,
+                asn:.probe.asn,
+                tags:.probe.tags,
+                status:(.result.statusCode // .result.status),
+                resolvedAddress:.result.resolvedAddress,
+                contentLength:(.result.headers["content-length"] // null),
+                requestId:(.result.headers["x-request-id"] // null)
+              }' "/tmp/$LABEL.json"
+          }
+
+          run_case 'za_std_eyeball' 'www.highrevenueformat.com' '/040427a877ae83cac71362a8c92eb779/invoke.js' 'ZA+eyeball-network' 2
+          run_case 'za_std_datacenter' 'www.highrevenueformat.com' '/040427a877ae83cac71362a8c92eb779/invoke.js' 'ZA+datacenter' 2
+          run_case 'za_native_eyeball' 'pl31502847.profitableratecpmnetwork.com' '/a83b8ce6c354e77b2ae5f266936bd60f/invoke.js' 'ZA+eyeball-network' 2
+          run_case 'za_native_datacenter' 'pl31502847.profitableratecpmnetwork.com' '/a83b8ce6c354e77b2ae5f266936bd60f/invoke.js' 'ZA+datacenter' 2
+
       - name: Mark completion
         run: echo 'ADSTERRA_GLOBAL_COUNTRY_AUDIT=DONE'
