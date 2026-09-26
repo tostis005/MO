@@ -64,6 +64,12 @@ array(
 <h2>Entrega a múltiples domicilios</h2>
 <p>Si empleados o clientes están distribuidos, hay que contemplar direcciones, plazos y coste de envío. El Mercado de Origen funciona como marketplace y cada vendedor prepara y expide directamente su pedido.</p>
 <p>La operativa debe revisarse según la composición concreta.</p>
+<h2>Cómo hacer que el aniversario se note en el regalo</h2>
+<p>El número de años puede reflejarse en el mensaje, en la selección o en la forma de presentar el hito, pero no es necesario convertirlo en una decoración excesiva. Una referencia especial elegida para la ocasión puede transmitir mejor el aniversario que añadir elementos puramente promocionales.</p>
+<p>Si la empresa tiene una historia ligada a una región o producto concreto, esa conexión puede utilizarse para dar más sentido al regalo.</p>
+<h2>Una campaña de aniversario puede durar más de un día</h2>
+<p>Algunas compañías celebran el hito durante varias semanas con clientes, empleados y colaboradores. En ese caso conviene planificar cantidades por fases y no asumir que todo debe entregarse a la vez.</p>
+<p>Trabajar por grupos permite ajustar mejor stock, destinos y presupuesto.</p>
 <h2>Qué información necesitamos</h2>
 <p>Tipo de aniversario, destinatarios, número de unidades, presupuesto, fecha y forma de entrega. Con esos datos podemos revisar productos disponibles y propuestas adecuadas al hito.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Haz que el regalo tenga relación con el aniversario</h2><p>Dinos qué celebráis y con quién y revisaremos una propuesta gastronómica que acompañe el hito.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Ir al formulario de contacto</a></p></div>
@@ -111,6 +117,12 @@ array(
 <h2>Empleados en remoto</h2>
 <p>Cuando la persona no está en la oficina, el regalo debe poder enviarse de forma viable. Formatos compactos suelen simplificar la entrega y reducir incidencias.</p>
 <p>Los datos de domicilio deben gestionarse con cuidado y solo cuando sean necesarios.</p>
+<h2>Reconocimiento puntual frente a programa estructurado</h2>
+<p>Una empresa puede hacer un regalo de forma excepcional o integrar el reconocimiento en un programa recurrente. En el segundo caso es útil definir categorías, importes orientativos y frecuencia para que las decisiones no dependan únicamente del momento.</p>
+<p>La consistencia ayuda a que los empleados entiendan mejor qué comportamientos o resultados se están reconociendo.</p>
+<h2>Cómo evitar que el regalo pierda significado</h2>
+<p>Si se entrega por cualquier pequeña tarea, puede convertirse en algo esperado y perder parte de su valor. Reservarlo para hitos relevantes o esfuerzos claramente identificables mantiene el componente de reconocimiento.</p>
+<p>El mensaje debería ser concreto: qué se ha logrado, por qué importa y a quién se agradece.</p>
 <h2>Qué información necesitamos</h2>
 <p>Número de personas, motivo del reconocimiento, presupuesto, fecha, ubicación y si el regalo será individual o de equipo. Con esos datos podremos revisar opciones realistas.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Reconoce el logro cuando todavía está reciente</h2><p>Explícanos qué queréis celebrar y revisaremos una propuesta proporcional al hito.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Contactar</a></p></div>
@@ -158,6 +170,12 @@ array(
 <h2>Stock y sustituciones</h2>
 <p>Un programa de bienvenida recurrente necesita flexibilidad. La referencia exacta puede agotarse, por lo que es útil definir una categoría o nivel de producto y no depender de una única SKU.</p>
 <p>Así se mantiene la intención aunque cambie la disponibilidad.</p>
+<h2>Cómo integrarlo con el resto del welcome pack</h2>
+<p>Si la empresa ya entrega ordenador, documentación, merchandising u otros materiales, el regalo gastronómico debería complementar el conjunto y no duplicar su función. Un producto consumible aporta una dimensión distinta frente a objetos de oficina.</p>
+<p>También conviene pensar en el peso total si todo se envía en un único proceso logístico.</p>
+<h2>Primer día frente a primera semana</h2>
+<p>No siempre es necesario que el detalle llegue exactamente el día uno. En algunos casos puede tener más sentido entregarlo durante la primera semana, una vez que la persona ya conoce al equipo y puede entender mejor el mensaje.</p>
+<p>Lo importante es que siga vinculado claramente al proceso de incorporación.</p>
 <h2>Qué información necesitamos</h2>
 <p>Número aproximado de incorporaciones, presupuesto por persona, modalidad presencial o remota, frecuencia y cualquier requisito especial. Con esos datos podemos revisar opciones sostenibles en el tiempo.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Añade un gesto gastronómico al primer día</h2><p>Dinos cómo es vuestro onboarding y revisaremos un detalle que pueda repetirse con coherencia.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Ir al formulario de contacto</a></p></div>
@@ -205,6 +223,14 @@ array(
 <h2>Evita convertir el reconocimiento en competencia</h2>
 <p>Un regalo de equipo debería reforzar la colaboración, no generar una comparación constante entre unidades. Si existen distintos niveles de reconocimiento, es útil que respondan a criterios claros.</p>
 <p>El mensaje interno es tan importante como el producto.</p>
+<h2>Celebraciones dentro de la oficina</h2>
+<p>Si el equipo va a consumir el regalo durante una reunión, conviene elegir productos que puedan abrirse y compartirse fácilmente sin necesitar una preparación compleja. El formato de consumo importa tanto como la categoría.</p>
+<p>También hay que prever utensilios, conservación y número aproximado de personas.</p>
+<h2>Equipos que colaboran entre departamentos</h2>
+<p>Algunos proyectos implican a varias áreas. En esos casos puede ser mejor plantear un reconocimiento conjunto para todas las personas participantes en lugar de regalar únicamente a un departamento.</p>
+<p>Definir bien el alcance evita dejar fuera a colaboradores relevantes y ayuda a mantener coherencia interna.</p>
+<h2>Frecuencia de este tipo de regalos</h2>
+<p>Si los equipos reciben detalles con frecuencia, conviene variar categorías y mantener una política de presupuesto para que el reconocimiento siga resultando especial. No hace falta repetir siempre el mismo formato.</p>
 <h2>Qué información necesitamos</h2>
 <p>Número de personas, motivo, presupuesto, ubicación, modalidad presencial o remota y si se busca una propuesta individual o para compartir. Con esos datos podemos revisar alternativas viables.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Celebra el resultado como equipo</h2><p>Cuéntanos qué queréis reconocer y revisaremos formatos gastronómicos individuales o colectivos.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Contactar</a></p></div>
@@ -252,6 +278,12 @@ array(
 <h2>Cómo evitar un regalo ostentoso</h2>
 <p>Mayor nivel no tiene por qué significar ostentación. Una selección sobria con un producto excelente puede resultar más elegante que una caja excesivamente grande.</p>
 <p>La calidad debería ser evidente sin necesidad de exagerar.</p>
+<h2>Cliente VIP individual frente a cuenta estratégica</h2>
+<p>A veces el destinatario es una persona concreta y otras veces una empresa completa. Para una cuenta estratégica puede ser más apropiado un regalo para compartir con el equipo; para un contacto individual, un producto seleccionado específicamente puede resultar más adecuado.</p>
+<p>Entender quién va a disfrutar realmente el regalo evita elegir un formato que no encaje.</p>
+<h2>Cómo diferenciar el regalo VIP del regalo estándar</h2>
+<p>La diferencia puede estar en la categoría, el productor, el formato o la selección, no necesariamente en multiplicar el número de productos. Definir una lógica clara facilita mantener varios niveles de cliente sin que las propuestas parezcan arbitrarias.</p>
+<p>Un escalón superior bien justificado suele funcionar mejor que una cesta simplemente más grande.</p>
 <h2>Qué información necesitamos</h2>
 <p>Presupuesto, motivo, fecha, destino, perfil del cliente y cualquier preferencia o restricción conocida. Con esos datos podremos revisar propuestas disponibles y proporcionadas a la relación.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Haz que el regalo VIP se note por la selección</h2><p>Explícanos el contexto de la relación y revisaremos una propuesta gastronómica de mayor nivel sin perder criterio.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Ir al formulario de contacto</a></p></div>
