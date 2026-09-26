@@ -332,9 +332,25 @@
 		}
 	});
 
+	function bannerDocument(unit) {
+		var options = {
+			key: unit.key,
+			format: 'iframe',
+			height: unit.height,
+			width: unit.width,
+			params: {}
+		};
+
+		return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+			'<style>html,body{margin:0;padding:0;overflow:hidden;background:transparent}body{display:flex;justify-content:center;align-items:flex-start}</style>' +
+			'</head><body>' +
+			'<script>window.atOptions=' + JSON.stringify(options) + ';<\\/script>' +
+			'<script src="https://www.highrevenueformat.com/' + encodeURIComponent(unit.key) + '/invoke.js"><\\/script>' +
+			'</body></html>';
+	}
+
 	function hydrateBanner(slot, unit, unitName) {
 		if (!slot || !unit || !unitName || slot.getAttribute('data-emo-adsterra-hydrated') === '1') return;
-		if (!config.frameEndpoint) return;
 
 		var mount = slot.querySelector('.emo-adsterra-mount');
 		if (!mount) return;
@@ -351,20 +367,16 @@
 		frame.setAttribute('loading', 'eager');
 		if (unitName.indexOf('responsive-') === 0) frame.setAttribute('fetchpriority', 'high');
 		frame.style.cssText = 'display:block;border:0;max-width:100%;overflow:hidden;background:transparent;';
-
-		var separator = config.frameEndpoint.indexOf('?') === -1 ? '?' : '&';
-		frame.src = config.frameEndpoint + separator
-			+ 'unit=' + encodeURIComponent(unitName)
-			+ '&token=' + encodeURIComponent(token)
-			+ '&_=' + Date.now();
+		frame.srcdoc = bannerDocument(unit);
 
 		registerSlotAttempt(slot);
-		slot.classList.add('is-loading');
-		slot.setAttribute('aria-hidden', 'false');
-		var shell = slot.closest('.emo-adsterra-native-shell');
-		if (shell) shell.classList.add('is-loading');
 		slot.setAttribute('data-emo-adsterra-hydrated', '1');
 		mount.appendChild(frame);
+
+		// La primera implementación de Adsterra que funcionó en producción
+		// mostraba el iframe inmediatamente. No esperamos una señal interna que
+		// algunos creativos de Adsterra no emiten aunque se hayan servido.
+		revealSlot(slot);
 	}
 
 	function hydrateNative(slot) {
