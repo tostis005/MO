@@ -234,7 +234,9 @@
 
 		var units = prepareAdsenseFallbackSlots();
 		if (!units.length) {
-			setPhase(renderedSlots > 0 ? 'adsterra_partial_fill_no_adsense_slot' : 'adsterra_no_fill_no_adsense_slot');
+			if (!fallbackStarted) {
+				setPhase(renderedSlots > 0 ? 'adsterra_partial_fill_no_adsense_slot' : 'adsterra_no_fill_no_adsense_slot');
+			}
 			return;
 		}
 
