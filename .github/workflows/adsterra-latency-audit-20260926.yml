@@ -18,16 +18,25 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --quiet selenium
-      - name: Measure production timing
+      - name: Measure optimized production timing
         shell: bash
         run: |
           python - <<'PY'
-          import json,time
+          import json,time,urllib.request
           from selenium import webdriver
           from selenium.common.exceptions import TimeoutException
           from selenium.webdriver.chrome.options import Options
 
-          url='https://www.elmercadodeorigen.com/dop-jabugo-que-garantiza-territorio-como-reconocer-jamon/?adsterra_debug=1&latency_audit=1'
+          fast='https://www.elmercadodeorigen.com/wp-content/themes/elmercadodeorigen-child/assets/ad-geo-fast.php?natural=1'
+          t=time.time()
+          try:
+              with urllib.request.urlopen(urllib.request.Request(fast,headers={'User-Agent':'Mozilla/5.0'}),timeout=10) as r:
+                  print('NATURAL_FAST_GEO_MS='+str(round((time.time()-t)*1000)),flush=True)
+                  print('NATURAL_FAST_GEO='+r.read().decode('utf-8','replace'),flush=True)
+          except Exception as e:
+              print('NATURAL_FAST_GEO_ERROR='+repr(e),flush=True)
+
+          url='https://www.elmercadodeorigen.com/dop-jabugo-que-garantiza-territorio-como-reconocer-jamon/?adsterra_debug=1&latency_audit=2'
           o=Options(); o.page_load_strategy='eager'
           for a in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1440,1800','--lang=en-US'):
               o.add_argument(a)
@@ -37,7 +46,7 @@ jobs:
               d.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument',{'source':"""
               (()=>{const f=window.fetch;window.fetch=function(input,init){
                 const u=typeof input==='string'?input:(input&&input.url)||'';
-                if(u.includes('/wp-json/elmercado/v1/blog-ad-eligibility')){
+                if(u.includes('/assets/ad-geo-fast.php')||u.includes('/wp-json/elmercado/v1/blog-ad-eligibility')){
                   init=Object.assign({},init||{});const h=new Headers(init.headers||{});
                   h.set('X-Country-Code','ZA');init.headers=h;
                 }
@@ -50,7 +59,7 @@ jobs:
                   try:d.execute_script('window.stop()')
                   except:pass
               nav_ms=round((time.time()-t)*1000)
-              time.sleep(10)
+              time.sleep(7)
               state=d.execute_script(r"""
                 const all=performance.getEntriesByType('resource').map(r=>({
                   name:r.name,start:Math.round(r.startTime),dur:Math.round(r.duration),
@@ -62,8 +71,10 @@ jobs:
                     dom:Math.round(performance.getEntriesByType('navigation')[0].domContentLoadedEventEnd),
                     load:Math.round(performance.getEntriesByType('navigation')[0].loadEventEnd)
                   }:null,
+                  fastGeo:all.filter(r=>r.name.includes('/assets/ad-geo-fast.php')),
                   eligibility:all.filter(r=>r.name.includes('/wp-json/elmercado/v1/blog-ad-eligibility')),
-                  frames:all.filter(r=>r.name.includes('emo_adsterra_frame=')),
+                  frames:all.filter(r=>r.name.includes('/assets/adsterra-frame.html')),
+                  legacyFrames:all.filter(r=>r.name.includes('emo_adsterra_frame=')),
                   adsterra:all.filter(r=>/highrevenueformat|profitableratecpmnetwork/.test(r.name)),
                   google:all.filter(r=>/googlesyndication|doubleclick/.test(r.name))
                 };
