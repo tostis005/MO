@@ -231,6 +231,7 @@ array(
 <p>Definir bien el alcance evita dejar fuera a colaboradores relevantes y ayuda a mantener coherencia interna.</p>
 <h2>Frecuencia de este tipo de regalos</h2>
 <p>Si los equipos reciben detalles con frecuencia, conviene variar categorías y mantener una política de presupuesto para que el reconocimiento siga resultando especial. No hace falta repetir siempre el mismo formato.</p>
+<p>Si habrá varias ubicaciones o turnos, indícalo también para valorar cómo repartir las unidades sin complicar la entrega.</p>
 <h2>Qué información necesitamos</h2>
 <p>Número de personas, motivo, presupuesto, ubicación, modalidad presencial o remota y si se busca una propuesta individual o para compartir. Con esos datos podemos revisar alternativas viables.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Celebra el resultado como equipo</h2><p>Cuéntanos qué queréis reconocer y revisaremos formatos gastronómicos individuales o colectivos.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Contactar</a></p></div>
