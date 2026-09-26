@@ -111,6 +111,12 @@ array(
 <h2>Entrega en el propio evento</h2>
 <p>Si el producto debe llegar al restaurante, finca u hotel, hay que coordinar fecha, persona de contacto y espacio de almacenamiento.</p>
 <p>Conviene que la entrega se produzca con margen suficiente para revisar cantidades.</p>
+<h2>Invitados que vienen de fuera</h2>
+<p>Si una parte importante de los asistentes viaja desde otras ciudades o países, conviene priorizar regalos fáciles de transportar y que no presenten problemas de conservación. Un detalle pensado para una mesa local puede no ser igual de práctico para alguien que toma un avión al día siguiente.</p>
+<p>También puede ser útil elegir productos que representen el lugar de la boda y funcionen como recuerdo gastronómico del viaje.</p>
+<h2>Cómo evitar un detalle demasiado genérico</h2>
+<p>Incluso con presupuestos ajustados, se puede diferenciar el regalo eligiendo un productor concreto, una procedencia clara o una categoría conectada con la celebración. Esa decisión aporta más personalidad que añadir elementos decorativos sin relación con el producto.</p>
+<p>La originalidad no tiene por qué aumentar mucho el coste si se trabaja desde la selección.</p>
 <h2>Qué información necesitamos</h2>
 <p>Número de invitados, presupuesto por detalle, fecha, lugar de celebración y si el regalo será individual o por pareja/familia. Con esos datos podemos revisar formatos y disponibilidad.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Elige un detalle que los invitados quieran llevarse</h2><p>Dinos cantidades y presupuesto y revisaremos productos gastronómicos prácticos y con origen.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Contactar</a></p></div>
@@ -158,6 +164,12 @@ array(
 <h2>Entrega en restaurante o finca</h2>
 <p>Si los productos deben llegar directamente al lugar de celebración, conviene coordinar recepción, fecha y persona responsable.</p>
 <p>El pedido debería llegar con margen para comprobar cantidades y distribuir los detalles.</p>
+<h2>Comunión y bautizo no tienen por qué plantearse igual</h2>
+<p>En una comunión suele haber más protagonismo del niño o niña y, en ocasiones, un número mayor de invitados de edades similares. En un bautizo, el grupo puede ser más familiar y reducido. El tipo de celebración puede influir en el número de unidades y en el tono del detalle.</p>
+<p>Conviene pensar en quién recibirá realmente el regalo antes de decidir cantidades y formato.</p>
+<h2>Cómo mantener el detalle sencillo</h2>
+<p>Estas celebraciones ya implican muchas decisiones de organización. Elegir un producto único, fácil de entregar y con una presentación sobria puede simplificar mucho la preparación.</p>
+<p>Un detalle gastronómico no necesita convertirse en un proyecto aparte para resultar especial.</p>
 <h2>Qué información necesitamos</h2>
 <p>Número aproximado de regalos, presupuesto por unidad, fecha, lugar, si el detalle será por persona o familia y cualquier preferencia de producto.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Prepara un detalle útil y fácil de disfrutar</h2><p>Envíanos los datos de la celebración y revisaremos formatos gastronómicos adecuados al volumen y presupuesto.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Ir al formulario de contacto</a></p></div>
@@ -205,6 +217,12 @@ array(
 <h2>Logística del recinto</h2>
 <p>Hay que definir quién recibe el pedido, dónde se almacena, cuándo se monta y quién se encarga del reparto. Estas cuestiones pueden determinar qué formato es realmente práctico.</p>
 <p>Una buena idea sobre el papel debe funcionar también el día del evento.</p>
+<h2>Eventos de uno o varios días</h2>
+<p>En congresos o encuentros de varias jornadas, el momento de entrega cambia mucho la experiencia. Un detalle al inicio puede formar parte de la bienvenida; al final, funciona como recuerdo y agradecimiento. Si hay varias sesiones, también puede reservarse para un grupo concreto.</p>
+<p>Definir el momento ayuda a decidir tamaño, conservación y logística.</p>
+<h2>Cómo escalar sin perder calidad</h2>
+<p>Cuando el evento crece, conviene evitar propuestas demasiado artesanales de preparar unidad a unidad si no existe capacidad real para ello. La selección debe poder repetirse con consistencia en todas las unidades.</p>
+<p>La calidad del detalle también depende de que el asistente número 300 reciba lo mismo que el primero.</p>
 <h2>Qué información necesitamos</h2>
 <p>Número de asistentes, presupuesto por unidad, fecha, recinto, momento de entrega y cualquier requisito de presentación. Con esos datos podemos revisar opciones realistas.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Haz que el detalle sea fácil de entregar y recordar</h2><p>Dinos volumen y presupuesto y revisaremos productos que puedan funcionar a escala.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Contactar</a></p></div>
@@ -252,6 +270,12 @@ array(
 <h2>Entrega y presentación</h2>
 <p>Si el regalo se envía a domicilio u oficina, hay que confirmar la dirección y quién puede recibirlo. Si se necesita una tarjeta o mensaje, debe revisarse según la operativa.</p>
 <p>La presentación debe acompañar al producto, no eclipsarlo.</p>
+<h2>Agradecimientos puntuales frente a recurrentes</h2>
+<p>No es lo mismo agradecer una ayuda excepcional que mantener una política habitual de detalles con colaboradores. En el primer caso puede tener sentido una propuesta más personal; en el segundo, conviene establecer rangos de presupuesto y criterios para mantener coherencia.</p>
+<p>Definir esa diferencia evita improvisaciones y ayuda a que cada gesto mantenga su significado.</p>
+<h2>Cómo evitar que el regalo parezca interesado</h2>
+<p>El mejor agradecimiento es el que no exige nada a cambio. Un producto bien elegido, acompañado de un mensaje claro, transmite mejor la intención que una propuesta excesiva.</p>
+<p>En relaciones profesionales, la proporcionalidad ayuda a que el destinatario reciba el gesto con naturalidad.</p>
 <h2>Qué información necesitamos</h2>
 <p>Motivo del agradecimiento, tipo de destinatario, presupuesto, fecha y lugar de entrega. Con esos datos podemos revisar opciones adecuadas y disponibles.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Di gracias con algo que pueda disfrutarse</h2><p>Explícanos el contexto y revisaremos productos gastronómicos proporcionados al gesto que quieres reconocer.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Ir al formulario de contacto</a></p></div>
