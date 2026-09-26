@@ -294,7 +294,10 @@
 		slot.classList.add('is-eligible');
 		slot.setAttribute('aria-hidden', 'false');
 		var nativeShell = slot.closest('.emo-adsterra-native-shell');
-		if (nativeShell) nativeShell.classList.add('is-eligible');
+		if (nativeShell) {
+			nativeShell.classList.remove('is-loading');
+			nativeShell.classList.add('is-eligible');
+		}
 		debug.hydrated += 1;
 		markSlotResolved(slot, 'rendered');
 		renderDebug();
@@ -305,7 +308,7 @@
 		slot.classList.remove('is-eligible', 'is-loading');
 		slot.setAttribute('aria-hidden', 'true');
 		var nativeShell = slot.closest('.emo-adsterra-native-shell');
-		if (nativeShell) nativeShell.classList.remove('is-eligible');
+		if (nativeShell) nativeShell.classList.remove('is-eligible', 'is-loading');
 	}
 
 	window.addEventListener('message', function (event) {
