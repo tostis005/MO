@@ -24,48 +24,92 @@
 	var type = params.get('unit') || '';
 	var token = params.get('token') || '';
 	var unit = units[type];
-	var sent = false;
+	var settled = false;
+	var inserted = false;
 
-	function notify(typeName) {
-		if (sent || !token) return;
-		sent = true;
+	function post(typeName) {
+		if (!token) return;
 		window.parent.postMessage({ type: typeName, token: token }, window.location.origin);
 	}
 
-	window.__emoAdsterraBlocked = function () {
-		notify('emo-adsterra-blocked');
-	};
+	function markInserted() {
+		if (inserted) return;
+		inserted = true;
+		post('emo-adsterra-creative-inserted');
+	}
+
+	function rendered() {
+		if (settled) return;
+		settled = true;
+		markInserted();
+		post('emo-adsterra-rendered');
+	}
+
+	function blocked() {
+		if (settled) return;
+		settled = true;
+		post('emo-adsterra-blocked');
+	}
 
 	function watchMedia(node) {
-		if (!node || node.getAttribute('data-emo-adsterra-watch') === '1') return;
+		if (!node || node.nodeType !== 1 || node.getAttribute('data-emo-adsterra-watch') === '1') return;
 		node.setAttribute('data-emo-adsterra-watch', '1');
-		node.addEventListener('load', function () { notify('emo-adsterra-rendered'); }, { once: true });
+		markInserted();
 
-		if (node.tagName === 'IMG' && node.complete && node.naturalWidth > 0) {
-			notify('emo-adsterra-rendered');
+		if (node.tagName === 'IMG') {
+			if (node.complete && node.naturalWidth > 0) {
+				rendered();
+				return;
+			}
+			node.addEventListener('load', function () {
+				if (node.naturalWidth > 0) rendered();
+			}, { once: true });
+			return;
 		}
+
+		if (node.tagName === 'VIDEO') {
+			if (node.readyState >= 2) {
+				rendered();
+				return;
+			}
+			node.addEventListener('loadeddata', rendered, { once: true });
+			return;
+		}
+
+		if (node.tagName === 'IFRAME' || node.tagName === 'OBJECT' || node.tagName === 'EMBED') {
+			node.addEventListener('load', function () {
+				window.setTimeout(rendered, 60);
+			}, { once: true });
+			window.setTimeout(function () {
+				if (settled || !node.isConnected) return;
+				var src = node.getAttribute('src') || node.getAttribute('data') || '';
+				if (src && src !== 'about:blank') rendered();
+			}, 900);
+			return;
+		}
+
+		window.setTimeout(function () {
+			if (!settled && node.isConnected) rendered();
+		}, 120);
 	}
 
 	function inspect() {
-		if (sent) return;
-		Array.prototype.slice.call(document.body.querySelectorAll('iframe,img,video,object,embed')).forEach(watchMedia);
-
-		var visibleText = Array.prototype.slice.call(document.body.children).some(function (node) {
-			if (!node || node.tagName === 'SCRIPT' || node.tagName === 'STYLE') return false;
-			if (node.querySelector && node.querySelector('iframe,img,video,object,embed')) return false;
-			return (node.textContent || '').trim() !== '';
-		});
-		if (visibleText) notify('emo-adsterra-rendered');
+		if (settled) return;
+		Array.prototype.slice.call(
+			document.body.querySelectorAll('iframe,img,video,object,embed,canvas,svg,a[href]')
+		).forEach(watchMedia);
 	}
 
 	if (!unit || !token) {
-		notify('emo-adsterra-blocked');
+		blocked();
 		return;
 	}
 
 	new MutationObserver(inspect).observe(document.body, {
 		childList: true,
-		subtree: true
+		subtree: true,
+		attributes: true,
+		attributeFilter: ['src', 'href', 'data']
 	});
 
 	window.atOptions = {
@@ -76,16 +120,22 @@
 		params: {}
 	};
 
+	window.__emoAdsterraInvokeLoaded = function () {
+		post('emo-adsterra-script-loaded');
+		inspect();
+	};
+	window.__emoAdsterraInvokeFailed = blocked;
+
 	window.setTimeout(function () {
-		if (!sent) notify('emo-adsterra-blocked');
-	}, 6500);
+		if (!settled) blocked();
+	}, 6200);
 
 	inspect();
 
 	document.write(
 		'<script src="https://www.highrevenueformat.com/' +
 		encodeURIComponent(unit.key) +
-		'/invoke.js" onerror="window.__emoAdsterraBlocked()"><\/script>'
+		'/invoke.js" onload="window.__emoAdsterraInvokeLoaded()" onerror="window.__emoAdsterraInvokeFailed()"><\/script>'
 	);
 }());
 </script>
