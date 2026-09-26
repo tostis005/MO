@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.301' );
-/* 0.10.301 deja Adsterra en pagina y Google solo para Auto Ads/ancla. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.302' );
+/* 0.10.302 restaura formatos Adsterra distintos por posicion y dispositivo. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
 	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsterra' ); // 'adsense' | 'adsterra'
 }
