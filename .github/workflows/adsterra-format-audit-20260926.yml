@@ -1,4 +1,4 @@
-name: Audit Adsterra format mapping
+name: Audit live Adsterra formats
 
 on:
   push:
@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --quiet selenium
-      - name: Audit desktop and mobile Adsterra units
+      - name: Capture live unit mapping before timeout
         shell: bash
         run: |
           python - <<'PY'
@@ -26,7 +26,7 @@ jobs:
           from selenium import webdriver
           from selenium.webdriver.chrome.options import Options
 
-          URL='https://www.elmercadodeorigen.com/dop-jabugo-que-garantiza-territorio-como-reconocer-jamon/?adsterra_debug=1&format_audit=1'
+          URL='https://www.elmercadodeorigen.com/dop-jabugo-que-garantiza-territorio-como-reconocer-jamon/?adsterra_debug=1&format_audit_live=1'
 
           def run(label,w,h):
               o=Options(); o.page_load_strategy='none'
@@ -45,16 +45,34 @@ jobs:
                     return f.call(this,input,init);
                   };})();"""})
                   d.get(URL+'&view='+label)
-                  time.sleep(6)
+
+                  deadline=time.time()+8
+                  while time.time()<deadline:
+                      ready=d.execute_script("return !!(window.ElMercadoAdsterraGeoDebug && window.ElMercadoAdsterraGeoDebug.attempted>0)")
+                      if ready: break
+                      time.sleep(.1)
+
+                  top=d.execute_script(r"""
+                    return Array.from(document.querySelectorAll('[data-emo-adsterra-slot]')).map((s,i)=>{
+                      const f=s.querySelector('iframe[data-emo-adsterra-token]');
+                      const u=f?new URL(f.src):null;
+                      return {
+                        i,
+                        declared:s.getAttribute('data-emo-adsterra-slot'),
+                        state:s.getAttribute('data-emo-adsterra-state'),
+                        hydrated:s.getAttribute('data-emo-adsterra-hydrated'),
+                        unit:u?u.searchParams.get('unit'):null,
+                        frameW:f?Number(f.getAttribute('width')||0):0,
+                        frameH:f?Number(f.getAttribute('height')||0):0
+                      };
+                    });
+                  """)
+                  print(label+'_TOP='+json.dumps(top,sort_keys=True),flush=True)
+
                   d.execute_script('window.scrollTo(0, Math.floor(document.documentElement.scrollHeight*0.55))')
-                  time.sleep(4)
-                  d.execute_script('window.scrollTo(0, document.documentElement.scrollHeight)')
-                  time.sleep(4)
-                  state=d.execute_script(r"""
-                    const res=performance.getEntriesByType('resource').map(r=>r.name);
+                  time.sleep(.7)
+                  mid=d.execute_script(r"""
                     return {
-                      viewport:[innerWidth,innerHeight],
-                      debug:window.ElMercadoAdsterraGeoDebug||null,
                       slots:Array.from(document.querySelectorAll('[data-emo-adsterra-slot]')).map((s,i)=>{
                         const f=s.querySelector('iframe[data-emo-adsterra-token]');
                         const u=f?new URL(f.src):null;
@@ -63,27 +81,43 @@ jobs:
                           declared:s.getAttribute('data-emo-adsterra-slot'),
                           state:s.getAttribute('data-emo-adsterra-state'),
                           hydrated:s.getAttribute('data-emo-adsterra-hydrated'),
-                          visible:getComputedStyle(s).display!=='none',
-                          slotW:Math.round(s.getBoundingClientRect().width),
-                          slotH:Math.round(s.getBoundingClientRect().height),
-                          frameW:f?parseInt(f.getAttribute('width')||'0'):0,
-                          frameH:f?parseInt(f.getAttribute('height')||'0'):0,
                           unit:u?u.searchParams.get('unit'):null,
-                          frameSrc:f?f.src:null
+                          frameW:f?Number(f.getAttribute('width')||0):0,
+                          frameH:f?Number(f.getAttribute('height')||0):0
                         };
                       }),
-                      adsterraKeys:res.filter(x=>x.includes('highrevenueformat.com/')).map(x=>{
-                        const m=x.match(/highrevenueformat\.com\/([^/]+)\/invoke\.js/);
-                        return m?m[1]:x;
-                      }),
-                      nativeRequests:res.filter(x=>x.includes('profitableratecpmnetwork.com'))
+                      googleAutoPlaced:document.querySelectorAll('.google-auto-placed').length,
+                      googleExplicitSlots:document.querySelectorAll('ins.adsbygoogle[data-ad-slot]').length
                     };
                   """)
-                  print(label+'='+json.dumps(state,sort_keys=True),flush=True)
+                  print(label+'_MID='+json.dumps(mid,sort_keys=True),flush=True)
+
+                  d.execute_script('window.scrollTo(0, document.documentElement.scrollHeight)')
+                  time.sleep(.7)
+                  end=d.execute_script(r"""
+                    return {
+                      slots:Array.from(document.querySelectorAll('[data-emo-adsterra-slot]')).map((s,i)=>{
+                        const f=s.querySelector('iframe[data-emo-adsterra-token]');
+                        const u=f?new URL(f.src):null;
+                        return {
+                          i,
+                          declared:s.getAttribute('data-emo-adsterra-slot'),
+                          state:s.getAttribute('data-emo-adsterra-state'),
+                          hydrated:s.getAttribute('data-emo-adsterra-hydrated'),
+                          unit:u?u.searchParams.get('unit'):null,
+                          frameW:f?Number(f.getAttribute('width')||0):0,
+                          frameH:f?Number(f.getAttribute('height')||0):0
+                        };
+                      }),
+                      googleAutoPlaced:document.querySelectorAll('.google-auto-placed').length,
+                      googleExplicitSlots:document.querySelectorAll('ins.adsbygoogle[data-ad-slot]').length
+                    };
+                  """)
+                  print(label+'_END='+json.dumps(end,sort_keys=True),flush=True)
               finally:
                   d.quit()
 
           run('DESKTOP',1440,1000)
           run('MOBILE',390,844)
-          print('FORMAT_AUDIT_DONE=1',flush=True)
+          print('LIVE_FORMAT_AUDIT_DONE=1',flush=True)
           PY
