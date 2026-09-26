@@ -229,6 +229,9 @@ array(
 <h2>Cómo usar el territorio como hilo conductor</h2>
 <p>Una cesta puede centrarse en una región, una provincia o una combinación de varias zonas. Elegir un criterio territorial aporta coherencia y facilita explicar el regalo.</p>
 <p>También puede conectar con la sede de la empresa, el origen del destinatario o el lugar de un evento.</p>
+<h2>Regalos de proximidad para eventos</h2>
+<p>Cuando una empresa organiza un evento en una región concreta, seleccionar productos de esa zona puede ayudar a conectar la experiencia con el lugar. El detalle puede formar parte de la bienvenida o del recuerdo del evento.</p>
+<p>En estos casos, conviene priorizar formatos fáciles de transportar y suficientes unidades para todos los asistentes previstos.</p>
 <h2>Qué información necesitamos</h2>
 <p>Número de regalos, presupuesto, destinatario, fecha, destino y si buscas una región concreta o una selección nacional. Con esos datos podemos revisar propuestas viables.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Regala productos con un lugar y una persona detrás</h2><p>Dinos qué relación quieres destacar y revisaremos productores y referencias disponibles.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Contactar</a></p></div>
