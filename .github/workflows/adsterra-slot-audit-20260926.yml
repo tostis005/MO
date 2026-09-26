@@ -101,6 +101,8 @@ jobs:
           failed=[s for s in end['slots'] if s['state']=='failed' and s['type']!='skyscraper']
           if failed and end['googleRequests'] < 1:
               raise SystemExit('Failed Adsterra slots had no Google fallback traffic')
+          if end['debug'].get('error'):
+              raise SystemExit('Ad lifecycle ended with debug error: '+str(end['debug'].get('error')))
 
           print('OPTIMIZED_ADSTERRA_AUDIT=PASS',flush=True)
           d.quit()
