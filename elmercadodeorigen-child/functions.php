@@ -9,10 +9,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.299' );
-/* 0.10.299 restaura AdSense como proveedor principal y acelera su geolocalización. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.300' );
+/* 0.10.300 optimiza Adsterra como proveedor principal con fallback por hueco. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
-	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsense' ); // 'adsense' | 'adsterra'
+	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsterra' ); // 'adsense' | 'adsterra'
 }
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
