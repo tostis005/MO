@@ -1,0 +1,137 @@
+name: Publish B2B SEO landings batch 02 20260926
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/publish-seo-b2b-landings-batch02-20260926.php'
+      - '.github/workflows/publish-seo-b2b-landings-batch02-20260926.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-seo-b2b-landings-batch02-20260926
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/publish-seo-b2b-landings-batch02-20260926.php
+          grep -Fq "cestas-navidad-sin-alcohol" .github/scripts/publish-seo-b2b-landings-batch02-20260926.php
+          grep -Fq "cestas-navidad-jamon-iberico" .github/scripts/publish-seo-b2b-landings-batch02-20260926.php
+          grep -Fq "cestas-navidad-productos-espanoles" .github/scripts/publish-seo-b2b-landings-batch02-20260926.php
+          grep -Fq "regalos-empresa-productos-espanoles" .github/scripts/publish-seo-b2b-landings-batch02-20260926.php
+          grep -Fq "regalos-gastronomicos-eventos-congresos" .github/scripts/publish-seo-b2b-landings-batch02-20260926.php
+          : "${STAGING_HOST:?}"
+          : "${STAGING_USER:?}"
+          : "${STAGING_PASSWORD:?}"
+
+      - name: Publish landing pages in production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true)
+            php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] || exit 2
+            [ -n "$php" ] || exit 3
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;;
+              esac
+            done
+            [ -n "$prod" ] || exit 4
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+          REMOTE="/tmp/emdo-seo-b2b-landings-b02-${GITHUB_RUN_ID}.php"
+
+          sshpass -e scp $SCP .github/scripts/publish-seo-b2b-landings-batch02-20260926.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          set +e
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE' --path='$PROD' --skip-plugins --skip-themes --allow-root; rc=\$?; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -f '$REMOTE'; exit \$rc" > /tmp/publish.json
+          rc=$?
+          set -e
+          cat /tmp/publish.json
+          [ "$rc" -eq 0 ]
+
+          jq -e '.batch=="20260926-b2b-02" and .count==5' /tmp/publish.json >/dev/null
+          jq -e '.pages|all(.type=="page" and .status=="publish" and .words>=650)' /tmp/publish.json >/dev/null
+
+      - name: Verify public pages and island behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          slugs=(
+            "cestas-navidad-sin-alcohol"
+            "cestas-navidad-jamon-iberico"
+            "cestas-navidad-productos-espanoles"
+            "regalos-empresa-productos-espanoles"
+            "regalos-gastronomicos-eventos-congresos"
+          )
+
+          for slug in "${slugs[@]}"; do
+            file="/tmp/${slug}.html"
+            code="$(curl -k -L -sS --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 60 -A 'Mozilla/5.0 EMDO SEO landing verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$file" -w '%{http_code}' "https://www.elmercadodeorigen.com/${slug}/?emdo_verify=${GITHUB_RUN_ID}")"
+            test "$code" = "200"
+            grep -Fq '/contacto/' "$file"
+            if grep -Eqi '<meta[^>]+name=["'"'"']robots["'"'"'][^>]+content=["'"'"'][^"'"'"']*noindex' "$file"; then
+              echo "Unexpected noindex on $slug" >&2
+              exit 20
+            fi
+          done
+
+          curl -k -L -sS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO SEO landing verifier' -H 'Cache-Control: no-cache' "https://www.elmercadodeorigen.com/blog/?emdo_verify=${GITHUB_RUN_ID}" -o /tmp/blog.html
+          for slug in "${slugs[@]}"; do
+            if grep -Fq "$slug" /tmp/blog.html; then
+              echo "Landing unexpectedly appears in blog listing: $slug" >&2
+              exit 21
+            fi
+          done
+          echo "B2B_SEO_LANDINGS_BATCH02_PUBLIC_VERIFY_OK"
+
+      - name: Record verified deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          jq -n             --arg generated_at "$(date -u +%FT%TZ)"             --arg run_id "$GITHUB_RUN_ID"             --arg source_sha "$GITHUB_SHA"             --slurpfile pub /tmp/publish.json             '{generated_at:$generated_at,run_id:($run_id|tonumber),source_sha:$source_sha,verified:true,batch:"20260926-b2b-02",landing_count:5,pages:$pub[0].pages}'             > .deploy-status/seo-b2b-landings-batch02-20260926.json
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/seo-b2b-landings-batch02-20260926.json
+          git commit -m 'Record verified B2B SEO landing batch 02 [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
