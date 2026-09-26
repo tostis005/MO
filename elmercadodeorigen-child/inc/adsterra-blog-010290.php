@@ -474,19 +474,11 @@ function elmercado_adsterra_styles_010290(): void {
 				margin-top: 22px;
 			}
 			.emo-adsterra-slot--rectangle,
-			.emo-adsterra-slot--tall-rectangle {
-				display: none !important;
-				height: 0 !important;
-				min-height: 0 !important;
-				max-height: 0 !important;
-				margin: 0 !important;
-				padding: 0 !important;
-				overflow: hidden !important;
-			}
-		}
-		@media (max-width: 519px) {
+			.emo-adsterra-slot--tall-rectangle,
 			.emo-adsterra-slot--footer-banner {
-				display: none !important;
+				width: 100%;
+				max-width: 100%;
+				margin: clamp(24px, 7vw, 36px) auto;
 			}
 		}
 	</style>
@@ -626,14 +618,45 @@ function elmercado_adsterra_preload_controller_010301(): void {
 		return;
 	}
 
-	$path = ELMERCADO_THEME_PATH . '/assets/js/adsterra-geo-010290.js';
-	$ver  = is_readable( $path ) ? (string) filemtime( $path ) : ELMERCADO_THEME_VERSION;
-	$src  = add_query_arg( 'ver', $ver, ELMERCADO_THEME_URL . '/assets/js/adsterra-geo-010290.js' );
+	$path      = ELMERCADO_THEME_PATH . '/assets/js/adsterra-geo-010290.js';
+	$ver       = is_readable( $path ) ? (string) filemtime( $path ) : ELMERCADO_THEME_VERSION;
+	$src       = add_query_arg( 'ver', $ver, ELMERCADO_THEME_URL . '/assets/js/adsterra-geo-010290.js' );
+	$fast_geo  = ELMERCADO_THEME_URL . '/assets/ad-geo-fast.php';
 
 	printf(
+		'<link rel="preconnect" href="https://www.highrevenueformat.com" crossorigin>' . "\n" .
+		'<link rel="preconnect" href="https://pl31502847.profitableratecpmnetwork.com" crossorigin>' . "\n" .
 		'<link rel="preload" as="script" href="%1$s" fetchpriority="high">' . "\n",
 		esc_url( $src )
 	);
+
+	?>
+	<script id="elmercado-ad-geo-bootstrap-010300">
+	(function () {
+		'use strict';
+		try {
+			if (window.sessionStorage && window.sessionStorage.getItem('emo-blog-ad-eligibility-v3')) {
+				window.ElMercadoAdGeoBootstrap = Promise.resolve(null);
+				return;
+			}
+		} catch (error) {}
+
+		if (typeof window.fetch !== 'function') return;
+		window.ElMercadoAdGeoBootstrap = fetch(
+			<?php echo wp_json_encode( esc_url_raw( $fast_geo ) ); ?> + '?_early=' + Date.now(),
+			{
+				method: 'GET',
+				credentials: 'same-origin',
+				cache: 'no-store',
+				headers: { 'Accept': 'application/json' }
+			}
+		).then(function (response) {
+			if (!response.ok) throw new Error('early_geo_http_' + response.status);
+			return response.json();
+		});
+	}());
+	</script>
+	<?php
 }
 add_action( 'wp_head', 'elmercado_adsterra_preload_controller_010301', 1 );
 
@@ -659,8 +682,8 @@ function elmercado_adsterra_enqueue_controller_010290(): void {
 			'shippableCountries'   => function_exists( 'elmercado_adsense_get_shippable_countries' ) ? elmercado_adsense_get_shippable_countries() : array(),
 			'adsensePublisher'     => defined( 'ELMERCADO_ADSENSE_PUBLISHER' ) ? ELMERCADO_ADSENSE_PUBLISHER : '',
 			'adsenseInArticleSlot' => defined( 'ELMERCADO_ADSENSE_INARTICLE_SLOT' ) ? ELMERCADO_ADSENSE_INARTICLE_SLOT : '',
-			'slotTimeout'          => 2800,
-			'fallbackTimeout'      => 4200,
+			'slotTimeout'          => 2600,
+			'fallbackTimeout'      => 0,
 		)
 	);
 }
