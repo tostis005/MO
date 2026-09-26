@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.306' );
-/* 0.10.306 corrige el documento srcdoc para ejecutar invoke.js y valida creatividad antes de revelar. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.307' );
+/* 0.10.307 deja el blog en modo Adsterra puro, sin cargar Google/AdSense. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
 	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsterra' ); // 'adsense' | 'adsterra'
 }
