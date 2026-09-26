@@ -6,6 +6,11 @@
 	var adBlockDetected = false;
 	var adBlockCheckDone = false;
 	var hydrationPending = false;
+	var fallbackTimer = null;
+	var fallbackStarted = false;
+	var attemptedSlots = 0;
+	var resolvedSlots = 0;
+	var renderedSlots = 0;
 	var debugMode = /(?:^|[?&])adsterra_debug=1(?:&|$)/.test(window.location.search);
 	var debug = window.ElMercadoAdsterraGeoDebug = {
 		phase: 'initializing',
@@ -13,6 +18,11 @@
 		canBuy: null,
 		showAds: null,
 		hydrated: 0,
+		attempted: 0,
+		resolved: 0,
+		rendered: 0,
+		fallback: false,
+		fallbackReason: null,
 		error: null
 	};
 
@@ -49,11 +59,207 @@
 		}
 	};
 
+	function adsbygoogleQueue() {
+		window.adsbygoogle = window.adsbygoogle || [];
+		return window.adsbygoogle;
+	}
+
+	function googleScriptExists() {
+		return !!document.querySelector('script[src*="pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"]');
+	}
+
+	function loadAdsenseFallbackScript() {
+		adsbygoogleQueue().pauseAdRequests = 0;
+
+		if (googleScriptExists()) {
+			return Promise.resolve();
+		}
+
+		if (!config.adsensePublisher) {
+			return Promise.reject(new Error('Missing AdSense fallback publisher'));
+		}
+
+		return new Promise(function (resolve, reject) {
+			var script = document.createElement('script');
+			script.async = true;
+			script.crossOrigin = 'anonymous';
+			script.setAttribute('data-emo-adsense-fallback', '1');
+			script.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' + encodeURIComponent(config.adsensePublisher);
+			script.addEventListener('load', resolve, { once: true });
+			script.addEventListener('error', function () {
+				reject(new Error('AdSense fallback script failed to load'));
+			}, { once: true });
+			(document.head || document.documentElement).appendChild(script);
+		});
+	}
+
+	function cleanupAdsenseFallbackSlot(slot) {
+		if (!slot) return;
+		slot.classList.remove('is-adsense-fallback', 'is-adsense-filled');
+		slot.setAttribute('aria-hidden', 'true');
+		var nativeShell = slot.closest('.emo-adsterra-native-shell');
+		if (nativeShell) nativeShell.classList.remove('is-adsense-fallback');
+	}
+
+	function prepareAdsenseFallbackSlots() {
+		var candidates = Array.prototype.slice.call(document.querySelectorAll(
+			'.emo-adsterra-slot--rectangle, .emo-adsterra-slot--tall-rectangle'
+		));
+
+		if (!candidates.length) {
+			var nativeSlot = document.querySelector('.emo-adsterra-slot--native');
+			if (nativeSlot) candidates.push(nativeSlot);
+		}
+
+		if (!candidates.length) {
+			var topSlot = document.querySelector('.emo-adsterra-slot--responsive-top');
+			if (topSlot) candidates.push(topSlot);
+		}
+
+		return candidates.slice(0, 3).map(function (slot) {
+			var mount = slot.querySelector('.emo-adsterra-mount');
+			if (!mount) return null;
+
+			mount.innerHTML = '';
+			var ins = document.createElement('ins');
+			ins.className = 'adsbygoogle';
+			ins.style.display = 'block';
+			ins.style.textAlign = 'center';
+			ins.setAttribute('data-ad-layout', 'in-article');
+			ins.setAttribute('data-ad-format', 'fluid');
+			ins.setAttribute('data-ad-client', config.adsensePublisher);
+			ins.setAttribute('data-ad-slot', config.adsenseInArticleSlot);
+			mount.appendChild(ins);
+
+			slot.classList.remove('is-eligible');
+			slot.classList.add('is-adsense-fallback');
+			slot.setAttribute('aria-hidden', 'false');
+
+			var nativeShell = slot.closest('.emo-adsterra-native-shell');
+			if (nativeShell) nativeShell.classList.add('is-adsense-fallback');
+
+			return { slot: slot, ins: ins };
+		}).filter(Boolean);
+	}
+
+	function requestAdsenseFallbackUnits(units) {
+		units.forEach(function (unit) {
+			var settled = false;
+			var observer = new MutationObserver(function () {
+				var status = unit.ins.getAttribute('data-ad-status');
+				if (status === 'filled' || status === 'unfill-optimized') {
+					settled = true;
+					unit.slot.classList.add('is-adsense-filled');
+					unit.slot.setAttribute('aria-hidden', 'false');
+					return;
+				}
+				if (status === 'unfilled') {
+					settled = true;
+					cleanupAdsenseFallbackSlot(unit.slot);
+				}
+			});
+			observer.observe(unit.ins, {
+				attributes: true,
+				attributeFilter: ['data-ad-status']
+			});
+
+			try {
+				adsbygoogleQueue().push({});
+			} catch (error) {
+				settled = true;
+				cleanupAdsenseFallbackSlot(unit.slot);
+				debug.error = error && error.message ? error.message : String(error || 'adsense_fallback_push_error');
+			}
+
+			window.setTimeout(function () {
+				if (!settled && !unit.ins.getAttribute('data-ad-status')) {
+					cleanupAdsenseFallbackSlot(unit.slot);
+				}
+				observer.disconnect();
+			}, 10000);
+		});
+	}
+
+	function startAdsenseFallback(reason) {
+		if (fallbackStarted || adBlockDetected || renderedSlots > 0) return;
+		if (!config.adsensePublisher || !config.adsenseInArticleSlot) {
+			debug.error = 'Missing AdSense fallback configuration';
+			setPhase('adsterra_failed_no_fallback_config');
+			return;
+		}
+
+		fallbackStarted = true;
+		if (fallbackTimer) {
+			window.clearTimeout(fallbackTimer);
+			fallbackTimer = null;
+		}
+
+		debug.fallback = true;
+		debug.fallbackReason = reason || 'adsterra_no_render';
+		document.documentElement.classList.add('emo-adsterra-adsense-fallback');
+		setPhase('adsterra_failed_loading_adsense');
+
+		document.querySelectorAll('[data-emo-adsterra-slot]').forEach(function (slot) {
+			collapseSlot(slot);
+			var mount = slot.querySelector('.emo-adsterra-mount');
+			if (mount) mount.innerHTML = '';
+		});
+
+		var units = prepareAdsenseFallbackSlots();
+
+		loadAdsenseFallbackScript()
+			.then(function () {
+				setPhase('adsense_fallback_loaded');
+				requestAdsenseFallbackUnits(units);
+			})
+			.catch(function (error) {
+				debug.error = error && error.message ? error.message : String(error || 'adsense_fallback_load_error');
+				units.forEach(function (unit) { cleanupAdsenseFallbackSlot(unit.slot); });
+				setPhase('adsense_fallback_error');
+			});
+	}
+
+	function registerSlotAttempt(slot) {
+		if (!slot || slot.getAttribute('data-emo-adsterra-state')) return;
+		slot.setAttribute('data-emo-adsterra-state', 'pending');
+		attemptedSlots += 1;
+		debug.attempted = attemptedSlots;
+		renderDebug();
+	}
+
+	function markSlotResolved(slot, state) {
+		if (!slot || slot.getAttribute('data-emo-adsterra-state') !== 'pending') return;
+		slot.setAttribute('data-emo-adsterra-state', state);
+		resolvedSlots += 1;
+		if (state === 'rendered') renderedSlots += 1;
+		debug.resolved = resolvedSlots;
+		debug.rendered = renderedSlots;
+		renderDebug();
+
+		if (attemptedSlots > 0 && resolvedSlots >= attemptedSlots && renderedSlots === 0) {
+			startAdsenseFallback('all_adsterra_slots_failed');
+		}
+	}
+
+	function scheduleAdsenseFallback() {
+		if (fallbackStarted || fallbackTimer || attemptedSlots < 1) return;
+		var timeout = parseInt(config.fallbackTimeout, 10);
+		if (!timeout || timeout < 2500) timeout = 6000;
+		fallbackTimer = window.setTimeout(function () {
+			fallbackTimer = null;
+			if (renderedSlots === 0) {
+				startAdsenseFallback('adsterra_render_timeout');
+			}
+		}, timeout);
+	}
+
 	function finishAdBlockCheck(blocked) {
 		adBlockDetected = blocked === true;
 		adBlockCheckDone = true;
 
 		if (adBlockDetected) {
+			if (fallbackTimer) window.clearTimeout(fallbackTimer);
+			fallbackTimer = null;
 			document.documentElement.classList.add('emo-adblock-detected');
 			debug.phase = 'adblock_detected_no_ads';
 			document.querySelectorAll('[data-emo-adsterra-slot]').forEach(function (slot) {
@@ -109,6 +315,11 @@
 			'can_buy: ' + String(debug.canBuy),
 			'show_ads: ' + String(debug.showAds),
 			'hydrated: ' + String(debug.hydrated),
+			'attempted: ' + String(debug.attempted),
+			'resolved: ' + String(debug.resolved),
+			'rendered: ' + String(debug.rendered),
+			'fallback: ' + String(debug.fallback),
+			'fallback_reason: ' + (debug.fallbackReason || 'none'),
 			'error: ' + (debug.error || 'none')
 		].join('\n');
 	}
@@ -129,6 +340,7 @@
 		var nativeShell = slot.closest('.emo-adsterra-native-shell');
 		if (nativeShell) nativeShell.classList.add('is-eligible');
 		debug.hydrated += 1;
+		markSlotResolved(slot, 'rendered');
 		renderDebug();
 	}
 
@@ -154,6 +366,7 @@
 			if (event.data.type === 'emo-adsterra-rendered') {
 				revealSlot(slot);
 			} else {
+				markSlotResolved(slot, 'failed');
 				collapseSlot(slot);
 			}
 			break;
@@ -184,6 +397,7 @@
 			+ '&emo_adsterra_token=' + encodeURIComponent(token)
 			+ '&_=' + Date.now();
 
+		registerSlotAttempt(slot);
 		slot.setAttribute('data-emo-adsterra-hydrated', '1');
 		mount.appendChild(frame);
 	}
@@ -197,6 +411,7 @@
 		var container = document.createElement('div');
 		container.id = 'container-a83b8ce6c354e77b2ae5f266936bd60f';
 		mount.appendChild(container);
+		registerSlotAttempt(slot);
 		slot.setAttribute('data-emo-adsterra-hydrated', '1');
 
 		function nativeHasCreative() {
@@ -221,6 +436,7 @@
 		script.setAttribute('data-cfasync', 'false');
 		script.src = 'https://pl31502847.profitableratecpmnetwork.com/a83b8ce6c354e77b2ae5f266936bd60f/invoke.js';
 		script.addEventListener('error', function () {
+			markSlotResolved(slot, 'failed');
 			collapseSlot(slot);
 		}, { once: true });
 		mount.insertBefore(script, container);
@@ -261,6 +477,7 @@
 			if (units[type]) hydrateBanner(slot, units[type], type);
 		});
 
+		scheduleAdsenseFallback();
 		setPhase('eligible_adsterra_loaded');
 	}
 
