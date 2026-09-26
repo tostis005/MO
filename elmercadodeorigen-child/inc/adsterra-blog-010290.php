@@ -445,10 +445,12 @@ function elmercado_adsterra_enqueue_controller_010290(): void {
 		'ElMercadoAdsterraGeo',
 		array(
 			'endpoint'             => esc_url_raw( rest_url( 'elmercado/v1/blog-ad-eligibility' ) ),
-			'frameEndpoint'        => esc_url_raw( home_url( '/' ) ),
+			'fastGeoEndpoint'      => esc_url_raw( ELMERCADO_THEME_URL . '/assets/ad-geo-fast.php' ),
+			'frameEndpoint'        => esc_url_raw( ELMERCADO_THEME_URL . '/assets/adsterra-frame.html' ),
+			'shippableCountries'   => function_exists( 'elmercado_adsense_get_shippable_countries' ) ? elmercado_adsense_get_shippable_countries() : array(),
 			'adsensePublisher'     => defined( 'ELMERCADO_ADSENSE_PUBLISHER' ) ? ELMERCADO_ADSENSE_PUBLISHER : '',
 			'adsenseInArticleSlot' => defined( 'ELMERCADO_ADSENSE_INARTICLE_SLOT' ) ? ELMERCADO_ADSENSE_INARTICLE_SLOT : '',
-			'fallbackTimeout'      => 6500,
+			'fallbackTimeout'      => 3500,
 		)
 	);
 }
