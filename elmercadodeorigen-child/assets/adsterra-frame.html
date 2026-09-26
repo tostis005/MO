@@ -41,10 +41,6 @@
 		node.setAttribute('data-emo-adsterra-watch', '1');
 		node.addEventListener('load', function () { notify('emo-adsterra-rendered'); }, { once: true });
 
-		if (node.tagName === 'IFRAME' && (node.getAttribute('src') || '').trim() !== '') {
-			notify('emo-adsterra-rendered');
-			return;
-		}
 		if (node.tagName === 'IMG' && node.complete && node.naturalWidth > 0) {
 			notify('emo-adsterra-rendered');
 		}
@@ -82,7 +78,7 @@
 
 	window.setTimeout(function () {
 		if (!sent) notify('emo-adsterra-blocked');
-	}, 3000);
+	}, 2600);
 
 	inspect();
 
