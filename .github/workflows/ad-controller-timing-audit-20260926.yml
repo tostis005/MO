@@ -68,5 +68,6 @@ jobs:
                 };
               """)
               print('STATE='+json.dumps(state,sort_keys=True),flush=True)
+              print('COOKIE_NAMES='+json.dumps(sorted([x.get('name','') for x in d.get_cookies()])),flush=True)
           finally:d.quit()
           PY
