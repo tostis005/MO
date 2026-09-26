@@ -824,7 +824,13 @@
 		}
 
 		if (window.ElMercadoAdGeoBootstrap && typeof window.ElMercadoAdGeoBootstrap.then === 'function') {
-			window.ElMercadoAdGeoBootstrap
+			var bootstrapTimeout = new Promise(function (resolve, reject) {
+				window.setTimeout(function () {
+					reject(new Error('early_geo_timeout'));
+				}, 650);
+			});
+
+			Promise.race([window.ElMercadoAdGeoBootstrap, bootstrapTimeout])
 				.then(function (data) {
 					var country = normalizeCountry(data && data.country);
 					if (!country) {
