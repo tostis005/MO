@@ -1,0 +1,103 @@
+name: Audit Adsterra globally by country
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/adsterra-global-country-audit-20260926.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Install Globalping CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -s https://packagecloud.io/install/repositories/jsdelivr/globalping/script.deb.sh | sudo bash
+          sudo apt-get install -y globalping jq
+          globalping version
+          globalping http --help | sed -n '1,180p'
+
+      - name: Test Adsterra standard script from multiple countries
+        shell: bash
+        run: |
+          set -euo pipefail
+          UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'
+          REF='https://www.elmercadodeorigen.com/dop-jabugo-que-garantiza-territorio-como-reconocer-jamon/'
+          HOST='www.highrevenueformat.com'
+          PATHNAME='/040427a877ae83cac71362a8c92eb779/invoke.js'
+          LOCS='South Africa,Germany,United States,United Kingdom,Brazil,Singapore,Australia,Spain'
+
+          globalping http "$HOST"             --path "$PATHNAME"             --method GET             --header "Referer: $REF"             --header "User-Agent: $UA"             --from "$LOCS"             --limit 8             --timeout 20             --json --ci > /tmp/standard.json
+
+          echo '=== STANDARD RAW JSON ==='
+          cat /tmp/standard.json
+          echo
+          echo '=== STANDARD SUMMARY ==='
+          jq -c '
+            .results[]? |
+            {
+              country:(.probe.location.country // .probe.location.countryName // null),
+              city:(.probe.location.city // null),
+              network:(.probe.network // .probe.asn // null),
+              tags:(.probe.tags // []),
+              status:(.result.statusCode // .result.status // null),
+              resolvedAddress:(.result.resolvedAddress // null),
+              headers:(.result.headers // null),
+              raw:(.result.rawOutput // null)
+            }' /tmp/standard.json || true
+
+      - name: Test Adsterra native script from multiple countries
+        shell: bash
+        run: |
+          set -euo pipefail
+          UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'
+          REF='https://www.elmercadodeorigen.com/dop-jabugo-que-garantiza-territorio-como-reconocer-jamon/'
+          HOST='pl31502847.profitableratecpmnetwork.com'
+          PATHNAME='/a83b8ce6c354e77b2ae5f266936bd60f/invoke.js'
+          LOCS='South Africa,Germany,United States,United Kingdom,Brazil,Singapore,Australia,Spain'
+
+          globalping http "$HOST"             --path "$PATHNAME"             --method GET             --header "Referer: $REF"             --header "User-Agent: $UA"             --from "$LOCS"             --limit 8             --timeout 20             --json --ci > /tmp/native.json
+
+          echo '=== NATIVE RAW JSON ==='
+          cat /tmp/native.json
+          echo
+          echo '=== NATIVE SUMMARY ==='
+          jq -c '
+            .results[]? |
+            {
+              country:(.probe.location.country // .probe.location.countryName // null),
+              city:(.probe.location.city // null),
+              network:(.probe.network // .probe.asn // null),
+              tags:(.probe.tags // []),
+              status:(.result.statusCode // .result.status // null),
+              resolvedAddress:(.result.resolvedAddress // null),
+              headers:(.result.headers // null),
+              raw:(.result.rawOutput // null)
+            }' /tmp/native.json || true
+
+      - name: Compare eyeball and datacenter probes
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -u
+          UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'
+          REF='https://www.elmercadodeorigen.com/dop-jabugo-que-garantiza-territorio-como-reconocer-jamon/'
+          HOST='www.highrevenueformat.com'
+          PATHNAME='/040427a877ae83cac71362a8c92eb779/invoke.js'
+
+          for LOC in 'US+eyeball-network' 'US+datacenter' 'DE+eyeball-network' 'DE+datacenter' 'ZA+eyeball-network' 'ZA+datacenter'; do
+            SAFE=$(echo "$LOC" | tr '+ ' '__')
+            echo "=== $LOC ==="
+            globalping http "$HOST"               --path "$PATHNAME"               --method GET               --header "Referer: $REF"               --header "User-Agent: $UA"               --from "$LOC"               --limit 1               --timeout 20               --json --ci > "/tmp/$SAFE.json" || true
+            cat "/tmp/$SAFE.json" 2>/dev/null || true
+            echo
+          done
+
+      - name: Mark completion
+        run: echo 'ADSTERRA_GLOBAL_COUNTRY_AUDIT=DONE'
