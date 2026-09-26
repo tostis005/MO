@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.305' );
-/* 0.10.305 valida creatividad Adsterra antes de revelar cada hueco. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.306' );
+/* 0.10.306 corrige el documento srcdoc para ejecutar invoke.js y valida creatividad antes de revelar. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
 	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsterra' ); // 'adsense' | 'adsterra'
 }
