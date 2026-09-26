@@ -1,0 +1,234 @@
+name: Audit Adsterra creative gating 0.10.305
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/adsterra-creative-gating-audit-20260926.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --quiet selenium requests
+      - name: Verify desktop and mobile production behavior
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, time, requests
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+
+          BASE='https://www.elmercadodeorigen.com'
+          PAGE=BASE+'/dop-jabugo-que-garantiza-territorio-como-reconocer-jamon/?adsterra_debug=1&creative_gate_audit=010305'
+          JS=BASE+'/wp-content/themes/elmercadodeorigen-child/assets/js/adsterra-geo-010290.js?creative_gate_audit=010305'
+
+          # Do not audit an older deployment. Wait until production serves the final controller.
+          deadline=time.time()+240
+          while True:
+              try:
+                  r=requests.get(JS,timeout=15,headers={'Cache-Control':'no-cache'})
+                  body=r.text if r.ok else ''
+              except Exception as exc:
+                  body=''
+                  print('WAIT_PRODUCTION_ERROR='+repr(exc),flush=True)
+              if 'creative_inserted:' in body and 'data-emo-adsterra-size' in body and '6200' in body:
+                  print('PRODUCTION_CONTROLLER=READY',flush=True)
+                  break
+              if time.time()>deadline:
+                  raise SystemExit('Production did not serve the creative-gating controller in time')
+              time.sleep(5)
+
+          def audit(width,height,label,expected_attempts,expected_sizes):
+              o=Options()
+              o.page_load_strategy='none'
+              for a in ('--headless=new','--no-sandbox','--disable-dev-shm-usage',f'--window-size={width},{height}','--lang=en-US'):
+                  o.add_argument(a)
+              o.set_capability('goog:loggingPrefs', {'browser':'ALL','performance':'ALL'})
+              d=webdriver.Chrome(options=o)
+              try:
+                  d.execute_cdp_cmd('Network.enable',{})
+                  d.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument',{'source':r"""
+                  (() => {
+                    const originalFetch = window.fetch;
+                    window.fetch = function(input, init) {
+                      const url = typeof input === 'string' ? input : (input && input.url) || '';
+                      if (url.includes('/assets/ad-geo-fast.php') || url.includes('/wp-json/elmercado/v1/blog-ad-eligibility')) {
+                        init = Object.assign({}, init || {});
+                        const headers = new Headers(init.headers || {});
+                        headers.set('X-Country-Code', 'ZA');
+                        init.headers = headers;
+                      }
+                      return originalFetch.call(this, input, init);
+                    };
+                  })();
+                  """})
+                  d.get(PAGE+'&viewport='+label)
+
+                  # Wait for geo decision.
+                  geo_deadline=time.time()+20
+                  while time.time()<geo_deadline:
+                      state=d.execute_script('return window.ElMercadoAdsterraGeoDebug||null')
+                      if state and state.get('showAds') is True:
+                          break
+                      time.sleep(.25)
+                  else:
+                      raise SystemExit(label+': eligibility never became ZA/showAds=true')
+
+                  # Walk through the document so every supported lazy slot is attempted.
+                  for ratio in (0, .2, .4, .6, .8, 1):
+                      d.execute_script('window.scrollTo(0, Math.max(0,(document.documentElement.scrollHeight-window.innerHeight)*arguments[0]))',ratio)
+                      time.sleep(.45)
+
+                  attempt_deadline=time.time()+12
+                  while time.time()<attempt_deadline:
+                      dbg=d.execute_script('return window.ElMercadoAdsterraGeoDebug||{}')
+                      if int(dbg.get('attempted') or 0) >= expected_attempts:
+                          break
+                      # repeat a sweep because IntersectionObserver delivery can lag in headless Chrome
+                      d.execute_script('window.scrollTo(0, document.documentElement.scrollHeight)')
+                      time.sleep(.4)
+                      d.execute_script('window.scrollTo(0, 0)')
+                      time.sleep(.4)
+
+                  requested=d.execute_script(r"""
+                    return Array.from(document.querySelectorAll('[data-emo-adsterra-slot]')).map((s,i)=>({
+                      i,
+                      type:s.getAttribute('data-emo-adsterra-slot'),
+                      unit:s.getAttribute('data-emo-adsterra-unit'),
+                      size:s.getAttribute('data-emo-adsterra-size'),
+                      hydrated:s.getAttribute('data-emo-adsterra-hydrated'),
+                      state:s.getAttribute('data-emo-adsterra-state')
+                    }));
+                  """)
+                  print(label+'_REQUESTED='+json.dumps(requested,sort_keys=True),flush=True)
+
+                  by_type={x['type']:x for x in requested}
+                  for slot_type,size in expected_sizes.items():
+                      if slot_type not in by_type:
+                          raise SystemExit(f'{label}: missing slot {slot_type}')
+                      if by_type[slot_type].get('size') != size:
+                          raise SystemExit(f"{label}: {slot_type} requested {by_type[slot_type].get('size')} instead of {size}")
+
+                  # Wait beyond the 6.2s inner detector and 7s parent cleanup.
+                  time.sleep(8.2)
+
+                  state=d.execute_script(r"""
+                    const resources=performance.getEntriesByType('resource').map(r=>r.name);
+                    return {
+                      debug:window.ElMercadoAdsterraGeoDebug||null,
+                      slots:Array.from(document.querySelectorAll('[data-emo-adsterra-slot]')).map((s,i)=>{
+                        const f=s.querySelector('iframe[data-emo-adsterra-token]');
+                        let innerCreativeCount=null, innerInvoke=false;
+                        if(f){
+                          try{
+                            const doc=f.contentDocument;
+                            innerCreativeCount=doc ? doc.querySelectorAll('iframe,img,video,object,embed,canvas,svg,a[href]').length : null;
+                            innerInvoke=!!(doc&&doc.querySelector('script[src*="highrevenueformat.com"]'));
+                          }catch(e){}
+                        }
+                        return {
+                          i,
+                          type:s.getAttribute('data-emo-adsterra-slot'),
+                          unit:s.getAttribute('data-emo-adsterra-unit'),
+                          size:s.getAttribute('data-emo-adsterra-size'),
+                          state:s.getAttribute('data-emo-adsterra-state'),
+                          hydrated:s.getAttribute('data-emo-adsterra-hydrated'),
+                          eligible:s.classList.contains('is-eligible'),
+                          display:getComputedStyle(s).display,
+                          h:Math.round(s.getBoundingClientRect().height),
+                          mountChildren:(s.querySelector('.emo-adsterra-mount')||{}).children?.length||0,
+                          frameVisible:!!(f&&f.getAttribute('data-emo-adsterra-visible')==='1'),
+                          scriptLoaded:!!(f&&f.getAttribute('data-emo-adsterra-script-loaded')==='1'),
+                          creativeInserted:!!(f&&f.getAttribute('data-emo-adsterra-creative-inserted')==='1'),
+                          innerCreativeCount,
+                          innerInvoke
+                        };
+                      }),
+                      adsterraRequests:resources.filter(x=>/highrevenueformat|profitableratecpmnetwork/.test(x)),
+                      googleScripts:resources.filter(x=>/pagead2\.googlesyndication\.com\/pagead\/js\/adsbygoogle\.js/.test(x)),
+                      googleAutoPlaced:document.querySelectorAll('.google-auto-placed').length,
+                      googleAutoPlacedInArticle:document.querySelectorAll('.emo-article-content .google-auto-placed').length,
+                      manualInArticle:document.querySelectorAll('[data-ad-slot="2804638564"]').length,
+                      googleInsideAdsterra:Array.from(document.querySelectorAll('[data-emo-adsterra-slot]')).reduce((n,s)=>n+s.querySelectorAll('ins.adsbygoogle,[data-ad-slot],.google-auto-placed').length,0),
+                      adsenseFallbackClasses:document.querySelectorAll('.is-adsense-fallback').length
+                    };
+                  """)
+                  print(label+'_FINAL='+json.dumps(state,sort_keys=True),flush=True)
+
+                  dbg=state['debug'] or {}
+                  if dbg.get('country')!='ZA' or dbg.get('showAds') is not True:
+                      raise SystemExit(label+': final geo state is not ZA eligible for ads')
+                  if int(dbg.get('attempted') or 0) < expected_attempts:
+                      raise SystemExit(label+': not all expected Adsterra slots were attempted')
+                  if len(state['adsterraRequests']) < 1:
+                      raise SystemExit(label+': no Adsterra network request observed')
+
+                  supported=set(expected_sizes)
+                  for s in state['slots']:
+                      if s['type'] not in supported and s['type']!='native':
+                          continue
+                      if s['type']=='native' and s.get('hydrated')!='1':
+                          raise SystemExit(label+': native slot was not hydrated')
+                      if s['type']!='native' and s.get('hydrated')!='1':
+                          raise SystemExit(label+': supported banner was not hydrated')
+                      if s.get('state') not in ('rendered','failed'):
+                          raise SystemExit(f"{label}: slot {s['type']} did not settle: {s.get('state')}")
+                      if s.get('state')=='rendered':
+                          if not s.get('eligible') or s.get('display')=='none' or int(s.get('h') or 0)<=0:
+                              raise SystemExit(f"{label}: rendered {s['type']} is not actually visible")
+                          if s['type']!='native':
+                              if not s.get('frameVisible') or int(s.get('innerCreativeCount') or 0)<1:
+                                  raise SystemExit(f"{label}: {s['type']} was revealed without creative evidence")
+                      else:
+                          if s.get('display')!='none' or int(s.get('h') or 0)!=0 or int(s.get('mountChildren') or 0)!=0:
+                              raise SystemExit(f"{label}: failed {s['type']} left a visible/occupied gap")
+
+                  if state['manualInArticle'] != 0:
+                      raise SystemExit(label+': manual Google in-article slot still exists')
+                  if state['googleInsideAdsterra'] != 0:
+                      raise SystemExit(label+': Google content was inserted inside an Adsterra slot')
+                  if state['adsenseFallbackClasses'] != 0:
+                      raise SystemExit(label+': AdSense fallback class still exists')
+
+                  return state
+
+              finally:
+                  d.quit()
+
+          desktop=audit(
+              1440,1000,'DESKTOP',6,
+              {
+                  'responsive-top':'728x90',
+                  'skyscraper':'160x600',
+                  'rectangle':'300x250',
+                  'tall-rectangle':'160x300',
+                  'footer-banner':'468x60'
+              }
+          )
+          mobile=audit(
+              390,844,'MOBILE',4,
+              {
+                  'responsive-top':'320x50',
+                  'rectangle':'300x250',
+                  'tall-rectangle':'160x300'
+              }
+          )
+
+          print('AUDIT_SUMMARY='+json.dumps({
+              'desktop_debug':desktop['debug'],
+              'mobile_debug':mobile['debug'],
+              'desktop_google_auto_placed':desktop['googleAutoPlaced'],
+              'desktop_google_auto_placed_in_article':desktop['googleAutoPlacedInArticle'],
+              'mobile_google_auto_placed':mobile['googleAutoPlaced'],
+              'mobile_google_auto_placed_in_article':mobile['googleAutoPlacedInArticle']
+          },sort_keys=True),flush=True)
+          print('ADSTERRA_CREATIVE_GATING_AUDIT=PASS',flush=True)
+          PY
