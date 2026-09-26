@@ -636,6 +636,12 @@
 				return;
 			}
 
+			if (type === 'native') {
+				slot.setAttribute('data-emo-adsterra-scheduled', '1');
+				window.setTimeout(function () { hydrateSlotNow(slot); }, 900);
+				return;
+			}
+
 			lazyObserveSlot(slot);
 		});
 	}
