@@ -64,6 +64,9 @@ array(
 <h2>Presupuesto y originalidad</h2>
 <p>No hace falta un presupuesto alto para diferenciarse. En rangos contenidos, elegir una sola referencia con buena procedencia puede ser suficiente. En presupuestos mayores, la diferencia puede estar en la categoría, el formato o una selección más cuidada.</p>
 <p>Lo importante es evitar gastar en elementos que no añaden valor al destinatario.</p>
+<h2>Cómo comprobar si una idea realmente es original</h2>
+<p>Una buena prueba es preguntarse si el destinatario podría recibir exactamente el mismo regalo de cualquier otra empresa. Si la respuesta es sí, quizá falte un criterio de selección. El origen del producto, el productor o la combinación elegida pueden aportar esa diferenciación.</p>
+<p>La originalidad también mejora cuando el regalo está conectado con una ocasión concreta y no parece una acción automática.</p>
 <h2>Qué información necesitamos</h2>
 <p>Número de regalos, presupuesto, destinatarios, ocasión, fecha y destinos. Si quieres evitar alguna categoría o buscas un enfoque concreto, indícalo también.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Busca originalidad en el producto y en su origen</h2><p>Envíanos el contexto y revisaremos qué opciones disponibles pueden construir un regalo distinto sin complicarlo innecesariamente.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Ir al formulario de contacto</a></p></div>
@@ -111,6 +114,9 @@ array(
 <h2>Qué hacer si el presupuesto no está cerrado</h2>
 <p>Puedes trabajar con un intervalo. Decir “entre 40 y 60 euros” ofrece margen para valorar distintas composiciones sin perder el control económico.</p>
 <p>También permite adaptarse si una referencia concreta no está disponible.</p>
+<h2>Cómo ajustar el presupuesto cuando cambia el número de unidades</h2>
+<p>Un rango que funciona para veinte regalos puede necesitar revisión cuando el pedido crece a cien. No solo cambia el coste total: también puede cambiar la disponibilidad de determinadas referencias y la logística.</p>
+<p>Por eso conviene calcular siempre el presupuesto multiplicado por el volumen real y reservar margen para transporte o posibles sustituciones.</p>
 <h2>Qué información necesitamos</h2>
 <p>Número de unidades, rango por destinatario, fecha, tipo de público y forma de entrega. Con esos datos podemos revisar opciones reales y evitar propuestas teóricas que no encajen.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Empieza por el presupuesto, no por el catálogo</h2><p>Dinos el rango por persona y revisaremos qué productos disponibles pueden ofrecer más valor dentro de ese límite.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Ir a contacto</a></p></div>
@@ -158,6 +164,12 @@ array(
 <h2>Presupuesto y percepción</h2>
 <p>Un presupuesto modesto no obliga a hacer un mal regalo. Concentrarlo en una o dos referencias puede ser mejor que intentar simular una cesta grande.</p>
 <p>En presupuestos altos, mejorar la categoría del producto principal suele aportar más que añadir muchos complementos.</p>
+<h2>Qué regalos funcionan mejor cuando hay poco tiempo</h2>
+<p>Si la empresa decide tarde, conviene simplificar. Las propuestas con demasiadas variantes, personalizaciones o productos difíciles de encontrar aumentan el riesgo de no llegar a tiempo.</p>
+<p>En esos casos suele ser mejor elegir una opción clara, disponible y fácil de repetir para toda la plantilla.</p>
+<h2>Cómo evitar que el regalo parezca una obligación</h2>
+<p>El detalle gana valor cuando va acompañado de un mensaje sencillo y coherente con la cultura de la empresa. No hace falta un discurso largo: explicar que se trata de un agradecimiento por el trabajo del año puede ser suficiente.</p>
+<p>El producto debería reforzar ese gesto, no sustituirlo.</p>
 <h2>Qué información necesitamos para ayudar</h2>
 <p>Número de empleados, presupuesto por persona, fecha, destinos y cualquier preferencia importante. Con esos datos podemos revisar alternativas disponibles y plantear una propuesta realista.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Elige el regalo en función de tu equipo</h2><p>Envíanos cantidades y presupuesto y revisaremos qué opciones gastronómicas pueden funcionar mejor.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Contactar</a></p></div>
@@ -205,6 +217,12 @@ array(
 <h2>Cuándo enviarlo</h2>
 <p>Evitar los últimos días antes de Navidad puede ayudar a reducir saturación logística y a conseguir que el regalo llegue cuando todavía puede disfrutarse durante la campaña.</p>
 <p>Si existe una fecha concreta, debe comunicarse desde el principio.</p>
+<h2>Cómo evitar regalos demasiado genéricos</h2>
+<p>Si todos los clientes reciben la misma caja estándar sin ninguna lógica visible, el regalo puede perder impacto. No siempre hace falta personalizar uno a uno, pero sí puede ayudar definir una línea de selección clara.</p>
+<p>Por ejemplo, trabajar con productos de origen español, con productores concretos o con una categoría protagonista da más personalidad al conjunto.</p>
+<h2>Qué hacer si no conoces bien al cliente</h2>
+<p>Cuando la relación es reciente o no conoces gustos personales, conviene evitar opciones demasiado arriesgadas. Un AOVE, una pequeña selección gastronómica o un lote sin alcohol pueden resultar más seguros que productos muy específicos.</p>
+<p>La prudencia también forma parte de una buena elección.</p>
 <h2>Qué información necesitamos</h2>
 <p>Número de clientes, niveles de presupuesto, fecha, destinos y cualquier preferencia conocida. Con esos datos podemos revisar productos disponibles y plantear propuestas diferenciadas si tiene sentido.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Elige el regalo según la relación con el cliente</h2><p>Cuéntanos cómo es tu cartera y revisaremos qué alternativas pueden encajar en cada nivel.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Ir al formulario de contacto</a></p></div>
@@ -255,6 +273,12 @@ array(
 <h2>Logística en un marketplace</h2>
 <p>El Mercado de Origen reúne distintos vendedores y cada uno prepara y expide directamente su pedido. Si una cesta combina referencias de varios productores, hay que revisar la operativa antes de prometer una presentación conjunta.</p>
 <p>La composición ideal debe ser también viable logísticamente.</p>
+<h2>Cómo adaptar la cesta a distintos presupuestos</h2>
+<p>Con presupuestos contenidos, la mejor estrategia suele ser reducir el número de referencias y concentrar el valor. En rangos medios, se puede introducir variedad manteniendo un producto protagonista. En presupuestos altos, tiene más sentido mejorar categoría y formato que llenar espacio.</p>
+<p>Esta lógica permite mantener el equilibrio aunque cambie el importe disponible.</p>
+<h2>Una cesta equilibrada también debe ser fácil de recibir</h2>
+<p>El peso, el volumen y la conservación forman parte del equilibrio. Una selección excelente que resulta incómoda de transportar o almacenar puede no ser la mejor opción para un evento, un equipo remoto o múltiples domicilios.</p>
+<p>La cesta ideal debe funcionar tanto gastronómicamente como logísticamente.</p>
 <h2>La prueba final: ¿puedes explicar la cesta en una frase?</h2>
 <p>Si puedes resumirla como “una selección de ibéricos con AOVE para compartir” o “una cesta de despensa española sin alcohol”, probablemente existe una lógica clara.</p>
 <p>Si necesitas enumerar diez productos para explicar qué es, quizá la selección esté demasiado dispersa.</p>
