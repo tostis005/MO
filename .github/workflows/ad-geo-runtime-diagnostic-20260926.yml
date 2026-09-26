@@ -52,7 +52,19 @@ jobs:
             if (class_exists("WC_Geolocation")) {
               echo "GEO_CLASS=yes\n";
               foreach (get_class_methods("WC_Geolocation") as $m) if (stripos($m,"database")!==false || stripos($m,"geo")!==false) echo "METHOD=$m\n";
+              if (method_exists("WC_Geolocation","get_local_database_path")) echo "WC_DB=" . WC_Geolocation::get_local_database_path() . "\n";
               echo "COUNTRY=" . (WC_Geolocation::geolocate_ip()["country"] ?? "") . "\n";
             }
           ' 2>/dev/null
+
+          "$php_bin" -r '
+            $root=$argv[1];
+            require $root . "/wp-content/plugins/woocommerce/vendor/autoload.php";
+            $db=$root . "/wp-content/plugins/wordfence/lib/geoip.mmdb";
+            $r=new GeoIp2\\Database\\Reader($db);
+            foreach (["8.8.8.8","1.1.1.1","41.0.0.1"] as $ip) {
+              try { echo "TEST_IP=".$ip." COUNTRY=".$r->country($ip)->country->isoCode."\n"; }
+              catch (Throwable $e) { echo "TEST_IP=".$ip." ERROR=".$e->getMessage()."\n"; }
+            }
+          ' "$prod_path"
           REMOTE
