@@ -143,7 +143,7 @@
 		if (slot.getAttribute('data-emo-adsense-fallback-requested') === '1') return null;
 
 		var type = slot.getAttribute('data-emo-adsterra-slot') || '';
-		if (type === 'skyscraper') return null;
+		if (type === 'skyscraper' || type === 'native') return null;
 
 		var mount = slot.querySelector('.emo-adsterra-mount');
 		if (!mount) return null;
