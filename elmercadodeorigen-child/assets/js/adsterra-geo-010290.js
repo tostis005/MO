@@ -11,11 +11,11 @@
 	var slotObserver = null;
 	var fallbackTimer = null;
 	var fallbackStarted = false;
+	var adsenseFallbackPromise = null;
+	var lazySlotObserver = null;
 	var attemptedSlots = 0;
 	var resolvedSlots = 0;
 	var renderedSlots = 0;
-	var adsenseFallbackCount = 0;
-	var adsenseFallbackLimit = 3;
 	var geoCacheKey = 'emo-blog-ad-eligibility-v3';
 	var geoCacheMaxAge = 30 * 60 * 1000;
 	var debugMode = /(?:^|[?&])adsterra_debug=1(?:&|$)/.test(window.location.search);
@@ -101,15 +101,19 @@
 	function loadAdsenseFallbackScript() {
 		adsbygoogleQueue().pauseAdRequests = 0;
 
-		if (googleScriptExists()) {
+		if (googleScriptExists() && !adsenseFallbackPromise) {
 			return Promise.resolve();
+		}
+
+		if (adsenseFallbackPromise) {
+			return adsenseFallbackPromise;
 		}
 
 		if (!config.adsensePublisher) {
 			return Promise.reject(new Error('Missing AdSense fallback publisher'));
 		}
 
-		return new Promise(function (resolve, reject) {
+		adsenseFallbackPromise = new Promise(function (resolve, reject) {
 			var script = document.createElement('script');
 			script.async = true;
 			script.crossOrigin = 'anonymous';
@@ -117,10 +121,13 @@
 			script.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' + encodeURIComponent(config.adsensePublisher);
 			script.addEventListener('load', resolve, { once: true });
 			script.addEventListener('error', function () {
+				adsenseFallbackPromise = null;
 				reject(new Error('AdSense fallback script failed to load'));
 			}, { once: true });
 			(document.head || document.documentElement).appendChild(script);
 		});
+
+		return adsenseFallbackPromise;
 	}
 
 	function cleanupAdsenseFallbackSlot(slot) {
@@ -131,59 +138,37 @@
 		if (nativeShell) nativeShell.classList.remove('is-adsense-fallback');
 	}
 
-	function prepareAdsenseFallbackSlots() {
-		var priority = {
-			'responsive-top': 0,
-			'rectangle': 1,
-			'tall-rectangle': 2,
-			'native': 3,
-			'footer-banner': 4
-		};
-		var mobile = window.matchMedia('(max-width: 767px)').matches;
-		var smallMobile = window.matchMedia('(max-width: 519px)').matches;
-		var remaining = Math.max(0, adsenseFallbackLimit - adsenseFallbackCount);
-		if (!remaining) return [];
+	function prepareAdsenseFallbackSlot(slot) {
+		if (!slot || slot.getAttribute('data-emo-adsterra-state') !== 'failed') return null;
+		if (slot.getAttribute('data-emo-adsense-fallback-requested') === '1') return null;
 
-		var candidates = Array.prototype.slice.call(document.querySelectorAll('[data-emo-adsterra-slot]'))
-			.filter(function (slot) {
-				if (slot.getAttribute('data-emo-adsterra-state') !== 'failed') return false;
-				if (slot.getAttribute('data-emo-adsense-fallback-requested') === '1') return false;
-				var type = slot.getAttribute('data-emo-adsterra-slot') || '';
-				if (typeof priority[type] === 'undefined') return false;
-				if (mobile && (type === 'rectangle' || type === 'tall-rectangle')) return false;
-				if (smallMobile && type === 'footer-banner') return false;
-				return true;
-			})
-			.sort(function (a, b) {
-				return priority[a.getAttribute('data-emo-adsterra-slot')] - priority[b.getAttribute('data-emo-adsterra-slot')];
-			});
+		var type = slot.getAttribute('data-emo-adsterra-slot') || '';
+		if (type === 'skyscraper') return null;
 
-		return candidates.slice(0, remaining).map(function (slot) {
-			var mount = slot.querySelector('.emo-adsterra-mount');
-			if (!mount) return null;
+		var mount = slot.querySelector('.emo-adsterra-mount');
+		if (!mount) return null;
 
-			slot.setAttribute('data-emo-adsense-fallback-requested', '1');
-			adsenseFallbackCount += 1;
-			mount.innerHTML = '';
-			var ins = document.createElement('ins');
-			ins.className = 'adsbygoogle';
-			ins.style.display = 'block';
-			ins.style.textAlign = 'center';
-			ins.setAttribute('data-ad-layout', 'in-article');
-			ins.setAttribute('data-ad-format', 'fluid');
-			ins.setAttribute('data-ad-client', config.adsensePublisher);
-			ins.setAttribute('data-ad-slot', config.adsenseInArticleSlot);
-			mount.appendChild(ins);
+		slot.setAttribute('data-emo-adsense-fallback-requested', '1');
+		mount.innerHTML = '';
 
-			slot.classList.remove('is-eligible');
-			slot.classList.add('is-adsense-fallback');
-			slot.setAttribute('aria-hidden', 'false');
+		var ins = document.createElement('ins');
+		ins.className = 'adsbygoogle';
+		ins.style.display = 'block';
+		ins.style.textAlign = 'center';
+		ins.setAttribute('data-ad-layout', 'in-article');
+		ins.setAttribute('data-ad-format', 'fluid');
+		ins.setAttribute('data-ad-client', config.adsensePublisher);
+		ins.setAttribute('data-ad-slot', config.adsenseInArticleSlot);
+		mount.appendChild(ins);
 
-			var nativeShell = slot.closest('.emo-adsterra-native-shell');
-			if (nativeShell) nativeShell.classList.add('is-adsense-fallback');
+		slot.classList.remove('is-eligible');
+		slot.classList.add('is-adsense-fallback');
+		slot.setAttribute('aria-hidden', 'false');
 
-			return { slot: slot, ins: ins };
-		}).filter(Boolean);
+		var nativeShell = slot.closest('.emo-adsterra-native-shell');
+		if (nativeShell) nativeShell.classList.add('is-adsense-fallback');
+
+		return { slot: slot, ins: ins };
 	}
 
 	function requestAdsenseFallbackUnits(units) {
@@ -224,42 +209,32 @@
 		});
 	}
 
-	function startAdsenseFallback(reason) {
-		if (adBlockDetected) return;
+	function startAdsenseFallbackForSlot(slot, reason) {
+		if (adBlockDetected || !slot) return;
 		if (!config.adsensePublisher || !config.adsenseInArticleSlot) {
 			debug.error = 'Missing AdSense fallback configuration';
 			setPhase('adsterra_failed_no_fallback_config');
 			return;
 		}
 
-		var units = prepareAdsenseFallbackSlots();
-		if (!units.length) {
-			if (!fallbackStarted) {
-				setPhase(renderedSlots > 0 ? 'adsterra_partial_fill_no_adsense_slot' : 'adsterra_no_fill_no_adsense_slot');
-			}
-			return;
-		}
+		var unit = prepareAdsenseFallbackSlot(slot);
+		if (!unit) return;
 
 		fallbackStarted = true;
-		preconnectGoogle();
-		if (fallbackTimer) {
-			window.clearTimeout(fallbackTimer);
-			fallbackTimer = null;
-		}
-
 		debug.fallback = true;
-		if (!debug.fallbackReason) debug.fallbackReason = reason || 'adsterra_no_render';
+		debug.fallbackReason = reason || 'adsterra_slot_failed';
 		document.documentElement.classList.add('emo-adsterra-adsense-fallback');
-		setPhase('adsterra_failed_loading_adsense');
+		preconnectGoogle();
+		setPhase('adsterra_slot_failed_loading_adsense');
 
 		loadAdsenseFallbackScript()
 			.then(function () {
 				setPhase('adsense_fallback_loaded');
-				requestAdsenseFallbackUnits(units);
+				requestAdsenseFallbackUnits([unit]);
 			})
 			.catch(function (error) {
 				debug.error = error && error.message ? error.message : String(error || 'adsense_fallback_load_error');
-				units.forEach(function (unit) { cleanupAdsenseFallbackSlot(unit.slot); });
+				cleanupAdsenseFallbackSlot(unit.slot);
 				setPhase('adsense_fallback_error');
 			});
 	}
@@ -271,8 +246,12 @@
 		debug.attempted = attemptedSlots;
 		renderDebug();
 
-		var timeout = parseInt(config.slotTimeout, 10);
-		if (!timeout || timeout < 1800) timeout = 2800;
+		var type = slot.getAttribute('data-emo-adsterra-slot') || '';
+		var configured = parseInt(config.slotTimeout, 10);
+		var timeout = configured && configured >= 1800 ? configured : 2600;
+		if (type === 'responsive-top') timeout = Math.min(timeout, 2500);
+		if (type === 'native') timeout = Math.max(timeout, 3000);
+
 		window.setTimeout(function () {
 			if (slot.getAttribute('data-emo-adsterra-state') !== 'pending') return;
 			var mount = slot.querySelector('.emo-adsterra-mount');
@@ -292,23 +271,12 @@
 		renderDebug();
 
 		if (state === 'failed') {
-			startAdsenseFallback(renderedSlots > 0 ? 'partial_adsterra_no_fill' : 'adsterra_slot_failed');
+			startAdsenseFallbackForSlot(slot, renderedSlots > 0 ? 'partial_adsterra_no_fill' : 'adsterra_slot_failed');
 		}
 	}
 
 	function scheduleAdsenseFallback() {
-		if (fallbackTimer || attemptedSlots < 1) return;
-		var timeout = parseInt(config.fallbackTimeout, 10);
-		if (!timeout || timeout < 3200) timeout = 4200;
-		fallbackTimer = window.setTimeout(function () {
-			fallbackTimer = null;
-			document.querySelectorAll('[data-emo-adsterra-state="pending"]').forEach(function (slot) {
-				var mount = slot.querySelector('.emo-adsterra-mount');
-				if (mount) mount.innerHTML = '';
-				collapseSlot(slot);
-				markSlotResolved(slot, 'failed');
-			});
-		}, timeout);
+		// Cada hueco controla su timeout y fallback de forma independiente.
 	}
 
 	function finishAdBlockCheck(blocked) {
@@ -552,6 +520,75 @@
 		mount.insertBefore(script, container);
 	}
 
+	function slotIsSupported(type) {
+		if (type === 'skyscraper' && window.matchMedia('(max-width: 1160px)').matches) return false;
+		return true;
+	}
+
+	function hydrateSlotNow(slot) {
+		if (!slot || adBlockDetected || slot.getAttribute('data-emo-adsterra-hydrated') === '1') return;
+		var type = slot.getAttribute('data-emo-adsterra-slot') || '';
+		if (!slotIsSupported(type)) return;
+
+		slot.removeAttribute('data-emo-adsterra-scheduled');
+
+		if (type === 'native') {
+			hydrateNative(slot);
+		} else if (type === 'responsive-top') {
+			var topName = window.matchMedia('(max-width: 767px)').matches
+				? 'responsive-mobile'
+				: 'responsive-desktop';
+			hydrateBanner(slot, units[topName], topName);
+		} else if (type === 'tall-rectangle' && window.matchMedia('(max-width: 767px)').matches) {
+			hydrateBanner(slot, units['responsive-mobile'], 'responsive-mobile');
+		} else if (type === 'footer-banner' && window.matchMedia('(max-width: 519px)').matches) {
+			hydrateBanner(slot, units['responsive-mobile'], 'responsive-mobile');
+		} else if (units[type]) {
+			hydrateBanner(slot, units[type], type);
+		}
+
+		if (attemptedSlots > 0) setPhase('eligible_adsterra_loaded');
+	}
+
+	function lazyObserveSlot(slot) {
+		if (!slot || slot.getAttribute('data-emo-adsterra-scheduled') === '1') return;
+		slot.setAttribute('data-emo-adsterra-scheduled', '1');
+
+		if (typeof window.IntersectionObserver !== 'function') {
+			window.setTimeout(function () { hydrateSlotNow(slot); }, 500);
+			return;
+		}
+
+		if (!lazySlotObserver) {
+			lazySlotObserver = new IntersectionObserver(function (entries) {
+				entries.forEach(function (entry) {
+					if (!entry.isIntersecting) return;
+					var sentinel = entry.target;
+					var target = sentinel.__emoAdsterraSlot;
+					lazySlotObserver.unobserve(sentinel);
+					sentinel.remove();
+					if (target) hydrateSlotNow(target);
+				});
+			}, {
+				rootMargin: '1000px 0px 1000px 0px',
+				threshold: 0
+			});
+		}
+
+		var anchor = slot.closest('.emo-adsterra-native-shell') || slot;
+		if (!anchor.parentNode) {
+			window.setTimeout(function () { hydrateSlotNow(slot); }, 500);
+			return;
+		}
+
+		var sentinel = document.createElement('span');
+		sentinel.setAttribute('aria-hidden', 'true');
+		sentinel.style.cssText = 'display:block;width:1px;height:1px;margin:0;padding:0;visibility:hidden;pointer-events:none;';
+		sentinel.__emoAdsterraSlot = slot;
+		anchor.parentNode.insertBefore(sentinel, anchor);
+		lazySlotObserver.observe(sentinel);
+	}
+
 	function hydrateEligibleSlots() {
 		if (!adBlockCheckDone) {
 			hydrationPending = true;
@@ -564,12 +601,13 @@
 
 		var priority = {
 			'responsive-top': 0,
-			'rectangle': 1,
-			'skyscraper': 2,
+			'skyscraper': 1,
+			'rectangle': 2,
 			'tall-rectangle': 3,
-			'footer-banner': 4,
-			'native': 5
+			'native': 4,
+			'footer-banner': 5
 		};
+
 		var slots = Array.prototype.slice.call(document.querySelectorAll('[data-emo-adsterra-slot]'))
 			.filter(function (slot) {
 				return slot.getAttribute('data-emo-adsterra-hydrated') !== '1'
@@ -578,36 +616,27 @@
 			.sort(function (a, b) {
 				var aType = a.getAttribute('data-emo-adsterra-slot') || '';
 				var bType = b.getAttribute('data-emo-adsterra-slot') || '';
-				return (priority[aType] || 99) - (priority[bType] || 99);
+				return (typeof priority[aType] === 'number' ? priority[aType] : 99)
+					- (typeof priority[bType] === 'number' ? priority[bType] : 99);
 			});
 
-		slots.forEach(function (slot, index) {
-			var type = slot.getAttribute('data-emo-adsterra-slot');
+		slots.forEach(function (slot) {
+			var type = slot.getAttribute('data-emo-adsterra-slot') || '';
+			if (!slotIsSupported(type)) return;
 
-			if (type === 'skyscraper' && window.matchMedia('(max-width: 1160px)').matches) return;
-			if ((type === 'rectangle' || type === 'tall-rectangle') && window.matchMedia('(max-width: 767px)').matches) return;
-			if (type === 'footer-banner' && window.matchMedia('(max-width: 519px)').matches) return;
+			if (type === 'responsive-top') {
+				slot.setAttribute('data-emo-adsterra-scheduled', '1');
+				hydrateSlotNow(slot);
+				return;
+			}
 
-			slot.setAttribute('data-emo-adsterra-scheduled', '1');
-			var delay = type === 'responsive-top' ? 0 : Math.min(900, 160 * (index + 1));
-			window.setTimeout(function () {
-				slot.removeAttribute('data-emo-adsterra-scheduled');
-				if (adBlockDetected || slot.getAttribute('data-emo-adsterra-hydrated') === '1') return;
+			if (type === 'skyscraper') {
+				slot.setAttribute('data-emo-adsterra-scheduled', '1');
+				window.setTimeout(function () { hydrateSlotNow(slot); }, 180);
+				return;
+			}
 
-				if (type === 'native') {
-					hydrateNative(slot);
-				} else if (type === 'responsive-top') {
-					var responsiveName = window.matchMedia('(max-width: 767px)').matches
-						? 'responsive-mobile'
-						: 'responsive-desktop';
-					hydrateBanner(slot, units[responsiveName], responsiveName);
-				} else if (units[type]) {
-					hydrateBanner(slot, units[type], type);
-				}
-
-				scheduleAdsenseFallback();
-				if (attemptedSlots > 0) setPhase('eligible_adsterra_loaded');
-			}, delay);
+			lazyObserveSlot(slot);
 		});
 	}
 
@@ -633,11 +662,12 @@
 				return null;
 			}
 			var country = normalizeCountry(cached.country);
-			if (!country || typeof cached.showAds !== 'boolean') return null;
+			if (!country) return null;
+			var canBuy = countryIsShippable(country);
 			return {
 				country: country,
-				canBuy: cached.showAds === false,
-				showAds: cached.showAds
+				canBuy: canBuy,
+				showAds: !canBuy
 			};
 		} catch (error) {
 			return null;
@@ -646,9 +676,10 @@
 
 	function writeEligibilityCache(data) {
 		try {
+			var country = normalizeCountry(data && data.country);
+			if (!country) return;
 			window.sessionStorage.setItem(geoCacheKey, JSON.stringify({
-				country: data.country,
-				showAds: data.showAds === true,
+				country: country,
 				ts: Date.now()
 			}));
 		} catch (error) {
@@ -666,6 +697,7 @@
 
 		if (debug.showAds) {
 			preconnectAdsterra();
+			preconnectGoogle();
 			setPhase('eligible');
 			watchForAdSlots();
 			scheduleFinalHydration();
@@ -754,6 +786,25 @@
 		var cached = readEligibilityCache();
 		if (cached) {
 			applyEligibility(cached, 'session_cache', startedAt);
+			return;
+		}
+
+		if (window.ElMercadoAdGeoBootstrap && typeof window.ElMercadoAdGeoBootstrap.then === 'function') {
+			window.ElMercadoAdGeoBootstrap
+				.then(function (data) {
+					var country = normalizeCountry(data && data.country);
+					if (!country) {
+						requestFastEligibility(startedAt);
+						return;
+					}
+					var canBuy = countryIsShippable(country);
+					var result = { country: country, canBuy: canBuy, showAds: !canBuy };
+					writeEligibilityCache(result);
+					applyEligibility(result, 'early_' + String((data && data.source) || 'header'), startedAt);
+				})
+				.catch(function () {
+					requestFastEligibility(startedAt);
+				});
 			return;
 		}
 
