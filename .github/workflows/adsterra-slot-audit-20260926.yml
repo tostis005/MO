@@ -1,4 +1,4 @@
-name: Audit Adsterra slot lifecycle
+name: Audit optimized Adsterra lifecycle
 
 on:
   push:
@@ -18,20 +18,19 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --quiet selenium
-      - name: Audit every ad slot
+      - name: Verify eager top lazy lower and per-slot fallback
         shell: bash
         run: |
           python - <<'PY'
           import json,time
           from selenium import webdriver
-          from selenium.common.exceptions import TimeoutException
           from selenium.webdriver.chrome.options import Options
 
-          url='https://www.elmercadodeorigen.com/dop-jabugo-que-garantiza-territorio-como-reconocer-jamon/?adsterra_debug=1&slot_audit=1'
+          url='https://www.elmercadodeorigen.com/dop-jabugo-que-garantiza-territorio-como-reconocer-jamon/?adsterra_debug=1&optimized_slot_audit=1'
           o=Options(); o.page_load_strategy='none'
-          for a in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1440,1800','--lang=en-US'):
+          for a in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1440,1100','--lang=en-US'):
               o.add_argument(a)
-          d=webdriver.Chrome(options=o); d.set_page_load_timeout(45)
+          d=webdriver.Chrome(options=o)
           d.execute_cdp_cmd('Network.enable',{})
           d.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument',{'source':"""
           (()=>{const f=window.fetch;window.fetch=function(input,init){
@@ -42,44 +41,66 @@ jobs:
             }
             return f.call(this,input,init);
           };})();"""})
-          started=time.time()
-          try:
-              d.get(url)
-          except TimeoutException:
-              pass
+          d.get(url)
 
           def snap(label):
               state=d.execute_script(r"""
+                const res=performance.getEntriesByType('resource').map(r=>({
+                  name:r.name,start:Math.round(r.startTime),dur:Math.round(r.duration)
+                }));
                 return {
                   t:Math.round(performance.now()),
-                  readyState:document.readyState,
+                  y:Math.round(window.scrollY),
+                  h:document.documentElement.scrollHeight,
                   debug:window.ElMercadoAdsterraGeoDebug||null,
+                  adsterraRequests:res.filter(r=>/highrevenueformat|profitableratecpmnetwork/.test(r.name)).length,
+                  googleRequests:res.filter(r=>/googlesyndication|doubleclick/.test(r.name)).length,
                   slots:Array.from(document.querySelectorAll('[data-emo-adsterra-slot]')).map((s,i)=>({
                     i,
                     type:s.getAttribute('data-emo-adsterra-slot'),
                     state:s.getAttribute('data-emo-adsterra-state'),
                     hydrated:s.getAttribute('data-emo-adsterra-hydrated'),
+                    scheduled:s.getAttribute('data-emo-adsterra-scheduled'),
                     eligible:s.classList.contains('is-eligible'),
                     fallback:s.classList.contains('is-adsense-fallback'),
-                    display:getComputedStyle(s).display,
-                    h:Math.round(s.getBoundingClientRect().height),
-                    frames:s.querySelectorAll('iframe').length,
-                    adStatus:(s.querySelector('ins.adsbygoogle')||{}).getAttribute?.('data-ad-status')||null
+                    status:(s.querySelector('ins.adsbygoogle')||{}).getAttribute?.('data-ad-status')||null,
+                    top:Math.round(s.getBoundingClientRect().top),
+                    frames:s.querySelectorAll('iframe').length
                   }))
                 };
               """)
               print(label+'='+json.dumps(state,sort_keys=True),flush=True)
+              return state
 
-          for target in (1,2,3,4,5,7,10,13):
-              remain=target-(time.time()-started)
-              if remain>0: time.sleep(remain)
-              snap('T'+str(target))
+          time.sleep(1.2); snap('OPEN_1S')
+          time.sleep(3.2); before=snap('OPEN_4S')
 
-          perf=d.execute_script(r"""
-            return performance.getEntriesByType('resource').map(r=>({
-              name:r.name,start:Math.round(r.startTime),dur:Math.round(r.duration),initiator:r.initiatorType
-            })).filter(r=>/adsterra|highrevenueformat|profitableratecpmnetwork|googlesyndication|doubleclick|ad-geo-fast/.test(r.name));
-          """)
-          print('RESOURCES='+json.dumps(perf,sort_keys=True),flush=True)
+          # Lower slots should not all have hydrated before scrolling.
+          hydrated_before=sum(1 for s in before['slots'] if s['hydrated']=='1')
+          if hydrated_before >= len(before['slots']):
+              raise SystemExit('All slots hydrated eagerly; lazy loading regression')
+
+          d.execute_script('window.scrollTo(0, Math.floor(document.documentElement.scrollHeight*0.45))')
+          time.sleep(3.5); mid=snap('MID_SCROLL')
+
+          d.execute_script('window.scrollTo(0, document.documentElement.scrollHeight)')
+          time.sleep(4.0); end=snap('BOTTOM_SCROLL')
+
+          if not before['slots'] or before['slots'][0]['type']!='responsive-top':
+              raise SystemExit('Top slot missing')
+          if before['slots'][0]['hydrated']!='1':
+              raise SystemExit('Top slot was not hydrated eagerly')
+          if end['debug'] is None or end['debug'].get('showAds') is not True:
+              raise SystemExit('Geo eligibility failed')
+          if end['adsterraRequests'] < 1:
+              raise SystemExit('No Adsterra network request observed')
+          if sum(1 for s in end['slots'] if s['hydrated']=='1') < 4:
+              raise SystemExit('Lower slots did not hydrate while scrolling')
+          # Headless/datacenter Adsterra commonly no-fills. In that case verify Google fallback really ran.
+          failed=[s for s in end['slots'] if s['state']=='failed' and s['type']!='skyscraper']
+          if failed and end['googleRequests'] < 1:
+              raise SystemExit('Failed Adsterra slots had no Google fallback traffic')
+
+          print('OPTIMIZED_ADSTERRA_AUDIT=PASS',flush=True)
           d.quit()
           PY
