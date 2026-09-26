@@ -13,6 +13,141 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * Caché estática breve para la primera visita anónima a artículos.
+ *
+ * Solo genera HTML compartido para GET canónicos en español, sin cookies ni
+ * query string. El drop-in advanced-cache.php puede servir ese archivo antes de
+ * arrancar WordPress. La geografía publicitaria continúa resolviéndose en el
+ * navegador, por lo que el HTML cacheado no fija un país ni un proveedor.
+ */
+function elmercado_blog_static_cache_dir_010299(): string {
+	return WP_CONTENT_DIR . '/uploads/elmercado-blog-static-v1';
+}
+
+function elmercado_blog_static_cache_normalized_path_010299(): string {
+	$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '/';
+	$path        = wp_parse_url( $request_uri, PHP_URL_PATH );
+	$path        = is_string( $path ) && '' !== $path ? '/' . ltrim( $path, '/' ) : '/';
+
+	return '/' !== $path ? rtrim( $path, '/' ) . '/' : '/';
+}
+
+function elmercado_blog_static_cache_file_010299( string $path ): string {
+	$host = isset( $_SERVER['HTTP_HOST'] ) ? strtolower( (string) $_SERVER['HTTP_HOST'] ) : 'www.elmercadodeorigen.com';
+	$host = (string) preg_replace( '/:\\d+$/', '', $host );
+	$key  = hash( 'sha256', $host . '|' . $path );
+
+	return elmercado_blog_static_cache_dir_010299() . '/' . $key . '.html';
+}
+
+function elmercado_blog_static_cache_request_010299(): bool {
+	if ( is_admin() || ! is_singular( 'post' ) || is_preview() || is_customize_preview() || is_user_logged_in() ) {
+		return false;
+	}
+
+	$method = isset( $_SERVER['REQUEST_METHOD'] ) ? strtoupper( (string) $_SERVER['REQUEST_METHOD'] ) : 'GET';
+	$query  = isset( $_SERVER['QUERY_STRING'] ) ? (string) $_SERVER['QUERY_STRING'] : '';
+	if ( 'GET' !== $method || '' !== $query || wp_doing_ajax() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
+		return false;
+	}
+
+	// Máxima seguridad: cualquier cookie implica que WordPress debe responder.
+	if ( ! empty( $_COOKIE ) ) {
+		return false;
+	}
+
+	$path = elmercado_blog_static_cache_normalized_path_010299();
+
+	// Fase inicial: solo español canónico. Inglés sigue dinámico.
+	if ( str_starts_with( $path, '/en/' ) ) {
+		return false;
+	}
+
+	return '/' !== $path;
+}
+
+function elmercado_blog_static_cache_write_010299( string $file, string $html ): void {
+	if (
+		'' === $html
+		|| false === stripos( $html, '<html' )
+		|| false === stripos( $html, '</html>' )
+		|| false === strpos( $html, 'data-emo-adsterra-slot=' )
+		|| false !== stripos( $html, 'wp-die-message' )
+		|| false !== stripos( $html, 'WordPress database error' )
+	) {
+		return;
+	}
+
+	$directory = dirname( $file );
+	if ( ! is_dir( $directory ) && ! wp_mkdir_p( $directory ) ) {
+		return;
+	}
+
+	$tmp = tempnam( $directory, 'blog-' );
+	if ( false === $tmp ) {
+		return;
+	}
+
+	$written = file_put_contents( $tmp, $html, LOCK_EX ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+	if ( false === $written || $written < strlen( $html ) ) {
+		@unlink( $tmp );
+		return;
+	}
+
+	@chmod( $tmp, 0644 );
+	if ( ! @rename( $tmp, $file ) ) {
+		@unlink( $tmp );
+	}
+}
+
+function elmercado_blog_static_cache_purge_010299(): void {
+	$directory = elmercado_blog_static_cache_dir_010299();
+	if ( ! is_dir( $directory ) ) {
+		return;
+	}
+
+	foreach ( glob( $directory . '/*.html' ) ?: array() as $file ) {
+		if ( is_file( $file ) ) {
+			@unlink( $file );
+		}
+	}
+}
+
+add_action(
+	'template_redirect',
+	static function (): void {
+		if ( ! elmercado_blog_static_cache_request_010299() ) {
+			return;
+		}
+
+		$path = elmercado_blog_static_cache_normalized_path_010299();
+		$file = elmercado_blog_static_cache_file_010299( $path );
+
+		if ( ! headers_sent() ) {
+			header( 'X-El-Mercado-Blog-Early-Cache: MISS' );
+			header( 'Vary: Cookie', false );
+		}
+
+		ob_start(
+			static function ( string $html ) use ( $file ): string {
+				elmercado_blog_static_cache_write_010299( $file, $html );
+				return $html;
+			}
+		);
+	},
+	-2500
+);
+
+add_action( 'save_post_post', 'elmercado_blog_static_cache_purge_010299' );
+add_action( 'save_post_product', 'elmercado_blog_static_cache_purge_010299' );
+add_action( 'before_delete_post', 'elmercado_blog_static_cache_purge_010299' );
+add_action( 'woocommerce_product_set_stock', 'elmercado_blog_static_cache_purge_010299' );
+add_action( 'woocommerce_variation_set_stock', 'elmercado_blog_static_cache_purge_010299' );
+add_action( 'created_category', 'elmercado_blog_static_cache_purge_010299' );
+add_action( 'edited_category', 'elmercado_blog_static_cache_purge_010299' );
+add_action( 'delete_category', 'elmercado_blog_static_cache_purge_010299' );
+
 function elmercado_blog_ad_provider_010290(): string {
 	$provider = defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ? strtolower( trim( (string) ELMERCADO_BLOG_AD_PROVIDER ) ) : 'adsense';
 	return in_array( $provider, array( 'adsense', 'adsterra' ), true ) ? $provider : 'adsense';
