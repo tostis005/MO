@@ -64,6 +64,9 @@ array(
 <h2>Busca coherencia entre producto y empresa</h2>
 <p>Una compañía que habla de sostenibilidad, territorio o cercanía puede encontrar más sentido en productos con procedencia visible que en regalos impersonales. El detalle puede reforzar valores ya existentes sin necesidad de convertirlos en un discurso comercial.</p>
 <p>La coherencia hace que el regalo parezca natural.</p>
+<h2>Cómo saber si el regalo encaja con la relación</h2>
+<p>Una buena regla es imaginar cómo se sentirá el destinatario al recibirlo. Si parece demasiado impersonal, quizá falte contexto; si resulta excesivo para la relación, puede generar incomodidad. El nivel adecuado está entre ambos extremos.</p>
+<p>La relación profesional, la antigüedad y el motivo del regalo ayudan a calibrar mejor esa decisión.</p>
 <h2>Qué información necesitamos</h2>
 <p>Tipo de destinatario, número de unidades, presupuesto, ocasión, fecha y forma de entrega. Con esos datos podemos filtrar propuestas y evitar opciones genéricas que no aporten valor.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Haz que el regalo tenga una razón detrás</h2><p>Dinos qué quieres transmitir y revisaremos productos que encajen con la ocasión y el destinatario.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Ir al formulario de contacto</a></p></div>
@@ -114,6 +117,12 @@ array(
 <h2>Cómo elegir según presupuesto</h2>
 <p>En presupuestos pequeños, una referencia bien seleccionada puede ser suficiente. En rangos medios, se puede crear una pequeña selección. En presupuestos altos, conviene mejorar categoría y formato antes que aumentar el número de productos.</p>
 <p>La percepción de calidad depende más de la elección que de la cantidad.</p>
+<h2>Cómo construir una selección por categorías</h2>
+<p>Si quieres regalar varios productos, puedes combinar una referencia grasa o líquida como AOVE, una categoría de aperitivo como ibéricos o conservas y un tercer elemento de despensa. Ese esquema crea variedad sin dispersar demasiado el conjunto.</p>
+<p>También puedes centrar todo el regalo en una sola categoría si el destinatario tiene un interés claro.</p>
+<h2>Cómo evitar que “gourmet” sea solo una etiqueta</h2>
+<p>Conviene revisar información concreta: productor, origen, formato, características y calidad percibida. Una presentación llamativa no sustituye a un producto bien elegido.</p>
+<p>La selección gana valor cuando se puede explicar por qué cada referencia está ahí.</p>
 <h2>Qué información necesitamos</h2>
 <p>Presupuesto, destinatario, fecha, destino y categorías preferidas o excluidas. Con esos datos podemos revisar productos disponibles y propuestas realistas.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Elige productos españoles con identidad</h2><p>Cuéntanos el contexto del regalo y revisaremos qué referencias del catálogo pueden aportar más valor.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Contactar</a></p></div>
@@ -161,6 +170,12 @@ array(
 <h2>Presupuesto</h2>
 <p>Los productos de productor pueden encontrarse en rangos distintos. En presupuestos contenidos, una sola referencia puede funcionar; en niveles superiores, se puede crear una selección con varias procedencias.</p>
 <p>Lo importante es mantener calidad y contexto.</p>
+<h2>Cómo valorar la escala del productor</h2>
+<p>Una producción pequeña puede aportar singularidad, pero también implica límites de stock. Si el regalo es para muchas personas, conviene comprobar disponibilidad antes de diseñar toda la propuesta alrededor de una única referencia.</p>
+<p>En algunos casos será mejor trabajar con varias referencias equivalentes o con un productor capaz de cubrir el volumen.</p>
+<h2>El valor de contar quién está detrás</h2>
+<p>Cuando el destinatario conoce el nombre del productor, la zona y la historia básica del producto, el regalo gana contexto. Esa información puede ser especialmente valiosa en propuestas corporativas o para personas muy aficionadas a la gastronomía.</p>
+<p>No hace falta una narración larga; basta con datos claros y verificables.</p>
 <h2>Qué información necesitamos</h2>
 <p>Presupuesto, número de unidades, destinatario, fecha, destino y si existe una zona o categoría que quieras priorizar. Con esos datos podemos revisar opciones disponibles.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Pon al productor en el centro del regalo</h2><p>Cuéntanos qué buscas y revisaremos referencias españolas con procedencia e identidad claras.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Ir al formulario de contacto</a></p></div>
@@ -208,6 +223,12 @@ array(
 <h2>Disponibilidad y escala</h2>
 <p>Pequeños productores pueden tener stock limitado. Si se necesitan muchas unidades, la capacidad de suministro debe comprobarse antes de cerrar el regalo.</p>
 <p>En pedidos grandes puede ser necesario trabajar con alternativas equivalentes.</p>
+<h2>Productor local no significa necesariamente cercano al comprador</h2>
+<p>En un marketplace nacional, “local” puede referirse al territorio de origen del producto, no al lugar desde el que compra la empresa. Por eso conviene definir si buscas proximidad geográfica concreta o simplemente apoyar productores españoles identificables.</p>
+<p>Esta precisión ayuda a seleccionar mejor y evita expectativas ambiguas.</p>
+<h2>Cómo usar el territorio como hilo conductor</h2>
+<p>Una cesta puede centrarse en una región, una provincia o una combinación de varias zonas. Elegir un criterio territorial aporta coherencia y facilita explicar el regalo.</p>
+<p>También puede conectar con la sede de la empresa, el origen del destinatario o el lugar de un evento.</p>
 <h2>Qué información necesitamos</h2>
 <p>Número de regalos, presupuesto, destinatario, fecha, destino y si buscas una región concreta o una selección nacional. Con esos datos podemos revisar propuestas viables.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Regala productos con un lugar y una persona detrás</h2><p>Dinos qué relación quieres destacar y revisaremos productores y referencias disponibles.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Contactar</a></p></div>
@@ -258,6 +279,12 @@ array(
 <h2>Cómo comparar propuestas dentro del mismo rango</h2>
 <p>No compares únicamente el número de productos. Revisa categoría, peso, productor, procedencia, facilidad de consumo y formato.</p>
 <p>Dos cestas con el mismo coste pueden ofrecer niveles de calidad muy distintos.</p>
+<h2>Cómo crear escalones de presupuesto sin rehacer toda la cesta</h2>
+<p>Una forma eficiente es mantener una base común y modificar uno o dos elementos entre niveles. Por ejemplo, conservar el mismo AOVE y cambiar la categoría del ibérico o añadir un complemento en el nivel superior.</p>
+<p>Así se mantiene una identidad común y se simplifica la gestión de varias versiones.</p>
+<h2>Qué hacer cuando el presupuesto es cerrado al céntimo</h2>
+<p>En pedidos corporativos puede existir un máximo estricto. En ese caso conviene dejar un pequeño margen para posibles variaciones de transporte o disponibilidad y evitar diseñar la cesta justo en el límite.</p>
+<p>Una propuesta ligeramente por debajo del máximo puede ser más robusta que otra que dependa de cada céntimo.</p>
 <h2>Qué información necesitamos</h2>
 <p>Número de unidades, presupuesto por cesta, grupos de destinatarios, fecha, destinos y cualquier requisito especial. Con esos datos podemos revisar varias composiciones ajustadas al rango.</p>
 <div class="emdo-seo-landing-cta" style="margin:32px 0;padding:28px;border:1px solid #e4dfd6;border-radius:14px;background:#faf8f3"><h2 style="margin-top:0">Construye la cesta desde el presupuesto</h2><p>Envíanos el rango y el volumen y revisaremos qué selección puede ofrecer más valor sin añadir complejidad innecesaria.</p><p style="margin-bottom:0"><a class="button" href="/contacto/">Ir al formulario de contacto</a></p></div>
