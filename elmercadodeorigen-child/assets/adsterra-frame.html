@@ -1,0 +1,97 @@
+<!doctype html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<meta name="robots" content="noindex,nofollow,noarchive">
+	<style>html,body{margin:0;padding:0;overflow:hidden;background:transparent}body{display:flex;justify-content:center;align-items:flex-start}</style>
+</head>
+<body>
+<script>
+(function () {
+	'use strict';
+
+	var units = {
+		'responsive-desktop': { key: '4e02d145fdb84842713b24a4bade6244', width: 728, height: 90 },
+		'responsive-mobile': { key: '3de18866861c081d6eb282ad00fe2bee', width: 320, height: 50 },
+		'rectangle': { key: 'c1f547d5b9552a71fae2de32c69f2d66', width: 300, height: 250 },
+		'tall-rectangle': { key: 'bd307b1985a219b2694f34d17ceebe8e', width: 160, height: 300 },
+		'skyscraper': { key: '040427a877ae83cac71362a8c92eb779', width: 160, height: 600 },
+		'footer-banner': { key: '985360811e3cd3c3d7d50e3a9ea81484', width: 468, height: 60 }
+	};
+
+	var params = new URLSearchParams(window.location.search);
+	var type = params.get('unit') || '';
+	var token = params.get('token') || '';
+	var unit = units[type];
+	var sent = false;
+
+	function notify(typeName) {
+		if (sent || !token) return;
+		sent = true;
+		window.parent.postMessage({ type: typeName, token: token }, window.location.origin);
+	}
+
+	window.__emoAdsterraBlocked = function () {
+		notify('emo-adsterra-blocked');
+	};
+
+	function watchMedia(node) {
+		if (!node || node.getAttribute('data-emo-adsterra-watch') === '1') return;
+		node.setAttribute('data-emo-adsterra-watch', '1');
+		node.addEventListener('load', function () { notify('emo-adsterra-rendered'); }, { once: true });
+
+		if (node.tagName === 'IFRAME' && (node.getAttribute('src') || '').trim() !== '') {
+			notify('emo-adsterra-rendered');
+			return;
+		}
+		if (node.tagName === 'IMG' && node.complete && node.naturalWidth > 0) {
+			notify('emo-adsterra-rendered');
+		}
+	}
+
+	function inspect() {
+		if (sent) return;
+		Array.prototype.slice.call(document.body.querySelectorAll('iframe,img,video,object,embed')).forEach(watchMedia);
+
+		var visibleText = Array.prototype.slice.call(document.body.children).some(function (node) {
+			if (!node || node.tagName === 'SCRIPT' || node.tagName === 'STYLE') return false;
+			if (node.querySelector && node.querySelector('iframe,img,video,object,embed')) return false;
+			return (node.textContent || '').trim() !== '';
+		});
+		if (visibleText) notify('emo-adsterra-rendered');
+	}
+
+	if (!unit || !token) {
+		notify('emo-adsterra-blocked');
+		return;
+	}
+
+	new MutationObserver(inspect).observe(document.body, {
+		childList: true,
+		subtree: true
+	});
+
+	window.atOptions = {
+		key: unit.key,
+		format: 'iframe',
+		height: unit.height,
+		width: unit.width,
+		params: {}
+	};
+
+	window.setTimeout(function () {
+		if (!sent) notify('emo-adsterra-blocked');
+	}, 3000);
+
+	inspect();
+
+	document.write(
+		'<script src="https://www.highrevenueformat.com/' +
+		encodeURIComponent(unit.key) +
+		'/invoke.js" onerror="window.__emoAdsterraBlocked()"><\/script>'
+	);
+}());
+</script>
+</body>
+</html>
