@@ -88,8 +88,8 @@ jobs:
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
             set -e
-            '$PHP' -l '$MU/mdo-hidden-blog-islands-010312.php'
-            '$PHP' -l '$REMOTE'
+            '$PHP' -l '$MU/mdo-hidden-blog-islands-010312.php' >/dev/null
+            '$PHP' -l '$REMOTE' >/dev/null
             export PATH='$(dirname "$PHP")':\$PATH
             '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE' --path='$PROD' --skip-plugins --skip-themes --allow-root
             '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true
