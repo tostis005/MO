@@ -61,6 +61,11 @@ add_action(
 			return;
 		}
 
+		/* Bypass privado para migraciones/QA ejecutadas por WP-CLI. */
+		if ( $query->get( 'emdo_include_hidden_blog_islands' ) ) {
+			return;
+		}
+
 		/* La consulta principal de una entrada debe poder resolver su URL. */
 		if ( $query->is_main_query() && $query->is_singular( 'post' ) ) {
 			return;
