@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: publish-seo-duck-cluster-20260927
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   publish:
@@ -92,25 +92,50 @@ jobs:
         run: |
           set -euo pipefail
           jq -r '.pages[].slug' /tmp/publish-duck.json > /tmp/duck-slugs.txt
-          while IFS= read -r slug; do
-            file="/tmp/duck-$slug.html"
-            code="$(curl -k -L -sS --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 60 -A 'Mozilla/5.0 EMDO Duck SEO verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$file" -w '%{http_code}' "https://www.elmercadodeorigen.com/$slug/?emdo_verify=${GITHUB_RUN_ID}")"
-            test "$code" = "200"
-            grep -Fq '/contacto/' "$file"
-            if grep -Eqi 'noindex' "$file"; then
-              echo "Unexpected noindex on $slug" >&2
-              exit 20
-            fi
-          done < /tmp/duck-slugs.txt
+          python3 - <<'PY'
+          import concurrent.futures, ssl, urllib.request, pathlib, os
 
-          curl -k -L -sS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO Duck SEO verifier' -H 'Cache-Control: no-cache' "https://www.elmercadodeorigen.com/blog/?emdo_verify=${GITHUB_RUN_ID}" -o /tmp/blog-duck.html
-          while IFS= read -r slug; do
-            if grep -Fq "$slug" /tmp/blog-duck.html; then
-              echo "Duck landing unexpectedly appears in blog listing: $slug" >&2
-              exit 21
-            fi
-          done < /tmp/duck-slugs.txt
-          echo "DUCK_SEO_CLUSTER_PUBLIC_VERIFY_OK"
+          base = "https://www.elmercadodeorigen.com"
+          run_id = os.environ.get("GITHUB_RUN_ID", "verify")
+          slugs = [x.strip() for x in pathlib.Path("/tmp/duck-slugs.txt").read_text().splitlines() if x.strip()]
+          ctx = ssl._create_unverified_context()
+
+          def fetch(url):
+              req = urllib.request.Request(
+                  url,
+                  headers={
+                      "User-Agent":"Mozilla/5.0 EMDO Duck SEO verifier",
+                      "Cache-Control":"no-cache",
+                      "Pragma":"no-cache",
+                  },
+              )
+              with urllib.request.urlopen(req, timeout=30, context=ctx) as r:
+                  return r.status, r.read().decode("utf-8","ignore")
+
+          def check(slug):
+              status, html = fetch(f"{base}/{slug}/?emdo_verify={run_id}")
+              low = html.lower()
+              if status != 200:
+                  raise RuntimeError(f"{slug}: HTTP {status}")
+              if "/contacto/" not in html:
+                  raise RuntimeError(f"{slug}: missing contact link")
+              if "noindex" in low:
+                  raise RuntimeError(f"{slug}: unexpected noindex")
+              return slug
+
+          with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+              futs = [ex.submit(check, s) for s in slugs]
+              for fut in concurrent.futures.as_completed(futs):
+                  fut.result()
+
+          status, blog = fetch(f"{base}/blog/?emdo_verify={run_id}")
+          if status != 200:
+              raise RuntimeError(f"blog: HTTP {status}")
+          leaked = [s for s in slugs if s in blog]
+          if leaked:
+              raise RuntimeError("Duck landings unexpectedly appear in blog listing: " + ", ".join(leaked[:10]))
+          print("DUCK_SEO_CLUSTER_PUBLIC_VERIFY_OK", len(slugs))
+          PY
 
       - name: Record verified deployment
         shell: bash
