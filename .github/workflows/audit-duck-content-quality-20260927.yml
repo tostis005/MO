@@ -46,5 +46,5 @@ jobs:
           PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
           REMOTE="/tmp/audit-duck-content-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP .github/scripts/audit-duck-content-quality-20260927.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' eval-file '$REMOTE' --path='$PROD' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" > /tmp/audit.json
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE' --path='$PROD' --skip-plugins --skip-themes --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" > /tmp/audit.json
           jq '.' /tmp/audit.json
