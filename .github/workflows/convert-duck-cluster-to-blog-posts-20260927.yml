@@ -1,0 +1,195 @@
+name: Convert duck cluster to hidden blog posts 20260927
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-hidden-blog-islands-010312.php'
+      - '.github/scripts/convert-duck-cluster-to-blog-posts-20260927.php'
+      - '.github/workflows/convert-duck-cluster-to-blog-posts-20260927.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: convert-duck-cluster-to-blog-posts-20260927
+  cancel-in-progress: true
+
+jobs:
+  convert:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate migration files
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-hidden-blog-islands-010312.php
+          php -l .github/scripts/convert-duck-cluster-to-blog-posts-20260927.php
+          grep -Fq "'post_type'      => 'post'" .github/scripts/convert-duck-cluster-to-blog-posts-20260927.php
+          grep -Fq "_emdo_blog_hidden_listing" .github/scripts/convert-duck-cluster-to-blog-posts-20260927.php
+          : "${STAGING_HOST:?}"
+          : "${STAGING_USER:?}"
+          : "${STAGING_PASSWORD:?}"
+
+      - name: Deploy guard and convert production posts
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp=$(command -v wp || true)
+            php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] || exit 20
+            [ -n "$php" ] || exit 21
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;;
+              esac
+            done
+            [ -n "$prod" ] || exit 22
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+          MU="$PROD/wp-content/mu-plugins"
+          REMOTE="/tmp/emdo-convert-duck-blog-${GITHUB_RUN_ID}.php"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$MU'"
+          sshpass -e scp $SCP mu-plugins/mdo-hidden-blog-islands-010312.php "$STAGING_USER@$STAGING_HOST:$MU/mdo-hidden-blog-islands-010312.php"
+          sshpass -e scp $SCP .github/scripts/convert-duck-cluster-to-blog-posts-20260927.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            '$PHP' -l '$MU/mdo-hidden-blog-islands-010312.php'
+            '$PHP' -l '$REMOTE'
+            export PATH='$(dirname "$PHP")':\$PATH
+            '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE' --path='$PROD' --skip-plugins --skip-themes --allow-root
+            '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true
+            rm -f '$REMOTE'
+          " > /tmp/duck-blog.json
+
+          cat /tmp/duck-blog.json
+          jq -e '.batch=="20260927-duck-blog-posts" and .count==60' /tmp/duck-blog.json >/dev/null
+          jq -e '.posts|all(.type=="post" and .status=="publish" and .words>=900 and .words<=1500 and .categories==0 and .thumbnail>0)' /tmp/duck-blog.json >/dev/null
+
+      - name: Verify public blog shape and island behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -r '.posts[].slug' /tmp/duck-blog.json > /tmp/duck-blog-slugs.txt
+
+          python3 - <<'PY'
+          import concurrent.futures
+          import os
+          import pathlib
+          import ssl
+          import urllib.parse
+          import urllib.request
+
+          base = "https://www.elmercadodeorigen.com"
+          run_id = os.environ.get("GITHUB_RUN_ID", "verify")
+          slugs = [x.strip() for x in pathlib.Path("/tmp/duck-blog-slugs.txt").read_text().splitlines() if x.strip()]
+          ctx = ssl._create_unverified_context()
+
+          def fetch(url):
+              req = urllib.request.Request(
+                  url,
+                  headers={
+                      "User-Agent": "Mozilla/5.0 EMDO Duck Blog verifier",
+                      "Cache-Control": "no-cache",
+                      "Pragma": "no-cache",
+                  },
+              )
+              with urllib.request.urlopen(req, timeout=35, context=ctx) as response:
+                  return response.status, response.read().decode("utf-8", "ignore")
+
+          def check_post(slug):
+              status, html = fetch(f"{base}/{slug}/?emdo_verify={run_id}")
+              low = html.lower()
+              if status != 200:
+                  raise RuntimeError(f"{slug}: HTTP {status}")
+              if "emo-article-page" not in html or "emo-article-content" not in html:
+                  raise RuntimeError(f"{slug}: not using standard blog article shell")
+              if "emo-article-featured" not in html:
+                  raise RuntimeError(f"{slug}: featured image missing")
+              if "emdo-seo-landing-cta" in html:
+                  raise RuntimeError(f"{slug}: landing-page CTA still present")
+              if "noindex" in low:
+                  raise RuntimeError(f"{slug}: unexpected noindex")
+              return slug
+
+          with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+              futures = [executor.submit(check_post, slug) for slug in slugs]
+              for future in concurrent.futures.as_completed(futures):
+                  future.result()
+
+          status, blog = fetch(f"{base}/blog/?emdo_verify={run_id}")
+          if status != 200:
+              raise RuntimeError(f"blog home: HTTP {status}")
+          leaked = [slug for slug in slugs if slug in blog]
+          if leaked:
+              raise RuntimeError("Duck posts leaked into blog home: " + ", ".join(leaked[:10]))
+
+          status, filtered = fetch(f"{base}/blog/?blog_q=pato&emdo_verify={run_id}")
+          if status != 200:
+              raise RuntimeError(f"filtered blog: HTTP {status}")
+          leaked = [slug for slug in slugs if slug in filtered]
+          if leaked:
+              raise RuntimeError("Duck posts leaked into blog search: " + ", ".join(leaked[:10]))
+
+          status, feed = fetch(f"{base}/feed/?emdo_verify={run_id}")
+          if status == 200:
+              leaked = [slug for slug in slugs if slug in feed]
+              if leaked:
+                  raise RuntimeError("Duck posts leaked into RSS feed: " + ", ".join(leaked[:10]))
+
+          print("DUCK_BLOG_POSTS_PUBLIC_VERIFY_OK", len(slugs))
+          PY
+
+      - name: Record verified conversion
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          jq -n \
+            --arg generated_at "$(date -u +%FT%TZ)" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg source_sha "$GITHUB_SHA" \
+            --slurpfile result /tmp/duck-blog.json \
+            '{generated_at:$generated_at,run_id:($run_id|tonumber),source_sha:$source_sha,verified:true,batch:"20260927-duck-blog-posts",post_count:60,reference_blog:$result[0].reference_blog,featured_image_id:$result[0].featured_image_id,posts:$result[0].posts}' \
+            > .deploy-status/duck-blog-posts-20260927.json
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/duck-blog-posts-20260927.json
+          git commit -m 'Record verified duck blog conversion [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
