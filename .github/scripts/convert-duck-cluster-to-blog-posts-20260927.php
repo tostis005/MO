@@ -143,6 +143,7 @@ $ids = get_posts(
 		'order'          => 'ASC',
 		'meta_key'       => '_emdo_seo_landing_batch',
 		'meta_value'     => '20260927-duck-cluster',
+		'emdo_include_hidden_blog_islands' => true,
 	)
 );
 
