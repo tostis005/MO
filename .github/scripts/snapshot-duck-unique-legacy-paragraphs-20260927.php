@@ -22,6 +22,7 @@ foreach($ids as $id){
  foreach(array_unique(array_column($ps,'norm')) as $n){$h=sha1($n);$freq[$h]=($freq[$h]??0)+1;}
 }
 foreach($all as $id=>$ps){
+ if(get_post_meta($id,'_emdo_duck_legacy_unique_paras_v2',true)!==''){echo $id.'|existing'.PHP_EOL;continue;}
  $keep=array();
  foreach($ps as $p){$f=$freq[sha1($p['norm'])]??60;if($f<=5)$keep[]=array('html'=>$p['html'],'freq'=>$f,'hash'=>sha1($p['norm']));}
  usort($keep,function($a,$b){return $a['freq']<=>$b['freq'];});
