@@ -70,28 +70,28 @@ jobs:
           if not category['has_breadcrumb']: raise SystemExit('Missing category BreadcrumbList schema')
           PY
 
-          if grep -q 'category-sitemap' /tmp/sitemap.xml; then
-            category_sm=$(python3 - <<'PY'
+          category_sm=$(python3 - <<'PY'
           import re
           s=open('/tmp/sitemap.xml',errors='ignore').read()
-          m=re.search(r'<loc>([^<]*category[^<]*sitemap[^<]*)</loc>',s,re.I)
-          print(m.group(1) if m else '')
+          candidates=re.findall(r'<loc>([^<]+)</loc>',s,re.I)
+          print(next((u for u in candidates if 'blog-categories' in u or ('categor' in u.lower() and 'sitemap' in u.lower())), ''))
           PY
           )
-            if [ -n "$category_sm" ]; then
-              curl -fsSL --retry 4 --max-time 60 -A 'Mozilla/5.0 EMDO schema audit' "$category_sm" -o /tmp/category-sitemap.xml
-              grep -q 'category/carnes/pato' /tmp/category-sitemap.xml
-              echo 'PATO_CATEGORY_IN_SITEMAP=1'
-            fi
-          fi
+          [ -n "$category_sm" ]
+          curl -fsSL --retry 4 --max-time 60 -A 'Mozilla/5.0 EMDO schema audit' "$category_sm" -o /tmp/category-sitemap.xml
+          grep -q 'category/carnes/pato' /tmp/category-sitemap.xml
+          echo 'PATO_CATEGORY_IN_SITEMAP=1'
 
-          if grep -q 'post-sitemap' /tmp/sitemap.xml; then
-            for sm in $(python3 - <<'PY'
+          post_sm=$(python3 - <<'PY'
           import re
           s=open('/tmp/sitemap.xml',errors='ignore').read()
-          for u in re.findall(r'<loc>([^<]*post[^<]*sitemap[^<]*)</loc>',s,re.I): print(u)
+          candidates=re.findall(r'<loc>([^<]+)</loc>',s,re.I)
+          print(next((u for u in candidates if 'posts' in u.lower() and 'sitemap' in u.lower()), ''))
           PY
-          ); do
-            curl -fsSL --retry 3 --max-time 60 -A 'Mozilla/5.0 EMDO schema audit' "$sm" | grep -q 'carne-de-pato-guia-completa-cortes-sabor-preparacion' && { echo 'DUCK_POST_IN_SITEMAP=1'; break; } || true
-          done
-          fi
+          )
+          [ -n "$post_sm" ]
+          curl -fsSL --retry 4 --max-time 60 -A 'Mozilla/5.0 EMDO schema audit' "$post_sm" -o /tmp/post-sitemap.xml
+          grep -q 'carne-de-pato-guia-completa-cortes-sabor-preparacion' /tmp/post-sitemap.xml
+          duck_count=$(grep -oE 'https://www\.elmercadodeorigen\.com/[^<]+' /tmp/post-sitemap.xml | grep -E '(pato|foie|magret|confit)' | wc -l | tr -d ' ')
+          echo "DUCK_RELATED_URLS_IN_POST_SITEMAP=$duck_count"
+          echo 'DUCK_POST_IN_SITEMAP=1'
