@@ -29,8 +29,7 @@ if ( ! defined( 'ELMERCADO_ADSENSE_INARTICLE_SLOT' ) ) {
  * @return bool
  */
 function elmercado_adsense_is_blog_post_request(): bool {
-	$provider = defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ? strtolower( (string) ELMERCADO_BLOG_AD_PROVIDER ) : 'adsense';
-	return 'adsense' === $provider && ! is_admin() && is_singular( 'post' ) && ! is_feed() && ! is_preview();
+	return ! is_admin() && is_singular( 'post' ) && ! is_feed() && ! is_preview();
 }
 
 /**
