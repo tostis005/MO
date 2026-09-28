@@ -1,0 +1,97 @@
+name: Audit duck public schema 20260928
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-duck-public-schema-20260928.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect schema and sitemaps
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://www.elmercadodeorigen.com'
+          curl -fsSL --retry 4 --max-time 60 -A 'Mozilla/5.0 EMDO schema audit' "$base/carne-de-pato-guia-completa-cortes-sabor-preparacion/?schema_audit=1" -o /tmp/post.html
+          curl -fsSL --retry 4 --max-time 60 -A 'Mozilla/5.0 EMDO schema audit' "$base/category/carnes/pato/?schema_audit=1" -o /tmp/category.html
+          curl -fsSL --retry 4 --max-time 60 -A 'Mozilla/5.0 EMDO schema audit' "$base/sitemap.xml" -o /tmp/sitemap.xml
+
+          python3 - <<'PY'
+          import json,re,html
+          from pathlib import Path
+
+          def extract_schema(path):
+              raw=Path(path).read_text(errors='ignore')
+              scripts=re.findall(r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',raw,re.I|re.S)
+              payloads=[]
+              types=[]
+              images=[]
+              def walk(v):
+                  if isinstance(v,dict):
+                      t=v.get('@type')
+                      if isinstance(t,str): types.append(t)
+                      elif isinstance(t,list): types.extend(str(x) for x in t)
+                      for k,val in v.items():
+                          if k in ('image','thumbnailUrl','contentUrl') and isinstance(val,(str,dict,list)):
+                              images.append(val)
+                          walk(val)
+                  elif isinstance(v,list):
+                      for x in v: walk(x)
+              for s in scripts:
+                  try:
+                      obj=json.loads(html.unescape(s.strip()))
+                      payloads.append(obj); walk(obj)
+                  except Exception:
+                      pass
+              title=re.search(r'<title[^>]*>(.*?)</title>',raw,re.I|re.S)
+              return {
+                  'jsonld_scripts':len(payloads),
+                  'types':sorted(set(types)),
+                  'has_article':any(t in types for t in ['Article','BlogPosting','NewsArticle']),
+                  'has_breadcrumb': 'BreadcrumbList' in types,
+                  'images':images[:10],
+                  'title':re.sub(r'\s+',' ',title.group(1)).strip() if title else None,
+              }
+
+          post=extract_schema('/tmp/post.html')
+          category=extract_schema('/tmp/category.html')
+          sm=Path('/tmp/sitemap.xml').read_text(errors='ignore')
+          locs=re.findall(r'<loc>(.*?)</loc>',sm,re.I|re.S)
+          result={'post':post,'category':category,'sitemap_index_locs':locs}
+          print(json.dumps(result,ensure_ascii=False,indent=2))
+          if not post['has_article']: raise SystemExit('Missing Article/BlogPosting schema')
+          if not post['has_breadcrumb']: raise SystemExit('Missing BreadcrumbList schema')
+          if not category['has_breadcrumb']: raise SystemExit('Missing category BreadcrumbList schema')
+          PY
+
+          if grep -q 'category-sitemap' /tmp/sitemap.xml; then
+            category_sm=$(python3 - <<'PY'
+          import re
+          s=open('/tmp/sitemap.xml',errors='ignore').read()
+          m=re.search(r'<loc>([^<]*category[^<]*sitemap[^<]*)</loc>',s,re.I)
+          print(m.group(1) if m else '')
+          PY
+          )
+            if [ -n "$category_sm" ]; then
+              curl -fsSL --retry 4 --max-time 60 -A 'Mozilla/5.0 EMDO schema audit' "$category_sm" -o /tmp/category-sitemap.xml
+              grep -q 'category/carnes/pato' /tmp/category-sitemap.xml
+              echo 'PATO_CATEGORY_IN_SITEMAP=1'
+            fi
+          fi
+
+          if grep -q 'post-sitemap' /tmp/sitemap.xml; then
+            for sm in $(python3 - <<'PY'
+          import re
+          s=open('/tmp/sitemap.xml',errors='ignore').read()
+          for u in re.findall(r'<loc>([^<]*post[^<]*sitemap[^<]*)</loc>',s,re.I): print(u)
+          PY
+          ); do
+            curl -fsSL --retry 3 --max-time 60 -A 'Mozilla/5.0 EMDO schema audit' "$sm" | grep -q 'carne-de-pato-guia-completa-cortes-sabor-preparacion' && { echo 'DUCK_POST_IN_SITEMAP=1'; break; } || true
+          done
+          fi
