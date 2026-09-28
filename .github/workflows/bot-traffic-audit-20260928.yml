@@ -1,0 +1,243 @@
+name: Audit suspicious bot traffic 2026-09-28
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bot-traffic-audit-20260928.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Aggregate last 7 days of production access logs
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' > bot-traffic-audit.json <<'REMOTE'
+          set -euo pipefail
+          WP=$(command -v wp || true)
+          PHP=$(command -v php || true)
+          [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                ROOT="$p"; break;;
+            esac
+          done
+          : "${ROOT:?missing production root}"
+          DOMAIN_HOME=$(dirname "$ROOT")
+          python3 - "$DOMAIN_HOME" /var/www/vhosts/system/elmercadodeorigen.com/logs <<'PY'
+          import sys, os, re, gzip, json, math
+          from collections import Counter, defaultdict
+          from datetime import datetime, timezone, timedelta
+          from urllib.parse import urlsplit
+
+          roots = [p for p in sys.argv[1:] if os.path.isdir(p)]
+          now = datetime.now(timezone.utc)
+          cutoff = now - timedelta(days=7)
+
+          logfiles=[]
+          seen=set()
+          for root in roots:
+              for base in [root, os.path.join(root, "logs")]:
+                  if not os.path.isdir(base):
+                      continue
+                  try:
+                      names=os.listdir(base)
+                  except Exception:
+                      continue
+                  for name in names:
+                      low=name.lower()
+                      if "access" not in low or "log" not in low:
+                          continue
+                      path=os.path.join(base,name)
+                      if not os.path.isfile(path):
+                          continue
+                      try:
+                          key=(os.stat(path).st_dev, os.stat(path).st_ino)
+                      except Exception:
+                          continue
+                      if key in seen:
+                          continue
+                      seen.add(key)
+                      logfiles.append(path)
+
+          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+(\S+)(?:\s+"([^"]*)"\s+"([^"]*)")?')
+          asset_ext=re.compile(r'\.(?:css|js|mjs|map|png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|eot|mp4|webm|pdf|zip)(?:$|\?)',re.I)
+
+          totals=Counter()
+          ips=defaultdict(lambda: {"n":0,"dyn":0,"paths":Counter(),"uas":Counter(),"statuses":Counter(),"minutes":Counter(),"first":None,"last":None,"methods":Counter()})
+          paths=Counter(); dyn_paths=Counter(); uas=Counter(); methods=Counter(); statuses=Counter()
+          ip_path=Counter(); hour=Counter(); parse_errors=0; scanned=0; oldest=None; newest=None
+
+          def opener(path):
+              if path.endswith(".gz"):
+                  return gzip.open(path,"rt",encoding="utf-8",errors="replace")
+              return open(path,"rt",encoding="utf-8",errors="replace")
+
+          for path in sorted(logfiles):
+              try:
+                  fh=opener(path)
+              except Exception:
+                  continue
+              with fh:
+                  for line in fh:
+                      scanned += 1
+                      m=rx.match(line)
+                      if not m:
+                          parse_errors += 1
+                          continue
+                      ip, ds, method, target, status, size, ref, ua=m.groups()
+                      try:
+                          dt=datetime.strptime(ds, "%d/%b/%Y:%H:%M:%S %z").astimezone(timezone.utc)
+                      except Exception:
+                          parse_errors += 1
+                          continue
+                      if dt < cutoff or dt > now + timedelta(minutes=5):
+                          continue
+                      try:
+                          base=urlsplit(target).path or "/"
+                      except Exception:
+                          base=target.split("?",1)[0] or "/"
+                      dynamic = not bool(asset_ext.search(base))
+                      totals["requests"] += 1
+                      totals["dynamic_requests"] += int(dynamic)
+                      statuses[status]+=1; methods[method]+=1; paths[base]+=1; uas[ua or ""]+=1
+                      if dynamic: dyn_paths[base]+=1
+                      ip_path[(ip,base)]+=1
+                      h=dt.strftime("%Y-%m-%dT%H:00Z"); hour[h]+=1
+                      minute=dt.strftime("%Y-%m-%dT%H:%MZ")
+                      d=ips[ip]; d["n"]+=1; d["dyn"]+=int(dynamic); d["paths"][base]+=1; d["uas"][ua or ""]+=1; d["statuses"][status]+=1; d["minutes"][minute]+=1; d["methods"][method]+=1
+                      iso=dt.isoformat()
+                      if d["first"] is None or iso < d["first"]: d["first"]=iso
+                      if d["last"] is None or iso > d["last"]: d["last"]=iso
+                      oldest=iso if oldest is None or iso < oldest else oldest
+                      newest=iso if newest is None or iso > newest else newest
+
+          def top(counter,n):
+              return [{"value":k,"count":v} for k,v in counter.most_common(n)]
+
+          ip_rows=[]
+          for ip,d in ips.items():
+              top_path, top_path_n = d["paths"].most_common(1)[0] if d["paths"] else ("",0)
+              top_ua, top_ua_n = d["uas"].most_common(1)[0] if d["uas"] else ("",0)
+              peak=max(d["minutes"].values()) if d["minutes"] else 0
+              repeat_share=(top_path_n/d["n"]) if d["n"] else 0
+              ip_rows.append({
+                  "ip":ip,"requests":d["n"],"dynamic":d["dyn"],"unique_paths":len(d["paths"]),
+                  "top_path":top_path,"top_path_requests":top_path_n,"repeat_share":round(repeat_share,4),
+                  "peak_requests_per_minute":peak,"top_user_agent":top_ua,"top_user_agent_requests":top_ua_n,
+                  "statuses":dict(d["statuses"].most_common()),"methods":dict(d["methods"].most_common()),
+                  "first":d["first"],"last":d["last"]
+              })
+          ip_rows.sort(key=lambda x:(x["dynamic"],x["requests"]), reverse=True)
+
+          bot_re=re.compile(r'(bot|spider|crawler|crawl|slurp|bingpreview|headless|python-requests|curl/|wget/|httpclient|scrapy|go-http-client|facebookexternalhit|bytespider|semrush|ahrefs|mj12|dotbot|petalbot|gptbot|claudebot|applebot)',re.I)
+          bot_ua_requests=sum(n for ua,n in uas.items() if bot_re.search(ua or ""))
+          bot_ua_unique=sum(1 for ua in uas if bot_re.search(ua or ""))
+
+          suspicious_pairs=[]
+          for (ip,p),n in ip_path.most_common(250):
+              if n < 20: break
+              d=ips[ip]
+              suspicious_pairs.append({
+                  "ip":ip,"path":p,"requests":n,
+                  "ip_total":d["n"],"share_of_ip":round(n/d["n"],4) if d["n"] else 0,
+                  "peak_requests_per_minute":max(d["minutes"].values()) if d["minutes"] else 0,
+                  "user_agent":d["uas"].most_common(1)[0][0] if d["uas"] else ""
+              })
+
+          out={
+              "generated_at_utc":now.isoformat(),
+              "window_start_utc":cutoff.isoformat(),
+              "window_end_utc":now.isoformat(),
+              "log_files":[{"path":p,"size":os.path.getsize(p)} for p in sorted(logfiles)],
+              "lines_scanned":scanned,
+              "parse_errors":parse_errors,
+              "oldest_in_window":oldest,
+              "newest_in_window":newest,
+              "totals":{
+                  "requests":totals["requests"],
+                  "dynamic_requests":totals["dynamic_requests"],
+                  "unique_ips":len(ips),
+                  "unique_paths":len(paths),
+                  "unique_user_agents":len(uas),
+                  "bot_named_ua_requests":bot_ua_requests,
+                  "bot_named_unique_user_agents":bot_ua_unique
+              },
+              "status_codes":dict(statuses.most_common()),
+              "methods":dict(methods.most_common()),
+              "top_ips":ip_rows[:100],
+              "top_paths":top(paths,100),
+              "top_dynamic_paths":top(dyn_paths,100),
+              "top_user_agents":top(uas,100),
+              "top_ip_path_pairs":suspicious_pairs[:150],
+              "requests_by_hour":dict(sorted(hour.items()))
+          }
+          print(json.dumps(out,ensure_ascii=False,indent=2))
+          PY
+          REMOTE
+
+      - name: Build compact summary
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("bot-traffic-audit.json"))
+          lines=[]
+          lines.append("# Bot traffic audit — last 7 days")
+          lines.append("")
+          lines.append("Generated: "+d["generated_at_utc"])
+          lines.append("Window: "+d["window_start_utc"]+" → "+d["window_end_utc"])
+          lines.append("")
+          lines.append("## Totals")
+          for k,v in d["totals"].items(): lines.append(f"- {k}: {v}")
+          lines.append("")
+          lines.append("## Top 30 IPs by dynamic requests")
+          lines.append("ip\trequests\tdynamic\tunique_paths\ttop_path\ttop_path_requests\trepeat_share\tpeak_req_min\tuser_agent")
+          for x in d["top_ips"][:30]:
+              ua=x["top_user_agent"].replace("\t"," ")[:220]
+              lines.append(f'{x["ip"]}\t{x["requests"]}\t{x["dynamic"]}\t{x["unique_paths"]}\t{x["top_path"]}\t{x["top_path_requests"]}\t{x["repeat_share"]}\t{x["peak_requests_per_minute"]}\t{ua}')
+          lines.append("")
+          lines.append("## Top 40 dynamic paths")
+          for x in d["top_dynamic_paths"][:40]: lines.append(f'- {x["count"]}\t{x["value"]}')
+          lines.append("")
+          lines.append("## Top 30 user agents")
+          for x in d["top_user_agents"][:30]: lines.append(f'- {x["count"]}\t{x["value"][:300]}')
+          lines.append("")
+          lines.append("## Top repeated IP/path pairs")
+          for x in d["top_ip_path_pairs"][:50]:
+              lines.append(f'- {x["requests"]}\t{x["ip"]}\t{x["path"]}\tshare={x["share_of_ip"]}\tpeak/min={x["peak_requests_per_minute"]}\t{x["user_agent"][:180]}')
+          open("bot-traffic-audit.txt","w").write("\n".join(lines)+"\n")
+          PY
+          cat bot-traffic-audit.txt
+
+      - name: Upload audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: bot-traffic-audit-20260928
+          path: |
+            bot-traffic-audit.json
+            bot-traffic-audit.txt
+          retention-days: 7
