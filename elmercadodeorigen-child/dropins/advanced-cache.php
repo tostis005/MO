@@ -88,7 +88,7 @@ if ( '/' === $path || 0 === strpos( $path, '/en/' ) ) {
 	return;
 }
 
-$cache_dir  = __DIR__ . '/uploads/elmercado-blog-static-v1';
+$cache_dir  = __DIR__ . '/uploads/elmercado-blog-static-v2';
 $cache_file = $cache_dir . '/' . hash( 'sha256', $host . '|' . $path ) . '.html';
 $ttl        = 300;
 
