@@ -1,0 +1,145 @@
+name: Target suspicious store-page bot traffic 2026-09-28
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bot-traffic-target-audit-20260928.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Cross-tab store pages, UAs and rotating IPs
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' > targeted-bot-audit.json <<'REMOTE'
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,re,gzip,json,ipaddress
+          from collections import Counter,defaultdict
+          from datetime import datetime,timezone,timedelta
+          from urllib.parse import urlsplit
+
+          logdir="/var/www/vhosts/system/elmercadodeorigen.com/logs"
+          files=[]
+          base=os.path.join(logdir,"access_ssl_log")
+          if os.path.isfile(base): files.append(base)
+          processed=os.path.join(logdir,"access_ssl_log.processed")
+          if os.path.isfile(processed): files.append(processed)
+          for i in range(1,10):
+              p=os.path.join(logdir,f"access_ssl_log.processed.{i}.gz")
+              if os.path.isfile(p): files.append(p)
+
+          now=datetime.now(timezone.utc); cutoff=now-timedelta(days=7)
+          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+(\S+)(?:\s+"([^"]*)"\s+"([^"]*)")?')
+          targets_prefix=(
+            "/en/store/hidalgo-de-la-jara", "/en/store/montjam",
+            "/en/product-category/hams-and-shoulders",
+            "/en/product-category/cured-meats",
+            "/en/product-category/embutidos-y-curados"
+          )
+          path_counts=Counter(); ua_counts=Counter(); ip_counts=Counter(); ref_counts=Counter()
+          target_path_ua=defaultdict(Counter); target_path_ip=defaultdict(Counter)
+          ua_ips=defaultdict(set); ua_prefixes=defaultdict(set); ua_paths=defaultdict(Counter)
+          ua_days=defaultdict(Counter); path_days=defaultdict(Counter); status=Counter()
+          all_dynamic=0; target_total=0; lines=0
+
+          def prefix(ip):
+              try:
+                  a=ipaddress.ip_address(ip)
+                  if a.version==4:
+                      return str(ipaddress.ip_network(ip+"/24",strict=False))
+                  return str(ipaddress.ip_network(ip+"/48",strict=False))
+              except: return ip
+
+          for p in files:
+              op=gzip.open if p.endswith(".gz") else open
+              with op(p,"rt",encoding="utf-8",errors="replace") as f:
+                  for line in f:
+                      lines+=1
+                      m=rx.match(line)
+                      if not m: continue
+                      ip,ds,method,target,st,size,ref,ua=m.groups()
+                      try: dt=datetime.strptime(ds,"%d/%b/%Y:%H:%M:%S %z").astimezone(timezone.utc)
+                      except: continue
+                      if dt<cutoff or dt>now+timedelta(minutes=5): continue
+                      try: path=urlsplit(target).path or "/"
+                      except: path=target.split("?",1)[0] or "/"
+                      day=dt.strftime("%Y-%m-%d")
+                      ua=ua or ""
+                      status[st]+=1
+                      path_counts[path]+=1; ua_counts[ua]+=1; ip_counts[ip]+=1; ref_counts[ref or ""]+=1
+                      ua_ips[ua].add(ip); ua_prefixes[ua].add(prefix(ip)); ua_paths[ua][path]+=1; ua_days[ua][day]+=1
+                      if path.startswith(targets_prefix):
+                          target_total+=1
+                          target_path_ua[path][ua]+=1
+                          target_path_ip[path][ip]+=1
+                          path_days[path][day]+=1
+
+          def ua_row(ua,n):
+              return {
+                "ua":ua,"requests":n,"unique_ips":len(ua_ips[ua]),"unique_prefixes":len(ua_prefixes[ua]),
+                "top_paths":[{"path":p,"count":c} for p,c in ua_paths[ua].most_common(12)],
+                "daily":dict(sorted(ua_days[ua].items()))
+              }
+          target_rows=[]
+          for path,n in path_counts.most_common():
+              if not path.startswith(targets_prefix): continue
+              target_rows.append({
+                "path":path,"requests":n,
+                "top_uas":[{"ua":u,"count":c,"unique_ips_for_ua":len(ua_ips[u]),"unique_prefixes_for_ua":len(ua_prefixes[u])} for u,c in target_path_ua[path].most_common(15)],
+                "top_ips":[{"ip":ip,"count":c} for ip,c in target_path_ip[path].most_common(15)],
+                "daily":dict(sorted(path_days[path].items()))
+              })
+          out={
+            "generated_at":now.isoformat(),"window_start":cutoff.isoformat(),"files":files,"lines_scanned":lines,
+            "target_total":target_total,"status":dict(status.most_common()),
+            "top_user_agents":[ua_row(u,n) for u,n in ua_counts.most_common(60)],
+            "target_paths":target_rows[:80],
+            "top_ips":[{"ip":ip,"count":n} for ip,n in ip_counts.most_common(80)],
+            "top_referrers":[{"ref":r,"count":n} for r,n in ref_counts.most_common(40)]
+          }
+          print(json.dumps(out,ensure_ascii=False,indent=2))
+          PY
+          REMOTE
+      - name: Print concise findings
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("targeted-bot-audit.json"))
+          print("TARGET_TOTAL",d["target_total"])
+          print("=== TOP UA ===")
+          for x in d["top_user_agents"][:20]:
+              print(x["requests"],"req",x["unique_ips"],"ips",x["unique_prefixes"],"prefixes",x["ua"][:220])
+              for p in x["top_paths"][:5]: print("  ",p["count"],p["path"])
+          print("=== TARGET PATHS ===")
+          for x in d["target_paths"][:12]:
+              print("\nPATH",x["requests"],x["path"],"DAILY",x["daily"])
+              for u in x["top_uas"][:8]:
+                  print(" UA",u["count"],"ips",u["unique_ips_for_ua"],"prefixes",u["unique_prefixes_for_ua"],u["ua"][:200])
+          print("=== REFERRERS ===")
+          for x in d["top_referrers"][:15]: print(x["count"],x["ref"][:250])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: targeted-bot-audit-20260928
+          path: targeted-bot-audit.json
+          retention-days: 7
