@@ -22,7 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * navegador, por lo que el HTML cacheado no fija un país ni un proveedor.
  */
 function elmercado_blog_static_cache_dir_010299(): string {
-	return WP_CONTENT_DIR . '/uploads/elmercado-blog-static-v1';
+	return WP_CONTENT_DIR . '/uploads/elmercado-blog-static-v2';
 }
 
 function elmercado_blog_static_cache_normalized_path_010299(): string {
@@ -125,7 +125,7 @@ function elmercado_blog_static_cache_write_010299( string $file, string $html ):
 		'' === $html
 		|| false === stripos( $html, '<html' )
 		|| false === stripos( $html, '</html>' )
-		|| false === strpos( $html, 'data-emo-adsterra-slot=' )
+		|| ( false === strpos( $html, 'data-emo-inarticle-ad=' ) && false === strpos( $html, 'elmercado-adsense-geo' ) )
 		|| false !== stripos( $html, 'wp-die-message' )
 		|| false !== stripos( $html, 'WordPress database error' )
 	) {
@@ -202,8 +202,7 @@ add_action( 'edited_category', 'elmercado_blog_static_cache_purge_010299' );
 add_action( 'delete_category', 'elmercado_blog_static_cache_purge_010299' );
 
 function elmercado_blog_ad_provider_010290(): string {
-	$provider = defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ? strtolower( trim( (string) ELMERCADO_BLOG_AD_PROVIDER ) ) : 'adsense';
-	return in_array( $provider, array( 'adsense', 'adsterra' ), true ) ? $provider : 'adsense';
+	return 'adsense';
 }
 
 function elmercado_adsterra_is_blog_post_request_010290(): bool {
