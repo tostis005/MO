@@ -69,7 +69,7 @@ function emdo_duck_serp_titles_20260928(): array {
 		'que-hacer-con-confit-de-pato-desmigado-ideas' => 'Confit de pato desmigado: ideas para aprovecharlo',
 		'croquetas-confit-de-pato-como-aprovecharlo' => 'Croquetas de confit de pato: receta y trucos',
 		'mousse-de-pato-pimienta-cognac-orujo-diferencias' => 'Mousse de pato: pimienta, coñac u orujo, diferencias',
-		'muslo-pato-fresco-vs-confit-diferencias' => 'Muslo fresco vs confit de pato: diferencias y cocción',
+		'muslo-de-pato-fresco-y-confit-diferencias' => 'Muslo fresco vs confit de pato: diferencias y cocción',
 		'pato-entero-al-horno-jugoso-crujiente' => 'Pato entero al horno: jugoso por dentro y crujiente',
 		'carne-de-pato-vs-pollo-diferencias-sabor-cocina' => 'Carne de pato vs pollo: diferencias de sabor y cocina',
 		'valor-nutricional-carne-de-pato-proteinas-grasas-calorias' => 'Carne de pato: proteínas, grasas, calorías y nutrición',
