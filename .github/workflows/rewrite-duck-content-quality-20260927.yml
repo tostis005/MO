@@ -9,6 +9,7 @@ on:
       - '.github/scripts/snapshot-duck-unique-legacy-paragraphs-20260927.php'
       - '.github/scripts/fill-duck-depth-from-unique-legacy-20260927.php'
       - '.github/scripts/patch-duck-depth-and-intents-20260928.php'
+      - '.github/scripts/separate-duck-intents-final-20260928.php'
       - '.github/scripts/audit-duck-content-quality-20260927.php'
       - '.github/workflows/rewrite-duck-content-quality-20260927.yml'
   workflow_dispatch:
@@ -98,6 +99,7 @@ jobs:
             expand-duck-content-batch6-20260927.php
             fill-duck-depth-from-unique-legacy-20260927.php
             patch-duck-depth-and-intents-20260928.php
+            separate-duck-intents-final-20260928.php
             audit-duck-content-quality-20260927.php
           )
 
@@ -127,6 +129,9 @@ jobs:
 
           echo '--- DEPTH + INTENT PATCH ---'
           run_remote patch-duck-depth-and-intents-20260928.php
+
+          echo '--- FINAL INTENT SEPARATION ---'
+          run_remote separate-duck-intents-final-20260928.php
 
           echo '--- CONTENT AUDIT ---'
           run_remote audit-duck-content-quality-20260927.php > /tmp/duck-content-audit.json
