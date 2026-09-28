@@ -8,6 +8,7 @@ on:
       - '.github/scripts/expand-duck-content-batch*-20260927.php'
       - '.github/scripts/snapshot-duck-unique-legacy-paragraphs-20260927.php'
       - '.github/scripts/fill-duck-depth-from-unique-legacy-20260927.php'
+      - '.github/scripts/patch-duck-depth-and-intents-20260928.php'
       - '.github/scripts/audit-duck-content-quality-20260927.php'
       - '.github/workflows/rewrite-duck-content-quality-20260927.yml'
   workflow_dispatch:
@@ -96,6 +97,7 @@ jobs:
             rewrite-duck-content-batch6-20260927.php
             expand-duck-content-batch6-20260927.php
             fill-duck-depth-from-unique-legacy-20260927.php
+            patch-duck-depth-and-intents-20260928.php
             audit-duck-content-quality-20260927.php
           )
 
@@ -123,6 +125,9 @@ jobs:
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST"             "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true"
 
+          echo '--- DEPTH + INTENT PATCH ---'
+          run_remote patch-duck-depth-and-intents-20260928.php
+
           echo '--- CONTENT AUDIT ---'
           run_remote audit-duck-content-quality-20260927.php > /tmp/duck-content-audit.json
           jq '.' /tmp/duck-content-audit.json
@@ -134,10 +139,11 @@ jobs:
         run: |
           set -euo pipefail
           jq -e '.summary.count == 60' /tmp/duck-content-audit.json >/dev/null
-          jq -e '.summary.words.min >= 850' /tmp/duck-content-audit.json >/dev/null
+          jq -e '.summary.words.min >= 980' /tmp/duck-content-audit.json >/dev/null
           jq -e '.summary.shared_ratio_2plus.avg <= 0.25' /tmp/duck-content-audit.json >/dev/null
           jq -e '.summary.shared_ratio_10plus.avg <= 0.10' /tmp/duck-content-audit.json >/dev/null
           jq -e '.summary.repeated_long_paragraphs_50plus == 0' /tmp/duck-content-audit.json >/dev/null
+          jq -e '.summary.high_similarity_pair_count <= 60' /tmp/duck-content-audit.json >/dev/null
           echo "DUCK_CONTENT_AUDIT_GATES_OK"
 
       - name: Verify public article rendering
