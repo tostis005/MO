@@ -1,0 +1,162 @@
+name: Optimize duck cluster SEO 20260928
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-duck-cluster-seo-20260928.php'
+      - '.github/scripts/optimize-duck-cluster-seo-20260928.php'
+      - '.github/workflows/optimize-duck-cluster-seo-20260928.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: optimize-duck-cluster-seo-20260928
+  cancel-in-progress: true
+
+jobs:
+  optimize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PHP
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-duck-cluster-seo-20260928.php >/dev/null
+          php -l .github/scripts/optimize-duck-cluster-seo-20260928.php >/dev/null
+          : "${STAGING_HOST:?}"
+          : "${STAGING_USER:?}"
+          : "${STAGING_PASSWORD:?}"
+
+      - name: Deploy and optimize production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq curl >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true)
+            php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;;
+              esac
+            done
+            [ -n "$prod" ] || exit 22
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+          REMOTE_SCRIPT="/tmp/optimize-duck-cluster-${GITHUB_RUN_ID}.php"
+          REMOTE_PLUGIN="$PROD/wp-content/mu-plugins/mdo-duck-cluster-seo-20260928.php"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$PROD/wp-content/mu-plugins'"
+          sshpass -e scp $SCP mu-plugins/mdo-duck-cluster-seo-20260928.php "$STAGING_USER@$STAGING_HOST:$REMOTE_PLUGIN"
+          sshpass -e scp $SCP .github/scripts/optimize-duck-cluster-seo-20260928.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST"             "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE_SCRIPT' --path='$PROD' --allow-root"             > /tmp/duck-seo-optimize.json
+
+          jq '. | {batch,category,count,visible_normal_query,category_query,homepage_unsuppressed}' /tmp/duck-seo-optimize.json
+
+          jq -e '.count == 60' /tmp/duck-seo-optimize.json >/dev/null
+          jq -e '.visible_normal_query == 60' /tmp/duck-seo-optimize.json >/dev/null
+          jq -e '.category_query == 60' /tmp/duck-seo-optimize.json >/dev/null
+          jq -e '.homepage_unsuppressed == 5' /tmp/duck-seo-optimize.json >/dev/null
+          jq -e '[.rows[] | select(.hidden != "")] | length == 0' /tmp/duck-seo-optimize.json >/dev/null
+          jq -e '[.rows[] | select((.categories|length)!=1)] | length == 0' /tmp/duck-seo-optimize.json >/dev/null
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST"             "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$REMOTE_SCRIPT'"
+
+      - name: Verify public SEO and discovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://www.elmercadodeorigen.com'
+
+          get_page() {
+            local url="$1"
+            local out="$2"
+            curl -fsSL --retry 4 --retry-delay 2 --max-time 60               -A 'Mozilla/5.0 EMDO SEO verifier'               -H 'Cache-Control: no-cache'               "$url" -o "$out"
+          }
+
+          get_page "$base/category/pato/?emdo_seo_verify=1" /tmp/pato-category.html
+          grep -qi '<h1[^>]*>Pato</h1>' /tmp/pato-category.html
+          grep -q 'carne-de-pato-guia-completa-cortes-sabor-preparacion' /tmp/pato-category.html
+          ! grep -qi 'noindex' /tmp/pato-category.html
+
+          get_page "$base/carne-de-pato-guia-completa-cortes-sabor-preparacion/?emdo_seo_verify=1" /tmp/duck-pillar.html
+          grep -q '>Pato</a>' /tmp/duck-pillar.html
+          grep -q 'data-emdo-duck-hub-link="1"' /tmp/duck-pillar.html
+          grep -qi '<title>Carne de pato: cortes, sabor, preparación y cómo elegirla' /tmp/duck-pillar.html
+          ! grep -qi 'noindex' /tmp/duck-pillar.html
+
+          get_page "$base/como-preparar-confit-de-pato-al-horno-piel-crujiente/?emdo_seo_verify=1" /tmp/duck-confit.html
+          grep -qi '<title>Confit de pato crujiente: horno, grill y air fryer' /tmp/duck-confit.html
+
+          get_page "$base/blog/?emdo_seo_verify=1" /tmp/blog-home.html
+          grep -q 'carne-de-pato-guia-completa-cortes-sabor-preparacion' /tmp/blog-home.html
+          ! grep -q 'productos-de-pato-para-regalar-foie-pates-jamon-lotes' /tmp/blog-home.html
+
+          get_page "$base/como-elegir-lote-productos-gourmet-presupuesto-destinatario-conservacion/?emdo_seo_verify=1" /tmp/source-link.html
+          grep -q 'productos-de-pato-para-regalar-foie-pates-jamon-lotes' /tmp/source-link.html
+
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          checks={}
+          for name in ['pato-category','duck-pillar','duck-confit','blog-home','source-link']:
+              html=Path('/tmp/'+name+'.html').read_text(errors='ignore')
+              title=re.search(r'<title[^>]*>(.*?)</title>',html,re.I|re.S)
+              desc=re.search(r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']*)',html,re.I)
+              canon=re.search(r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)',html,re.I)
+              checks[name]={
+                  'title': re.sub(r'\s+',' ',title.group(1)).strip() if title else None,
+                  'description': desc.group(1) if desc else None,
+                  'canonical': canon.group(1) if canon else None,
+                  'noindex': 'noindex' in html.lower(),
+              }
+          import json
+          print(json.dumps(checks,ensure_ascii=False,indent=2))
+          Path('/tmp/duck-public-seo.json').write_text(json.dumps(checks,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Record SEO optimization
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          jq -n             --arg generated_at "$(date -u +%FT%TZ)"             --arg run_id "$GITHUB_RUN_ID"             --arg source_sha "$GITHUB_SHA"             --slurpfile deployment /tmp/duck-seo-optimize.json             --slurpfile public /tmp/duck-public-seo.json             '{generated_at:$generated_at,run_id:($run_id|tonumber),source_sha:$source_sha,verified:true,batch:"20260928-duck-seo-global-optimization",deployment:$deployment[0],public_verification:$public[0]}'             > .deploy-status/duck-seo-global-20260928.json
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/duck-seo-global-20260928.json
+          git commit -m 'Record duck SEO global optimization [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
