@@ -9,10 +9,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.311' );
-/* 0.10.311 usa Adsterra primero y restaura Auto Ads + In-article de Google si invoke.js falla. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.312' );
+/* 0.10.312 deja Google AdSense como unico proveedor publicitario activo. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
-	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsterra' ); // 'adsense' | 'adsterra'
+	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsense' ); // Adsterra queda conservado pero inactivo.
 }
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
