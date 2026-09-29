@@ -84,6 +84,87 @@ $path        = parse_url( $request_uri, PHP_URL_PATH );
 $path        = is_string( $path ) && '' !== $path ? '/' . ltrim( $path, '/' ) : '/';
 $path        = '/' !== $path ? rtrim( $path, '/' ) . '/' : '/';
 
+/**
+ * Hot commerce cache.
+ *
+ * These exact anonymous landing pages are currently receiving sustained
+ * distributed crawler traffic. Keep the scope intentionally narrow:
+ * - exact allow-list only;
+ * - GET only, no query string;
+ * - cookie gate above already bypasses logged-in/cart/session state;
+ * - short 5 minute TTL;
+ * - cache is generated only from a complete rendered HTML response.
+ */
+$hot_cache_paths = array(
+	'/en/store/hidalgo-de-la-jara/'                         => 'en-store-hidalgo-de-la-jara',
+	'/en/store/montjam/'                                    => 'en-store-montjam',
+	'/en/product-category/hams-and-shoulders/'              => 'en-cat-hams-and-shoulders',
+	'/en/product-category/hams-and-shoulders/page/2/'       => 'en-cat-hams-and-shoulders-p2',
+	'/en/product-category/cured-meats/'                     => 'en-cat-cured-meats',
+	'/categoria-producto/jamones-paletas/'                  => 'es-cat-jamones-paletas',
+	'/categoria-producto/embutidos-y-curados/'              => 'es-cat-embutidos-curados',
+);
+
+if ( isset( $hot_cache_paths[ $path ] ) ) {
+	$hot_cache_dir  = __DIR__ . '/uploads/elmercado-hot-static-v1';
+	$hot_cache_file = $hot_cache_dir . '/' . $hot_cache_paths[ $path ] . '.html';
+	$hot_ttl        = 300;
+
+	if (
+		is_readable( $hot_cache_file ) &&
+		( time() - (int) @filemtime( $hot_cache_file ) ) < $hot_ttl &&
+		(int) @filesize( $hot_cache_file ) > 50000
+	) {
+		if ( ! headers_sent() ) {
+			header( 'Content-Type: text/html; charset=UTF-8' );
+			header( 'Cache-Control: private, no-store, max-age=0' );
+			header( 'Vary: Cookie', false );
+			header( 'X-El-Mercado-Hot-Early-Cache: HIT' );
+			setcookie( 'total_page', '1', time() + 7200, '/' );
+		}
+		readfile( $hot_cache_file );
+		exit;
+	}
+
+	if ( ! headers_sent() ) {
+		header( 'X-El-Mercado-Hot-Early-Cache: MISS' );
+	}
+
+	ob_start(
+		static function ( $html ) use ( $hot_cache_dir, $hot_cache_file ) {
+			if ( ! is_string( $html ) || strlen( $html ) < 50000 ) {
+				return $html;
+			}
+
+			if (
+				false === stripos( $html, '</html>' ) ||
+				false !== stripos( $html, 'WordPress database error' ) ||
+				false !== stripos( $html, 'There has been a critical error' )
+			) {
+				return $html;
+			}
+
+			if ( ! is_dir( $hot_cache_dir ) ) {
+				@mkdir( $hot_cache_dir, 0755, true );
+			}
+
+			if ( is_dir( $hot_cache_dir ) && is_writable( $hot_cache_dir ) ) {
+				$tmp = $hot_cache_file . '.tmp-' . getmypid();
+				if ( false !== @file_put_contents( $tmp, $html, LOCK_EX ) ) {
+					@rename( $tmp, $hot_cache_file );
+				} else {
+					@unlink( $tmp );
+				}
+			}
+
+			return $html;
+		}
+	);
+
+	// Let WordPress render the first request; the output buffer above stores it.
+	return;
+}
+
 if ( '/' === $path || 0 === strpos( $path, '/en/' ) ) {
 	return;
 }
