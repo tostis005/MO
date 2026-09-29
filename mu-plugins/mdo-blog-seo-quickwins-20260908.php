@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
  * Description: Removes duplicated in-content H1s, defers the inline newsletter, applies data-led SERP copy and reinforces contextual internal links to the highest-opportunity blog posts.
- * Version: 2026.09.29.15
+ * Version: 2026.09.29.16
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -218,7 +218,7 @@ function mdo_blog_seo_top3_title_20260908( $title ): string {
         'what-is-rennet-in-cheese-animal-vegetable-microbial-coagulation'        => 'What Is Rennet in Cheese? Animal, Plant & Microbial',
         'how-to-store-cheese-properly-fridge-wrapping-temperature'               => 'How to Store Cheese in the Fridge: Wrap & Temperature',
         'se-pueden-congelar-legumbres-cocidas-como-hacerlo'                     => '¿Se pueden congelar legumbres cocidas? Cómo hacerlo',
-        'se-pueden-congelar-las-legumbres-cocidas-como-hacerlo'                 => '¿Se pueden congelar legumbres cocidas? Cómo hacerlo',
+        'se-pueden-congelar-legumbres-cocidas-como-hacerlo-textura'            => '¿Se pueden congelar legumbres cocidas? Cómo hacerlo',
         'cuanto-dura-carne-cocinada-nevera-conservacion-segura'                 => 'Carne cocinada en nevera: cuánto dura y cómo guardarla',
         'how-long-opened-canned-food-keeps-in-fridge-how-to-store-it'            => 'Opened Canned Food: How Long It Keeps in the Fridge',
         'se-puede-volver-congelar-carne-descongelada-cuando-si-cuando-no'        => '¿Se puede volver a congelar carne descongelada?',
@@ -266,7 +266,7 @@ function mdo_blog_seo_top3_description_20260908( $description ): string {
         'cuanto-tiempo-puede-estar-carne-fuera-nevera-antes-cocinarla'           => 'Cuánto tiempo puede estar la carne fuera de la nevera antes de cocinarla, qué cambia con el calor ambiente y cuándo es más seguro descartarla.',
         'garbanzos-agua-caliente-o-fria-remojo-coccion'                         => '¿Agua caliente o fría para los garbanzos? Aprende qué temperatura usar en el remojo y la cocción y cómo evitar que queden duros.',
         'se-pueden-congelar-legumbres-cocidas-como-hacerlo'                     => 'Sí, las legumbres cocidas se pueden congelar. Aprende cómo enfriarlas, envasarlas y descongelarlas para conservar mejor su textura y sabor.',
-        'se-pueden-congelar-las-legumbres-cocidas-como-hacerlo'                 => 'Sí, las legumbres cocidas se pueden congelar. Aprende cómo enfriarlas, envasarlas y descongelarlas para conservar mejor su textura y sabor.',
+        'se-pueden-congelar-legumbres-cocidas-como-hacerlo-textura'            => 'Sí, las legumbres cocidas se pueden congelar. Aprende cómo enfriarlas, envasarlas y descongelarlas para conservar mejor su textura y sabor.',
         'verdura-vs-hortaliza-diferencia-que-alimentos-pertenecen-cada-grupo'    => 'Verdura y hortaliza no significan exactamente lo mismo. Descubre la diferencia, qué alimentos incluye cada concepto y ejemplos fáciles de recordar.',
         'cuanto-dura-carne-cocinada-nevera-conservacion-segura'                 => 'Consulta cuánto dura la carne cocinada en la nevera, cómo enfriarla y guardarla correctamente y qué señales indican que ya no conviene consumirla.',
         'por-que-aceite-hace-espuma-al-freir-causas-cuando-preocuparse'          => '¿Por qué hace espuma el aceite al freír? Repasamos las causas más habituales, cuándo es normal y qué señales indican que conviene cambiar el aceite.',
