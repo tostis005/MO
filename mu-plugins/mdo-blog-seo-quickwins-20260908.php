@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
  * Description: Removes duplicated in-content H1s, defers the inline newsletter, applies data-led SERP copy and reinforces contextual internal links to the highest-opportunity blog posts.
- * Version: 2026.09.29.1
+ * Version: 2026.09.29.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -336,3 +336,357 @@ function mdo_blog_seo_internal_links_20260908( $content ): string {
     return $content;
 }
 add_filter( 'the_content', 'mdo_blog_seo_internal_links_20260908', 42 );
+
+
+/**
+ * GSC authority mesh, 2026-09-29.
+ *
+ * Search Console shows the largest ranking opportunities concentrated in a
+ * handful of editorial clusters already sitting around positions 4-10.
+ * Add a compact, user-visible contextual navigation block to the strongest
+ * source pages in those clusters. This creates useful in-body links without
+ * changing stored post content, URLs or canonical signals.
+ */
+function mdo_blog_seo_cluster_links_20260929( $content ): string {
+    $content = (string) $content;
+
+    if ( ! is_singular( 'post' ) || false !== strpos( $content, 'data-mdo-seo-cluster=' ) ) {
+        return $content;
+    }
+
+    $slug = mdo_blog_seo_current_slug_20260908();
+    if ( '' === $slug ) {
+        return $content;
+    }
+
+    $request_uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+    $path        = (string) wp_parse_url( $request_uri, PHP_URL_PATH );
+    $is_english  = 0 === strpos( $path, '/en/' );
+
+    $clusters = array(
+        'es-legumbres' => array(
+            'english' => false,
+            'sources' => array(
+                'hay-que-poner-lentejas-en-remojo-cuanto-tiempo',
+                'garbanzos-tiempo-remojo-cuanto-tardan-cocerse',
+                'cuanta-legumbre-seca-por-persona-garbanzos-lentejas-alubias',
+                'garbanzos-agua-caliente-o-fria-remojo-coccion',
+                'se-pueden-congelar-legumbres-cocidas-como-hacerlo',
+                'hay-que-tirar-agua-remojo-legumbres-se-puede-aprovechar',
+                'espuma-cocer-garbanzos-lentejas-alubias-que-es-retirarla',
+                'que-legumbre-tiene-mas-hierro-comparativa',
+                'bicarbonato-en-remojo-legumbres-para-que-sirve-cuanto-usar',
+                'que-legumbre-tiene-mas-proteina-comparativa',
+                'cuando-echar-sal-garbanzos-lentejas-alubias-endurece-legumbres',
+                'tipos-lentejas-pardina-castellana-beluga-roja-diferencias',
+                'tipos-alubias-blancas-pintas-canela-fabes-judiones',
+                'lentejas-vs-garbanzos-diferencias-nutricionales',
+                'garbanzos-lentejas-alubias-cual-es-mas-nutritiva',
+                'tipos-garbanzos-pedrosillano-castellano-lechoso-variedades',
+                'como-conservar-legumbres-secas-despensa',
+                'como-hacer-legumbres-den-menos-gases-remojo-coccion',
+                'que-legumbre-tiene-mas-fibra',
+                'legumbres-secas-vs-cocidas-calorias-nutrientes',
+            ),
+            'label' => 'Guías relacionadas',
+            'targets' => array(
+                array( '/hay-que-poner-lentejas-en-remojo-cuanto-tiempo/', 'cuándo y cuánto tiempo remojar las lentejas' ),
+                array( '/garbanzos-tiempo-remojo-cuanto-tardan-cocerse/', 'tiempo de remojo y cocción de los garbanzos' ),
+                array( '/cuanta-legumbre-seca-por-persona-garbanzos-lentejas-alubias/', 'cuánta legumbre seca calcular por persona' ),
+                array( '/garbanzos-agua-caliente-o-fria-remojo-coccion/', 'agua caliente o fría para los garbanzos' ),
+            ),
+        ),
+        'es-carne' => array(
+            'english' => false,
+            'sources' => array(
+                'cuanta-proteina-tiene-carne-ternera',
+                'cuanto-tiempo-puede-estar-carne-fuera-nevera-antes-cocinarla',
+                'cuanto-dura-carne-cocinada-nevera-conservacion-segura',
+                'carne-magra-ternera-que-es-como-cocinar-tierna',
+                'aguja-ternera-que-corte-es-como-cocinarla',
+                'cuanta-carne-calcular-por-persona-corte-receta',
+                'liquido-rojo-carne-no-es-sangre-que-es-realmente',
+                'espuma-blanca-cocinar-carne-que-es-por-que-sale',
+                'como-descongelar-carne-correctamente-nevera-agua-fria-microondas',
+                'se-puede-volver-congelar-carne-descongelada-cuando-si-cuando-no',
+                'se-puede-congelar-carne-cocinada-como-conservar-descongelar',
+                'hay-que-lavar-carne-antes-cocinar-por-que-no',
+                'cuando-salar-carne-antes-despues-cocinar',
+                'como-saber-carne-fresca-buen-estado-color-olor-textura-envase',
+                'nutrientes-carne-ternera-proteina-hierro-zinc-vitaminas',
+                'entrecot-chuleton-cortes-ternera-plancha-parrilla',
+                'como-cocinar-filetes-ternera-tiernos-jugosos',
+                'solomillo-vs-entrecot-diferencias-ternura-grasa-sabor-cual-elegir',
+                'cuanto-hierro-tiene-carne-ternera',
+                'como-cortar-carne-contrapelo-mas-tierna',
+            ),
+            'label' => 'Guías relacionadas',
+            'targets' => array(
+                array( '/cuanta-proteina-tiene-carne-ternera/', 'proteína de la ternera por 100 g y por ración' ),
+                array( '/cuanto-tiempo-puede-estar-carne-fuera-nevera-antes-cocinarla/', 'cuánto tiempo puede estar la carne fuera de la nevera' ),
+                array( '/cuanto-dura-carne-cocinada-nevera-conservacion-segura/', 'cuánto dura la carne cocinada en la nevera' ),
+                array( '/carne-magra-ternera-que-es-como-cocinar-tierna/', 'qué es la carne magra de ternera' ),
+            ),
+        ),
+        'es-conservas' => array(
+            'english' => false,
+            'sources' => array(
+                'cuanto-duran-conservas-una-vez-abiertas-nevera-como-guardarlas',
+                'se-puede-guardar-lata-abierta-nevera-por-que-cambiar-recipiente',
+                'caducan-conservas-cuanto-duran-como-saber-buen-estado',
+                'se-pueden-congelar-conservas-una-vez-abiertas-que-productos-toleran-mejor',
+                'peso-neto-vs-peso-escurrido-conserva-que-significa',
+                'lata-conserva-abollada-cuando-segura-cuando-descartar',
+                'vacio-tarro-conserva-como-saber-cierre-intacto',
+                'esterilizacion-conservas-vegetales-por-que-duran-despensa',
+                'botulismo-conservas-prevencion-comercial-senales-alerta',
+                'ph-acidez-conservas-importancia-elaboracion-seguridad',
+            ),
+            'label' => 'Guías relacionadas',
+            'targets' => array(
+                array( '/cuanto-duran-conservas-una-vez-abiertas-nevera-como-guardarlas/', 'cuánto duran las conservas una vez abiertas' ),
+                array( '/se-puede-guardar-lata-abierta-nevera-por-que-cambiar-recipiente/', 'cómo guardar una lata abierta en la nevera' ),
+                array( '/se-pueden-congelar-conservas-una-vez-abiertas-que-productos-toleran-mejor/', 'qué conservas abiertas se pueden congelar' ),
+                array( '/caducan-conservas-cuanto-duran-como-saber-buen-estado/', 'cuánto duran las conservas y cómo valorar su estado' ),
+            ),
+        ),
+        'es-aceite' => array(
+            'english' => false,
+            'sources' => array(
+                'por-que-aceite-hace-espuma-al-freir-causas-cuando-preocuparse',
+                'calorias-aceite-oliva-cucharada-100g',
+                'aceite-oliva-o-girasol-para-freir-cual-elegir',
+                'acido-oleico-aceite-oliva-que-es-cuanto-tiene',
+                'nutrientes-aceite-oliva-virgen-extra',
+                'aceite-oliva-se-solidifica-turbio-frio-es-malo',
+                'aceite-oliva-reposteria-sustituir-mantequilla-que-aove-elegir',
+                'aceite-oliva-tiene-colesterol',
+                'aove-omega-3-omega-6-perfil-grasas',
+            ),
+            'label' => 'Guías relacionadas',
+            'targets' => array(
+                array( '/calorias-aceite-oliva-cucharada-100g/', 'calorías del aceite de oliva por cucharada y 100 g' ),
+                array( '/por-que-aceite-hace-espuma-al-freir-causas-cuando-preocuparse/', 'por qué el aceite hace espuma al freír' ),
+                array( '/aceite-oliva-o-girasol-para-freir-cual-elegir/', 'aceite de oliva o girasol para freír' ),
+                array( '/acido-oleico-aceite-oliva-que-es-cuanto-tiene/', 'qué es el ácido oleico del aceite de oliva' ),
+            ),
+        ),
+        'es-hortalizas' => array(
+            'english' => false,
+            'sources' => array(
+                'verdura-vs-hortaliza-diferencia-que-alimentos-pertenecen-cada-grupo',
+                'patata-cortada-se-pone-negra-por-que-oxidacion-como-evitarla',
+                'como-conservar-patatas-nevera-despensa-evitar-brotes',
+                'verduras-mas-potasio-comparativa',
+                'manchas-negras-dentro-patata-por-que-aparecen-cuando-descartarla',
+                'tomates-rajados-por-que-se-agrietan-cuando-se-pueden-comer',
+                'cebolla-brotada-se-puede-comer-bulbo-brote',
+                'que-verduras-tienen-mas-fibra',
+                'que-verduras-tienen-mas-hierro',
+                'por-que-algunas-verduras-saben-amargas',
+                'nutrientes-verduras-vitaminas-minerales-fibra',
+                'que-verduras-tienen-mas-vitamina-c',
+                'escarola-vs-lechuga-diferencias-sabor-textura-usos',
+                'berenjena-marron-por-dentro-cuando-normal-cuando-pasada',
+                'verduras-temporada-espana-calendario-meses-que-comprar',
+                'por-que-frutas-hortalizas-se-oscurecen-al-cortarlas-oxidacion-enzimatica',
+                'hortalizas-raiz-hoja-fruto-flor-bulbo-tallo',
+            ),
+            'label' => 'Guías relacionadas',
+            'targets' => array(
+                array( '/verdura-vs-hortaliza-diferencia-que-alimentos-pertenecen-cada-grupo/', 'diferencia entre verdura y hortaliza' ),
+                array( '/patata-cortada-se-pone-negra-por-que-oxidacion-como-evitarla/', 'por qué la patata cortada se pone negra' ),
+                array( '/berenjena-marron-por-dentro-cuando-normal-cuando-pasada/', 'cuándo una berenjena marrón por dentro está pasada' ),
+                array( '/por-que-frutas-hortalizas-se-oscurecen-al-cortarlas-oxidacion-enzimatica/', 'por qué frutas y hortalizas se oscurecen al cortarlas' ),
+            ),
+        ),
+        'en-pulses' => array(
+            'english' => true,
+            'sources' => array(
+                'do-lentils-need-soaking-how-long',
+                'chickpeas-soaking-time-how-long-to-cook',
+                'foam-when-cooking-chickpeas-lentils-beans-what-it-is-remove-it',
+                'how-much-dried-pulses-per-person-chickpeas-lentils-beans',
+                'types-of-spanish-beans-white-speckled-canela-fabes-judiones',
+                'do-legumes-lose-nutrients-when-cooked',
+                'baking-soda-soaking-pulses-what-it-does-how-much-to-use',
+                'legume-nutrients-protein-fibre-iron-vitamins-minerals',
+                'which-legume-has-most-protein-comparison',
+                'does-soaking-legumes-cause-nutrient-loss',
+                'dry-vs-cooked-legumes-calories-nutrients',
+                'types-of-lentils-pardina-castellana-beluga-red-differences',
+                'is-legume-protein-complete-amino-acids-how-to-combine',
+                'iron-rich-foods-meat-legumes-vegetables',
+                'should-you-discard-pulse-soaking-water-can-you-use-it',
+            ),
+            'label' => 'Related guides',
+            'targets' => array(
+                array( '/en/do-lentils-need-soaking-how-long/', 'whether lentils need soaking and for how long' ),
+                array( '/en/chickpeas-soaking-time-how-long-to-cook/', 'chickpea soaking and cooking times' ),
+                array( '/en/how-much-dried-pulses-per-person-chickpeas-lentils-beans/', 'how much dried pulses to plan per person' ),
+                array( '/en/foam-when-cooking-chickpeas-lentils-beans-what-it-is-remove-it/', 'why foam appears when cooking pulses' ),
+            ),
+        ),
+        'en-meat' => array(
+            'english' => true,
+            'sources' => array(
+                'how-much-protein-in-beef',
+                'how-long-can-meat-stay-out-of-the-fridge-before-cooking',
+                'how-long-can-you-freeze-meat-beef-ground-beef-burgers',
+                'red-liquid-in-meat-is-not-blood-what-it-really-is',
+                'white-foam-when-cooking-meat-what-it-is-why-it-appears',
+                'how-much-iron-in-beef',
+                'why-meat-releases-water-in-pan-how-to-stop-it',
+                'can-you-freeze-cooked-meat-how-to-store-and-thaw-it',
+                'vacuum-packed-meat-strong-smell-opened-when-normal-when-to-discard',
+                'tenderloin-vs-entrecote-differences-tenderness-fat-flavour-which-to-choose',
+                'freezer-burn-on-meat-what-it-is-is-it-safe-and-how-to-prevent-it',
+                'vacuum-packed-meat-purple-dark-why-colour-changes-after-opening',
+                'how-much-meat-to-plan-per-person-by-cut-and-recipe',
+                'can-you-refreeze-thawed-meat-when-it-is-safe',
+                'should-you-wash-meat-before-cooking-why-not',
+                'beef-nutrients-protein-iron-zinc-vitamins',
+                'why-burgers-shrink-when-cooked-causes-and-how-to-reduce-it',
+                'how-long-cooked-meat-lasts-in-fridge-safe-storage',
+                'how-long-to-marinate-beef-hours-salt-acid',
+            ),
+            'label' => 'Related guides',
+            'targets' => array(
+                array( '/en/how-much-protein-in-beef/', 'beef protein per 100 g and by serving' ),
+                array( '/en/how-long-can-meat-stay-out-of-the-fridge-before-cooking/', 'how long meat can stay out of the fridge' ),
+                array( '/en/how-long-can-you-freeze-meat-beef-ground-beef-burgers/', 'how long beef and burgers keep frozen' ),
+                array( '/en/white-foam-when-cooking-meat-what-it-is-why-it-appears/', 'what the white foam when cooking meat is' ),
+            ),
+        ),
+        'en-canned' => array(
+            'english' => true,
+            'sources' => array(
+                'how-long-opened-canned-food-keeps-in-fridge-how-to-store-it',
+                'net-weight-vs-drained-weight-in-preserves-what-each-means',
+                'do-canned-foods-expire-how-long-they-last-how-to-tell-if-safe',
+                'canned-vegetables-colour-change-normal-spoilage',
+                'botulism-canned-food-commercial-prevention-warning-signs',
+                'glass-jar-vs-can-preserves-differences-storage-use',
+                'should-you-rinse-canned-jarred-vegetables-before-eating',
+            ),
+            'label' => 'Related guides',
+            'targets' => array(
+                array( '/en/how-long-opened-canned-food-keeps-in-fridge-how-to-store-it/', 'how long opened canned food keeps in the fridge' ),
+                array( '/en/do-canned-foods-expire-how-long-they-last-how-to-tell-if-safe/', 'how long canned foods last and signs of spoilage' ),
+                array( '/en/canned-vegetables-colour-change-normal-spoilage/', 'when colour changes in canned vegetables are normal' ),
+                array( '/en/should-you-rinse-canned-jarred-vegetables-before-eating/', 'whether to rinse canned or jarred vegetables' ),
+            ),
+        ),
+        'en-olive-oil' => array(
+            'english' => true,
+            'sources' => array(
+                'olive-oil-calories-tablespoon-100g',
+                'oleic-acid-olive-oil-what-is-it-how-much',
+                'extra-virgin-vs-virgin-olive-oil-olive-oil-pomace-differences',
+                'how-much-vitamin-e-extra-virgin-olive-oil',
+                'olive-oil-or-sunflower-oil-for-frying-which-to-choose',
+                'olive-oil-acidity-what-it-really-means',
+                'how-much-saturated-fat-evoo',
+                'why-extra-virgin-olive-oil-tastes-bitter-and-pungent',
+                'why-olive-oil-solidifies-turns-cloudy-in-cold-is-it-bad',
+                'can-you-use-evoo-in-air-fryer-temperature-amount-how-to-apply',
+                'extra-virgin-olive-oil-nutrients',
+                'does-extra-virgin-olive-oil-lose-properties-when-heated-temperature',
+                'two-phase-vs-three-phase-olive-oil-extraction-what-changes',
+            ),
+            'label' => 'Related guides',
+            'targets' => array(
+                array( '/en/olive-oil-calories-tablespoon-100g/', 'olive oil calories per tablespoon and 100 g' ),
+                array( '/en/olive-oil-or-sunflower-oil-for-frying-which-to-choose/', 'olive oil or sunflower oil for frying' ),
+                array( '/en/oleic-acid-olive-oil-what-is-it-how-much/', 'what oleic acid in olive oil is' ),
+                array( '/en/why-olive-oil-solidifies-turns-cloudy-in-cold-is-it-bad/', 'why olive oil turns cloudy or solid in the cold' ),
+            ),
+        ),
+        'en-vegetables' => array(
+            'english' => true,
+            'sources' => array(
+                'eggplant-brown-inside-when-normal-and-when-overripe',
+                'why-cut-fruit-vegetables-turn-brown-enzymatic-browning',
+                'why-cut-potatoes-turn-black-oxidation-how-to-prevent-it',
+                'yellow-broccoli-why-it-changes-colour-and-when-it-is-edible',
+                'bitter-zucchini-why-it-happens-and-when-not-to-eat-it',
+                'black-seeds-inside-pepper-why-they-appear-when-to-discard',
+                'wrinkled-or-soft-pepper-can-you-still-eat-it',
+                'green-sprouted-potatoes-when-safe-when-to-discard',
+                'black-spots-inside-potato-why-they-appear-when-to-discard',
+                'seasonal-vegetables-in-spain-calendar-by-month-what-to-buy',
+                'vegetable-nutrients-vitamins-minerals-fibre',
+                'root-leaf-fruit-flower-bulb-stem-vegetables',
+                'why-some-vegetables-taste-bitter',
+                'raw-vs-cooked-vegetables-what-changes-nutrients-digestion',
+                'vegetables-highest-in-iron',
+                'vegetables-highest-calcium-comparison',
+                'what-happens-to-vegetables-after-harvest-respiration-water-ageing',
+            ),
+            'label' => 'Related guides',
+            'targets' => array(
+                array( '/en/eggplant-brown-inside-when-normal-and-when-overripe/', 'when brown flesh inside an eggplant is normal' ),
+                array( '/en/why-cut-fruit-vegetables-turn-brown-enzymatic-browning/', 'why cut fruit and vegetables turn brown' ),
+                array( '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/', 'why cut potatoes turn black and how to prevent it' ),
+                array( '/en/bitter-zucchini-why-it-happens-and-when-not-to-eat-it/', 'why zucchini tastes bitter and when not to eat it' ),
+            ),
+        ),
+    );
+
+    $cluster_key = '';
+    $cluster     = array();
+
+    foreach ( $clusters as $candidate_key => $candidate ) {
+        if ( (bool) $candidate['english'] !== $is_english ) {
+            continue;
+        }
+
+        if ( in_array( $slug, $candidate['sources'], true ) ) {
+            $cluster_key = $candidate_key;
+            $cluster     = $candidate;
+            break;
+        }
+    }
+
+    if ( '' === $cluster_key || empty( $cluster['targets'] ) ) {
+        return $content;
+    }
+
+    $links = array();
+
+    foreach ( $cluster['targets'] as $target ) {
+        $target_path  = (string) $target[0];
+        $target_label = (string) $target[1];
+        $target_slug  = basename( untrailingslashit( $target_path ) );
+
+        if ( $target_slug === $slug || false !== strpos( $content, $target_path ) ) {
+            continue;
+        }
+
+        $links[] = '<a href="' . esc_url( home_url( $target_path ) ) . '">' . esc_html( $target_label ) . '</a>';
+
+        if ( count( $links ) >= 3 ) {
+            break;
+        }
+    }
+
+    if ( count( $links ) < 2 ) {
+        return $content;
+    }
+
+    $separator = '<span aria-hidden="true"> · </span>';
+    $block     = '<p class="mdo-seo-cluster-links" data-mdo-seo-cluster="' . esc_attr( $cluster_key ) . '"><strong>'
+        . esc_html( (string) $cluster['label'] )
+        . ':</strong> '
+        . implode( $separator, $links )
+        . '</p>';
+
+    if ( preg_match( '/<h2\b/iu', $content, $match, PREG_OFFSET_CAPTURE ) ) {
+        $offset = (int) $match[0][1];
+
+        return substr( $content, 0, $offset ) . $block . "\n" . substr( $content, $offset );
+    }
+
+    return $content . "\n" . $block;
+}
+add_filter( 'the_content', 'mdo_blog_seo_cluster_links_20260929', 43 );
