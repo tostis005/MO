@@ -57,7 +57,10 @@ jobs:
           inspect_shop(){
             local url="$1" out="$2"
             local code
-            code=$(curl -ksS --max-time 45 -o "$out" -w '%{http_code}' "$url?mdo_guard=$(date +%s%N)" || true)
+            code=$(curl -ksS --connect-timeout 10 --max-time 30 -o "$out" -w '%{http_code}' "$url" || true)
+            if [ "$code" != "200" ]; then
+              code=$(curl -ksS --retry 2 --retry-delay 2 --retry-all-errors --connect-timeout 10 --max-time 45 -o "$out" -w '%{http_code}' "$url?mdo_guard=$(date +%s%N)" || true)
+            fi
             local products body
             products=$(grep -oE '<li[^>]+class="[^"]*\bproduct\b[^"]*"' "$out" 2>/dev/null | wc -l | tr -d ' ' || true)
             body=$(grep -oE '<body[^>]*class="[^"]*"' "$out" 2>/dev/null | head -n1 || true)
