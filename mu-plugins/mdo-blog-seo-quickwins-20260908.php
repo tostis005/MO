@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
  * Description: Removes duplicated in-content H1s, defers the inline newsletter, applies data-led SERP copy and reinforces contextual internal links to the highest-opportunity blog posts.
- * Version: 2026.09.29.6
+ * Version: 2026.09.29.7
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -235,11 +235,11 @@ add_filter( 'rank_math/frontend/description', 'mdo_blog_seo_top3_description_202
 add_filter( 'seopress_titles_desc', 'mdo_blog_seo_top3_description_20260908', 20 );
 
 /**
- * La capa inglesa registra sus filtros AIOSEO durante la carga de MU-plugins
- * a PHP_INT_MAX. Añadimos los nuestros en muplugins_loaded, cuando todos los
- * MU-plugins ya han sido incluidos pero antes de que AIOSEO calcule el head.
- * Así quedamos detrás de la capa inglesa incluso para la description, que se
- * resuelve antes del hook wp.
+ * La capa inglesa registra filtros AIOSEO durante la carga de MU-plugins y
+ * AIOSEO/otros plugins normales pueden registrar más callbacks después.
+ * Añadimos los nuestros al final de plugins_loaded: todos los plugins ya están
+ * cargados, pero el head todavía no se ha calculado. Así el override dirigido
+ * queda el último callback PHP_INT_MAX antes de resolver title/description.
  */
 function mdo_blog_seo_register_final_serp_filters_20260929(): void {
     if ( is_admin() ) {
@@ -255,7 +255,7 @@ function mdo_blog_seo_register_final_serp_filters_20260929(): void {
     add_filter( 'seopress_titles_title', 'mdo_blog_seo_top3_title_20260908', PHP_INT_MAX );
     add_filter( 'seopress_titles_desc', 'mdo_blog_seo_top3_description_20260908', PHP_INT_MAX );
 }
-add_action( 'muplugins_loaded', 'mdo_blog_seo_register_final_serp_filters_20260929', PHP_INT_MAX );
+add_action( 'plugins_loaded', 'mdo_blog_seo_register_final_serp_filters_20260929', PHP_INT_MAX );
 
 /**
  * Reinforce the three highest-opportunity URLs with contextual internal links.
