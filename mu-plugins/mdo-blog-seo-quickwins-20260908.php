@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
  * Description: Removes duplicated in-content H1s, defers the inline newsletter, applies data-led SERP copy and reinforces contextual internal links to the highest-opportunity blog posts.
- * Version: 2026.09.29.16
+ * Version: 2026.09.29.17
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -239,6 +239,24 @@ function mdo_blog_seo_top3_title_20260908( $title ): string {
         'green-sprouted-potatoes-when-safe-when-to-discard'                      => 'Green or Sprouted Potatoes: When to Discard Them',
         'caducan-conservas-cuanto-duran-como-saber-buen-estado'                 => '¿Caducan las conservas? Duración y señales de mal estado',
         'verduras-mas-potasio-comparativa'                                       => 'Verduras con más potasio: comparativa por 100 g',
+        'bitter-zucchini-why-it-happens-and-when-not-to-eat-it'                  => 'Bitter Zucchini: When It’s Unsafe to Eat',
+        'bicarbonato-en-remojo-legumbres-para-que-sirve-cuanto-usar'            => 'Bicarbonato para remojar legumbres: cuánto usar y para qué',
+        'cuando-echar-sal-garbanzos-lentejas-alubias-endurece-legumbres'        => 'Cuándo echar sal a las legumbres: ¿las endurece?',
+        'moho-blanco-chorizo-salchichon-cuando-normal-cuando-no'                => 'Moho blanco en chorizo o salchichón: ¿es normal?',
+        'black-spots-inside-potato-why-they-appear-when-to-discard'              => 'Black Spots Inside Potatoes: Safe or Spoiled?',
+        'yellow-or-slimy-spinach-when-to-use-and-when-to-discard'                => 'Yellow or Slimy Spinach: When to Discard It',
+        'cuantos-sobres-salen-jamon-iberico-rendimiento-real-pieza'             => 'Cuántos sobres salen de un jamón ibérico: rendimiento real',
+        'se-pueden-congelar-chorizo-salchichon-lomo-curado-como-hacerlo'        => '¿Se pueden congelar chorizo y salchichón? Cómo hacerlo',
+        'vacuum-packed-meat-strong-smell-opened-when-normal-when-to-discard'     => 'Vacuum-Packed Meat Smells Strong: Normal or Spoiled?',
+        'tenderloin-vs-entrecote-differences-tenderness-fat-flavour-which-to-choose' => 'Tenderloin vs Entrecote: Tenderness, Fat and Flavour',
+        'que-es-wagyu-origen-significado-caracteristicas'                       => 'Qué es Wagyu: origen, significado y características',
+        'cauliflower-black-brown-spots-oxidation-or-spoilage'                    => 'Black or Brown Spots on Cauliflower: Safe or Spoiled?',
+        'jar-vacuum-seal-how-to-check-closure'                                   => 'Jar Vacuum Seal: How to Check It Is Still Safe',
+        'aceite-oliva-o-girasol-para-freir-cual-elegir'                         => 'Aceite de oliva o girasol para freír: cuál elegir',
+        'tipos-lentejas-pardina-castellana-beluga-roja-diferencias'             => 'Tipos de lentejas: pardina, castellana, beluga y roja',
+        'hay-que-lavar-carne-antes-cocinar-por-que-no'                           => '¿Hay que lavar la carne antes de cocinarla?',
+        'cuando-salar-carne-antes-despues-cocinar'                               => 'Cuándo salar la carne: antes o después de cocinarla',
+        'white-mold-on-chorizo-salchichon-when-normal-when-not'                  => 'White Mold on Chorizo or Salchichón: Is It Normal?',
     );
 
     return isset( $titles[ $slug ] ) ? $titles[ $slug ] : (string) $title;
@@ -292,6 +310,16 @@ function mdo_blog_seo_top3_description_20260908( $description ): string {
         'se-puede-guardar-lata-abierta-nevera-por-que-cambiar-recipiente'        => '¿Se puede guardar una lata abierta en la nevera? Explicamos cuándo conviene pasar el alimento a otro recipiente y cómo conservarlo mejor.',
         'caducan-conservas-cuanto-duran-como-saber-buen-estado'                 => '¿Caducan las conservas? Aprende a interpretar la fecha, revisar el envase y reconocer señales de que una conserva ya no está en buen estado.',
         'verduras-mas-potasio-comparativa'                                       => 'Comparativa de verduras y hortalizas con más potasio por 100 g, con contexto para entender porciones y diferencias entre alimentos.',
+        'bicarbonato-en-remojo-legumbres-para-que-sirve-cuanto-usar'            => 'Para qué sirve añadir bicarbonato al remojo de garbanzos, alubias o lentejas, cuánto usar y qué efectos puede tener en textura y cocción.',
+        'cuando-echar-sal-garbanzos-lentejas-alubias-endurece-legumbres'        => 'Cuándo conviene echar sal a garbanzos, lentejas y alubias, si realmente endurece las legumbres y qué factores influyen más en su textura.',
+        'moho-blanco-chorizo-salchichon-cuando-normal-cuando-no'                => 'Cuándo el moho blanco en chorizo o salchichón puede formar parte de la curación y qué señales indican que conviene no consumir el producto.',
+        'cuantos-sobres-salen-jamon-iberico-rendimiento-real-pieza'             => 'Cuántos sobres de jamón ibérico puede rendir una pieza según peso, hueso, grasa y formato de corte, con cifras orientativas para calcular el aprovechamiento.',
+        'se-pueden-congelar-chorizo-salchichon-lomo-curado-como-hacerlo'        => 'Chorizo, salchichón y lomo curado se pueden congelar en muchas situaciones. Aprende cómo envasarlos y descongelarlos para perder menos calidad.',
+        'que-es-wagyu-origen-significado-caracteristicas'                       => 'Qué significa Wagyu, de dónde procede el término y qué características se asocian a este ganado, diferenciando origen, raza y marketing.',
+        'aceite-oliva-o-girasol-para-freir-cual-elegir'                         => 'Compara aceite de oliva y girasol para freír: estabilidad, sabor, temperatura, reutilización y qué opción encaja mejor según el uso.',
+        'tipos-lentejas-pardina-castellana-beluga-roja-diferencias'             => 'Diferencias entre lenteja pardina, castellana, beluga y roja: tamaño, textura, remojo, tiempo de cocción y usos habituales en cocina.',
+        'hay-que-lavar-carne-antes-cocinar-por-que-no'                           => '¿Hay que lavar la carne antes de cocinarla? Explicamos por qué no se recomienda en cocina doméstica y cómo manipularla con más seguridad.',
+        'cuando-salar-carne-antes-despues-cocinar'                               => 'Cuándo salar la carne para plancha, parrilla u horno, qué cambia si se sala antes o después y cómo ajustar según grosor y técnica.',
     );
 
     return isset( $descriptions[ $slug ] ) ? $descriptions[ $slug ] : (string) $description;
@@ -708,6 +736,57 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
                 array( '/por-que-frutas-hortalizas-se-oscurecen-al-cortarlas-oxidacion-enzimatica/', 'por qué frutas y hortalizas se oscurecen al cortarlas' ),
             ),
         ),
+        'es-embutidos' => array(
+            'english' => false,
+            'sources' => array(
+                'como-conservar-chorizo-salchichon-lomo-curado-una-vez-abiertos',
+                'moho-blanco-chorizo-salchichon-cuando-normal-cuando-no',
+                'se-pueden-congelar-chorizo-salchichon-lomo-curado-como-hacerlo',
+                'se-come-tripa-chorizo-salchichon-natural-colageno-artificial',
+                'chorizo-fresco-vs-curado-diferencias-como-saber-si-hay-que-cocinarlo',
+                'que-es-embutido-curado-como-se-elabora-diferencia-embutido-fresco',
+                'salchichon-vs-fuet-diferencias-elaboracion-sabor-textura',
+                'chorizo-vs-salchichon-diferencias-ingredientes-sabor-curacion',
+                'morcon-vs-chorizo-diferencias-carne-tripa-curacion-textura-sabor',
+                'cana-lomo-lomo-embuchado-son-lo-mismo',
+                'lomo-iberico-vs-lomito-iberico-diferencias',
+                'sobrasada-iberica-que-es-como-se-elabora-que-mirar-al-comprarla',
+                'nutrientes-chorizo-iberico-proteinas-grasas-hierro-vitaminas-minerales',
+                'cuanta-proteina-tiene-chorizo-iberico',
+            ),
+            'label' => 'Guías de embutidos relacionadas',
+            'targets' => array(
+                array( '/como-conservar-chorizo-salchichon-lomo-curado-una-vez-abiertos/', 'cómo conservar embutidos curados una vez abiertos' ),
+                array( '/moho-blanco-chorizo-salchichon-cuando-normal-cuando-no/', 'cuándo el moho blanco es normal en chorizo o salchichón' ),
+                array( '/se-pueden-congelar-chorizo-salchichon-lomo-curado-como-hacerlo/', 'cómo congelar chorizo, salchichón y lomo curado' ),
+                array( '/chorizo-fresco-vs-curado-diferencias-como-saber-si-hay-que-cocinarlo/', 'diferencias entre chorizo fresco y curado' ),
+            ),
+        ),
+        'en-cured-meats' => array(
+            'english' => true,
+            'sources' => array(
+                'how-to-store-chorizo-salchichon-cured-loin-after-opening',
+                'white-mold-on-chorizo-salchichon-when-normal-when-not',
+                'can-you-freeze-chorizo-salchichon-cured-loin-how-to-do-it',
+                'can-you-eat-chorizo-salchichon-casing-natural-collagen-artificial',
+                'fresh-vs-cured-chorizo-differences-does-it-need-cooking',
+                'what-is-cured-sausage-how-it-is-made-difference-fresh-sausage',
+                'salchichon-vs-fuet-differences-production-flavour-texture',
+                'chorizo-vs-salchichon-differences-ingredients-flavour-curing',
+                'iberian-sobrasada-what-it-is-how-made-what-to-look-for-when-buying',
+                'nutrients-iberian-chorizo-protein-fat-iron-vitamins-minerals',
+                'how-much-protein-iberian-chorizo',
+                'iberian-loin-chorizo-salchichon-differences-how-to-choose',
+                'cured-sausage-vs-cold-cuts-difference-which-products-belong-to-each-group',
+            ),
+            'label' => 'Related cured-meat guides',
+            'targets' => array(
+                array( '/en/how-to-store-chorizo-salchichon-cured-loin-after-opening/', 'how to store cured meats after opening' ),
+                array( '/en/white-mold-on-chorizo-salchichon-when-normal-when-not/', 'when white mold on cured sausage is normal' ),
+                array( '/en/can-you-freeze-chorizo-salchichon-cured-loin-how-to-do-it/', 'how to freeze chorizo, salchichón and cured loin' ),
+                array( '/en/fresh-vs-cured-chorizo-differences-does-it-need-cooking/', 'fresh vs cured chorizo and whether it needs cooking' ),
+            ),
+        ),
         'en-pulses' => array(
             'english' => true,
             'sources' => array(
@@ -882,11 +961,13 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
         'es-conservas'  => array( '/categoria-producto/conservas/', 'comprar conservas online' ),
         'es-aceite'     => array( '/categoria-producto/aceites/', 'comprar aceite de oliva online' ),
         'es-hortalizas' => array( '/categoria-producto/hortalizas-verduras/', 'comprar hortalizas y verduras' ),
+        'es-embutidos'  => array( '/categoria-producto/embutidos-y-curados/', 'comprar embutidos y curados' ),
         'en-pulses'     => array( '/en/product-category/pulses/', 'shop pulses' ),
         'en-meat'       => array( '/en/product-category/meat/', 'shop meat' ),
         'en-canned'     => array( '/en/product-category/preserves/', 'shop preserves' ),
         'en-olive-oil'  => array( '/en/product-category/oils/', 'shop olive oil' ),
         'en-vegetables' => array( '/en/product-category/vegetables/', 'shop vegetables' ),
+        'en-cured-meats' => array( '/en/product-category/cured-meats/', 'shop cured meats' ),
     );
 
     $links = array();

@@ -68,6 +68,8 @@ jobs:
           EN_ANSWER="https://www.elmercadodeorigen.com/en/yellow-broccoli-why-it-changes-colour-and-when-it-is-edible/?mdo_seo_verify=${GITHUB_RUN_ID}"
           EN_CHEESE="https://www.elmercadodeorigen.com/en/what-is-cheese-affinage-maturation-humidity-rind-care-affineur/?mdo_seo_verify=${GITHUB_RUN_ID}"
           EN_CHEESE_BAD="https://www.elmercadodeorigen.com/en/how-to-tell-cheese-gone-bad-mould-smell-texture-discard/?mdo_seo_verify=${GITHUB_RUN_ID}"
+          ES_CURED="https://www.elmercadodeorigen.com/moho-blanco-chorizo-salchichon-cuando-normal-cuando-no/?mdo_seo_verify=${GITHUB_RUN_ID}"
+          EN_CURED="https://www.elmercadodeorigen.com/en/white-mold-on-chorizo-salchichon-when-normal-when-not/?mdo_seo_verify=${GITHUB_RUN_ID}"
           ES_PHASE5="https://www.elmercadodeorigen.com/se-pueden-congelar-legumbres-cocidas-como-hacerlo-textura/?mdo_seo_verify=${GITHUB_RUN_ID}"
           EN_PHASE5="https://www.elmercadodeorigen.com/en/how-long-opened-canned-food-keeps-in-fridge-how-to-store-it/?mdo_seo_verify=${GITHUB_RUN_ID}"
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES" -o /tmp/es.html
@@ -78,6 +80,8 @@ jobs:
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN_ANSWER" -o /tmp/en-answer.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN_CHEESE" -o /tmp/en-cheese.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN_CHEESE_BAD" -o /tmp/en-cheese-bad.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES_CURED" -o /tmp/es-cured.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN_CURED" -o /tmp/en-cured.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES_PHASE5" -o /tmp/es-phase5.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN_PHASE5" -o /tmp/en-phase5.html
           python - <<'PY'
@@ -173,6 +177,31 @@ jobs:
               assert title.startswith(title_prefix), f'{label}: phase-5 SEO title missing: {title!r}'
               if desc_prefix:
                   assert desc.startswith(desc_prefix), f'{label}: phase-5 meta description missing: {desc!r}'
+
+          cured_checks = [
+              ('ES_CURED', '/tmp/es-cured.html', 'Moho blanco en chorizo o salchichón: ¿es normal?', 'es-embutidos', '/categoria-producto/embutidos-y-curados/', 'Cuándo el moho blanco'),
+              ('EN_CURED', '/tmp/en-cured.html', 'White Mold on Chorizo or Salchichón: Is It Normal?', 'en-cured-meats', '/en/product-category/cured-meats/', None),
+          ]
+          for label, path, title_prefix, cluster_key, shop_path, desc_prefix in cured_checks:
+              soup = BeautifulSoup(open(path, encoding='utf-8').read(), 'html.parser')
+              title = soup.title.get_text(' ', strip=True) if soup.title else ''
+              article = soup.select_one('.emo-article-content')
+              block = soup.select_one(f'.emo-article-content p.mdo-seo-cluster-links[data-mdo-seo-cluster="{cluster_key}"]')
+              assert article is not None and block is not None, f'{label}: cured-meats cluster missing'
+              links = block.find_all('a', href=True)
+              shop = block.select_one('a.mdo-seo-cluster-shop[href]')
+              existing_shop = article.find('a', href=lambda href: isinstance(href, str) and href.endswith(shop_path))
+              meta = soup.find('meta', attrs={'name':'description'})
+              desc = meta.get('content','').strip() if meta else ''
+              print(label, 'title=', title, 'links=', [a.get('href') for a in links], 'description=', desc)
+              assert title.startswith(title_prefix), f'{label}: phase-6 SEO title missing: {title!r}'
+              assert len(links) >= 2, f'{label}: expected at least two cured-meat editorial links'
+              assert (
+                  (shop is not None and shop.get('href','').endswith(shop_path))
+                  or existing_shop is not None
+              ), f'{label}: cured-meats commerce bridge missing'
+              if desc_prefix:
+                  assert desc.startswith(desc_prefix), f'{label}: phase-6 Spanish description missing: {desc!r}'
 
           answer_checks = [
               ('ES_ANSWER', '/tmp/es-answer.html', 'Aguja de ternera: qué corte es y cómo cocinarla', 'Respuesta rápida'),
