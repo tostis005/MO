@@ -75,6 +75,16 @@ jobs:
           printf '%s' "$before_body" | grep -q 'woocommerce-shop'
           test "${before_products:-0}" -ge 10
 
+          echo '=== PREDEPLOY QUERY-ID SAMPLE ==='
+          query_sample_id=13879
+          query_before_code=$(curl -ksS --connect-timeout 10 --max-time 30 -o /tmp/en-query-before.html -w '%{http_code}' "$base/en/?p=$query_sample_id&utm_source=mdo-precheck")
+          query_expected=$(grep -oE 'rel="canonical" href="[^"]+"' /tmp/en-query-before.html | sed -E 's/.*href="([^"]+)".*/\1/' | head -n1)
+          echo "query_before=$query_before_code id=$query_sample_id expected=$query_expected"
+          test "$query_before_code" = 200
+          test -n "$query_expected"
+          printf '%s' "$query_expected" | grep -q "^$base/en/"
+          ! printf '%s' "$query_expected" | grep -q '[?&]p='
+
           had_old=0
           if [ -f "$target" ]; then cp -a "$target" "$backup"; had_old=1; fi
           rollback(){
@@ -126,32 +136,26 @@ jobs:
           echo "privacy=$privacy_code"
           test "$privacy_code" = 200
           grep -q 'rel="canonical" href="https://www.elmercadodeorigen.com/en/privacy-policy/' /tmp/en-privacy.html
-          db_prefix=$(wp config get table_prefix --type=variable 2>/dev/null | tail -n1)
-          test -n "$db_prefix"
-          prod_slug=$(wp --skip-plugins --skip-themes db query "SELECT pm.meta_value FROM ${db_prefix}postmeta pm JOIN ${db_prefix}posts p ON p.ID=pm.post_id JOIN ${db_prefix}postmeta pub ON pub.post_id=p.ID AND pub.meta_key='_en_US_published' AND pub.meta_value='1' WHERE pm.meta_key='_en_US_post_name' AND pm.meta_value<>'' AND p.post_type='product' AND p.post_status='publish' ORDER BY p.ID LIMIT 1" --skip-column-names 2>/dev/null | tail -n1)
+          prod_path=$(grep -oE '/en/product/[^" <]+/' /tmp/en-shop.html | head -n1)
+          test -n "$prod_path"
+          prod_slug=$(printf '%s' "$prod_path" | sed -E 's#^/en/product/([^/]+)/.*#\1#')
           test -n "$prod_slug"
-          prod_code=$(curl -ksS --max-time 30 -o /tmp/en-product.html -w '%{http_code}' "$base/en/product/$prod_slug/?mdo_verify=1")
+          prod_code=$(curl -ksS --max-time 30 -o /tmp/en-product.html -w '%{http_code}' "$base$prod_path?mdo_verify=1")
           echo "product_slug=$prod_slug http=$prod_code"
           test "$prod_code" = 200
           grep -qi 'product-template-default\|single-product' /tmp/en-product.html
           grep -q "rel=\"canonical\" href=\"$base/en/product/$prod_slug/" /tmp/en-product.html
 
           echo '=== ENGLISH QUERY-ID CANONICAL REDIRECT ==='
-          post_row=$(wp --skip-plugins --skip-themes db query "SELECT p.ID,slug.meta_value FROM ${db_prefix}posts p JOIN ${db_prefix}postmeta slug ON slug.post_id=p.ID AND slug.meta_key='_en_US_post_name' AND slug.meta_value<>'' JOIN ${db_prefix}postmeta pub ON pub.post_id=p.ID AND pub.meta_key='_en_US_published' AND pub.meta_value='1' WHERE p.post_status='publish' AND p.post_type='post' ORDER BY p.ID ASC LIMIT 1" --skip-column-names 2>/dev/null | tail -n1)
-          test -n "$post_row"
-          post_id=$(printf '%s' "$post_row" | awk '{print $1}')
-          post_slug=$(printf '%s' "$post_row" | awk '{print $2}')
-          test -n "$post_id"
-          test -n "$post_slug"
-          query_code=$(curl -ksS --max-time 30 -o /dev/null -w '%{http_code}' "$base/en/?p=$post_id")
-          query_location=$(curl -ksSI --max-time 30 "$base/en/?p=$post_id" | tr -d '\r' | awk 'tolower($1)=="location:"{print $2}' | tail -n1)
-          echo "query_post=$post_id slug=$post_slug http=$query_code location=$query_location"
+          query_code=$(curl -ksS --max-time 30 -o /dev/null -w '%{http_code}' "$base/en/?p=$query_sample_id")
+          query_location=$(curl -ksSI --max-time 30 "$base/en/?p=$query_sample_id" | tr -d '\r' | awk 'tolower($1)=="location:"{print $2}' | tail -n1)
+          echo "query_post=$query_sample_id http=$query_code location=$query_location expected=$query_expected"
           test "$query_code" = 301
-          test "$query_location" = "$base/en/$post_slug/"
+          test "$query_location" = "$query_expected"
 
-          tracking_location=$(curl -ksSI --max-time 30 "$base/en/?p=$post_id&utm_source=gsc-test&utm_medium=verify" | tr -d '\r' | awk 'tolower($1)=="location:"{print $2}' | tail -n1)
+          tracking_location=$(curl -ksSI --max-time 30 "$base/en/?p=$query_sample_id&utm_source=gsc-test&utm_medium=verify" | tr -d '\r' | awk 'tolower($1)=="location:"{print $2}' | tail -n1)
           echo "tracking_location=$tracking_location"
-          printf '%s' "$tracking_location" | grep -q "$base/en/$post_slug/"
+          printf '%s' "$tracking_location" | grep -q "$query_expected"
           printf '%s' "$tracking_location" | grep -q 'utm_source=gsc-test'
           printf '%s' "$tracking_location" | grep -q 'utm_medium=verify'
           ! printf '%s' "$tracking_location" | grep -q '[?&]p='
