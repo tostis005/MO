@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO English SEO Routes
  * Description: Stable English slugs, hreflang and SEO routes without changing Spanish WooCommerce URLs.
- * Version: 1.2.2
+ * Version: 1.2.3
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
@@ -342,7 +342,7 @@ add_action( 'template_redirect', static function(): void {
     echo '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">';
     foreach ( mdoer_sitemap() as $url ) { echo '<url><loc>' . esc_url( $url ) . '</loc></url>'; }
     echo '</urlset>'; exit;
-}, -2000 );
+}, -PHP_INT_MAX );
 add_filter( 'aioseo_sitemap_indexes', static function( $indexes ) {
     if ( mdoer_prod() ) { $indexes[] = array( 'loc' => home_url( '/english-sitemap.xml/' ), 'lastmod' => gmdate( DATE_W3C ), 'count' => count( mdoer_sitemap() ) ); }
     return $indexes;
