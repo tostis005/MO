@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO GSC Commerce SEO 2026-09-29
  * Description: Data-led SERP titles and descriptions for high-impression commerce URLs from Google Search Console.
- * Version: 2026.09.29.2
+ * Version: 2026.09.29.3
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -43,13 +43,17 @@ function mdo_gsc_commerce_map_20260929(): array {
             'title' => 'Filetes de Aguja de Ternera | 1 kg | Tolecarnes',
             'description' => 'Filetes de aguja de ternera jugosos y sabrosos, en bandeja de 1 kg y envasados al vacío. Ideales para sartén, plancha o parrilla.',
         ),
+        '/producto/pito-de-vacuno-fileteado/' => array(
+            'title' => 'Comprar Pito de Vacuno Fileteado | Tolecarnes',
+            'description' => 'Pito de vacuno fileteado, un corte próximo a la entraña, sabroso y jugoso. Se entrega en filetes listos para sartén, plancha o parrilla.',
+        ),
         '/producto/jamon-de-bellota-100-iberico/' => array(
             'title' => 'Comprar Jamón de Bellota 100% Ibérico | Brida Negra',
             'description' => 'Jamón de bellota 100% ibérico de brida negra, criado en libertad y alimentado en montanera. Consulta pesos, formatos y precio disponible.',
         ),
-        '/producto/jamon-de-bellota-iberico-50-montjam/' => array(
-            'title' => 'Jamón de Bellota Ibérico 50% Montjam | Brida Roja',
-            'description' => 'Jamón de bellota ibérico 50% raza ibérica Montjam, brida roja y curación mínima de 32 meses en El Repilado, Huelva. Consulta formato y precio.',
+        '/producto/jamon-de-bellota-50-iberico-brida-roja/' => array(
+            'title' => 'Comprar Jamón de Bellota 50% Ibérico | Brida Roja',
+            'description' => 'Jamón de bellota 50% ibérico de brida roja, criado en libertad y alimentado durante la montanera. Consulta pesos, formatos y precio disponible.',
         ),
         '/producto/tapilla-o-picana-de-ternera/' => array(
             'title' => 'Comprar Picaña de Ternera | Tapilla de Vacuno',
@@ -109,3 +113,27 @@ function mdo_gsc_commerce_register_20260929(): void {
     add_filter( 'pre_get_document_title', 'mdo_gsc_commerce_title_20260929', PHP_INT_MAX );
 }
 add_action( 'plugins_loaded', 'mdo_gsc_commerce_register_20260929', PHP_INT_MAX );
+
+
+/**
+ * Recover authority from high-impression legacy commerce URLs that currently
+ * resolve as 404. Only explicit, verified one-to-one replacements are listed.
+ */
+function mdo_gsc_commerce_legacy_redirects_20260929(): void {
+    if ( is_admin() || wp_doing_ajax() ) {
+        return;
+    }
+
+    $path = mdo_gsc_commerce_path_20260929();
+    $redirects = array(
+        '/en/product/bag-of-approximately-300-gr-padron-peppers/' => '/en/product/padron-peppers-kg/',
+    );
+
+    if ( ! isset( $redirects[ $path ] ) ) {
+        return;
+    }
+
+    wp_safe_redirect( home_url( $redirects[ $path ] ), 301, 'MDO GSC commerce legacy redirect' );
+    exit;
+}
+add_action( 'template_redirect', 'mdo_gsc_commerce_legacy_redirects_20260929', -5000 );

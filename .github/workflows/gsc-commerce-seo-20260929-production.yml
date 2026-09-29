@@ -62,12 +62,16 @@ jobs:
           python -m pip install --quiet beautifulsoup4
           SOB="https://www.elmercadodeorigen.com/producto/sobrasada-de-bellota-100-iberica/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           AGUJA="https://www.elmercadodeorigen.com/producto/filetes-aguja-de-ternera/?mdo_commerce_verify=${GITHUB_RUN_ID}"
+          PITO="https://www.elmercadodeorigen.com/producto/pito-de-vacuno-fileteado/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           JAMON="https://www.elmercadodeorigen.com/producto/jamon-de-bellota-100-iberico/?mdo_commerce_verify=${GITHUB_RUN_ID}"
+          JAMON50="https://www.elmercadodeorigen.com/producto/jamon-de-bellota-50-iberico-brida-roja/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           ENTRECOTE="https://www.elmercadodeorigen.com/en/product/mature-beef-entrecote/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           PADRON="https://www.elmercadodeorigen.com/en/product/padron-peppers-kg/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$SOB" -o /tmp/sob.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$AGUJA" -o /tmp/aguja.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$PITO" -o /tmp/pito.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$JAMON" -o /tmp/jamon.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$JAMON50" -o /tmp/jamon50.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ENTRECOTE" -o /tmp/entrecote.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$PADRON" -o /tmp/padron.html
           python - <<'PY'
@@ -76,7 +80,9 @@ jobs:
           checks = [
               ('SOB','/tmp/sob.html','Comprar Sobrasada de Bellota 100% Ibérica','targeted','Compra sobrasada de bellota 100% ibérica','/producto/sobrasada-de-bellota-100-iberica/'),
               ('AGUJA','/tmp/aguja.html','Filetes de Aguja de Ternera | 1 kg | Tolecarnes','targeted','Filetes de aguja de ternera jugosos','/producto/filetes-aguja-de-ternera/'),
+              ('PITO','/tmp/pito.html','Comprar Pito de Vacuno Fileteado | Tolecarnes','targeted','Pito de vacuno fileteado','/producto/pito-de-vacuno-fileteado/'),
               ('JAMON','/tmp/jamon.html','Comprar Jamón de Bellota 100% Ibérico | Brida Negra','targeted','Jamón de bellota 100% ibérico de brida negra','/producto/jamon-de-bellota-100-iberico/'),
+              ('JAMON50','/tmp/jamon50.html','Comprar Jamón de Bellota 50% Ibérico | Brida Roja','targeted','Jamón de bellota 50% ibérico de brida roja','/producto/jamon-de-bellota-50-iberico-brida-roja/'),
               ('ENTRECOTE','/tmp/entrecote.html','Buy Mature Beef Entrecôte | 20+ Day Aged Beef','reviewed-en','matured for more than 20 days','/en/product/mature-beef-entrecote/'),
               ('PADRON','/tmp/padron.html','Buy Fresh Padrón Peppers by the Kg','reviewed-en','padrón','/en/product/padron-peppers-kg/'),
           ]
@@ -99,15 +105,21 @@ jobs:
               assert h1 is not None, f'{label}: product H1 missing'
           PY
 
-      - name: Diagnose HTTP consolidation and legacy alias
-        continue-on-error: true
+      - name: Verify HTTP consolidation and legacy alias
         shell: bash
         run: |
           set -u
           echo "HTTP_HOME"
           curl -sSI --max-redirs 0 'http://www.elmercadodeorigen.com/' | tr -d '\r' | sed -n '1,8p' || true
           echo "PADRON_LEGACY"
-          curl -L --silent --show-error -o /dev/null -w 'status=%{http_code} final=%{url_effective}\n' 'https://www.elmercadodeorigen.com/en/product/bag-of-approximately-300-gr-padron-peppers/' || true
+          PADRON_RESULT="$(curl -L --silent --show-error -o /dev/null -w 'status=%{http_code} final=%{url_effective}' 'https://www.elmercadodeorigen.com/en/product/bag-of-approximately-300-gr-padron-peppers/' || true)"
+          echo "$PADRON_RESULT"
+          case "$PADRON_RESULT" in
+            *"status=200"*"final=https://www.elmercadodeorigen.com/en/product/padron-peppers-kg/"*) : ;;
+            *) echo "Padrón legacy redirect not consolidated" >&2; exit 1 ;;
+          esac
+          echo "TOMAHAWK_LEGACY_DIAGNOSTIC"
+          curl -L --silent --show-error -o /dev/null -w 'status=%{http_code} final=%{url_effective}\n' 'https://www.elmercadodeorigen.com/en/product/beef-tomahawk-steak/' || true
 
       - name: Roll back on failure
         if: failure() && env.PROD_PATH != ''
