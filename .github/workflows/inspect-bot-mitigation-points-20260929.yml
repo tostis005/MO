@@ -1,0 +1,55 @@
+name: Inspect mitigation points 2026-09-29
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-bot-mitigation-points-20260929.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Inspect cache nginx fpm and security config
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          echo "=== ADVANCED CACHE ==="
+          sed -n '1,260p' "$ROOT/wp-content/advanced-cache.php" 2>/dev/null || true
+          echo "=== WP CONFIG CACHE/CRON ==="
+          grep -nE "WP_CACHE|DISABLE_WP_CRON|ALTERNATE_WP_CRON|WP_MEMORY_LIMIT|WP_MAX_MEMORY_LIMIT" "$ROOT/wp-config.php" || true
+          echo "=== FPM POOL SETTINGS ==="
+          grep -RHE '^(pm|pm\.).*=' /var/www/vhosts/system/elmercadodeorigen.com/conf /opt/plesk/php/8.2/etc/php-fpm.d 2>/dev/null | grep -E 'pm =|max_children|max_requests|start_servers|min_spare_servers|max_spare_servers' | head -80 || true
+          echo "=== NGINX CUSTOM / VHOST ==="
+          find /var/www/vhosts/system/elmercadodeorigen.com/conf -maxdepth 2 -type f -printf '%p\n' | sort | head -80
+          for f in /var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf /var/www/vhosts/system/elmercadodeorigen.com/conf/vhost.conf; do
+            [ -f "$f" ] || continue
+            echo "--- $f"; sed -n '1,260p' "$f"
+          done
+          echo "=== HTACCESS SECURITY/CACHE MARKERS ==="
+          grep -nEi 'xmlrpc|wp-login|bot|crawler|cache|rewrite|deny|allow|limit' "$ROOT/.htaccess" 2>/dev/null | head -220 || true
+          echo "=== FAIL2BAN JAILS ==="
+          fail2ban-client status 2>/dev/null || true
+          echo "=== CRONTAB ==="
+          crontab -l 2>/dev/null || true
+          echo "=== SYSTEM CRON WP ==="
+          grep -R "wp-cron\|elmercadodeorigen" /etc/cron.d /etc/crontab /var/spool/cron 2>/dev/null | head -100 || true
+          REMOTE
