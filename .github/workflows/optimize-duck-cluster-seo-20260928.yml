@@ -109,60 +109,126 @@ jobs:
           get_page() {
             local url="$1"
             local out="$2"
-            curl -fsSL --retry 4 --retry-delay 2 --max-time 60               -A 'Mozilla/5.0 EMDO SEO verifier'               -H 'Cache-Control: no-cache'               "$url" -o "$out"
+            curl -fsSL --retry 4 --retry-delay 2 --max-time 60 \
+              -A 'Mozilla/5.0 EMDO SEO verifier' \
+              -H 'Cache-Control: no-cache' \
+              "$url" -o "$out"
           }
 
           get_page "$base/category/carnes/pato/?emdo_seo_verify=1" /tmp/pato-category.html
-          grep -qi '<h1[^>]*>Pato</h1>' /tmp/pato-category.html
-          grep -q 'Carne de pato y cortes' /tmp/pato-category.html
-          grep -q 'Foie, paté, mousse y rillettes' /tmp/pato-category.html
-          grep -q 'Magret de pato' /tmp/pato-category.html
-          grep -q 'Confit de pato' /tmp/pato-category.html
-          grep -q 'Jamón de pato' /tmp/pato-category.html
-          grep -q 'Salsas, maridajes y menús' /tmp/pato-category.html
-          ! grep -qi 'noindex' /tmp/pato-category.html
-
           get_page "$base/carne-de-pato-guia-completa-cortes-sabor-preparacion/?emdo_seo_verify=1" /tmp/duck-pillar.html
-          grep -q '>Pato</a>' /tmp/duck-pillar.html
-          grep -q 'data-emdo-duck-related-topic="carne-cortes"' /tmp/duck-pillar.html
-          grep -q 'data-emdo-duck-hub-link="1"' /tmp/duck-pillar.html
-          grep -qi '<title>Carne de pato: cortes, sabor y cómo elegirla' /tmp/duck-pillar.html
-          grep -qi 'name="description"[^>]*Conoce los principales cortes de pato' /tmp/duck-pillar.html
-          ! grep -qi 'noindex' /tmp/duck-pillar.html
-
           get_page "$base/como-preparar-confit-de-pato-al-horno-piel-crujiente/?emdo_seo_verify=1" /tmp/duck-confit.html
-          grep -qi '<title>Confit de pato crujiente: horno, grill y air fryer' /tmp/duck-confit.html
-          grep -q 'data-emdo-duck-related-topic="confit"' /tmp/duck-confit.html
-          grep -qi 'name="description"[^>]*Cómo dejar crujiente la piel' /tmp/duck-confit.html
-          ! grep -qi 'crujiente en el confit de pato: horno, grill y air fryer: Comparativa' /tmp/duck-confit.html
-
           get_page "$base/blog/?emdo_seo_verify=1" /tmp/blog-home.html
-          grep -q 'carne-de-pato-guia-completa-cortes-sabor-preparacion' /tmp/blog-home.html
-
           get_page "$base/como-elegir-lote-productos-gourmet-presupuesto-destinatario-conservacion/?emdo_seo_verify=1" /tmp/source-link.html
-          grep -q 'productos-de-pato-para-regalar-foie-pates-jamon-lotes' /tmp/source-link.html
 
           python3 - <<'PY'
-          import re
+          import json,re
+          from html.parser import HTMLParser
           from pathlib import Path
-          checks={}
-          for name in ['pato-category','duck-pillar','duck-confit','blog-home','source-link']:
-              html=Path('/tmp/'+name+'.html').read_text(errors='ignore')
-              title=re.search(r'<title[^>]*>(.*?)</title>',html,re.I|re.S)
-              desc=re.search(r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']*)',html,re.I)
-              canon=re.search(r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)',html,re.I)
-              related=re.findall(r'data-emdo-duck-related-topic=["\']([^"\']+)',html,re.I)
-              checks[name]={
-                  'title': re.sub(r'\s+',' ',title.group(1)).strip() if title else None,
-                  'description': desc.group(1) if desc else None,
-                  'canonical': canon.group(1) if canon else None,
-                  'noindex': 'noindex' in html.lower(),
-                  'related_topic': related[0] if related else None,
-                  'hub_marker': 'Guías para conocer, elegir y cocinar pato con criterio.' in html,
+
+          class AuditParser(HTMLParser):
+              def __init__(self):
+                  super().__init__(convert_charrefs=True)
+                  self.in_title=False
+                  self.title=[]
+                  self.text=[]
+                  self.description=None
+                  self.canonical=None
+                  self.noindex=False
+                  self.related=[]
+                  self.hub_link=False
+                  self.hrefs=[]
+              def handle_starttag(self, tag, attrs):
+                  a=dict(attrs)
+                  if tag.lower()=='title':
+                      self.in_title=True
+                  if tag.lower()=='meta':
+                      name=(a.get('name') or '').lower()
+                      if name=='description':
+                          self.description=a.get('content')
+                      if name=='robots' and 'noindex' in (a.get('content') or '').lower():
+                          self.noindex=True
+                  if tag.lower()=='link' and (a.get('rel') or '').lower()=='canonical':
+                      self.canonical=a.get('href')
+                  if 'data-emdo-duck-related-topic' in a:
+                      self.related.append(a['data-emdo-duck-related-topic'])
+                  if a.get('data-emdo-duck-hub-link')=='1':
+                      self.hub_link=True
+                  if tag.lower()=='a' and a.get('href'):
+                      self.hrefs.append(a['href'])
+              def handle_endtag(self, tag):
+                  if tag.lower()=='title':
+                      self.in_title=False
+              def handle_data(self, data):
+                  if self.in_title:
+                      self.title.append(data)
+                  if data.strip():
+                      self.text.append(data.strip())
+
+          def parse(path):
+              raw=Path(path).read_text(errors='ignore')
+              p=AuditParser()
+              p.feed(raw)
+              return {
+                  'title':re.sub(r'\s+',' ',' '.join(p.title)).strip(),
+                  'description':p.description,
+                  'canonical':p.canonical,
+                  'noindex':p.noindex or 'noindex' in raw.lower(),
+                  'related_topic':p.related[0] if p.related else None,
+                  'hub_link':p.hub_link,
+                  'text':' '.join(p.text),
+                  'hrefs':p.hrefs,
+                  'raw':raw,
               }
-          import json
-          print(json.dumps(checks,ensure_ascii=False,indent=2))
-          Path('/tmp/duck-public-seo.json').write_text(json.dumps(checks,ensure_ascii=False,indent=2))
+
+          pages={
+              'pato-category':parse('/tmp/pato-category.html'),
+              'duck-pillar':parse('/tmp/duck-pillar.html'),
+              'duck-confit':parse('/tmp/duck-confit.html'),
+              'blog-home':parse('/tmp/blog-home.html'),
+              'source-link':parse('/tmp/source-link.html'),
+          }
+
+          serializable={k:{kk:vv for kk,vv in v.items() if kk not in ('raw','text','hrefs')} for k,v in pages.items()}
+          serializable['pato-category']['hub_marker']='Guías para conocer, elegir y cocinar pato con criterio.' in pages['pato-category']['text']
+          print(json.dumps(serializable,ensure_ascii=False,indent=2))
+          Path('/tmp/duck-public-seo.json').write_text(json.dumps(serializable,ensure_ascii=False,indent=2))
+
+          category=pages['pato-category']
+          assert category['canonical']=='https://www.elmercadodeorigen.com/category/carnes/pato/', category['canonical']
+          assert not category['noindex']
+          for needle in [
+              'Carne de pato y cortes',
+              'Foie, paté, mousse y rillettes',
+              'Magret de pato',
+              'Confit de pato',
+              'Jamón de pato',
+              'Salsas, maridajes y menús',
+          ]:
+              assert needle in category['text'], needle
+          assert any('carne-de-pato-guia-completa-cortes-sabor-preparacion' in h for h in category['hrefs'])
+
+          pillar=pages['duck-pillar']
+          assert pillar['title'].startswith('Carne de pato: cortes, sabor y cómo elegirla'), pillar['title']
+          assert (pillar['description'] or '').startswith('Conoce los principales cortes de pato'), pillar['description']
+          assert pillar['canonical']=='https://www.elmercadodeorigen.com/carne-de-pato-guia-completa-cortes-sabor-preparacion/', pillar['canonical']
+          assert not pillar['noindex']
+          assert pillar['related_topic']=='carne-cortes', pillar['related_topic']
+          assert pillar['hub_link']
+
+          confit=pages['duck-confit']
+          assert confit['title'].startswith('Confit de pato crujiente: horno, grill y air fryer'), confit['title']
+          assert (confit['description'] or '').startswith('Cómo dejar crujiente la piel'), confit['description']
+          assert confit['canonical']=='https://www.elmercadodeorigen.com/como-preparar-confit-de-pato-al-horno-piel-crujiente/', confit['canonical']
+          assert not confit['noindex']
+          assert confit['related_topic']=='confit', confit['related_topic']
+          assert 'Comparativa de métodos' not in (confit['description'] or '')
+
+          blog=pages['blog-home']
+          assert any('carne-de-pato-guia-completa-cortes-sabor-preparacion' in h for h in blog['hrefs'])
+
+          source=pages['source-link']
+          assert any('productos-de-pato-para-regalar-foie-pates-jamon-lotes' in h for h in source['hrefs'])
           PY
 
       - name: Record SEO optimization
