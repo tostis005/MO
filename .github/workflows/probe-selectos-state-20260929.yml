@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - '.github/scripts/probe-selectos-state-20260929.php'
       - '.github/workflows/probe-selectos-state-20260929.yml'
   workflow_dispatch:
 
@@ -26,6 +27,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          php -l .github/scripts/probe-selectos-state-20260929.php >/dev/null
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"
@@ -33,8 +35,10 @@ jobs:
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
           SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
           PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
-            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
             [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
             for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
               p=$(dirname "$cfg")
@@ -45,27 +49,13 @@ jobs:
             done
           ')"
           test -n "$PROD_PATH"
+          REMOTE="/tmp/probe-selectos-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/probe-selectos-state-20260929.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
             php_bin=\$(command -v php || true)
             [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
             wp_bin=\$(command -v wp)
-            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval '
-              global \$wpdb;
-              \$st=MDO_Database::table("suppliers");
-              \$pt=MDO_Database::table("source_products");
-              \$rt=MDO_Database::table("sync_runs");
-              \$s=\$wpdb->get_row(\$wpdb->prepare("SELECT * FROM {\$st} WHERE LOWER(name)=LOWER(%s) OR code=%s OR source_url LIKE %s ORDER BY id DESC LIMIT 1","Selectos de Castilla","selectos-de-castilla","%selectosdecastilla.com%"),ARRAY_A);
-              if(!\$s){ echo "PROBE={\\"supplier\\":null}"; exit(0); }
-              \$sid=(int)\$s["id"];
-              \$run=\$wpdb->get_row(\$wpdb->prepare("SELECT id,status,trigger_type,products_found,products_new,products_updated,products_excluded,errors_count,message,started_at,finished_at FROM {\$rt} WHERE supplier_id=%d ORDER BY id DESC LIMIT 1",\$sid),ARRAY_A);
-              \$counts=\$wpdb->get_results(\$wpdb->prepare("SELECT status,COUNT(*) n FROM {\$pt} WHERE supplier_id=%d GROUP BY status ORDER BY status",\$sid),ARRAY_A);
-              \$active=(int)\$wpdb->get_var(\$wpdb->prepare("SELECT COUNT(*) FROM {\$pt} WHERE supplier_id=%d AND status=\\"active\\" AND wc_product_id IS NOT NULL AND wc_product_id>0",\$sid));
-              \$pending=(int)\$wpdb->get_var(\$wpdb->prepare("SELECT COUNT(*) FROM {\$pt} WHERE supplier_id=%d AND status IN (\\"pending\\",\\"importing\\")",\$sid));
-              \$errs=(int)\$wpdb->get_var(\$wpdb->prepare("SELECT COUNT(*) FROM {\$pt} WHERE supplier_id=%d AND last_error IS NOT NULL AND last_error<>\\"\\"",\$sid));
-              \$actions=null;
-              if(function_exists("as_get_scheduled_actions")){
-                \$actions=count(as_get_scheduled_actions(["group"=>"mdo-supplier-sync","status"=>ActionScheduler_Store::STATUS_PENDING,"per_page"=>1000],"ids"));
-              }
-              echo "PROBE=".wp_json_encode(["supplier"=>["id"=>\$sid,"vendor_user_id"=>(int)\$s["vendor_user_id"],"connector"=>\$s["connector"],"frequency"=>\$s["sync_frequency"],"active"=>(int)\$s["active"],"last_sync_at"=>\$s["last_sync_at"]],"latest_run"=>\$run,"counts"=>\$counts,"active_imported"=>\$active,"pending_or_importing"=>\$pending,"source_errors"=>\$errs,"pending_group_actions"=>\$actions],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
-            ' --path='$PROD_PATH' --allow-root
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root
+            rm -f '$REMOTE'
           "
