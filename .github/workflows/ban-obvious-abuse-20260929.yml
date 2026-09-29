@@ -1,0 +1,37 @@
+name: Ban obvious abusive IPs 2026-09-29
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ban-obvious-abuse-20260929.yml'
+permissions:
+  contents: read
+jobs:
+  ban:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Permanently ban confirmed abusive IPs
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo "=== BEFORE ==="
+          fail2ban-client status plesk-permanent-ban || true
+          for ip in 45.138.12.47 143.110.215.92; do
+            echo "BAN $ip"
+            fail2ban-client set plesk-permanent-ban banip "$ip" || true
+          done
+          echo "=== AFTER ==="
+          fail2ban-client status plesk-permanent-ban || true
+          REMOTE
