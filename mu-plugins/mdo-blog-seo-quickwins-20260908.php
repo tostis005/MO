@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
  * Description: Removes duplicated in-content H1s, defers the inline newsletter, applies data-led SERP copy and reinforces contextual internal links to the highest-opportunity blog posts.
- * Version: 2026.09.29.8
+ * Version: 2026.09.29.9
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -387,13 +387,38 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
     }
 
     $slug = mdo_blog_seo_current_slug_20260908();
-    if ( '' === $slug ) {
-        return $content;
-    }
 
     $request_uri = mdo_blog_seo_public_request_uri_20260929();
     $path        = (string) wp_parse_url( $request_uri, PHP_URL_PATH );
     $is_english  = 0 === strpos( $path, '/en/' );
+
+    /*
+     * Algunas rutas inglesas se resuelven internamente sobre el slug español.
+     * El slug público sigue siendo preferente, pero añadimos como candidatos
+     * el _en_US_post_name persistido y el post_name nativo del objeto actual.
+     */
+    $source_slugs = array_filter( array( $slug ) );
+    $post_id      = (int) get_queried_object_id();
+
+    if ( $post_id > 0 ) {
+        $native_slug = sanitize_title( (string) get_post_field( 'post_name', $post_id ) );
+        if ( '' !== $native_slug ) {
+            $source_slugs[] = $native_slug;
+        }
+
+        if ( $is_english ) {
+            $english_slug = sanitize_title( (string) get_post_meta( $post_id, '_en_US_post_name', true ) );
+            if ( '' !== $english_slug ) {
+                $source_slugs[] = $english_slug;
+            }
+        }
+    }
+
+    $source_slugs = array_values( array_unique( array_filter( $source_slugs ) ) );
+
+    if ( empty( $source_slugs ) ) {
+        return $content;
+    }
 
     $clusters = array(
         'es-legumbres' => array(
@@ -673,7 +698,7 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
             continue;
         }
 
-        if ( in_array( $slug, $candidate['sources'], true ) ) {
+        if ( array_intersect( $source_slugs, $candidate['sources'] ) ) {
             $cluster_key = $candidate_key;
             $cluster     = $candidate;
             break;
@@ -691,7 +716,7 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
         $target_label = (string) $target[1];
         $target_slug  = basename( untrailingslashit( $target_path ) );
 
-        if ( $target_slug === $slug || false !== strpos( $content, $target_path ) ) {
+        if ( in_array( $target_slug, $source_slugs, true ) || false !== strpos( $content, $target_path ) ) {
             continue;
         }
 
