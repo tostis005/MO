@@ -77,7 +77,7 @@ jobs:
           ES_ZERO8="https://www.elmercadodeorigen.com/vaca-vs-ternera-diferencias-sabor-textura-cual-elegir/?mdo_seo_verify=${GITHUB_RUN_ID}"
           EN_ZERO8="https://www.elmercadodeorigen.com/en/ground-beef-what-it-is-how-to-choose-and-cook/?mdo_seo_verify=${GITHUB_RUN_ID}"
           ES_FINAL9="https://www.elmercadodeorigen.com/tomahawk-que-corte-es-como-cocinarlo-casa/?mdo_seo_verify=${GITHUB_RUN_ID}"
-          EN_FINAL9="https://www.elmercadodeorigen.com/en/how-much-vitamin-e-extra-virgin-olive-oil/?mdo_seo_verify=${GITHUB_RUN_ID}"
+          EN_FINAL9="https://www.elmercadodeorigen.com/en/olive-oil-or-sunflower-oil-for-frying-which-to-choose/?mdo_seo_verify=${GITHUB_RUN_ID}"
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES" -o /tmp/es.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN" -o /tmp/en.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES_CLUSTER" -o /tmp/es-cluster.html
@@ -256,7 +256,7 @@ jobs:
 
           final9_checks = [
               ('ES_FINAL9', '/tmp/es-final9.html', 'Tomahawk: qué corte es y cómo cocinarlo en casa', 'es-carne', 'Qué es el tomahawk'),
-              ('EN_FINAL9', '/tmp/en-final9.html', 'Vitamin E in Extra Virgin Olive Oil: Amount per Serving', 'en-olive-oil', None),
+              ('EN_FINAL9', '/tmp/en-final9.html', 'Olive Oil vs Sunflower Oil for Frying: Which to Choose', 'en-olive-oil', None),
           ]
           for label, path, title_prefix, cluster_key, desc_prefix in final9_checks:
               soup = BeautifulSoup(open(path, encoding='utf-8').read(), 'html.parser')
