@@ -262,7 +262,8 @@ final class MDO_Scheduler {
 			'tolecarnes'         => MDO_Connector_Tolecarnes::class,
 			'la-huerta-ana-mary' => MDO_Connector_Huerta_Ana_Mary::class,
 			'el-catedratico',
-			'puente-robles'      => MDO_Connector_Iberico_Family::class,
+			'puente-robles',
+			'selectos-de-castilla' => MDO_Connector_Iberico_Family::class,
 			default              => null,
 		};
 	}

@@ -183,6 +183,13 @@ final class MDO_Connector_Iberico_Family {
 				),
 			);
 		}
+		if ( 'selectos-de-castilla' === $connector ) {
+			return array(
+				'key'          => 'selectos-de-castilla',
+				'base_url'     => $base,
+				'catalog_urls' => array( $source_url ),
+			);
+		}
 		throw new RuntimeException( 'Conector ibérico no soportado: ' . $connector );
 	}
 
@@ -218,15 +225,18 @@ final class MDO_Connector_Iberico_Family {
 
 	private static function add_candidate_link( array &$links, string $href, string $base_url, array $config ): void {
 		$url = self::absolute_url( $href, $base_url );
-		if ( ! $url || ! self::same_host( $url, $config['base_url'] ) || ! self::looks_like_product_url( $url ) ) {
+		if ( ! $url || ! self::same_host( $url, $config['base_url'] ) || ! self::looks_like_product_url( $url, $config ) ) {
 			return;
 		}
 		$url = self::canonical_url( $url );
 		$links[ $url ] = $url;
 	}
 
-	private static function looks_like_product_url( string $url ): bool {
+	private static function looks_like_product_url( string $url, array $config ): bool {
 		$path = rtrim( strtolower( (string) wp_parse_url( $url, PHP_URL_PATH ) ), '/' );
+		if ( 'selectos-de-castilla' === (string) ( $config['key'] ?? '' ) ) {
+			return (bool) preg_match( '~-\\d+\\.html$~i', $path );
+		}
 		if ( ! str_starts_with( $path, '/es/' ) ) {
 			return false;
 		}
