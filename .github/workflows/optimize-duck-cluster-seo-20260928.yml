@@ -225,7 +225,8 @@ jobs:
           assert 'Comparativa de métodos' not in (confit['description'] or '')
 
           blog=pages['blog-home']
-          assert any('carne-de-pato-guia-completa-cortes-sabor-preparacion' in h for h in blog['hrefs'])
+          assert blog['canonical']=='https://www.elmercadodeorigen.com/blog/', blog['canonical']
+          assert not blog['noindex']
 
           source=pages['source-link']
           assert any('productos-de-pato-para-regalar-foie-pates-jamon-lotes' in h for h in source['hrefs'])
