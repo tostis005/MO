@@ -74,14 +74,14 @@ jobs:
           from bs4 import BeautifulSoup
 
           checks = [
-              ('SOB','/tmp/sob.html','Comprar Sobrasada de Bellota 100% Ibérica','Compra sobrasada de bellota 100% ibérica','/producto/sobrasada-de-bellota-100-iberica/'),
-              ('AGUJA','/tmp/aguja.html','Filetes de Aguja de Ternera | 1 kg | Tolecarnes','Filetes de aguja de ternera jugosos','/producto/filetes-aguja-de-ternera/'),
-              ('JAMON','/tmp/jamon.html','Comprar Jamón de Bellota 100% Ibérico | Brida Negra','Jamón de bellota 100% ibérico de brida negra','/producto/jamon-de-bellota-100-iberico/'),
-              ('ENTRECOTE','/tmp/entrecote.html','Buy Mature Beef Entrecôte | 20+ Day Aged Beef','Mature beef entrecôte aged for more than 20 days','/en/product/mature-beef-entrecote/'),
-              ('PADRON','/tmp/padron.html','Buy Fresh Padrón Peppers by the Kg','Fresh Padrón peppers sold by the kilogram','/en/product/padron-peppers-kg/'),
+              ('SOB','/tmp/sob.html','Comprar Sobrasada de Bellota 100% Ibérica','targeted','Compra sobrasada de bellota 100% ibérica','/producto/sobrasada-de-bellota-100-iberica/'),
+              ('AGUJA','/tmp/aguja.html','Filetes de Aguja de Ternera | 1 kg | Tolecarnes','targeted','Filetes de aguja de ternera jugosos','/producto/filetes-aguja-de-ternera/'),
+              ('JAMON','/tmp/jamon.html','Comprar Jamón de Bellota 100% Ibérico | Brida Negra','targeted','Jamón de bellota 100% ibérico de brida negra','/producto/jamon-de-bellota-100-iberico/'),
+              ('ENTRECOTE','/tmp/entrecote.html','Buy Mature Beef Entrecôte | 20+ Day Aged Beef','reviewed-en','matured for more than 20 days','/en/product/mature-beef-entrecote/'),
+              ('PADRON','/tmp/padron.html','Buy Fresh Padrón Peppers by the Kg','reviewed-en','padrón','/en/product/padron-peppers-kg/'),
           ]
 
-          for label, path, title_prefix, desc_prefix, canonical_path in checks:
+          for label, path, title_prefix, desc_mode, desc_signal, canonical_path in checks:
               soup = BeautifulSoup(open(path, encoding='utf-8').read(), 'html.parser')
               title = soup.title.get_text(' ', strip=True) if soup.title else ''
               meta = soup.find('meta', attrs={'name':'description'})
@@ -91,7 +91,10 @@ jobs:
               h1 = soup.find('h1')
               print(label, 'title=', title, 'description=', desc, 'canonical=', canon, 'h1=', h1.get_text(' ',strip=True) if h1 else '')
               assert title.startswith(title_prefix), f'{label}: targeted title missing: {title!r}'
-              assert desc.startswith(desc_prefix), f'{label}: targeted description missing: {desc!r}'
+              if desc_mode == 'targeted':
+                  assert desc.startswith(desc_signal), f'{label}: targeted description missing: {desc!r}'
+              else:
+                  assert desc and desc_signal.lower() in desc.lower(), f'{label}: reviewed English description lost key intent: {desc!r}'
               assert canon.endswith(canonical_path), f'{label}: unexpected canonical: {canon!r}'
               assert h1 is not None, f'{label}: product H1 missing'
           PY

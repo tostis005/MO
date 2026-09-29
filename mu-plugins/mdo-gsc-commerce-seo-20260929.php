@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO GSC Commerce SEO 2026-09-29
  * Description: Data-led SERP titles and descriptions for high-impression commerce URLs from Google Search Console.
- * Version: 2026.09.29.1
+ * Version: 2026.09.29.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -57,11 +57,9 @@ function mdo_gsc_commerce_map_20260929(): array {
         ),
         '/en/product/mature-beef-entrecote/' => array(
             'title' => 'Buy Mature Beef Entrecôte | 20+ Day Aged Beef',
-            'description' => 'Mature beef entrecôte aged for more than 20 days, supplied as vacuum-packed steaks. About four to five pieces per kilogram as a guide.',
         ),
         '/en/product/padron-peppers-kg/' => array(
             'title' => 'Buy Fresh Padrón Peppers by the Kg',
-            'description' => 'Fresh Padrón peppers sold by the kilogram. Small, green peppers for frying or griddling; some may be hot while others are mild.',
         ),
     );
 }
