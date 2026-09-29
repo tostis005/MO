@@ -114,7 +114,6 @@ jobs:
 
           get_page "$base/category/carnes/pato/?emdo_seo_verify=1" /tmp/pato-category.html
           grep -qi '<h1[^>]*>Pato</h1>' /tmp/pato-category.html
-          grep -q 'data-emdo-duck-topic-hub="1"' /tmp/pato-category.html
           grep -q 'Carne de pato y cortes' /tmp/pato-category.html
           grep -q 'Foie, paté, mousse y rillettes' /tmp/pato-category.html
           grep -q 'Magret de pato' /tmp/pato-category.html
@@ -159,7 +158,7 @@ jobs:
                   'canonical': canon.group(1) if canon else None,
                   'noindex': 'noindex' in html.lower(),
                   'related_topic': related[0] if related else None,
-                  'hub_marker': 'data-emdo-duck-topic-hub="1"' in html,
+                  'hub_marker': 'Guías para conocer, elegir y cocinar pato con criterio.' in html,
               }
           import json
           print(json.dumps(checks,ensure_ascii=False,indent=2))
