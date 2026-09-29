@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
  * Description: Removes duplicated in-content H1s, defers the inline newsletter, applies data-led SERP copy and reinforces contextual internal links to the highest-opportunity blog posts.
- * Version: 2026.09.29.19
+ * Version: 2026.09.29.20
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -281,6 +281,26 @@ function mdo_blog_seo_top3_title_20260908( $title ): string {
         'vaca-vs-ternera-diferencias-sabor-textura-cual-elegir'                  => 'Vaca vs ternera: diferencias de sabor, grasa y ternura',
         'how-long-cooked-meat-lasts-in-fridge-safe-storage'                      => 'How Long Does Cooked Meat Last in the Fridge?',
         'ground-beef-what-it-is-how-to-choose-and-cook'                          => 'Ground Beef: What It Is and How to Choose It',
+        'how-much-vitamin-e-extra-virgin-olive-oil'                               => 'Vitamin E in Extra Virgin Olive Oil: Amount per Serving',
+        'tomahawk-que-corte-es-como-cocinarlo-casa'                             => 'Tomahawk: qué corte es y cómo cocinarlo en casa',
+        'which-parts-of-a-leek-can-you-eat-how-to-clean-it'                     => 'Which Parts of a Leek Can You Eat? How to Clean It',
+        'root-leaf-fruit-flower-bulb-stem-vegetables'                           => 'Root, Leaf, Fruit, Flower, Bulb and Stem Vegetables',
+        'que-parte-puerro-se-come-como-limpiarlo-quitar-tierra'                 => 'Qué parte del puerro se come y cómo limpiarlo bien',
+        'olive-oil-or-sunflower-oil-for-frying-which-to-choose'                 => 'Olive Oil vs Sunflower Oil for Frying: Which to Choose',
+        'cuanta-proteina-tiene-jamon-iberico'                                   => 'Proteína del jamón ibérico por 100 g y por ración',
+        'como-asar-pimientos-rojos-horno-air-fryer-tiempos-pelarlos'            => 'Cómo asar pimientos rojos: horno, air fryer y tiempos',
+        'kuroge-washu-japanese-black-wagyu'                                     => 'Kuroge Washu: What Japanese Black Wagyu Means',
+        'beef-nutrients-protein-iron-zinc-vitamins'                             => 'Beef Nutrients: Protein, Iron, Zinc and Vitamins',
+        'verduras-mas-calcio-comparativa'                                       => 'Verduras con más calcio: comparativa por 100 g',
+        'quesos-azules-que-son-como-se-elaboran-mohos-como-degustarlos'         => 'Quesos azules: qué son, cómo se elaboran y cómo degustarlos',
+        'queso-envasado-vacio-conservar-abrir-olor-textura'                     => 'Queso al vacío: conservación, olor y textura al abrir',
+        'cuanto-hierro-tiene-carne-ternera'                                     => 'Hierro de la ternera por 100 g y por ración',
+        'lechuga-bordes-rojos-marrones-por-que-ocurre-cuando-descartarla'       => 'Lechuga con bordes rojos o marrones: cuándo descartarla',
+        'que-verduras-tienen-mas-vitamina-c'                                    => 'Verduras con más vitamina C: comparativa por 100 g',
+        'como-cortar-carne-contrapelo-mas-tierna'                               => 'Cómo cortar carne a contrapelo para que quede más tierna',
+        'nutrientes-chorizo-iberico-proteinas-grasas-hierro-vitaminas-minerales' => 'Nutrientes del chorizo ibérico: proteína, grasa y hierro',
+        'legumbres-secas-vs-cocidas-calorias-nutrientes'                        => 'Legumbres secas vs cocidas: calorías y nutrientes',
+        'why-burgers-shrink-when-cooked-causes-and-how-to-reduce-it'            => 'Why Burgers Shrink When Cooked—and How to Reduce It',
     );
 
     return isset( $titles[ $slug ] ) ? $titles[ $slug ] : (string) $title;
@@ -366,6 +386,19 @@ function mdo_blog_seo_top3_description_20260908( $description ): string {
         'vacio-tarro-conserva-como-saber-cierre-intacto'                          => 'Cómo comprobar si un tarro de conserva mantiene el vacío: tapa, botón central, fugas y otras señales que ayudan a valorar si el cierre sigue intacto.',
         'solomillo-vs-entrecot-diferencias-ternura-grasa-sabor-cual-elegir'   => 'Compara solomillo y entrecot por ternura, grasa, sabor, grosor y técnica de cocción para elegir el corte que mejor encaja con cada receta.',
         'vaca-vs-ternera-diferencias-sabor-textura-cual-elegir'                  => 'Diferencias entre carne de vaca y ternera en sabor, color, grasa y textura, y qué conviene elegir según filetes, parrilla, guisos o picada.',
+        'tomahawk-que-corte-es-como-cocinarlo-casa'                             => 'Qué es el tomahawk, de qué parte procede y cómo cocinarlo en casa controlando grosor, sellado, temperatura interior y reposo.',
+        'que-parte-puerro-se-come-como-limpiarlo-quitar-tierra'                 => 'Qué partes del puerro se comen, cómo aprovechar la zona blanca y verde y cómo limpiarlo bien para eliminar tierra entre sus capas.',
+        'cuanta-proteina-tiene-jamon-iberico'                                   => 'Cuánta proteína aporta el jamón ibérico por 100 g y por ración, con contexto sobre grasa, sal y por qué las cifras cambian entre piezas.',
+        'como-asar-pimientos-rojos-horno-air-fryer-tiempos-pelarlos'            => 'Cómo asar pimientos rojos en horno o air fryer: temperaturas, tiempos orientativos, reposo y trucos para pelarlos con más facilidad.',
+        'verduras-mas-calcio-comparativa'                                       => 'Comparativa de verduras y hortalizas con más calcio por 100 g, con contexto sobre raciones y diferencias frente a otros alimentos.',
+        'quesos-azules-que-son-como-se-elaboran-mohos-como-degustarlos'         => 'Qué son los quesos azules, cómo intervienen los mohos en su elaboración y maduración y qué tener en cuenta al conservarlos y degustarlos.',
+        'queso-envasado-vacio-conservar-abrir-olor-textura'                     => 'Cómo conservar queso envasado al vacío y qué olor, humedad o textura pueden ser normales al abrirlo frente a señales de deterioro.',
+        'cuanto-hierro-tiene-carne-ternera'                                     => 'Cuánto hierro aporta la carne de ternera por 100 g y por ración, con diferencias según corte y contexto frente a otros alimentos.',
+        'lechuga-bordes-rojos-marrones-por-que-ocurre-cuando-descartarla'       => 'Por qué la lechuga desarrolla bordes rojos o marrones, cuándo sigue siendo aprovechable y qué señales indican que conviene descartarla.',
+        'que-verduras-tienen-mas-vitamina-c'                                    => 'Comparativa de verduras y hortalizas con más vitamina C por 100 g, con contexto sobre raciones, variedad y efecto de la cocción.',
+        'como-cortar-carne-contrapelo-mas-tierna'                               => 'Cómo identificar la dirección de las fibras y cortar la carne a contrapelo para que resulte más fácil de masticar y parezca más tierna.',
+        'nutrientes-chorizo-iberico-proteinas-grasas-hierro-vitaminas-minerales' => 'Qué nutrientes aporta el chorizo ibérico: proteína, grasa, hierro y otros micronutrientes, con contexto sobre raciones y contenido de sal.',
+        'legumbres-secas-vs-cocidas-calorias-nutrientes'                        => 'Por qué cambian las calorías y nutrientes por 100 g entre legumbres secas y cocidas y cómo compararlas correctamente teniendo en cuenta el agua.',
     );
 
     return isset( $descriptions[ $slug ] ) ? $descriptions[ $slug ] : (string) $description;
@@ -747,6 +780,7 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
                 'cuanto-hierro-tiene-carne-ternera',
                 'como-cortar-carne-contrapelo-mas-tierna',
                 'vaca-vs-ternera-diferencias-sabor-textura-cual-elegir',
+                'tomahawk-que-corte-es-como-cocinarlo-casa',
             ),
             'label' => 'Guías relacionadas',
             'targets' => array(
@@ -819,6 +853,10 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
                 'verduras-temporada-espana-calendario-meses-que-comprar',
                 'por-que-frutas-hortalizas-se-oscurecen-al-cortarlas-oxidacion-enzimatica',
                 'hortalizas-raiz-hoja-fruto-flor-bulbo-tallo',
+                'que-parte-puerro-se-come-como-limpiarlo-quitar-tierra',
+                'verduras-mas-calcio-comparativa',
+                'como-asar-pimientos-rojos-horno-air-fryer-tiempos-pelarlos',
+                'lechuga-bordes-rojos-marrones-por-que-ocurre-cuando-descartarla',
             ),
             'label' => 'Guías relacionadas',
             'targets' => array(
@@ -845,6 +883,7 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
                 'sobrasada-iberica-que-es-como-se-elabora-que-mirar-al-comprarla',
                 'nutrientes-chorizo-iberico-proteinas-grasas-hierro-vitaminas-minerales',
                 'cuanta-proteina-tiene-chorizo-iberico',
+                'cuanta-proteina-tiene-jamon-iberico',
             ),
             'label' => 'Guías de embutidos relacionadas',
             'targets' => array(
@@ -929,6 +968,7 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
                 'how-long-cooked-meat-lasts-in-fridge-safe-storage',
                 'how-long-to-marinate-beef-hours-salt-acid',
                 'ground-beef-what-it-is-how-to-choose-and-cook',
+                'kuroge-washu-japanese-black-wagyu',
             ),
             'label' => 'Related guides',
             'targets' => array(
@@ -1002,6 +1042,7 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
                 'vegetables-highest-in-iron',
                 'vegetables-highest-calcium-comparison',
                 'what-happens-to-vegetables-after-harvest-respiration-water-ageing',
+                'which-parts-of-a-leek-can-you-eat-how-to-clean-it',
             ),
             'label' => 'Related guides',
             'targets' => array(
