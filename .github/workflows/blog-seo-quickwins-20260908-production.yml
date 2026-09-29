@@ -68,6 +68,8 @@ jobs:
           EN_ANSWER="https://www.elmercadodeorigen.com/en/yellow-broccoli-why-it-changes-colour-and-when-it-is-edible/?mdo_seo_verify=${GITHUB_RUN_ID}"
           EN_CHEESE="https://www.elmercadodeorigen.com/en/what-is-cheese-affinage-maturation-humidity-rind-care-affineur/?mdo_seo_verify=${GITHUB_RUN_ID}"
           EN_CHEESE_BAD="https://www.elmercadodeorigen.com/en/how-to-tell-cheese-gone-bad-mould-smell-texture-discard/?mdo_seo_verify=${GITHUB_RUN_ID}"
+          ES_PHASE5="https://www.elmercadodeorigen.com/se-pueden-congelar-legumbres-cocidas-como-hacerlo/?mdo_seo_verify=${GITHUB_RUN_ID}"
+          EN_PHASE5="https://www.elmercadodeorigen.com/en/how-long-opened-canned-food-keeps-in-fridge-how-to-store-it/?mdo_seo_verify=${GITHUB_RUN_ID}"
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES" -o /tmp/es.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN" -o /tmp/en.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES_CLUSTER" -o /tmp/es-cluster.html
@@ -76,6 +78,8 @@ jobs:
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN_ANSWER" -o /tmp/en-answer.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN_CHEESE" -o /tmp/en-cheese.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN_CHEESE_BAD" -o /tmp/en-cheese-bad.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES_PHASE5" -o /tmp/es-phase5.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN_PHASE5" -o /tmp/en-phase5.html
           python - <<'PY'
           from bs4 import BeautifulSoup
           for label, path in [('ES','/tmp/es.html'), ('EN','/tmp/en.html')]:
@@ -155,6 +159,20 @@ jobs:
           assert 'This guide is designed to answer the full search intent' not in bad_text, 'EN_CHEESE_BAD: generic search-intent sentence remains'
           import re
           assert re.search(r'[.!?]nn[A-Z]', bad_html) is None, 'EN_CHEESE_BAD: literal nn paragraph artifact remains'
+
+          phase5 = [
+              ('ES_PHASE5', '/tmp/es-phase5.html', '¿Se pueden congelar legumbres cocidas? Cómo hacerlo', 'Sí, las legumbres cocidas se pueden congelar.'),
+              ('EN_PHASE5', '/tmp/en-phase5.html', 'Opened Canned Food: How Long It Keeps in the Fridge', None),
+          ]
+          for label, path, title_prefix, desc_prefix in phase5:
+              soup = BeautifulSoup(open(path, encoding='utf-8').read(), 'html.parser')
+              title = soup.title.get_text(' ', strip=True) if soup.title else ''
+              meta = soup.find('meta', attrs={'name':'description'})
+              desc = meta.get('content','').strip() if meta else ''
+              print(label, 'title=', title, 'description=', desc)
+              assert title.startswith(title_prefix), f'{label}: phase-5 SEO title missing: {title!r}'
+              if desc_prefix:
+                  assert desc.startswith(desc_prefix), f'{label}: phase-5 meta description missing: {desc!r}'
 
           answer_checks = [
               ('ES_ANSWER', '/tmp/es-answer.html', 'Aguja de ternera: qué corte es y cómo cocinarla', 'Respuesta rápida'),
