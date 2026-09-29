@@ -131,6 +131,26 @@ jobs:
           grep -qi 'product-template-default\|single-product' /tmp/en-product.html
           grep -q "rel=\"canonical\" href=\"$base/en/product/$prod_slug/" /tmp/en-product.html
 
+          echo '=== ENGLISH QUERY-ID CANONICAL REDIRECT ==='
+          post_row=$(wp db query "SELECT p.ID,slug.meta_value FROM $(wp db prefix)posts p JOIN $(wp db prefix)postmeta slug ON slug.post_id=p.ID AND slug.meta_key='_en_US_post_name' AND slug.meta_value<>'' JOIN $(wp db prefix)postmeta pub ON pub.post_id=p.ID AND pub.meta_key='_en_US_published' AND pub.meta_value='1' WHERE p.post_status='publish' AND p.post_type='post' ORDER BY p.ID ASC LIMIT 1" --skip-column-names 2>/dev/null | tail -n1)
+          test -n "$post_row"
+          post_id=$(printf '%s' "$post_row" | awk '{print $1}')
+          post_slug=$(printf '%s' "$post_row" | awk '{print $2}')
+          test -n "$post_id"
+          test -n "$post_slug"
+          query_code=$(curl -ksS --max-time 30 -o /dev/null -w '%{http_code}' "$base/en/?p=$post_id")
+          query_location=$(curl -ksSI --max-time 30 "$base/en/?p=$post_id" | tr -d '\r' | awk 'tolower($1)=="location:"{print $2}' | tail -n1)
+          echo "query_post=$post_id slug=$post_slug http=$query_code location=$query_location"
+          test "$query_code" = 301
+          test "$query_location" = "$base/en/$post_slug/"
+
+          tracking_location=$(curl -ksSI --max-time 30 "$base/en/?p=$post_id&utm_source=gsc-test&utm_medium=verify" | tr -d '\r' | awk 'tolower($1)=="location:"{print $2}' | tail -n1)
+          echo "tracking_location=$tracking_location"
+          printf '%s' "$tracking_location" | grep -q "$base/en/$post_slug/"
+          printf '%s' "$tracking_location" | grep -q 'utm_source=gsc-test'
+          printf '%s' "$tracking_location" | grep -q 'utm_medium=verify'
+          ! printf '%s' "$tracking_location" | grep -q '[?&]p='
+
           echo '=== ENGLISH SITEMAP ==='
           sm_code=$(curl -ksS --max-time 30 -o /tmp/en-sitemap.xml -w '%{http_code}' "$base/english-sitemap.xml")
           sm_count=$(grep -o '<url>' /tmp/en-sitemap.xml | wc -l | tr -d ' ')
