@@ -72,6 +72,8 @@ jobs:
           EN_CURED="https://www.elmercadodeorigen.com/en/white-mold-on-chorizo-salchichon-when-normal-when-not/?mdo_seo_verify=${GITHUB_RUN_ID}"
           ES_PHASE5="https://www.elmercadodeorigen.com/se-pueden-congelar-legumbres-cocidas-como-hacerlo-textura/?mdo_seo_verify=${GITHUB_RUN_ID}"
           EN_PHASE5="https://www.elmercadodeorigen.com/en/how-long-opened-canned-food-keeps-in-fridge-how-to-store-it/?mdo_seo_verify=${GITHUB_RUN_ID}"
+          ES_CHEESE7="https://www.elmercadodeorigen.com/valores-nutricionales-queso-calorias-proteinas-grasas-sal-carbohidratos/?mdo_seo_verify=${GITHUB_RUN_ID}"
+          ES_PRESERVE7="https://www.elmercadodeorigen.com/se-pueden-congelar-conservas-una-vez-abiertas-que-productos-toleran-mejor/?mdo_seo_verify=${GITHUB_RUN_ID}"
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES" -o /tmp/es.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN" -o /tmp/en.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES_CLUSTER" -o /tmp/es-cluster.html
@@ -84,6 +86,8 @@ jobs:
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN_CURED" -o /tmp/en-cured.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES_PHASE5" -o /tmp/es-phase5.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN_PHASE5" -o /tmp/en-phase5.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES_CHEESE7" -o /tmp/es-cheese7.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES_PRESERVE7" -o /tmp/es-preserve7.html
           python - <<'PY'
           from bs4 import BeautifulSoup
           for label, path in [('ES','/tmp/es.html'), ('EN','/tmp/en.html')]:
@@ -202,6 +206,29 @@ jobs:
               ), f'{label}: cured-meats commerce bridge missing'
               if desc_prefix:
                   assert desc.startswith(desc_prefix), f'{label}: phase-6 Spanish description missing: {desc!r}'
+
+          cheese7 = BeautifulSoup(open('/tmp/es-cheese7.html', encoding='utf-8').read(), 'html.parser')
+          cheese7_title = cheese7.title.get_text(' ', strip=True) if cheese7.title else ''
+          cheese7_meta = cheese7.find('meta', attrs={'name':'description'})
+          cheese7_desc = cheese7_meta.get('content','').strip() if cheese7_meta else ''
+          cheese7_article = cheese7.select_one('.emo-article-content')
+          cheese7_block = cheese7.select_one('.emo-article-content p.mdo-seo-cluster-links[data-mdo-seo-cluster="es-cheese"]')
+          assert cheese7_article is not None and cheese7_block is not None, 'ES_CHEESE7: Spanish cheese cluster missing'
+          cheese7_links = cheese7_block.find_all('a', href=True)
+          cheese7_hub = cheese7_block.select_one('a.mdo-seo-cluster-hub[href]')
+          print('ES_CHEESE7', 'title=', cheese7_title, 'links=', [a.get('href') for a in cheese7_links], 'description=', cheese7_desc)
+          assert cheese7_title.startswith('Valores nutricionales del queso: calorías, proteína y grasa'), f'ES_CHEESE7: phase-7 title missing: {cheese7_title!r}'
+          assert cheese7_desc.startswith('Cómo cambian las calorías, proteínas, grasas, sal y carbohidratos'), f'ES_CHEESE7: phase-7 meta description missing: {cheese7_desc!r}'
+          assert len(cheese7_links) >= 3, 'ES_CHEESE7: expected cheese authority links plus hub'
+          assert cheese7_hub is not None and cheese7_hub.get('href','').endswith('/category/quesos/'), 'ES_CHEESE7: cheese hub link missing'
+
+          preserve7 = BeautifulSoup(open('/tmp/es-preserve7.html', encoding='utf-8').read(), 'html.parser')
+          preserve7_title = preserve7.title.get_text(' ', strip=True) if preserve7.title else ''
+          preserve7_meta = preserve7.find('meta', attrs={'name':'description'})
+          preserve7_desc = preserve7_meta.get('content','').strip() if preserve7_meta else ''
+          print('ES_PRESERVE7', 'title=', preserve7_title, 'description=', preserve7_desc)
+          assert preserve7_title.startswith('¿Se pueden congelar conservas abiertas? Qué productos sí'), f'ES_PRESERVE7: phase-7 title missing: {preserve7_title!r}'
+          assert preserve7_desc.startswith('Qué conservas abiertas se pueden congelar'), f'ES_PRESERVE7: phase-7 meta description missing: {preserve7_desc!r}'
 
           answer_checks = [
               ('ES_ANSWER', '/tmp/es-answer.html', 'Aguja de ternera: qué corte es y cómo cocinarla', 'Respuesta rápida'),
