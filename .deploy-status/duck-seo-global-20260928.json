@@ -1,562 +1,937 @@
 {
-  "generated_at": "2026-09-29T20:47:51Z",
-  "run_id": 36628397527,
-  "source_sha": "bdc55c73088e6ec70d94d5fcc1c76140f3b8199c",
+  "generated_at": "2026-09-29T23:42:11Z",
+  "run_id": 36646519859,
+  "source_sha": "72ea004d6a1567630ee15106147584f0babd20f2",
   "verified": true,
-  "batch": "20260928-duck-seo-global-optimization",
+  "batch": "20260930-duck-seo-refinement",
   "deployment": {
-    "batch": "20260928-duck-seo-architecture",
+    "batch": "20260930-duck-seo-refinement",
     "category": {
       "id": 480,
       "name": "Pato",
       "slug": "pato",
       "parent": 440,
-      "url": "https://www.elmercadodeorigen.com/category/carnes/pato/"
+      "url": "https://www.elmercadodeorigen.com/category/carnes/pato/",
+      "hub_marker": true
     },
     "count": 60,
     "visible_normal_query": 60,
     "category_query": 60,
     "homepage_unsuppressed": 60,
+    "seo": {
+      "title_min": 39,
+      "title_max": 60,
+      "description_min": 119,
+      "description_max": 146,
+      "groups": {
+        "carne-cortes": 13,
+        "foie-preparados": 18,
+        "magret": 7,
+        "confit": 9,
+        "jamon": 7,
+        "salsas-menus": 6
+      }
+    },
     "rows": [
       {
         "id": 14744,
         "key": "duck-01",
+        "slug": "carne-de-pato-guia-completa-cortes-sabor-preparacion",
+        "group": "carne-cortes",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Carne de pato: cortes, sabor y cómo elegirla",
+        "seo_title_len": 44,
+        "seo_description": "Conoce los principales cortes de pato, su sabor y textura, qué preparación conviene a cada pieza y qué revisar antes de elegir carne de pato.",
+        "seo_description_len": 141
       },
       {
         "id": 14745,
         "key": "duck-02",
+        "slug": "foie-gras-de-pato-que-es-tipos-diferencias-como-elegirlo",
+        "group": "foie-preparados",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Foie gras de pato: tipos, formatos y cómo elegirlo",
+        "seo_title_len": 50,
+        "seo_description": "Diferencias entre foie gras entero, bloc, micuit y otros formatos, con criterios de uso, conservación y textura para elegir el más adecuado.",
+        "seo_description_len": 140
       },
       {
         "id": 14746,
         "key": "duck-03",
+        "slug": "magret-de-pato-que-es-como-cocinarlo-punto-perfecto",
+        "group": "magret",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Magret de pato: qué corte es y cómo cocinarlo",
+        "seo_title_len": 45,
+        "seo_description": "Qué es el magret de pato, de qué parte procede, cómo es su capa de grasa y qué técnicas funcionan mejor para cocinar este corte.",
+        "seo_description_len": 128
       },
       {
         "id": 14747,
         "key": "duck-04",
+        "slug": "confit-de-pato-que-es-como-se-prepara-y-con-que-acompanarlo",
+        "group": "confit",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Confit de pato: qué es, preparación y acompañamientos",
+        "seo_title_len": 53,
+        "seo_description": "Qué es el confit de pato, cómo se elabora, cómo calentarlo sin secarlo y qué guarniciones y salsas combinan mejor con su textura.",
+        "seo_description_len": 129
       },
       {
         "id": 14748,
         "key": "duck-05",
+        "slug": "jamon-de-pato-que-es-como-se-elabora-y-como-se-come",
+        "group": "jamon",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Jamón de pato: qué es, elaboración y cómo servirlo",
+        "seo_title_len": 50,
+        "seo_description": "Qué es el jamón de pato, cómo se cura, qué sabor y textura tiene y cómo cortarlo, atemperarlo y servirlo para disfrutarlo mejor.",
+        "seo_description_len": 128
       },
       {
         "id": 14749,
         "key": "duck-06",
+        "slug": "foie-gras-pate-mousse-parfait-bloc-micuit-diferencias",
+        "group": "foie-preparados",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Foie, paté, mousse, parfait, bloc y micuit: diferencias",
+        "seo_title_len": 55,
+        "seo_description": "Compara foie gras, paté, mousse, parfait, bloc y micuit por composición, textura, elaboración y uso para no confundir denominaciones.",
+        "seo_description_len": 133
       },
       {
         "id": 14750,
         "key": "duck-07",
+        "slug": "pato-fresco-principales-cortes-y-como-cocinar-cada-uno",
+        "group": "carne-cortes",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Pato fresco: cortes principales y cómo cocinarlos",
+        "seo_title_len": 49,
+        "seo_description": "Repaso de los principales cortes de pato fresco y de las técnicas de cocción que mejor encajan con pechuga, muslo, solomillo y otras piezas.",
+        "seo_description_len": 140
       },
       {
         "id": 14751,
         "key": "duck-08",
+        "slug": "pate-de-pato-que-es-como-se-elabora-y-como-elegirlo",
+        "group": "foie-preparados",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Paté de pato: qué es, elaboración y cómo elegirlo",
+        "seo_title_len": 49,
+        "seo_description": "Qué es un paté de pato, cómo se elabora, en qué se diferencia de mousse y foie gras y qué conviene mirar al comparar distintos formatos.",
+        "seo_description_len": 136
       },
       {
         "id": 14752,
         "key": "duck-09",
+        "slug": "como-cocinar-magret-de-pato-en-sarten-jugoso",
+        "group": "magret",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Magret de pato en sartén: cómo dejarlo jugoso",
+        "seo_title_len": 45,
+        "seo_description": "Método paso a paso para cocinar magret de pato en sartén, fundir bien la grasa, controlar el punto y mantener la carne jugosa.",
+        "seo_description_len": 126
       },
       {
         "id": 14753,
         "key": "duck-10",
+        "slug": "como-preparar-confit-de-pato-al-horno-piel-crujiente",
+        "group": "confit",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Confit de pato crujiente: horno, grill y air fryer",
+        "seo_title_len": 50,
+        "seo_description": "Cómo dejar crujiente la piel de un confit ya cocinado comparando horno, grill y air fryer, con claves para dorar sin resecar la carne.",
+        "seo_description_len": 134
       },
       {
         "id": 14754,
         "key": "duck-11",
+        "slug": "como-servir-foie-gras-temperatura-corte-pan-acompanamientos",
+        "group": "foie-preparados",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Cómo servir foie gras: temperatura, corte y presentación",
+        "seo_title_len": 56,
+        "seo_description": "Temperatura, corte, cantidad por persona y presentación del foie gras, con pautas para servirlo sin ocultar su sabor ni su textura.",
+        "seo_description_len": 131
       },
       {
         "id": 14755,
         "key": "duck-12",
+        "slug": "mousse-de-pato-que-es-diferencia-pate-foie",
+        "group": "foie-preparados",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Mousse de pato: diferencias con paté y foie gras",
+        "seo_title_len": 48,
+        "seo_description": "Qué caracteriza a una mousse de pato y cómo cambia frente a paté y foie gras en composición, textura, intensidad y forma de servirla.",
+        "seo_description_len": 133
       },
       {
         "id": 14756,
         "key": "duck-13",
+        "slug": "rillettes-de-pato-que-son-como-se-elaboran-y-como-se-comen",
+        "group": "foie-preparados",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Rillettes de pato: qué son, elaboración y cómo servirlas",
+        "seo_title_len": 56,
+        "seo_description": "Qué son las rillettes de pato, cómo se elaboran con carne desmigada y grasa y qué textura, sabor y formas de consumo puedes esperar.",
+        "seo_description_len": 132
       },
       {
         "id": 14757,
         "key": "duck-14",
+        "slug": "foie-gras-entier-bloc-y-bloc-con-trozos-diferencias",
+        "group": "foie-preparados",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Foie gras entier vs bloc y bloc con trozos",
+        "seo_title_len": 42,
+        "seo_description": "Diferencias entre foie gras entier, bloc y bloc con trozos: composición, textura, aspecto al corte y situaciones en las que encaja cada formato.",
+        "seo_description_len": 144
       },
       {
         "id": 14758,
         "key": "duck-15",
+        "slug": "foie-gras-fresco-micuit-conserva-diferencias-usos",
+        "group": "foie-preparados",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Foie fresco, micuit o conserva: diferencias y usos",
+        "seo_title_len": 50,
+        "seo_description": "Compara foie gras fresco, micuit y conserva por tratamiento térmico, conservación, textura, vida útil y usos habituales en cocina y servicio.",
+        "seo_description_len": 141
       },
       {
         "id": 14759,
         "key": "duck-16",
+        "slug": "jamon-de-pato-curado-y-ahumado-diferencias",
+        "group": "jamon",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Jamón de pato curado vs ahumado: diferencias",
+        "seo_title_len": 44,
+        "seo_description": "Qué cambia entre jamón de pato curado y ahumado en aroma, textura, intensidad, elaboración y combinaciones para aperitivos y platos.",
+        "seo_description_len": 132
       },
       {
         "id": 14760,
         "key": "duck-17",
+        "slug": "grasa-de-pato-para-que-sirve-como-utilizarla-cocina",
+        "group": "carne-cortes",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Grasa de pato: usos y cómo aprovecharla en cocina",
+        "seo_title_len": 49,
+        "seo_description": "Ideas para aprovechar la grasa de pato en patatas, verduras, arroces y otras preparaciones, con pautas de conservación y uso en cocina.",
+        "seo_description_len": 135
       },
       {
         "id": 14761,
         "key": "duck-18",
+        "slug": "como-cocinar-foie-gras-fresco-a-la-plancha-sin-que-se-deshaga",
+        "group": "foie-preparados",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Foie gras a la plancha: cómo cocinarlo sin deshacerlo",
+        "seo_title_len": 53,
+        "seo_description": "Cómo marcar foie gras fresco a la plancha con sartén muy caliente, tiempos breves y manipulación mínima para dorarlo sin que se funda en exceso.",
+        "seo_description_len": 144
       },
       {
         "id": 14762,
         "key": "duck-19",
+        "slug": "parfait-de-foie-y-mousse-de-foie-diferencias",
+        "group": "foie-preparados",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Parfait de foie vs mousse: textura, composición y sabor",
+        "seo_title_len": 55,
+        "seo_description": "Diferencias entre parfait y mousse de foie en proporción de hígado, textura, untuosidad, sabor y forma de presentarlos en mesa.",
+        "seo_description_len": 127
       },
       {
         "id": 14763,
         "key": "duck-20",
+        "slug": "como-conservar-foie-gras-antes-y-despues-de-abrirlo",
+        "group": "foie-preparados",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Cómo conservar foie gras antes y después de abrirlo",
+        "seo_title_len": 51,
+        "seo_description": "Cómo guardar foie gras según su formato antes y después de abrirlo, con pautas sobre frío, cierre, manipulación y señales de deterioro.",
+        "seo_description_len": 135
       },
       {
         "id": 14764,
         "key": "duck-21",
+        "slug": "con-que-acompanar-foie-gras-pan-frutas-mermeladas",
+        "group": "foie-preparados",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Con qué acompañar foie gras: panes, frutas y contrastes",
+        "seo_title_len": 55,
+        "seo_description": "Panes, frutas, mermeladas y otros contrastes que acompañan bien al foie gras, con ideas para equilibrar dulzor, acidez, textura y grasa.",
+        "seo_description_len": 136
       },
       {
         "id": 14765,
         "key": "duck-22",
+        "slug": "magret-de-pato-a-la-naranja-receta-claves",
+        "group": "magret",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Magret de pato a la naranja: receta y claves",
+        "seo_title_len": 44,
+        "seo_description": "Cómo preparar magret de pato a la naranja equilibrando cocción, grasa, acidez y dulzor para que la salsa acompañe sin tapar la carne.",
+        "seo_description_len": 133
       },
       {
         "id": 14766,
         "key": "duck-23",
+        "slug": "que-guarnicion-poner-al-magret-de-pato",
+        "group": "magret",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Guarniciones para magret de pato: ideas que funcionan",
+        "seo_title_len": 53,
+        "seo_description": "Guarniciones para magret de pato con patata, verduras, fruta y purés, ordenadas por tipo de contraste y por el estilo de plato que buscas.",
+        "seo_description_len": 138
       },
       {
         "id": 14767,
         "key": "duck-24",
+        "slug": "punto-coccion-magret-pato-temperaturas-tiempos",
+        "group": "magret",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Punto del magret de pato: temperaturas y tiempos",
+        "seo_title_len": 48,
+        "seo_description": "Temperaturas, tiempos y reposo del magret de pato para controlar el punto interior sin descuidar el dorado de la piel y el fundido de la grasa.",
+        "seo_description_len": 143
       },
       {
         "id": 14768,
         "key": "duck-25",
+        "slug": "como-cortar-servir-magret-de-pato",
+        "group": "magret",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Cómo cortar y servir magret de pato correctamente",
+        "seo_title_len": 49,
+        "seo_description": "Cómo reposar, cortar y servir un magret de pato para conservar sus jugos, presentar lonchas uniformes y mantener una buena textura.",
+        "seo_description_len": 131
       },
       {
         "id": 14769,
         "key": "duck-26",
+        "slug": "que-hacer-con-grasa-que-suelta-magret-de-pato",
+        "group": "magret",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Qué hacer con la grasa del magret de pato",
+        "seo_title_len": 41,
+        "seo_description": "Cómo colar, guardar y reutilizar la grasa que suelta el magret de pato y en qué preparaciones merece la pena aprovecharla.",
+        "seo_description_len": 122
       },
       {
         "id": 14770,
         "key": "duck-27",
+        "slug": "confit-de-pato-al-horno-temperatura-tiempo-trucos",
+        "group": "confit",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Confit de pato al horno: temperatura, tiempo y trucos",
+        "seo_title_len": 53,
+        "seo_description": "Temperatura, tiempo y acabado al horno para recalentar confit de pato, fundir el exceso de grasa y conseguir una piel bien dorada.",
+        "seo_description_len": 130
       },
       {
         "id": 14771,
         "key": "duck-28",
+        "slug": "como-calentar-confit-de-pato-conserva-envasado-vacio",
+        "group": "confit",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Cómo calentar confit de pato en conserva o al vacío",
+        "seo_title_len": 51,
+        "seo_description": "Cómo recalentar confit de pato en conserva o al vacío sin resecarlo, con métodos para horno, sartén y acabado final crujiente.",
+        "seo_description_len": 126
       },
       {
         "id": 14772,
         "key": "duck-29",
+        "slug": "con-que-acompanar-confit-de-pato-mejores-guarniciones",
+        "group": "confit",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Guarniciones para confit de pato: qué le va mejor",
+        "seo_title_len": 49,
+        "seo_description": "Guarniciones para confit de pato con patata, verduras, frutas y ensaladas, buscando equilibrio frente a su sabor intenso y textura untuosa.",
+        "seo_description_len": 139
       },
       {
         "id": 14773,
         "key": "duck-30",
+        "slug": "confit-de-pato-a-la-naranja-receta-acompanamientos",
+        "group": "confit",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Confit de pato a la naranja: receta y acompañamientos",
+        "seo_title_len": 53,
+        "seo_description": "Cómo preparar confit de pato a la naranja con una salsa equilibrada y qué acompañamientos funcionan mejor para completar el plato.",
+        "seo_description_len": 130
       },
       {
         "id": 14774,
         "key": "duck-31",
+        "slug": "que-hacer-con-confit-de-pato-desmigado-ideas",
+        "group": "confit",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Confit de pato desmigado: ideas para aprovecharlo",
+        "seo_title_len": 49,
+        "seo_description": "Ideas para usar confit de pato desmigado en arroces, pasta, rellenos, croquetas y aperitivos aprovechando una carne ya cocinada y sabrosa.",
+        "seo_description_len": 138
       },
       {
         "id": 14775,
         "key": "duck-32",
+        "slug": "arroz-con-pato-como-prepararlo-confit-carne-pato",
+        "group": "confit",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Arroz con pato: cómo prepararlo con confit o carne",
+        "seo_title_len": 50,
+        "seo_description": "Claves para preparar arroz con pato usando confit o carne fresca, ajustando grasa, caldo, sofrito, tiempos y cantidad de carne.",
+        "seo_description_len": 127
       },
       {
         "id": 14776,
         "key": "duck-33",
+        "slug": "croquetas-confit-de-pato-como-aprovecharlo",
+        "group": "confit",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Croquetas de confit de pato: receta y trucos",
+        "seo_title_len": 44,
+        "seo_description": "Cómo aprovechar confit de pato desmigado en croquetas, con pautas para equilibrar la bechamel, la grasa, el sabor y el rebozado.",
+        "seo_description_len": 128
       },
       {
         "id": 14777,
         "key": "duck-34",
+        "slug": "como-servir-jamon-de-pato-temperatura-corte-presentacion",
+        "group": "jamon",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Cómo servir jamón de pato: temperatura, corte y presentación",
+        "seo_title_len": 60,
+        "seo_description": "Cómo atemperar, cortar y presentar jamón de pato para que la grasa tenga buena textura y las lonchas mantengan equilibrio y sabor.",
+        "seo_description_len": 130
       },
       {
         "id": 14778,
         "key": "duck-35",
+        "slug": "con-que-acompanar-jamon-de-pato",
+        "group": "jamon",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Con qué acompañar jamón de pato: ideas y contrastes",
+        "seo_title_len": 51,
+        "seo_description": "Acompañamientos para jamón de pato con panes, frutas, frutos secos, quesos y aliños que aportan contraste sin dominar el producto.",
+        "seo_description_len": 130
       },
       {
         "id": 14779,
         "key": "duck-36",
+        "slug": "canapes-con-jamon-de-pato-ideas-sencillas",
+        "group": "jamon",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Canapés con jamón de pato: ideas fáciles",
+        "seo_title_len": 40,
+        "seo_description": "Ideas sencillas de canapés con jamón de pato combinando bases crujientes, fruta, queso y toques ácidos para aperitivos fáciles de montar.",
+        "seo_description_len": 137
       },
       {
         "id": 14780,
         "key": "duck-37",
+        "slug": "ensalada-con-jamon-de-pato-combinaciones",
+        "group": "jamon",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Ensalada con jamón de pato: combinaciones que funcionan",
+        "seo_title_len": 55,
+        "seo_description": "Combinaciones para ensalada con jamón de pato: hojas, frutas, frutos secos, quesos y vinagretas que equilibran su intensidad y grasa.",
+        "seo_description_len": 133
       },
       {
         "id": 14781,
         "key": "duck-38",
+        "slug": "como-conservar-jamon-de-pato-entero-loncheado",
+        "group": "jamon",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Cómo conservar jamón de pato entero y loncheado",
+        "seo_title_len": 47,
+        "seo_description": "Cómo conservar jamón de pato entero o loncheado, protegerlo del aire y el exceso de humedad y atemperarlo correctamente antes de servir.",
+        "seo_description_len": 136
       },
       {
         "id": 14782,
         "key": "duck-39",
+        "slug": "como-servir-pate-de-pato-temperatura-pan-acompanamientos",
+        "group": "foie-preparados",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Cómo servir paté de pato: temperatura, pan y acompañamientos",
+        "seo_title_len": 60,
+        "seo_description": "Temperatura, cantidad, panes y acompañamientos para servir paté de pato con buena textura y sin cargar el aperitivo de sabores demasiado intensos.",
+        "seo_description_len": 146
       },
       {
         "id": 14783,
         "key": "duck-40",
+        "slug": "canapes-con-pate-de-pato-ideas-faciles",
+        "group": "foie-preparados",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Canapés con paté de pato: ideas fáciles",
+        "seo_title_len": 39,
+        "seo_description": "Ideas de canapés con paté de pato usando pan, fruta, encurtidos, frutos secos y otros contrastes para preparar aperitivos variados.",
+        "seo_description_len": 131
       },
       {
         "id": 14784,
         "key": "duck-41",
+        "slug": "pate-mousse-rillettes-diferencias",
+        "group": "foie-preparados",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Paté, mousse y rillettes de pato: diferencias",
+        "seo_title_len": 45,
+        "seo_description": "Compara paté, mousse y rillettes de pato por elaboración, textura, composición y forma de consumo para distinguir tres preparados diferentes.",
+        "seo_description_len": 141
       },
       {
         "id": 14785,
         "key": "duck-42",
+        "slug": "mousse-de-pato-pimienta-cognac-orujo-diferencias",
+        "group": "foie-preparados",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Mousse de pato: pimienta, coñac u orujo, diferencias",
+        "seo_title_len": 52,
+        "seo_description": "Qué aportan pimienta, coñac u orujo a una mousse de pato y cómo cambian el aroma, la intensidad y los acompañamientos que mejor le encajan.",
+        "seo_description_len": 139
       },
       {
         "id": 14786,
         "key": "duck-43",
+        "slug": "como-servir-rillettes-de-pato-y-acompanarlas",
+        "group": "foie-preparados",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Cómo servir rillettes de pato y con qué acompañarlas",
+        "seo_title_len": 52,
+        "seo_description": "Cómo atemperar y servir rillettes de pato y qué panes, encurtidos, mostazas y contrastes ayudan a equilibrar su textura rica y untuosa.",
+        "seo_description_len": 135
       },
       {
         "id": 14787,
         "key": "duck-44",
+        "slug": "solomillo-de-pato-que-corte-es-como-cocinarlo",
+        "group": "carne-cortes",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Solomillo de pato: qué corte es y cómo cocinarlo",
+        "seo_title_len": 48,
+        "seo_description": "Qué es el solomillo de pato, dónde se encuentra, cómo es su textura y qué cocciones rápidas permiten cocinarlo sin secarlo.",
+        "seo_description_len": 123
       },
       {
         "id": 14788,
         "key": "duck-45",
+        "slug": "muslo-de-pato-fresco-y-confit-diferencias",
+        "group": "carne-cortes",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Muslo fresco vs confit de pato: diferencias y cocción",
+        "seo_title_len": 53,
+        "seo_description": "Diferencias entre muslo de pato fresco y confitado en textura, grasa, preparación, tiempos de cocción y usos más habituales.",
+        "seo_description_len": 124
       },
       {
         "id": 14789,
         "key": "duck-46",
+        "slug": "manchon-de-pato-que-parte-es-como-cocina",
+        "group": "carne-cortes",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Manchón de pato: qué parte es y cómo cocinarlo",
+        "seo_title_len": 46,
+        "seo_description": "Qué parte del pato es el manchón, cómo es su proporción de carne y hueso y qué cocciones lentas o doradas le sacan mejor partido.",
+        "seo_description_len": 129
       },
       {
         "id": 14790,
         "key": "duck-47",
+        "slug": "corazones-de-pato-como-prepararlos-sabor",
+        "group": "carne-cortes",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Corazones de pato: sabor y cómo prepararlos",
+        "seo_title_len": 43,
+        "seo_description": "Qué sabor y textura tienen los corazones de pato, cómo limpiarlos y qué cocciones rápidas ayudan a mantenerlos tiernos.",
+        "seo_description_len": 119
       },
       {
         "id": 14791,
         "key": "duck-48",
+        "slug": "pato-entero-al-horno-jugoso-crujiente",
+        "group": "carne-cortes",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Pato entero al horno: jugoso por dentro y crujiente",
+        "seo_title_len": 51,
+        "seo_description": "Cómo asar un pato entero buscando carne jugosa y piel crujiente, con claves sobre secado, temperatura, grasa, reposo y acabado.",
+        "seo_description_len": 127
       },
       {
         "id": 14792,
         "key": "duck-49",
+        "slug": "carne-de-pato-a-que-sabe-textura",
+        "group": "carne-cortes",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Carne de pato: a qué sabe y qué textura tiene",
+        "seo_title_len": 45,
+        "seo_description": "A qué sabe la carne de pato, cómo cambia su textura según el corte y por qué la piel, la grasa y el punto de cocción influyen tanto.",
+        "seo_description_len": 132
       },
       {
         "id": 14793,
         "key": "duck-50",
+        "slug": "carne-de-pato-vs-pollo-diferencias-sabor-cocina",
+        "group": "carne-cortes",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Carne de pato vs pollo: diferencias de sabor y cocina",
+        "seo_title_len": 53,
+        "seo_description": "Diferencias entre carne de pato y pollo en sabor, grasa, textura, cortes y técnicas de cocción para entender cuándo sustituir una por otra.",
+        "seo_description_len": 139
       },
       {
         "id": 14794,
         "key": "duck-51",
+        "slug": "valor-nutricional-carne-de-pato-proteinas-grasas-calorias",
+        "group": "carne-cortes",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Carne de pato: proteínas, grasas y calorías",
+        "seo_title_len": 43,
+        "seo_description": "Qué aporta la carne de pato en proteínas, grasas y calorías y por qué los valores cambian según el corte, la piel y la forma de cocinarla.",
+        "seo_description_len": 138
       },
       {
         "id": 14795,
         "key": "duck-52",
+        "slug": "cuanta-carne-de-pato-calcular-por-persona",
+        "group": "carne-cortes",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Cuánta carne de pato calcular por persona",
+        "seo_title_len": 41,
+        "seo_description": "Cantidades orientativas de carne de pato por persona según cortes, pato entero, magret o confit, con ajustes para menús y acompañamientos.",
+        "seo_description_len": 138
       },
       {
         "id": 14796,
         "key": "duck-53",
+        "slug": "como-conservar-congelar-descongelar-carne-de-pato",
+        "group": "carne-cortes",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Cómo conservar, congelar y descongelar carne de pato",
+        "seo_title_len": 52,
+        "seo_description": "Pautas para refrigerar, congelar y descongelar carne de pato manteniendo una manipulación segura y reduciendo pérdidas de textura y jugos.",
+        "seo_description_len": 138
       },
       {
         "id": 14797,
         "key": "duck-54",
+        "slug": "salsas-para-pato-naranja-frutos-rojos-pedro-ximenez",
+        "group": "salsas-menus",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Salsas para pato: naranja, frutos rojos y Pedro Ximénez",
+        "seo_title_len": 55,
+        "seo_description": "Ideas de salsas para pato con naranja, frutos rojos, Pedro Ximénez y otros perfiles, explicando qué corte y preparación encaja con cada una.",
+        "seo_description_len": 140
       },
       {
         "id": 14798,
         "key": "duck-55",
+        "slug": "que-vino-combina-magret-confit-foie-jamon-pato",
+        "group": "salsas-menus",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Qué vino combina con magret, confit, foie y jamón de pato",
+        "seo_title_len": 57,
+        "seo_description": "Orientaciones para elegir vino con magret, confit, foie y jamón de pato según grasa, intensidad, dulzor, acidez y tipo de preparación.",
+        "seo_description_len": 134
       },
       {
         "id": 14799,
         "key": "duck-56",
+        "slug": "pato-con-frutos-rojos-por-que-funciona-como-prepararlo",
+        "group": "salsas-menus",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Pato con frutos rojos: por qué funciona y cómo prepararlo",
+        "seo_title_len": 57,
+        "seo_description": "Por qué los frutos rojos combinan con el pato y cómo usar su acidez y dulzor en salsas y acompañamientos sin tapar el sabor de la carne.",
+        "seo_description_len": 136
       },
       {
         "id": 14800,
         "key": "duck-57",
+        "slug": "pato-con-pedro-ximenez-cortes-preparados",
+        "group": "salsas-menus",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Pato con Pedro Ximénez: cortes y preparados que combinan",
+        "seo_title_len": 56,
+        "seo_description": "Qué cortes y preparados de pato combinan mejor con Pedro Ximénez y cómo controlar el dulzor al reducirlo en salsa o glaseado.",
+        "seo_description_len": 125
       },
       {
         "id": 14801,
         "key": "duck-58",
+        "slug": "aperitivos-con-foie-gras-navidad-ocasiones-especiales",
+        "group": "foie-preparados",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Aperitivos con foie gras para Navidad y ocasiones especiales",
+        "seo_title_len": 60,
+        "seo_description": "Ideas de aperitivos con foie gras para Navidad y celebraciones, con formatos, bases, contrastes y cantidades para montar bocados equilibrados.",
+        "seo_description_len": 142
       },
       {
         "id": 14802,
         "key": "duck-59",
+        "slug": "menu-navidad-con-pato-foie-magret-confit-jamon",
+        "group": "salsas-menus",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Menú de Navidad con pato: foie, magret, confit y jamón",
+        "seo_title_len": 54,
+        "seo_description": "Ideas para montar un menú de Navidad con pato combinando foie, magret, confit y jamón sin repetir sabores ni cargar demasiado cada pase.",
+        "seo_description_len": 136
       },
       {
         "id": 14803,
         "key": "duck-60",
+        "slug": "productos-de-pato-para-regalar-foie-pates-jamon-lotes",
+        "group": "salsas-menus",
         "categories": [
           480
         ],
         "hidden": "",
-        "home_suppress": ""
+        "home_suppress": "",
+        "seo_title": "Productos de pato para regalar: foie, paté y jamón",
+        "seo_title_len": 50,
+        "seo_description": "Guía para elegir productos de pato como regalo: foie, patés, jamón y otros formatos, valorando conservación, variedad y facilidad de servicio.",
+        "seo_description_len": 142
       }
     ]
   },
@@ -565,31 +940,42 @@
       "title": "Pato: carne, magret, foie, confit y recetas",
       "description": "Guías sobre carne de pato, magret, foie gras, confit, jamón de pato, cortes, cocción, conservación, recetas, salsas y acompañamientos.",
       "canonical": "https://www.elmercadodeorigen.com/category/carnes/pato/",
-      "noindex": false
+      "noindex": false,
+      "related_topic": null,
+      "hub_link": false,
+      "hub_marker": true
     },
     "duck-pillar": {
-      "title": "Carne de pato: cortes, sabor, preparación y cómo elegirla",
-      "description": "Qué cortes de pato existen, cómo cambia su textura y grasa, qué preparación conviene a cada pieza y qué revisar antes de comprar.",
+      "title": "Carne de pato: cortes, sabor y cómo elegirla",
+      "description": "Conoce los principales cortes de pato, su sabor y textura, qué preparación conviene a cada pieza y qué revisar antes de elegir carne de pato.",
       "canonical": "https://www.elmercadodeorigen.com/carne-de-pato-guia-completa-cortes-sabor-preparacion/",
-      "noindex": false
+      "noindex": false,
+      "related_topic": "carne-cortes",
+      "hub_link": true
     },
     "duck-confit": {
       "title": "Confit de pato crujiente: horno, grill y air fryer",
-      "description": "Cómo conseguir una piel crujiente en el confit de pato: horno, grill y air fryer: Comparativa de métodos de acabado para dorar la piel de un confit ya…",
+      "description": "Cómo dejar crujiente la piel de un confit ya cocinado comparando horno, grill y air fryer, con claves para dorar sin resecar la carne.",
       "canonical": "https://www.elmercadodeorigen.com/como-preparar-confit-de-pato-al-horno-piel-crujiente/",
-      "noindex": false
+      "noindex": false,
+      "related_topic": "confit",
+      "hub_link": true
     },
     "blog-home": {
       "title": "Guías de productos y productores | El Mercado de Origen",
       "description": "Guías y artículos sobre productos españoles, origen, productores y elaboración para ayudarte a elegir mejor antes de comprar.",
       "canonical": "https://www.elmercadodeorigen.com/blog/",
-      "noindex": false
+      "noindex": false,
+      "related_topic": null,
+      "hub_link": false
     },
     "source-link": {
       "title": "Cómo elegir un lote de productos gourmet: qué combinar según presupuesto, destinatario y conservación - El Mercado de Origen",
       "description": "Cómo diseñar un lote gourmet equilibrado según presupuesto, persona destinataria, formatos, variedad, conservación y necesidades de transporte.",
       "canonical": "https://www.elmercadodeorigen.com/como-elegir-lote-productos-gourmet-presupuesto-destinatario-conservacion/",
-      "noindex": false
+      "noindex": false,
+      "related_topic": null,
+      "hub_link": false
     }
   }
 }
