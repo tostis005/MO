@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
  * Description: Removes duplicated in-content H1s, defers the inline newsletter, applies data-led SERP copy and reinforces contextual internal links to the highest-opportunity blog posts.
- * Version: 2026.09.29.17
+ * Version: 2026.09.29.18
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -257,6 +257,26 @@ function mdo_blog_seo_top3_title_20260908( $title ): string {
         'hay-que-lavar-carne-antes-cocinar-por-que-no'                           => '¿Hay que lavar la carne antes de cocinarla?',
         'cuando-salar-carne-antes-despues-cocinar'                               => 'Cuándo salar la carne: antes o después de cocinarla',
         'white-mold-on-chorizo-salchichon-when-normal-when-not'                  => 'White Mold on Chorizo or Salchichón: Is It Normal?',
+        'suero-leche-queseria-que-es-que-ocurre-despues-hacer-queso'          => 'Suero de leche en quesería: qué es y qué ocurre después',
+        'valores-nutricionales-queso-calorias-proteinas-grasas-sal-carbohidratos' => 'Valores nutricionales del queso: calorías, proteína y grasa',
+        'se-pueden-congelar-conservas-una-vez-abiertas-que-productos-toleran-mejor' => '¿Se pueden congelar conservas abiertas? Qué productos sí',
+        'como-saber-carne-fresca-buen-estado-color-olor-textura-envase'           => 'Cómo saber si la carne está fresca: color, olor y textura',
+        'por-que-queso-blanco-amarillo-naranja-leche-maduracion-colorantes'       => 'Por qué el queso es blanco, amarillo o naranja',
+        'tomates-rajados-por-que-se-agrietan-cuando-se-pueden-comer'              => 'Tomates rajados: por qué se agrietan y si se pueden comer',
+        'nutrientes-carne-ternera-proteina-hierro-zinc-vitaminas'                 => 'Nutrientes de la ternera: proteína, hierro, zinc y vitaminas',
+        'suero-queso-que-es-que-contiene-usos-ricotta-requeson'                   => 'Suero de queso: qué contiene y usos como ricotta o requesón',
+        'cebolla-brotada-se-puede-comer-bulbo-brote'                              => 'Cebolla brotada: ¿se puede comer el bulbo y el brote?',
+        'peso-neto-vs-peso-escurrido-conserva-que-significa'                      => 'Peso neto vs peso escurrido en conservas: diferencia',
+        'que-verduras-tienen-mas-fibra'                                           => 'Verduras con más fibra: comparativa por 100 g',
+        'que-verduras-tienen-mas-hierro'                                          => 'Verduras con más hierro: comparativa por 100 g',
+        'lata-conserva-abollada-cuando-segura-cuando-descartar'                   => 'Lata abollada: cuándo es segura y cuándo desecharla',
+        'por-que-algunas-verduras-saben-amargas'                                  => 'Por qué algunas verduras saben amargas',
+        'nutrientes-verduras-vitaminas-minerales-fibra'                           => 'Nutrientes de las verduras: vitaminas, minerales y fibra',
+        'cuajo-queso-animal-vegetal-microbiano-coagulacion'                       => 'Cuajo para queso: animal, vegetal y microbiano',
+        'entrecot-chuleton-cortes-ternera-plancha-parrilla'                       => 'Entrecot y chuletón: cortes para plancha y parrilla',
+        'como-cocinar-filetes-ternera-tiernos-jugosos'                            => 'Cómo cocinar filetes de ternera tiernos y jugosos',
+        'queso-fresco-que-es-elaboracion-conservacion-diferencias-madurado'       => 'Queso fresco: qué es, cómo se hace y cómo conservarlo',
+        'vacio-tarro-conserva-como-saber-cierre-intacto'                          => 'Vacío en tarros de conserva: cómo saber si está intacto',
     );
 
     return isset( $titles[ $slug ] ) ? $titles[ $slug ] : (string) $title;
@@ -320,6 +340,26 @@ function mdo_blog_seo_top3_description_20260908( $description ): string {
         'tipos-lentejas-pardina-castellana-beluga-roja-diferencias'             => 'Diferencias entre lenteja pardina, castellana, beluga y roja: tamaño, textura, remojo, tiempo de cocción y usos habituales en cocina.',
         'hay-que-lavar-carne-antes-cocinar-por-que-no'                           => '¿Hay que lavar la carne antes de cocinarla? Explicamos por qué no se recomienda en cocina doméstica y cómo manipularla con más seguridad.',
         'cuando-salar-carne-antes-despues-cocinar'                               => 'Cuándo salar la carne para plancha, parrilla u horno, qué cambia si se sala antes o después y cómo ajustar según grosor y técnica.',
+        'suero-leche-queseria-que-es-que-ocurre-despues-hacer-queso'          => 'Qué es el suero de leche que queda al elaborar queso, qué contiene y qué destinos puede tener después de separar la cuajada en una quesería.',
+        'valores-nutricionales-queso-calorias-proteinas-grasas-sal-carbohidratos' => 'Cómo cambian las calorías, proteínas, grasas, sal y carbohidratos del queso según humedad, leche y maduración, y cómo comparar etiquetas.',
+        'se-pueden-congelar-conservas-una-vez-abiertas-que-productos-toleran-mejor' => 'Qué conservas abiertas se pueden congelar, cuáles pierden más textura y cómo envasarlas, congelarlas y descongelarlas de forma práctica.',
+        'como-saber-carne-fresca-buen-estado-color-olor-textura-envase'           => 'Cómo valorar si una carne está fresca observando color, olor, textura, envase y conservación, sin depender de una sola señal aislada.',
+        'por-que-queso-blanco-amarillo-naranja-leche-maduracion-colorantes'       => 'Por qué algunos quesos son blancos, amarillos o naranjas: leche, carotenoides, maduración, corteza y colorantes que pueden influir en el tono.',
+        'tomates-rajados-por-que-se-agrietan-cuando-se-pueden-comer'              => 'Por qué se rajan los tomates, cuándo una grieta es sólo un defecto de crecimiento y qué señales indican que conviene no comerlos.',
+        'nutrientes-carne-ternera-proteina-hierro-zinc-vitaminas'                 => 'Qué nutrientes aporta la ternera, con foco en proteína, hierro, zinc y vitaminas, y cómo cambian las cifras según corte, grasa y cocinado.',
+        'suero-queso-que-es-que-contiene-usos-ricotta-requeson'                   => 'Qué es el suero del queso, qué contiene y cómo puede aprovecharse en ricotta, requesón y otras elaboraciones, diferenciándolo de la cuajada.',
+        'cebolla-brotada-se-puede-comer-bulbo-brote'                              => 'Una cebolla brotada no siempre debe desecharse. Aprende cuándo se puede comer el bulbo y el brote y qué señales de deterioro sí importan.',
+        'peso-neto-vs-peso-escurrido-conserva-que-significa'                      => 'Diferencia entre peso neto y peso escurrido en una conserva, qué incluye el líquido de cobertura y qué cifra sirve para comparar el alimento.',
+        'que-verduras-tienen-mas-fibra'                                           => 'Comparativa de verduras y hortalizas con más fibra por 100 g, con contexto sobre raciones y por qué el valor cambia según el alimento.',
+        'que-verduras-tienen-mas-hierro'                                          => 'Qué verduras y hortalizas aportan más hierro por 100 g y cómo interpretar esas cifras frente a raciones reales y otros grupos de alimentos.',
+        'lata-conserva-abollada-cuando-segura-cuando-descartar'                   => 'Cuándo una lata abollada puede seguir siendo segura y qué daños en costuras, tapa, base, hinchado u óxido hacen recomendable desecharla.',
+        'por-que-algunas-verduras-saben-amargas'                                  => 'Por qué algunas verduras desarrollan sabor amargo, qué compuestos intervienen y cuándo el amargor es normal o puede indicar un problema.',
+        'nutrientes-verduras-vitaminas-minerales-fibra'                           => 'Qué nutrientes aportan las verduras: fibra, vitaminas y minerales, por qué varían entre especies y cómo cambia su composición al cocinarlas.',
+        'cuajo-queso-animal-vegetal-microbiano-coagulacion'                       => 'Qué es el cuajo del queso y en qué se diferencian el cuajo animal, vegetal y microbiano, con su papel en la coagulación y la textura final.',
+        'entrecot-chuleton-cortes-ternera-plancha-parrilla'                       => 'Qué diferencia al entrecot, chuletón y otros cortes de ternera para plancha o parrilla, y cómo elegir según grosor, grasa y tipo de cocción.',
+        'como-cocinar-filetes-ternera-tiernos-jugosos'                            => 'Cómo cocinar filetes de ternera para que queden tiernos y jugosos: grosor, temperatura, sartén, sal, reposo y errores que suelen secarlos.',
+        'queso-fresco-que-es-elaboracion-conservacion-diferencias-madurado'       => 'Qué es el queso fresco, cómo se elabora y conserva, y en qué se diferencia de un queso madurado en humedad, textura, sabor y vida útil.',
+        'vacio-tarro-conserva-como-saber-cierre-intacto'                          => 'Cómo comprobar si un tarro de conserva mantiene el vacío: tapa, botón central, fugas y otras señales que ayudan a valorar si el cierre sigue intacto.',
     );
 
     return isset( $descriptions[ $slug ] ) ? $descriptions[ $slug ] : (string) $description;
@@ -510,6 +550,51 @@ function mdo_blog_seo_is_english_cheese_post_20260929(): bool {
         $english = strtolower( remove_accents( (string) get_term_meta( $term->term_id, '_en_US_name', true ) ) );
 
         if ( false !== strpos( $native, 'queso' ) || false !== strpos( $english, 'cheese' ) ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Clean two import artefacts found across reviewed English cheese copy:
+ * a generator-style sentence about "search intent" and literal "nn" paragraph
+ * separators. This runs only for the English Cheese cluster and never writes
+ * back to the database.
+ */
+function mdo_blog_seo_is_spanish_cheese_post_20260929(): bool {
+    if ( ! is_singular( 'post' ) ) {
+        return false;
+    }
+
+    $path = (string) wp_parse_url( mdo_blog_seo_public_request_uri_20260929(), PHP_URL_PATH );
+    if ( 0 === strpos( $path, '/en/' ) ) {
+        return false;
+    }
+
+    $slug = mdo_blog_seo_current_slug_20260908();
+    if ( false !== strpos( $slug, 'queso' ) || false !== strpos( $slug, 'queseria' ) ) {
+        return true;
+    }
+
+    $post_id = (int) get_queried_object_id();
+    if ( $post_id <= 0 ) {
+        return false;
+    }
+
+    $terms = wp_get_post_terms( $post_id, 'category' );
+    if ( is_wp_error( $terms ) ) {
+        return false;
+    }
+
+    foreach ( $terms as $term ) {
+        if ( ! $term instanceof WP_Term ) {
+            continue;
+        }
+
+        $native = strtolower( remove_accents( (string) $term->slug . ' ' . (string) $term->name ) );
+        if ( false !== strpos( $native, 'queso' ) ) {
             return true;
         }
     }
@@ -935,6 +1020,22 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
         }
     }
 
+    if ( '' === $cluster_key && ! $is_english && mdo_blog_seo_is_spanish_cheese_post_20260929() ) {
+        $cluster_key = 'es-cheese';
+        $cluster = array(
+            'english' => false,
+            'label'   => 'Guías de queso relacionadas',
+            'targets' => array(
+                array( '/valores-nutricionales-queso-calorias-proteinas-grasas-sal-carbohidratos/', 'valores nutricionales del queso' ),
+                array( '/suero-leche-queseria-que-es-que-ocurre-despues-hacer-queso/', 'qué es el suero de leche en quesería' ),
+                array( '/por-que-queso-blanco-amarillo-naranja-leche-maduracion-colorantes/', 'por qué cambia el color del queso' ),
+                array( '/queso-fresco-que-es-elaboracion-conservacion-diferencias-madurado/', 'qué es el queso fresco y cómo conservarlo' ),
+                array( '/cuajo-queso-animal-vegetal-microbiano-coagulacion/', 'tipos de cuajo para elaborar queso' ),
+                array( '/como-saber-queso-mal-estado-moho-olor-textura/', 'cómo saber si un queso está en mal estado' ),
+            ),
+        );
+    }
+
     if ( '' === $cluster_key && $is_english && mdo_blog_seo_is_english_cheese_post_20260929() ) {
         $cluster_key = 'en-cheese';
         $cluster = array(
@@ -970,6 +1071,11 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
         'en-cured-meats' => array( '/en/product-category/cured-meats/', 'shop cured meats' ),
     );
 
+    $hub_targets = array(
+        'es-cheese' => array( '/category/quesos/', 'ver todas las guías de quesos' ),
+        'en-cheese' => array( '/en/category/cheese/', 'browse all cheese guides' ),
+    );
+
     $links = array();
 
     foreach ( $cluster['targets'] as $target ) {
@@ -998,6 +1104,15 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
 
         if ( '' !== $shop_path && false === strpos( $content, $shop_path ) ) {
             $links[] = '<a class="mdo-seo-cluster-shop" href="' . esc_url( home_url( $shop_path ) ) . '">' . esc_html( $shop_label ) . '</a>';
+        }
+    }
+
+    if ( isset( $hub_targets[ $cluster_key ] ) ) {
+        $hub_path  = (string) $hub_targets[ $cluster_key ][0];
+        $hub_label = (string) $hub_targets[ $cluster_key ][1];
+
+        if ( '' !== $hub_path && false === strpos( $content, $hub_path ) ) {
+            $links[] = '<a class="mdo-seo-cluster-hub" href="' . esc_url( home_url( $hub_path ) ) . '">' . esc_html( $hub_label ) . '</a>';
         }
     }
 
