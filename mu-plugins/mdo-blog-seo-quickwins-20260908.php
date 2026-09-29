@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
  * Description: Removes duplicated in-content H1s, defers the inline newsletter, applies data-led SERP copy and reinforces contextual internal links to the highest-opportunity blog posts.
- * Version: 2026.09.29.18
+ * Version: 2026.09.29.19
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -277,6 +277,10 @@ function mdo_blog_seo_top3_title_20260908( $title ): string {
         'como-cocinar-filetes-ternera-tiernos-jugosos'                            => 'Cómo cocinar filetes de ternera tiernos y jugosos',
         'queso-fresco-que-es-elaboracion-conservacion-diferencias-madurado'       => 'Queso fresco: qué es, cómo se hace y cómo conservarlo',
         'vacio-tarro-conserva-como-saber-cierre-intacto'                          => 'Vacío en tarros de conserva: cómo saber si está intacto',
+        'solomillo-vs-entrecot-diferencias-ternura-grasa-sabor-cual-elegir'   => 'Solomillo vs entrecot: ternura, grasa y sabor',
+        'vaca-vs-ternera-diferencias-sabor-textura-cual-elegir'                  => 'Vaca vs ternera: diferencias de sabor, grasa y ternura',
+        'how-long-cooked-meat-lasts-in-fridge-safe-storage'                      => 'How Long Does Cooked Meat Last in the Fridge?',
+        'ground-beef-what-it-is-how-to-choose-and-cook'                          => 'Ground Beef: What It Is and How to Choose It',
     );
 
     return isset( $titles[ $slug ] ) ? $titles[ $slug ] : (string) $title;
@@ -360,6 +364,8 @@ function mdo_blog_seo_top3_description_20260908( $description ): string {
         'como-cocinar-filetes-ternera-tiernos-jugosos'                            => 'Cómo cocinar filetes de ternera para que queden tiernos y jugosos: grosor, temperatura, sartén, sal, reposo y errores que suelen secarlos.',
         'queso-fresco-que-es-elaboracion-conservacion-diferencias-madurado'       => 'Qué es el queso fresco, cómo se elabora y conserva, y en qué se diferencia de un queso madurado en humedad, textura, sabor y vida útil.',
         'vacio-tarro-conserva-como-saber-cierre-intacto'                          => 'Cómo comprobar si un tarro de conserva mantiene el vacío: tapa, botón central, fugas y otras señales que ayudan a valorar si el cierre sigue intacto.',
+        'solomillo-vs-entrecot-diferencias-ternura-grasa-sabor-cual-elegir'   => 'Compara solomillo y entrecot por ternura, grasa, sabor, grosor y técnica de cocción para elegir el corte que mejor encaja con cada receta.',
+        'vaca-vs-ternera-diferencias-sabor-textura-cual-elegir'                  => 'Diferencias entre carne de vaca y ternera en sabor, color, grasa y textura, y qué conviene elegir según filetes, parrilla, guisos o picada.',
     );
 
     return isset( $descriptions[ $slug ] ) ? $descriptions[ $slug ] : (string) $description;
@@ -740,6 +746,7 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
                 'solomillo-vs-entrecot-diferencias-ternura-grasa-sabor-cual-elegir',
                 'cuanto-hierro-tiene-carne-ternera',
                 'como-cortar-carne-contrapelo-mas-tierna',
+                'vaca-vs-ternera-diferencias-sabor-textura-cual-elegir',
             ),
             'label' => 'Guías relacionadas',
             'targets' => array(
@@ -921,6 +928,7 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
                 'why-burgers-shrink-when-cooked-causes-and-how-to-reduce-it',
                 'how-long-cooked-meat-lasts-in-fridge-safe-storage',
                 'how-long-to-marinate-beef-hours-salt-acid',
+                'ground-beef-what-it-is-how-to-choose-and-cook',
             ),
             'label' => 'Related guides',
             'targets' => array(

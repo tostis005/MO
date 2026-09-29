@@ -74,6 +74,8 @@ jobs:
           EN_PHASE5="https://www.elmercadodeorigen.com/en/how-long-opened-canned-food-keeps-in-fridge-how-to-store-it/?mdo_seo_verify=${GITHUB_RUN_ID}"
           ES_CHEESE7="https://www.elmercadodeorigen.com/valores-nutricionales-queso-calorias-proteinas-grasas-sal-carbohidratos/?mdo_seo_verify=${GITHUB_RUN_ID}"
           ES_PRESERVE7="https://www.elmercadodeorigen.com/se-pueden-congelar-conservas-una-vez-abiertas-que-productos-toleran-mejor/?mdo_seo_verify=${GITHUB_RUN_ID}"
+          ES_ZERO8="https://www.elmercadodeorigen.com/vaca-vs-ternera-diferencias-sabor-textura-cual-elegir/?mdo_seo_verify=${GITHUB_RUN_ID}"
+          EN_ZERO8="https://www.elmercadodeorigen.com/en/ground-beef-what-it-is-how-to-choose-and-cook/?mdo_seo_verify=${GITHUB_RUN_ID}"
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES" -o /tmp/es.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN" -o /tmp/en.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES_CLUSTER" -o /tmp/es-cluster.html
@@ -88,6 +90,8 @@ jobs:
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN_PHASE5" -o /tmp/en-phase5.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES_CHEESE7" -o /tmp/es-cheese7.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES_PRESERVE7" -o /tmp/es-preserve7.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES_ZERO8" -o /tmp/es-zero8.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN_ZERO8" -o /tmp/en-zero8.html
           python - <<'PY'
           from bs4 import BeautifulSoup
           for label, path in [('ES','/tmp/es.html'), ('EN','/tmp/en.html')]:
@@ -229,6 +233,22 @@ jobs:
           print('ES_PRESERVE7', 'title=', preserve7_title, 'description=', preserve7_desc)
           assert preserve7_title.startswith('¿Se pueden congelar conservas abiertas? Qué productos sí'), f'ES_PRESERVE7: phase-7 title missing: {preserve7_title!r}'
           assert preserve7_desc.startswith('Qué conservas abiertas se pueden congelar'), f'ES_PRESERVE7: phase-7 meta description missing: {preserve7_desc!r}'
+
+          zero8_checks = [
+              ('ES_ZERO8', '/tmp/es-zero8.html', 'Vaca vs ternera: diferencias de sabor, grasa y ternura', 'es-carne', 'Diferencias entre carne de vaca y ternera'),
+              ('EN_ZERO8', '/tmp/en-zero8.html', 'Ground Beef: What It Is and How to Choose It', 'en-meat', None),
+          ]
+          for label, path, title_prefix, cluster_key, desc_prefix in zero8_checks:
+              soup = BeautifulSoup(open(path, encoding='utf-8').read(), 'html.parser')
+              title = soup.title.get_text(' ', strip=True) if soup.title else ''
+              meta = soup.find('meta', attrs={'name':'description'})
+              desc = meta.get('content','').strip() if meta else ''
+              block = soup.select_one(f'.emo-article-content p.mdo-seo-cluster-links[data-mdo-seo-cluster="{cluster_key}"]')
+              print(label, 'title=', title, 'description=', desc, 'cluster=', block.get('data-mdo-seo-cluster') if block else '')
+              assert title.startswith(title_prefix), f'{label}: phase-8 zero-click title missing: {title!r}'
+              assert block is not None, f'{label}: phase-8 meat cluster missing'
+              if desc_prefix:
+                  assert desc.startswith(desc_prefix), f'{label}: phase-8 Spanish description missing: {desc!r}'
 
           answer_checks = [
               ('ES_ANSWER', '/tmp/es-answer.html', 'Aguja de ternera: qué corte es y cómo cocinarla', 'Respuesta rápida'),
