@@ -55,7 +55,7 @@ jobs:
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; php=\$(command -v php || true); [ -n \"\$php\" ] || php=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php\" -l '$REMOTE' >/dev/null; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$TARGET' ]; then cp -p '$TARGET' '$BACKUP'; fi; install -m 0644 '$REMOTE' '$TARGET'; rm -f '$REMOTE'"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp=\$(command -v wp || true); php=\$(command -v php || true); [ -n \"\$php\" ] || php=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php\" \"\$wp\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php\" \"\$wp\" eval 'if ( function_exists(\"wp_cache_flush\") ) { wp_cache_flush(); } if ( has_action(\"litespeed_purge_all\") ) { do_action(\"litespeed_purge_all\"); }' --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
 
-      - name: Verify H1, SERP copy and cluster links live
+      - name: Verify H1, SERP copy, direct answers and cluster links live
         shell: bash
         run: |
           set -euo pipefail
@@ -64,10 +64,14 @@ jobs:
           EN="https://www.elmercadodeorigen.com/en/how-much-protein-in-beef/?mdo_seo_verify=${GITHUB_RUN_ID}"
           ES_CLUSTER="https://www.elmercadodeorigen.com/que-legumbre-tiene-mas-hierro-comparativa/?mdo_seo_verify=${GITHUB_RUN_ID}"
           EN_CLUSTER="https://www.elmercadodeorigen.com/en/how-much-iron-in-beef/?mdo_seo_verify=${GITHUB_RUN_ID}"
+          ES_ANSWER="https://www.elmercadodeorigen.com/aguja-ternera-que-corte-es-como-cocinarla/?mdo_seo_verify=${GITHUB_RUN_ID}"
+          EN_ANSWER="https://www.elmercadodeorigen.com/en/yellow-broccoli-why-it-changes-colour-and-when-it-is-edible/?mdo_seo_verify=${GITHUB_RUN_ID}"
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES" -o /tmp/es.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN" -o /tmp/en.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES_CLUSTER" -o /tmp/es-cluster.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN_CLUSTER" -o /tmp/en-cluster.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES_ANSWER" -o /tmp/es-answer.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN_ANSWER" -o /tmp/en-answer.html
           python - <<'PY'
           from bs4 import BeautifulSoup
           for label, path in [('ES','/tmp/es.html'), ('EN','/tmp/en.html')]:
@@ -114,6 +118,25 @@ jobs:
               links = block.find_all('a', href=True)
               print(label, 'cluster=', block.get('data-mdo-seo-cluster'), 'links=', [a.get('href') for a in links])
               assert len(links) >= 2, f'{label}: expected at least two contextual cluster links'
+
+          answer_checks = [
+              ('ES_ANSWER', '/tmp/es-answer.html', 'Aguja de ternera: qué corte es y cómo cocinarla', 'Respuesta rápida'),
+              ('EN_ANSWER', '/tmp/en-answer.html', 'Yellow Broccoli: Is It Safe to Eat? Why It Changes', 'Quick answer'),
+          ]
+          for label, path, title_prefix, answer_label in answer_checks:
+              soup = BeautifulSoup(open(path, encoding='utf-8').read(), 'html.parser')
+              content = soup.select_one('.emo-article-content')
+              assert content is not None, f'{label}: article content missing'
+              answer = content.select_one('p.mdo-seo-direct-answer[data-mdo-seo-answer]')
+              assert answer is not None, f'{label}: direct answer block missing'
+              first_h2 = content.find('h2')
+              assert first_h2 is not None, f'{label}: first H2 missing'
+              nodes = list(content.descendants)
+              assert nodes.index(answer) < nodes.index(first_h2), f'{label}: direct answer must appear before first H2'
+              title = soup.title.get_text(' ', strip=True) if soup.title else ''
+              print(label, 'title=', title, 'answer=', answer.get_text(' ', strip=True))
+              assert title.startswith(title_prefix), f'{label}: phase-3 SEO title missing: {title!r}'
+              assert answer.get_text(' ', strip=True).startswith(answer_label + ':'), f'{label}: answer label mismatch'
           PY
 
       - name: Diagnose canonical and HTTP routing
