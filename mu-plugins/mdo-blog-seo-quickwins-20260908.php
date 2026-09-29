@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
  * Description: Removes duplicated in-content H1s, defers the inline newsletter, applies data-led SERP copy and reinforces contextual internal links to the highest-opportunity blog posts.
- * Version: 2026.09.29.10
+ * Version: 2026.09.29.11
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -187,6 +187,25 @@ function mdo_blog_seo_top3_title_20260908( $title ): string {
         'verdura-vs-hortaliza-diferencia-que-alimentos-pertenecen-cada-grupo'    => 'Verdura y hortaliza: diferencia y ejemplos',
         'how-long-can-you-freeze-meat-beef-ground-beef-burgers'                  => 'How Long Can You Freeze Meat? Beef and Burgers',
         'calorias-aceite-oliva-cucharada-100g'                                   => 'Calorías del aceite de oliva: cucharada y 100 g',
+        'por-que-aceite-hace-espuma-al-freir-causas-cuando-preocuparse'          => 'Aceite con espuma al freír: causas y cuándo cambiarlo',
+        'why-cut-potatoes-turn-black-oxidation-how-to-prevent-it'                => 'Why Cut Potatoes Turn Black and How to Stop It',
+        'carne-magra-ternera-que-es-como-cocinar-tierna'                         => 'Carne magra de ternera: qué es y cómo cocinarla',
+        'yellow-broccoli-why-it-changes-colour-and-when-it-is-edible'             => 'Yellow Broccoli: Is It Safe to Eat? Why It Changes',
+        'aguja-ternera-que-corte-es-como-cocinarla'                              => 'Aguja de ternera: qué corte es y cómo cocinarla',
+        'red-liquid-in-meat-is-not-blood-what-it-really-is'                      => 'Red Liquid in Meat: It Isn’t Blood—What Is It?',
+        'cuantos-litros-leche-hacen-falta-1-kg-queso-rendimiento'                => 'Cuántos litros de leche hacen falta para 1 kg de queso',
+        'white-foam-when-cooking-meat-what-it-is-why-it-appears'                  => 'White Foam When Cooking Meat: What It Is',
+        'cuanta-carne-calcular-por-persona-corte-receta'                          => 'Cuánta carne por persona: gramos según corte y receta',
+        'liquido-rojo-carne-no-es-sangre-que-es-realmente'                       => 'El líquido rojo de la carne no es sangre: qué es',
+        'patata-cortada-se-pone-negra-por-que-oxidacion-como-evitarla'            => 'Patata cortada negra: por qué pasa y cómo evitarlo',
+        'black-seeds-inside-pepper-why-they-appear-when-to-discard'               => 'Black Seeds Inside a Pepper: When to Discard It',
+        'espuma-blanca-cocinar-carne-que-es-por-que-sale'                         => 'Espuma blanca al cocinar carne: qué es y por qué sale',
+        'sobrasada-iberica-que-es-como-se-elabora-que-mirar-al-comprarla'         => 'Sobrasada ibérica: qué es, cómo se hace y cómo elegirla',
+        'como-descongelar-carne-correctamente-nevera-agua-fria-microondas'        => 'Cómo descongelar carne: nevera, agua fría o microondas',
+        'how-much-iron-in-beef'                                                   => 'Iron in Beef per 100 g and per Serving',
+        'wrinkled-or-soft-pepper-can-you-still-eat-it'                            => 'Wrinkled or Soft Pepper: Is It Still Safe to Eat?',
+        'chickpeas-soaking-time-how-long-to-cook'                                 => 'Chickpea Soaking Time: How Long to Soak and Cook',
+        'hay-que-tirar-agua-remojo-legumbres-se-puede-aprovechar'                => '¿Hay que tirar el agua de remojo de las legumbres?',
     );
 
     return isset( $titles[ $slug ] ) ? $titles[ $slug ] : (string) $title;
@@ -219,6 +238,15 @@ function mdo_blog_seo_top3_description_20260908( $description ): string {
         'por-que-aceite-hace-espuma-al-freir-causas-cuando-preocuparse'          => '¿Por qué hace espuma el aceite al freír? Repasamos las causas más habituales, cuándo es normal y qué señales indican que conviene cambiar el aceite.',
         'carne-magra-ternera-que-es-como-cocinar-tierna'                         => 'Qué es la carne magra de ternera, qué cortes encajan mejor y cómo cocinarlos para mantenerlos tiernos, jugosos y sabrosos.',
         'calorias-aceite-oliva-cucharada-100g'                                   => 'Consulta las calorías del aceite de oliva por cucharada y por 100 g, con equivalencias prácticas para entender cuánto aporta una ración habitual.',
+        'aguja-ternera-que-corte-es-como-cocinarla'                              => 'Qué es la aguja de ternera, dónde se encuentra y qué técnicas funcionan mejor según grosor, grasa y tejido conjuntivo de la pieza.',
+        'cuantos-litros-leche-hacen-falta-1-kg-queso-rendimiento'                => 'Cuánta leche hace falta para elaborar 1 kg de queso, por qué el rendimiento cambia según el tipo de queso y qué factores explican la diferencia.',
+        'cuanta-carne-calcular-por-persona-corte-receta'                          => 'Calcula cuánta carne necesitas por persona según el corte, si lleva hueso y el tipo de receta, con rangos prácticos para ajustar las raciones.',
+        'liquido-rojo-carne-no-es-sangre-que-es-realmente'                       => 'El líquido rojizo de una bandeja de carne no es principalmente sangre: te explicamos qué es, por qué aparece y qué señales importan de verdad.',
+        'patata-cortada-se-pone-negra-por-que-oxidacion-como-evitarla'            => 'Por qué una patata cortada se pone negra, qué papel tiene la oxidación y cómo reducir el oscurecimiento mientras la preparas o conservas.',
+        'espuma-blanca-cocinar-carne-que-es-por-que-sale'                         => 'La espuma blanca al cocinar carne suele proceder de agua y proteínas coaguladas. Descubre por qué aparece, cuándo retirarla y qué indica en la sartén.',
+        'sobrasada-iberica-que-es-como-se-elabora-que-mirar-al-comprarla'         => 'Qué es la sobrasada ibérica, cómo se elabora y qué conviene mirar en ingredientes, curación, formato y etiquetado antes de comprarla.',
+        'como-descongelar-carne-correctamente-nevera-agua-fria-microondas'        => 'Cómo descongelar carne correctamente en nevera, agua fría o microondas, qué método elegir según el tiempo disponible y qué prácticas evitar.',
+        'hay-que-tirar-agua-remojo-legumbres-se-puede-aprovechar'                => '¿Conviene tirar el agua de remojo de garbanzos, lentejas y alubias? Explicamos qué pasa al líquido, cuándo desecharlo y cuándo puede aprovecharse.',
     );
 
     return isset( $descriptions[ $slug ] ) ? $descriptions[ $slug ] : (string) $description;
@@ -750,6 +778,85 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
 
 
 /**
+ * Direct-answer layer for GSC pages that still make the visitor work too hard
+ * before the first H2. The answer is inserted only when the introduction does
+ * not already contain a quick-answer heading or a table, so strong pages are
+ * not duplicated. Nothing is written back to post_content.
+ */
+function mdo_blog_seo_direct_answer_20260929( $content ): string {
+    $content = (string) $content;
+
+    if (
+        ! is_singular( 'post' )
+        || false !== strpos( $content, 'data-mdo-seo-answer=' )
+        || 1 !== preg_match( '/<h2\\b/iu', $content, $heading, PREG_OFFSET_CAPTURE )
+    ) {
+        return $content;
+    }
+
+    $offset = (int) $heading[0][1];
+    $intro  = substr( $content, 0, $offset );
+
+    if (
+        false !== stripos( $intro, '<table' )
+        || 1 === preg_match( '/(?:respuesta|resumen)\\s+rápid[oa]|quick\\s+(?:answer|summary|table)|tabla\\s+rápida/iu', $intro )
+    ) {
+        return $content;
+    }
+
+    $slug = mdo_blog_seo_current_slug_20260908();
+
+    $answers = array(
+        'eggplant-brown-inside-when-normal-and-when-overripe' => array(
+            'label' => 'Quick answer',
+            'text'  => 'Brown flesh alone does not mean an eggplant is spoiled. Mild beige or brown areas can come from oxidation, maturity or bruising when the flesh is still firm and smells normal; discard it if there is mould, slime, widespread watery tissue or an unpleasant smell.',
+        ),
+        'yellow-broccoli-why-it-changes-colour-and-when-it-is-edible' => array(
+            'label' => 'Quick answer',
+            'text'  => 'Yellowing usually means ageing, not automatic spoilage. Broccoli that is still firm, dry and normal-smelling can usually be cooked; discard it if it is slimy, wet, mouldy, collapsing or foul-smelling.',
+        ),
+        'red-liquid-in-meat-is-not-blood-what-it-really-is' => array(
+            'label' => 'Quick answer',
+            'text'  => 'The red liquid is mainly water released by muscle and coloured by proteins such as myoglobin, not a pool of blood. Its amount can change with cutting, storage, freezing or thawing; odour, surface texture, packaging and temperature history are more useful spoilage clues.',
+        ),
+        'white-foam-when-cooking-meat-what-it-is-why-it-appears' => array(
+            'label' => 'Quick answer',
+            'text'  => 'White or grey foam is usually water plus soluble proteins that coagulate as meat heats, sometimes with small amounts of fat and pigment. It is not a spoilage test; in stock, skimming is mainly for clarity, while heavy pan foaming often points to excess moisture or insufficient heat.',
+        ),
+        'aguja-ternera-que-corte-es-como-cocinarla' => array(
+            'label' => 'Respuesta rápida',
+            'text'  => 'La aguja es un corte del delantero con una mezcla variable de músculo, grasa y tejido conjuntivo. Algunas piezas funcionan bien a plancha o parrilla; las más fibrosas agradecen horno, guiso o cocción lenta. El formato y el grosor importan más que aplicar una técnica única a toda la aguja.',
+        ),
+        'liquido-rojo-carne-no-es-sangre-que-es-realmente' => array(
+            'label' => 'Respuesta rápida',
+            'text'  => 'El líquido rojizo de una bandeja no es principalmente sangre: es sobre todo agua del músculo teñida por proteínas y pigmentos como la mioglobina. Puede aumentar tras cortar, congelar o descongelar; para valorar el estado importan más el olor, la textura, el envase y el historial de frío.',
+        ),
+        'espuma-blanca-cocinar-carne-que-es-por-que-sale' => array(
+            'label' => 'Respuesta rápida',
+            'text'  => 'La espuma blanca o gris suele ser agua con proteínas solubles que coagulan al calentarse, a veces junto con grasa y pigmentos. No diagnostica deterioro por sí sola; en un caldo retirarla es sobre todo una decisión de claridad, y en sartén mucha espuma suele acompañar exceso de humedad o poco calor.',
+        ),
+        'como-descongelar-carne-correctamente-nevera-agua-fria-microondas' => array(
+            'label' => 'Respuesta rápida',
+            'text'  => 'La nevera es el método más controlado para descongelar carne. El agua fría y el microondas son alternativas más rápidas, pero después conviene cocinar inmediatamente; evita dejarla horas sobre la encimera o utilizar agua caliente.',
+        ),
+    );
+
+    if ( empty( $answers[ $slug ] ) ) {
+        return $content;
+    }
+
+    $answer = $answers[ $slug ];
+    $block  = '<p class="mdo-seo-direct-answer" data-mdo-seo-answer="' . esc_attr( $slug ) . '"><strong>'
+        . esc_html( (string) $answer['label'] )
+        . ':</strong> '
+        . esc_html( (string) $answer['text'] )
+        . '</p>';
+
+    return substr( $content, 0, $offset ) . $block . "\n" . substr( $content, $offset );
+}
+
+
+/**
  * English content can be replaced by translation/runtime filters registered by
  * normal plugins after MU plugins load. Register authority-link filters only
  * once every plugin has loaded, and put them at the end of the_content so the
@@ -761,6 +868,7 @@ function mdo_blog_seo_register_final_content_links_20260929(): void {
     }
 
     add_filter( 'the_content', 'mdo_blog_seo_internal_links_20260908', PHP_INT_MAX );
+    add_filter( 'the_content', 'mdo_blog_seo_direct_answer_20260929', PHP_INT_MAX );
     add_filter( 'the_content', 'mdo_blog_seo_cluster_links_20260929', PHP_INT_MAX );
 }
 add_action( 'plugins_loaded', 'mdo_blog_seo_register_final_content_links_20260929', PHP_INT_MAX );
