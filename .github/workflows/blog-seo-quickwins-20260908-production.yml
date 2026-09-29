@@ -111,13 +111,19 @@ jobs:
                   lowered = desc.lower()
                   assert desc and 'protein' in lowered and '100 g' in lowered, f'{label}: reviewed English description lost search intent: {desc!r}'
 
+          expected_shop = {
+              'ES_CLUSTER': '/categoria-producto/legumbres/',
+              'EN_CLUSTER': '/en/product-category/meat/',
+          }
           for label, path in [('ES_CLUSTER','/tmp/es-cluster.html'), ('EN_CLUSTER','/tmp/en-cluster.html')]:
               soup = BeautifulSoup(open(path, encoding='utf-8').read(), 'html.parser')
               block = soup.select_one('.emo-article-content p.mdo-seo-cluster-links[data-mdo-seo-cluster]')
               assert block is not None, f'{label}: contextual cluster block missing'
               links = block.find_all('a', href=True)
-              print(label, 'cluster=', block.get('data-mdo-seo-cluster'), 'links=', [a.get('href') for a in links])
-              assert len(links) >= 2, f'{label}: expected at least two contextual cluster links'
+              shop = block.select_one('a.mdo-seo-cluster-shop[href]')
+              print(label, 'cluster=', block.get('data-mdo-seo-cluster'), 'links=', [a.get('href') for a in links], 'shop=', shop.get('href') if shop else '')
+              assert len(links) >= 3, f'{label}: expected editorial + commerce contextual links'
+              assert shop is not None and shop.get('href','').endswith(expected_shop[label]), f'{label}: commercial category bridge missing'
 
           answer_checks = [
               ('ES_ANSWER', '/tmp/es-answer.html', 'Aguja de ternera: qué corte es y cómo cocinarla', 'Respuesta rápida'),
