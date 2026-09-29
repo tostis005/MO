@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO English SEO Routes
  * Description: Stable English slugs, hreflang and SEO routes without changing Spanish WooCommerce URLs.
- * Version: 1.2.3
+ * Version: 1.2.4
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
@@ -337,19 +337,19 @@ function mdoer_sitemap(): array {
     return array_values( array_unique( $urls ) );
 }
 add_action( 'template_redirect', static function(): void {
-    if ( ! mdoer_prod() || '/english-sitemap.xml' !== rtrim( mdoer_public_path(), '/' ) ) { return; }
+    if ( ! mdoer_prod() || '/english-sitemap.xml' !== mdoer_public_path() ) { return; }
     nocache_headers(); header( 'Content-Type: application/xml; charset=UTF-8' );
     echo '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">';
     foreach ( mdoer_sitemap() as $url ) { echo '<url><loc>' . esc_url( $url ) . '</loc></url>'; }
     echo '</urlset>'; exit;
-}, -PHP_INT_MAX );
+}, -2000 );
 add_filter( 'aioseo_sitemap_indexes', static function( $indexes ) {
-    if ( mdoer_prod() ) { $indexes[] = array( 'loc' => home_url( '/english-sitemap.xml/' ), 'lastmod' => gmdate( DATE_W3C ), 'count' => count( mdoer_sitemap() ) ); }
+    if ( mdoer_prod() ) { $indexes[] = array( 'loc' => home_url( '/english-sitemap.xml' ), 'lastmod' => gmdate( DATE_W3C ), 'count' => count( mdoer_sitemap() ) ); }
     return $indexes;
 }, PHP_INT_MAX );
 add_filter( 'robots_txt', static function( $output, $public ) {
     if ( ! $public || ! mdoer_prod() ) { return $output; }
-    $line = 'Sitemap: ' . home_url( '/english-sitemap.xml/' );
+    $line = 'Sitemap: ' . home_url( '/english-sitemap.xml' );
     return str_contains( $output, $line ) ? $output : rtrim( $output ) . "\n" . $line . "\n";
 }, PHP_INT_MAX, 2 );
 

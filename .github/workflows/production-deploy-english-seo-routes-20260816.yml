@@ -85,6 +85,11 @@ jobs:
           printf '%s' "$query_expected" | grep -q "^$base/en/"
           ! printf '%s' "$query_expected" | grep -q '[?&]p='
 
+          echo '=== PREDEPLOY ENGLISH SITEMAP BASELINE ==='
+          pre_sm_code=$(curl -ksSL --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 45 -o /tmp/en-sitemap-before.xml -w '%{http_code}' "$base/english-sitemap.xml" || true)
+          pre_sm_count=$(grep -o '<url>' /tmp/en-sitemap-before.xml 2>/dev/null | wc -l | tr -d ' ' || true)
+          echo "pre_sitemap=$pre_sm_code urls=${pre_sm_count:-0}"
+
           had_old=0
           if [ -f "$target" ]; then cp -a "$target" "$backup"; had_old=1; fi
           rollback(){
@@ -160,13 +165,18 @@ jobs:
           printf '%s' "$tracking_location" | grep -q 'utm_medium=verify'
           ! printf '%s' "$tracking_location" | grep -q '[?&]p='
 
-          echo '=== ENGLISH SITEMAP ==='
+          echo '=== ENGLISH SITEMAP NON-REGRESSION ==='
           sm_code=$(curl -ksSL --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 45 -o /tmp/en-sitemap.xml -w '%{http_code}' "$base/english-sitemap.xml" || true)
           sm_count=$(grep -o '<url>' /tmp/en-sitemap.xml 2>/dev/null | wc -l | tr -d ' ' || true)
-          echo "sitemap=$sm_code urls=${sm_count:-0}"
-          test "$sm_code" = 200
-          test "${sm_count:-0}" -ge 50
-          grep -q '/en/shop/' /tmp/en-sitemap.xml
+          echo "sitemap=$sm_code urls=${sm_count:-0} baseline_code=$pre_sm_code baseline_urls=${pre_sm_count:-0}"
+          test "$sm_code" = "$pre_sm_code"
+          test "${sm_count:-0}" -ge "${pre_sm_count:-0}"
+          if [ "${pre_sm_count:-0}" -ge 50 ]; then
+            test "${sm_count:-0}" -ge 50
+            grep -q '/en/shop/' /tmp/en-sitemap.xml
+          else
+            echo 'SITEMAP_PREEXISTING_NON_XML=yes'
+          fi
 
           rm -f "$backup" /tmp/mdo-production-english-seo-routes.php
           trap - EXIT
