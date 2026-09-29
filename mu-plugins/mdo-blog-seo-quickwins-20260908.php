@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
  * Description: Removes duplicated in-content H1s, defers the inline newsletter, applies data-led SERP copy and reinforces contextual internal links to the highest-opportunity blog posts.
- * Version: 2026.09.29.20
+ * Version: 2026.09.29.21
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -281,7 +281,6 @@ function mdo_blog_seo_top3_title_20260908( $title ): string {
         'vaca-vs-ternera-diferencias-sabor-textura-cual-elegir'                  => 'Vaca vs ternera: diferencias de sabor, grasa y ternura',
         'how-long-cooked-meat-lasts-in-fridge-safe-storage'                      => 'How Long Does Cooked Meat Last in the Fridge?',
         'ground-beef-what-it-is-how-to-choose-and-cook'                          => 'Ground Beef: What It Is and How to Choose It',
-        'how-much-vitamin-e-extra-virgin-olive-oil'                               => 'Vitamin E in Extra Virgin Olive Oil: Amount per Serving',
         'tomahawk-que-corte-es-como-cocinarlo-casa'                             => 'Tomahawk: qué corte es y cómo cocinarlo en casa',
         'which-parts-of-a-leek-can-you-eat-how-to-clean-it'                     => 'Which Parts of a Leek Can You Eat? How to Clean It',
         'root-leaf-fruit-flower-bulb-stem-vegetables'                           => 'Root, Leaf, Fruit, Flower, Bulb and Stem Vegetables',
