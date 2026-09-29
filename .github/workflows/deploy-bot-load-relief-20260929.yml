@@ -70,11 +70,11 @@ jobs:
           echo "=== INSTALL REAL PRODUCTION CRON ==="
           TMP=$(mktemp)
           (crontab -l 2>/dev/null || true) | sed '/# BEGIN EMDO PRODUCTION CRON/,/# END EMDO PRODUCTION CRON/d' > "$TMP"
-          cat >> "$TMP" <<CRON
-# BEGIN EMDO PRODUCTION CRON
-*/5 * * * * flock -n /tmp/emdo-production-wp-cron.lock "$PHP" -d memory_limit=768M "$WP" cron event run --due-now --path="$ROOT" --allow-root --quiet >/dev/null 2>&1
-# END EMDO PRODUCTION CRON
-CRON
+          {
+            echo "# BEGIN EMDO PRODUCTION CRON"
+            echo "*/5 * * * * flock -n /tmp/emdo-production-wp-cron.lock \"$PHP\" -d memory_limit=768M \"$WP\" cron event run --due-now --path=\"$ROOT\" --allow-root --quiet >/dev/null 2>&1"
+            echo "# END EMDO PRODUCTION CRON"
+          } >> "$TMP"
           crontab "$TMP"
           rm -f "$TMP"
           crontab -l
