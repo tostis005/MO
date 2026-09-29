@@ -87,7 +87,8 @@ jobs:
           jq -e '.count == 60' /tmp/duck-seo-optimize.json >/dev/null
           jq -e '.visible_normal_query == 60' /tmp/duck-seo-optimize.json >/dev/null
           jq -e '.category_query == 60' /tmp/duck-seo-optimize.json >/dev/null
-          jq -e '.homepage_unsuppressed == 5' /tmp/duck-seo-optimize.json >/dev/null
+          jq -e '.homepage_unsuppressed == 60' /tmp/duck-seo-optimize.json >/dev/null
+          jq -e '[.rows[] | select(.home_suppress != "")] | length == 0' /tmp/duck-seo-optimize.json >/dev/null
           jq -e '[.rows[] | select(.hidden != "")] | length == 0' /tmp/duck-seo-optimize.json >/dev/null
           jq -e '[.rows[] | select((.categories|length)!=1)] | length == 0' /tmp/duck-seo-optimize.json >/dev/null
 
@@ -122,7 +123,6 @@ jobs:
 
           get_page "$base/blog/?emdo_seo_verify=1" /tmp/blog-home.html
           grep -q 'carne-de-pato-guia-completa-cortes-sabor-preparacion' /tmp/blog-home.html
-          ! grep -q 'productos-de-pato-para-regalar-foie-pates-jamon-lotes' /tmp/blog-home.html
 
           get_page "$base/como-elegir-lote-productos-gourmet-presupuesto-destinatario-conservacion/?emdo_seo_verify=1" /tmp/source-link.html
           grep -q 'productos-de-pato-para-regalar-foie-pates-jamon-lotes' /tmp/source-link.html

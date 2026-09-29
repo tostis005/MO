@@ -41,7 +41,6 @@ if ( ! is_wp_error( $pato_link ) && false === strpos( $carnes_desc, (string)$pat
 	if ( is_wp_error( $r ) ) { throw new Exception( $r->get_error_message() ); }
 }
 
-$homepage_keys = array( 'duck-01','duck-02','duck-03','duck-04','duck-05' );
 $rows = array();
 
 foreach ( $duck_ids as $id ) {
@@ -62,11 +61,8 @@ foreach ( $duck_ids as $id ) {
 	update_post_meta( $id, '_emdo_blog_primary_category', 'pato' );
 	update_post_meta( $id, '_emdo_duck_architecture', 'public-category-hub-20260928' );
 
-	if ( in_array( $key, $homepage_keys, true ) ) {
-		delete_post_meta( $id, '_emdo_duck_home_suppress' );
-	} else {
-		update_post_meta( $id, '_emdo_duck_home_suppress', '1' );
-	}
+	delete_post_meta( $id, '_emdo_duck_home_suppress' );
+	update_post_meta( $id, '_emdo_duck_architecture', 'public-blog-and-category-20260929' );
 
 	$title = (string) get_the_title( $id );
 	$desc  = trim( wp_strip_all_tags( (string) get_post_field( 'post_excerpt', $id ) ) );
@@ -108,6 +104,6 @@ echo wp_json_encode( array(
 	'count'=>count($rows),
 	'visible_normal_query'=>count($visible_query),
 	'category_query'=>count($category_query),
-	'homepage_unsuppressed'=>count($homepage_keys),
+	'homepage_unsuppressed'=>count($rows),
 	'rows'=>$rows,
 ), JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT ) . PHP_EOL;
