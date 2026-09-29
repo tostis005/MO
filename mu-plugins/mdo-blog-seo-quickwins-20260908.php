@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
  * Description: Removes duplicated in-content H1s, defers the inline newsletter, applies data-led SERP copy and reinforces contextual internal links to the highest-opportunity blog posts.
- * Version: 2026.09.29.9
+ * Version: 2026.09.29.10
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -367,7 +367,7 @@ function mdo_blog_seo_internal_links_20260908( $content ): string {
 
     return $content;
 }
-add_filter( 'the_content', 'mdo_blog_seo_internal_links_20260908', 42 );
+
 
 
 /**
@@ -746,4 +746,21 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
 
     return $content . "\n" . $block;
 }
-add_filter( 'the_content', 'mdo_blog_seo_cluster_links_20260929', 43 );
+
+
+
+/**
+ * English content can be replaced by translation/runtime filters registered by
+ * normal plugins after MU plugins load. Register authority-link filters only
+ * once every plugin has loaded, and put them at the end of the_content so the
+ * final translated HTML is what we enrich.
+ */
+function mdo_blog_seo_register_final_content_links_20260929(): void {
+    if ( is_admin() ) {
+        return;
+    }
+
+    add_filter( 'the_content', 'mdo_blog_seo_internal_links_20260908', PHP_INT_MAX );
+    add_filter( 'the_content', 'mdo_blog_seo_cluster_links_20260929', PHP_INT_MAX );
+}
+add_action( 'plugins_loaded', 'mdo_blog_seo_register_final_content_links_20260929', PHP_INT_MAX );
