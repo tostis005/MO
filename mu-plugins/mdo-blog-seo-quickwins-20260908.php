@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
  * Description: Removes duplicated in-content H1s, defers the inline newsletter, applies data-led SERP copy and reinforces contextual internal links to the highest-opportunity blog posts.
- * Version: 2026.09.29.3
+ * Version: 2026.09.29.4
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -255,6 +255,85 @@ function mdo_blog_seo_register_final_serp_filters_20260929(): void {
     add_filter( 'seopress_titles_desc', 'mdo_blog_seo_top3_description_20260908', PHP_INT_MAX );
 }
 add_action( 'wp', 'mdo_blog_seo_register_final_serp_filters_20260929', PHP_INT_MAX );
+
+/**
+ * AIOSEO can resolve its description before the wp action on the translated
+ * English route. As a final safeguard, rewrite only the standard description
+ * meta tag in the completed HTML for URLs that have a targeted GSC snippet.
+ */
+function mdo_blog_seo_final_html_description_20260929( string $html ): string {
+    if ( '' === $html || ! is_singular( 'post' ) ) {
+        return $html;
+    }
+
+    $description = mdo_blog_seo_top3_description_20260908( '' );
+    if ( '' === $description ) {
+        return $html;
+    }
+
+    $head_end = stripos( $html, '</head>' );
+    if ( false === $head_end ) {
+        return $html;
+    }
+
+    $head = substr( $html, 0, $head_end );
+    $tail = substr( $html, $head_end );
+    $done = false;
+
+    $head = preg_replace_callback(
+        '/<meta\\b[^>]*>/iu',
+        static function ( array $matches ) use ( $description, &$done ): string {
+            $tag = (string) $matches[0];
+
+            if ( $done || 1 !== preg_match( '/\\bname\\s*=\\s*(["\\'])description\\1/iu', $tag ) ) {
+                return $tag;
+            }
+
+            $escaped = esc_attr( $description );
+
+            if ( 1 === preg_match( '/\\bcontent\\s*=\\s*(["\\']).*?\\1/isu', $tag ) ) {
+                $tag = (string) preg_replace(
+                    '/\\bcontent\\s*=\\s*(["\\']).*?\\1/isu',
+                    'content="' . $escaped . '"',
+                    $tag,
+                    1
+                );
+            } else {
+                $tag = rtrim( substr( $tag, 0, -1 ) ) . ' content="' . $escaped . '">';
+            }
+
+            $done = true;
+            return $tag;
+        },
+        $head
+    );
+
+    if ( ! is_string( $head ) ) {
+        return $html;
+    }
+
+    if ( ! $done ) {
+        $head .= "\n<meta name=\"description\" content=\"" . esc_attr( $description ) . "\">\n";
+    }
+
+    return $head . $tail;
+}
+
+add_action(
+    'template_redirect',
+    static function (): void {
+        if ( is_admin() || wp_doing_ajax() || ! is_singular( 'post' ) ) {
+            return;
+        }
+
+        if ( '' === mdo_blog_seo_top3_description_20260908( '' ) ) {
+            return;
+        }
+
+        ob_start( 'mdo_blog_seo_final_html_description_20260929' );
+    },
+    PHP_INT_MAX
+);
 
 /**
  * Reinforce the three highest-opportunity URLs with contextual internal links.
