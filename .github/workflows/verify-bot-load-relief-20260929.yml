@@ -1,0 +1,73 @@
+name: Verify bot load relief 2026-09-29
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-bot-load-relief-20260929.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Verify runtime after mitigation
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          LOG="/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log"
+          echo "=== LOAD ==="
+          date -Is
+          uptime
+          echo "=== PHP ==="
+          ps -eo pid,user,stat,etimes,%cpu,%mem,rss,args --sort=-%cpu | grep 'php-fpm: pool elmercadodeorigen.com' | head -25 || true
+          echo "=== HOT CACHE HEADERS ==="
+          for url in             "https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/"             "https://www.elmercadodeorigen.com/en/store/montjam/"             "https://www.elmercadodeorigen.com/en/product-category/hams-and-shoulders/"             "https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/"; do
+            echo "--- $url"
+            curl -k -sS --max-time 20 -A 'MDO-Verify/1.0' -D /tmp/h -o /dev/null -w 'http=%{http_code} total=%{time_total} start=%{time_starttransfer}\n' "$url"
+            grep -Ei 'HTTP/|X-El-Mercado-Hot-Early-Cache' /tmp/h || true
+          done
+          echo "=== LAST 10 MINUTES ==="
+          python3 - "$LOG" <<'PY'
+          import sys,re
+          from datetime import datetime,timezone,timedelta
+          from collections import Counter
+          from urllib.parse import urlsplit
+          p=sys.argv[1]
+          now=datetime.now(timezone.utc); cut=now-timedelta(minutes=10)
+          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+')
+          st=Counter(); paths=Counter(); ips=Counter(); total=0
+          with open(p,'rt',encoding='utf-8',errors='replace') as f:
+            for line in f:
+              m=rx.match(line)
+              if not m: continue
+              ip,ds,method,target,status=m.groups()
+              try: dt=datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(timezone.utc)
+              except: continue
+              if dt<cut: continue
+              try: path=urlsplit(target).path or '/'
+              except: path=target.split('?',1)[0] or '/'
+              total+=1; st[status]+=1; paths[path]+=1; ips[ip]+=1
+          print("total",total,"statuses",dict(st.most_common()),"unique_ips",len(ips))
+          print("top_paths")
+          for path,n in paths.most_common(20): print(n,path)
+          print("top_ips")
+          for ip,n in ips.most_common(15): print(n,ip)
+          PY
+          echo "=== BANS ==="
+          fail2ban-client status plesk-permanent-ban || true
+          echo "=== CRON CONFIG ==="
+          grep -n "DISABLE_WP_CRON" /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-config.php || true
+          crontab -l | sed -n '/# BEGIN EMDO PRODUCTION CRON/,/# END EMDO PRODUCTION CRON/p'
+          REMOTE
