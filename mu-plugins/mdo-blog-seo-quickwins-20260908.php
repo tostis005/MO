@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
  * Description: Removes duplicated in-content H1s, defers the inline newsletter, applies data-led SERP copy and reinforces contextual internal links to the highest-opportunity blog posts.
- * Version: 2026.09.29.12
+ * Version: 2026.09.29.13
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -206,6 +206,17 @@ function mdo_blog_seo_top3_title_20260908( $title ): string {
         'wrinkled-or-soft-pepper-can-you-still-eat-it'                            => 'Wrinkled or Soft Pepper: Is It Still Safe to Eat?',
         'chickpeas-soaking-time-how-long-to-cook'                                 => 'Chickpea Soaking Time: How Long to Soak and Cook',
         'hay-que-tirar-agua-remojo-legumbres-se-puede-aprovechar'                => '¿Hay que tirar el agua de remojo de las legumbres?',
+        'what-is-cheese-affinage-maturation-humidity-rind-care-affineur'          => 'Cheese Affinage: What It Means and How It Works',
+        'bloomy-rind-cheese-white-mould-how-rind-forms-can-you-eat-it'           => 'Bloomy Rind Cheese: How White Mould Develops & Rind Care',
+        'how-cheese-ripens-temperature-humidity-microbiota-time'                 => 'How Cheese Ripens: Temperature, Humidity & Microbiota',
+        'how-to-tell-cheese-gone-bad-mould-smell-texture-discard'               => 'How to Tell If Cheese Is Bad: Mould, Smell & Texture',
+        'does-cheese-contain-lactose-type-maturation-how-to-tell'                => 'Does Cheese Contain Lactose? How Type and Age Matter',
+        'cheese-nutrition-calories-protein-fat-salt-carbohydrates'               => 'Cheese Nutrition per 100 g: Calories, Protein & Fat',
+        'can-you-eat-cheese-rind-which-rinds-edible-which-remove'                => 'Can You Eat Cheese Rind? Which Rinds Are Edible',
+        'how-many-litres-milk-to-make-1-kg-cheese-yield'                         => 'How Much Milk to Make 1 kg of Cheese? Yield Explained',
+        'fresh-cheese-what-it-is-how-made-storage-vs-matured-cheese'             => 'Fresh Cheese: What It Is, Storage and How It Differs',
+        'what-is-rennet-in-cheese-animal-vegetable-microbial-coagulation'        => 'What Is Rennet in Cheese? Animal, Plant & Microbial',
+        'how-to-store-cheese-properly-fridge-wrapping-temperature'               => 'How to Store Cheese in the Fridge: Wrap & Temperature',
     );
 
     return isset( $titles[ $slug ] ) ? $titles[ $slug ] : (string) $title;
@@ -396,6 +407,84 @@ function mdo_blog_seo_internal_links_20260908( $content ): string {
     return $content;
 }
 
+
+
+/**
+ * Detect the English cheese editorial cluster without hard-coding every post.
+ * We use the public English route plus either the English/native category name
+ * or an explicit cheese slug signal.
+ */
+function mdo_blog_seo_is_english_cheese_post_20260929(): bool {
+    if ( ! is_singular( 'post' ) ) {
+        return false;
+    }
+
+    $path = (string) wp_parse_url( mdo_blog_seo_public_request_uri_20260929(), PHP_URL_PATH );
+    if ( 0 !== strpos( $path, '/en/' ) ) {
+        return false;
+    }
+
+    $slug = mdo_blog_seo_current_slug_20260908();
+    if ( false !== strpos( $slug, 'cheese' ) || false !== strpos( $slug, 'affinage' ) ) {
+        return true;
+    }
+
+    $post_id = (int) get_queried_object_id();
+    if ( $post_id <= 0 ) {
+        return false;
+    }
+
+    $terms = wp_get_post_terms( $post_id, 'category' );
+    if ( is_wp_error( $terms ) ) {
+        return false;
+    }
+
+    foreach ( $terms as $term ) {
+        if ( ! $term instanceof WP_Term ) {
+            continue;
+        }
+
+        $native = strtolower( remove_accents( (string) $term->slug . ' ' . (string) $term->name ) );
+        $english = strtolower( remove_accents( (string) get_term_meta( $term->term_id, '_en_US_name', true ) ) );
+
+        if ( false !== strpos( $native, 'queso' ) || false !== strpos( $english, 'cheese' ) ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Clean two import artefacts found across reviewed English cheese copy:
+ * a generator-style sentence about "search intent" and literal "nn" paragraph
+ * separators. This runs only for the English Cheese cluster and never writes
+ * back to the database.
+ */
+function mdo_blog_seo_clean_english_cheese_copy_20260929( $content ): string {
+    $content = (string) $content;
+
+    if ( ! mdo_blog_seo_is_english_cheese_post_20260929() ) {
+        return $content;
+    }
+
+    $generic = 'This guide is designed to answer the full search intent rather than provide a one-line definition. It explains what the terms mean, what truly changes in the cheese, how to read labels and how to use that information when buying, storing or serving.';
+
+    $cleaned = preg_replace(
+        '#<p\\b[^>]*>\\s*' . preg_quote( $generic, '#' ) . '\\s*</p>#iu',
+        '',
+        $content
+    );
+
+    if ( ! is_string( $cleaned ) ) {
+        $cleaned = $content;
+    }
+
+    $cleaned = str_replace( $generic, '', $cleaned );
+    $cleaned = preg_replace( '/([.!?])nn(?=[A-Z])/u', '$1</p><p>', $cleaned );
+
+    return is_string( $cleaned ) ? $cleaned : $content;
+}
 
 
 /**
@@ -733,6 +822,22 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
         }
     }
 
+    if ( '' === $cluster_key && $is_english && mdo_blog_seo_is_english_cheese_post_20260929() ) {
+        $cluster_key = 'en-cheese';
+        $cluster = array(
+            'english' => true,
+            'label'   => 'Related cheese guides',
+            'targets' => array(
+                array( '/en/how-cheese-ripens-temperature-humidity-microbiota-time/', 'how cheese ripens' ),
+                array( '/en/bloomy-rind-cheese-white-mould-how-rind-forms-can-you-eat-it/', 'how bloomy rinds develop' ),
+                array( '/en/what-is-cheese-affinage-maturation-humidity-rind-care-affineur/', 'what cheese affinage means' ),
+                array( '/en/how-to-tell-cheese-gone-bad-mould-smell-texture-discard/', 'how to tell if cheese has gone bad' ),
+                array( '/en/does-cheese-contain-lactose-type-maturation-how-to-tell/', 'how lactose changes with cheese type and age' ),
+                array( '/en/cheese-nutrition-calories-protein-fat-salt-carbohydrates/', 'cheese calories, protein and fat' ),
+            ),
+        );
+    }
+
     if ( '' === $cluster_key || empty( $cluster['targets'] ) ) {
         return $content;
     }
@@ -889,6 +994,7 @@ function mdo_blog_seo_register_final_content_links_20260929(): void {
         return;
     }
 
+    add_filter( 'the_content', 'mdo_blog_seo_clean_english_cheese_copy_20260929', PHP_INT_MAX );
     add_filter( 'the_content', 'mdo_blog_seo_internal_links_20260908', PHP_INT_MAX );
     add_filter( 'the_content', 'mdo_blog_seo_direct_answer_20260929', PHP_INT_MAX );
     add_filter( 'the_content', 'mdo_blog_seo_cluster_links_20260929', PHP_INT_MAX );
