@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
  * Description: Removes duplicated in-content H1s, defers the inline newsletter, applies data-led SERP copy and reinforces contextual internal links to the highest-opportunity blog posts.
- * Version: 2026.09.08.4
+ * Version: 2026.09.29.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -34,8 +34,6 @@ function mdo_blog_seo_remove_duplicate_content_h1_20260908( $content ): string {
 
     if (
         ! is_singular( 'post' )
-        || ! in_the_loop()
-        || ! is_main_query()
         || false === stripos( $content, '<h1' )
     ) {
         return $content;
@@ -129,12 +127,26 @@ function mdo_blog_seo_current_slug_20260908(): string {
         return '';
     }
 
-    $post_id = (int) get_queried_object_id();
-    if ( $post_id <= 0 ) {
-        return '';
+    /*
+     * Falang puede conservar el post_name original en algunas rutas /en/.
+     * La URL pública es la señal más fiable para seleccionar el snippet.
+     */
+    $request_uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+    $path        = (string) wp_parse_url( $request_uri, PHP_URL_PATH );
+    $path        = trim( rawurldecode( $path ), '/' );
+
+    if ( '' !== $path ) {
+        $segments = array_values( array_filter( explode( '/', $path ) ) );
+        $last     = end( $segments );
+
+        if ( is_string( $last ) && '' !== $last ) {
+            return sanitize_title( $last );
+        }
     }
 
-    return (string) get_post_field( 'post_name', $post_id );
+    $post_id = (int) get_queried_object_id();
+
+    return $post_id > 0 ? (string) get_post_field( 'post_name', $post_id ) : '';
 }
 
 /**
@@ -145,14 +157,29 @@ function mdo_blog_seo_top3_title_20260908( $title ): string {
     $slug = mdo_blog_seo_current_slug_20260908();
 
     $titles = array(
-        'hay-que-poner-lentejas-en-remojo-cuanto-tiempo' => '¿Las lentejas se remojan? Cuánto tiempo dejarlas en remojo',
-        'how-much-protein-in-beef'                       => 'Beef protein per 100g: how much protein is in beef?',
-        'garbanzos-tiempo-remojo-cuanto-tardan-cocerse' => 'Tiempo de remojo de los garbanzos: 8–12 horas y cocción',
+        'how-much-protein-in-beef'                                               => 'Beef Protein per 100 g: Amounts by Serving',
+        'hay-que-poner-lentejas-en-remojo-cuanto-tiempo'                         => '¿Hay que remojar las lentejas? Tiempo de remojo',
+        'garbanzos-tiempo-remojo-cuanto-tardan-cocerse'                         => 'Remojo de garbanzos: tiempo y cocción',
+        'cuanta-proteina-tiene-carne-ternera'                                   => 'Proteína de la ternera por 100 g y por ración',
+        'eggplant-brown-inside-when-normal-and-when-overripe'                    => 'Brown Eggplant Inside: Normal or Overripe?',
+        'cuanto-duran-conservas-una-vez-abiertas-nevera-como-guardarlas'         => 'Conservas abiertas: cuánto duran en la nevera',
+        'cuanta-legumbre-seca-por-persona-garbanzos-lentejas-alubias'            => 'Legumbre seca por persona: gramos y raciones',
+        'cuanto-tiempo-puede-estar-carne-fuera-nevera-antes-cocinarla'           => 'Carne fuera de la nevera: cuánto tiempo es seguro',
+        'how-long-can-meat-stay-out-of-the-fridge-before-cooking'                => 'How Long Can Meat Stay Out of the Fridge?',
+        'do-lentils-need-soaking-how-long'                                       => 'Do Lentils Need Soaking? Soaking Time Guide',
+        'garbanzos-agua-caliente-o-fria-remojo-coccion'                         => 'Garbanzos: agua caliente o fría para remojo y cocción',
+        'olive-oil-calories-tablespoon-100g'                                     => 'Olive Oil Calories: Tablespoon and 100 g',
+        'verdura-vs-hortaliza-diferencia-que-alimentos-pertenecen-cada-grupo'    => 'Verdura y hortaliza: diferencia y ejemplos',
+        'how-long-can-you-freeze-meat-beef-ground-beef-burgers'                  => 'How Long Can You Freeze Meat? Beef and Burgers',
+        'calorias-aceite-oliva-cucharada-100g'                                   => 'Calorías del aceite de oliva: cucharada y 100 g',
     );
 
     return isset( $titles[ $slug ] ) ? $titles[ $slug ] : (string) $title;
 }
 add_filter( 'aioseo_title', 'mdo_blog_seo_top3_title_20260908', 20 );
+add_filter( 'wpseo_title', 'mdo_blog_seo_top3_title_20260908', 20 );
+add_filter( 'rank_math/frontend/title', 'mdo_blog_seo_top3_title_20260908', 20 );
+add_filter( 'seopress_titles_title', 'mdo_blog_seo_top3_title_20260908', 20 );
 
 /**
  * Search Console quick wins, 2026-09-08.
@@ -163,14 +190,34 @@ function mdo_blog_seo_top3_description_20260908( $description ): string {
     $slug = mdo_blog_seo_current_slug_20260908();
 
     $descriptions = array(
-        'hay-que-poner-lentejas-en-remojo-cuanto-tiempo' => 'La mayoría de las lentejas no necesitan remojo. Descubre cuáles se cocinan directamente, cuándo conviene remojarlas y durante cuánto tiempo.',
-        'how-much-protein-in-beef'                       => 'Beef provides about 20–21 g of protein per 100 g raw. Compare 100 g, 150 g and 200 g servings, plus lean, cooked and minced beef.',
-        'garbanzos-tiempo-remojo-cuanto-tardan-cocerse' => 'Los garbanzos suelen necesitar 8–12 horas de remojo. Consulta tiempos de cocción en olla tradicional y rápida, agua, sal y qué hacer si siguen duros.',
+        'how-much-protein-in-beef'                                               => 'Beef provides about 20–21 g of protein per 100 g raw. See protein amounts by serving and how values change between raw and cooked beef.',
+        'hay-que-poner-lentejas-en-remojo-cuanto-tiempo'                         => '¿Hay que poner las lentejas en remojo? Descubre cuándo hace falta, cuánto tiempo dejarlas según el tipo y cómo conseguir una buena cocción.',
+        'garbanzos-tiempo-remojo-cuanto-tardan-cocerse'                         => 'Guía práctica para remojar garbanzos y calcular su cocción: tiempos orientativos, olla convencional o rápida y claves para que queden tiernos.',
+        'cuanta-proteina-tiene-carne-ternera'                                   => 'La ternera magra aporta alrededor de 20–21 g de proteína por 100 g en crudo. Consulta cantidades por ración y diferencias al cocinarla.',
+        'eggplant-brown-inside-when-normal-and-when-overripe'                    => 'Brown flesh inside an eggplant is not always a reason to discard it. Learn why it browns, signs of overripeness and when it is better not to eat it.',
+        'cuanto-duran-conservas-una-vez-abiertas-nevera-como-guardarlas'         => 'Consulta cuánto dura una conserva una vez abierta, cómo guardarla correctamente en la nevera y qué señales indican que conviene desecharla.',
+        'cuanta-legumbre-seca-por-persona-garbanzos-lentejas-alubias'            => 'Calcula cuánta legumbre seca necesitas por persona para garbanzos, lentejas y alubias, con equivalencias útiles para ajustar raciones sin pasarte.',
+        'cuanto-tiempo-puede-estar-carne-fuera-nevera-antes-cocinarla'           => 'Cuánto tiempo puede estar la carne fuera de la nevera antes de cocinarla, qué cambia con el calor ambiente y cuándo es más seguro descartarla.',
+        'how-long-can-meat-stay-out-of-the-fridge-before-cooking'                => 'How long can raw meat stay out before cooking? See the key food-safety time limits, what changes in warm conditions and when to discard it.',
+        'do-lentils-need-soaking-how-long'                                       => 'Do lentils need soaking? Learn which lentils benefit from it, how long to soak them and how soaking can affect cooking time and texture.',
+        'garbanzos-agua-caliente-o-fria-remojo-coccion'                         => '¿Agua caliente o fría para los garbanzos? Aprende qué temperatura usar en el remojo y la cocción y cómo evitar que queden duros.',
+        'olive-oil-calories-tablespoon-100g'                                     => 'Check olive oil calories per tablespoon and per 100 g, with practical serving conversions to understand how much energy your usual portion provides.',
+        'se-pueden-congelar-legumbres-cocidas-como-hacerlo'                     => 'Sí, las legumbres cocidas se pueden congelar. Aprende cómo enfriarlas, envasarlas y descongelarlas para conservar mejor su textura y sabor.',
+        'verdura-vs-hortaliza-diferencia-que-alimentos-pertenecen-cada-grupo'    => 'Verdura y hortaliza no significan exactamente lo mismo. Descubre la diferencia, qué alimentos incluye cada concepto y ejemplos fáciles de recordar.',
+        'cuanto-dura-carne-cocinada-nevera-conservacion-segura'                 => 'Consulta cuánto dura la carne cocinada en la nevera, cómo enfriarla y guardarla correctamente y qué señales indican que ya no conviene consumirla.',
+        'how-long-opened-canned-food-keeps-in-fridge-how-to-store-it'            => 'How long does opened canned food keep in the fridge? Learn how to store leftovers safely, choose a container and spot signs that it should be discarded.',
+        'how-long-can-you-freeze-meat-beef-ground-beef-burgers'                  => 'How long can beef, ground beef and burgers stay frozen? Compare storage times and learn how packaging and thawing affect quality and safety.',
+        'por-que-aceite-hace-espuma-al-freir-causas-cuando-preocuparse'          => '¿Por qué hace espuma el aceite al freír? Repasamos las causas más habituales, cuándo es normal y qué señales indican que conviene cambiar el aceite.',
+        'carne-magra-ternera-que-es-como-cocinar-tierna'                         => 'Qué es la carne magra de ternera, qué cortes encajan mejor y cómo cocinarlos para mantenerlos tiernos, jugosos y sabrosos.',
+        'calorias-aceite-oliva-cucharada-100g'                                   => 'Consulta las calorías del aceite de oliva por cucharada y por 100 g, con equivalencias prácticas para entender cuánto aporta una ración habitual.',
     );
 
     return isset( $descriptions[ $slug ] ) ? $descriptions[ $slug ] : (string) $description;
 }
 add_filter( 'aioseo_description', 'mdo_blog_seo_top3_description_20260908', 20 );
+add_filter( 'wpseo_metadesc', 'mdo_blog_seo_top3_description_20260908', 20 );
+add_filter( 'rank_math/frontend/description', 'mdo_blog_seo_top3_description_20260908', 20 );
+add_filter( 'seopress_titles_desc', 'mdo_blog_seo_top3_description_20260908', 20 );
 
 /**
  * Reinforce the three highest-opportunity URLs with contextual internal links.
