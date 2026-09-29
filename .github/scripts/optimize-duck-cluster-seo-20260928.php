@@ -186,7 +186,7 @@ echo wp_json_encode( array(
 	'category'=>array(
 		'id'=>(int)$pato->term_id,'name'=>$pato->name,'slug'=>$pato->slug,
 		'parent'=>(int)$carnes->term_id,'url'=>get_category_link($pato),
-		'hub_marker'=>false !== strpos( (string) term_description( $pato ), 'data-emdo-duck-topic-hub="1"' ),
+		'hub_marker'=>false !== strpos( (string) term_description( $pato ), 'Guías para conocer, elegir y cocinar pato con criterio.' ),
 	),
 	'count'=>count($rows),
 	'visible_normal_query'=>count($visible_query),
