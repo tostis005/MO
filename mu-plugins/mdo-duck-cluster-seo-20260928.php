@@ -2,13 +2,11 @@
 /**
  * Plugin Name: MDO Duck Cluster SEO 2026-09-28
  * Description: Discovery, SERP metadata and contextual internal linking for the editorial duck cluster.
- * Version: 2026.09.28.1
+ * Version: 2026.09.29.2
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 const EMDO_DUCK_CLUSTER_META_20260928 = '_emdo_blog_cluster';
-const EMDO_DUCK_HOME_SUPPRESS_META_20260928 = '_emdo_duck_home_suppress';
-
 function emdo_duck_is_post_20260928( int $post_id = 0 ): bool {
 	if ( $post_id <= 0 ) { $post_id = (int) get_queried_object_id(); }
 	return $post_id > 0
@@ -20,33 +18,6 @@ function emdo_duck_current_slug_20260928(): string {
 	if ( is_admin() || ! is_singular( 'post' ) || ! emdo_duck_is_post_20260928() ) { return ''; }
 	return (string) get_post_field( 'post_name', get_queried_object_id() );
 }
-
-/**
- * Keep the blog homepage editorially balanced. All duck posts remain available
- * in the Pato category, blog search, feeds and normal WordPress queries.
- * Only long-tail duck posts are suppressed from the unfiltered /blog/ listing.
- */
-add_action( 'pre_get_posts', static function ( WP_Query $query ): void {
-	if ( is_admin() || ! is_home() ) { return; }
-	if ( $query->get( 's' ) || $query->get( 'tax_query' ) ) { return; }
-
-	$post_type = $query->get( 'post_type' );
-	if ( ! empty( $post_type ) ) {
-		$types = is_array( $post_type ) ? $post_type : array( $post_type );
-		if ( ! in_array( 'post', $types, true ) && ! in_array( 'any', $types, true ) ) { return; }
-	}
-
-	$visibility = array(
-		'key'     => EMDO_DUCK_HOME_SUPPRESS_META_20260928,
-		'compare' => 'NOT EXISTS',
-	);
-	$existing = $query->get( 'meta_query' );
-	if ( ! is_array( $existing ) || empty( $existing ) ) {
-		$query->set( 'meta_query', array( $visibility ) );
-		return;
-	}
-	$query->set( 'meta_query', array( 'relation' => 'AND', $existing, $visibility ) );
-}, 17 );
 
 /** Concise SERP titles for visible titles likely to truncate. */
 function emdo_duck_serp_titles_20260928(): array {
