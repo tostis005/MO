@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.312' );
-/* 0.10.312 deja Google AdSense como unico proveedor publicitario activo. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.313' );
+/* 0.10.313 incorpora optimizaciones SEO basadas en Search Console. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
 	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsense' ); // Adsterra queda conservado pero inactivo.
 }
@@ -170,6 +170,7 @@ $elmercado_modules = array(
 	'inc/blog-product-category-more-010267.php',
 	'inc/blog-default-image-010264.php',
 	'inc/seo-meta-descriptions-010265.php',
+	'inc/seo-search-console-010313.php',
 	'inc/adsense-geo-010266.php',
 	'inc/adsterra-blog-010290.php',
 );
