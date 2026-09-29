@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
  * Description: Removes duplicated in-content H1s, defers the inline newsletter, applies data-led SERP copy and reinforces contextual internal links to the highest-opportunity blog posts.
- * Version: 2026.09.29.4
+ * Version: 2026.09.29.5
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -285,15 +285,15 @@ function mdo_blog_seo_final_html_description_20260929( string $html ): string {
         static function ( array $matches ) use ( $description, &$done ): string {
             $tag = (string) $matches[0];
 
-            if ( $done || 1 !== preg_match( '/\\bname\\s*=\\s*(["\\'])description\\1/iu', $tag ) ) {
+            if ( $done || 1 !== preg_match( "~\\bname\\s*=\\s*[\"']description[\"']~iu", $tag ) ) {
                 return $tag;
             }
 
             $escaped = esc_attr( $description );
 
-            if ( 1 === preg_match( '/\\bcontent\\s*=\\s*(["\\']).*?\\1/isu', $tag ) ) {
+            if ( 1 === preg_match( "~\\bcontent\\s*=\\s*([\"']).*?\\1~isu", $tag ) ) {
                 $tag = (string) preg_replace(
-                    '/\\bcontent\\s*=\\s*(["\\']).*?\\1/isu',
+                    "~\\bcontent\\s*=\\s*([\"']).*?\\1~isu",
                     'content="' . $escaped . '"',
                     $tag,
                     1
