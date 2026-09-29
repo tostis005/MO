@@ -1,0 +1,201 @@
+name: Live bot and performance audit 2026-09-29
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/live-bot-performance-audit-20260929.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Audit production traffic and runtime
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' > live-bot-performance-audit.txt <<'REMOTE'
+          set -euo pipefail
+          WP=$(command -v wp || true)
+          PHP=$(command -v php || true)
+          [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                ROOT="$p"; break;;
+            esac
+          done
+          : "${ROOT:?missing production root}"
+          LOGDIR="/var/www/vhosts/system/elmercadodeorigen.com/logs"
+
+          echo "=== GENERATED ==="
+          date -Is
+          echo "ROOT=$ROOT"
+          echo
+          echo "=== SYSTEM LOAD ==="
+          uptime || true
+          free -m || true
+          echo
+          echo "=== TOP CPU ==="
+          ps -eo pid,ppid,user,stat,etimes,%cpu,%mem,rss,comm,args --sort=-%cpu | head -n 35 || true
+          echo
+          echo "=== PHP-FPM WORKERS ==="
+          ps -eo user,pid,ppid,stat,etimes,%cpu,%mem,rss,args | grep -E 'php-fpm|php82|php83|php84' | grep -v grep | head -n 120 || true
+          echo
+          echo "=== WEB/PHP CONNECTION SNAPSHOT ==="
+          ss -tan 2>/dev/null | awk 'NR==1 || /:80 |:443 /' | head -n 120 || true
+          echo
+          echo "=== WP CACHE / CRON CONFIG ==="
+          grep -nE "WP_CACHE|DISABLE_WP_CRON|ALTERNATE_WP_CRON|WP_MEMORY_LIMIT|WP_MAX_MEMORY_LIMIT" "$ROOT/wp-config.php" 2>/dev/null || true
+          ls -lah "$ROOT/wp-content"/{advanced-cache.php,object-cache.php} 2>/dev/null || true
+          echo "ACTIVE_CACHE_PLUGINS:"
+          "$PHP" "$WP" plugin list --status=active --field=name --path="$ROOT" --allow-root 2>/dev/null | grep -Ei 'cache|rocket|lite|speed|perf|redis|varnish' || true
+          echo
+          echo "=== KEY PAGE HEADERS / TIMINGS ==="
+          for url in             "https://www.elmercadodeorigen.com/"             "https://www.elmercadodeorigen.com/tienda/"             "https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/"             "https://www.elmercadodeorigen.com/en/store/montjam/"             "https://www.elmercadodeorigen.com/en/product-category/hams-and-shoulders/"; do
+            echo "--- $url"
+            curl -k -sS -o /dev/null --max-time 30 -A 'MDO-Live-Audit/1.0'               -w 'http=%{http_code} total=%{time_total} start=%{time_starttransfer} size=%{size_download}\n' "$url" || true
+            curl -k -sSI --max-time 20 -A 'MDO-Live-Audit/1.0' "$url" | grep -Ei 'HTTP/|cache|age:|expires:|pragma:|x-|server:|vary:' | head -n 30 || true
+          done
+          echo
+          echo "=== ACCESS LOG AGGREGATES ==="
+          python3 - "$LOGDIR" <<'PY'
+          import sys,os,re,gzip,json,ipaddress
+          from collections import Counter,defaultdict
+          from datetime import datetime,timezone,timedelta
+          from urllib.parse import urlsplit
+
+          logdir=sys.argv[1]
+          now=datetime.now(timezone.utc)
+          windows={"30m":now-timedelta(minutes=30),"24h":now-timedelta(hours=24),"7d":now-timedelta(days=7)}
+          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+(\S+)(?:\s+"([^"]*)"\s+"([^"]*)")?')
+          asset_ext=re.compile(r'\.(?:css|js|mjs|map|png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|eot|mp4|webm|pdf|zip)(?:$|\?)',re.I)
+          bot_re=re.compile(r'(bot|spider|crawler|crawl|slurp|headless|python-requests|curl/|wget/|httpclient|scrapy|go-http-client|facebookexternalhit|bytespider|semrush|ahrefs|mj12|dotbot|petalbot|gptbot|claudebot|applebot|duckassist|aionbot)',re.I)
+
+          files=[]
+          for name in os.listdir(logdir):
+              low=name.lower()
+              if 'access_ssl_log' not in low: continue
+              p=os.path.join(logdir,name)
+              if os.path.isfile(p): files.append(p)
+
+          data={}
+          for key in windows:
+              data[key]={
+                "requests":0,"dynamic":0,"ips":Counter(),"paths":Counter(),"uas":Counter(),
+                "statuses":Counter(),"ip_path":Counter(),"minutes":Counter(),"ua_ips":defaultdict(set),
+                "ua_paths":defaultdict(Counter),"ip_uas":defaultdict(Counter)
+              }
+
+          def opener(p):
+              return gzip.open(p,'rt',encoding='utf-8',errors='replace') if p.endswith('.gz') else open(p,'rt',encoding='utf-8',errors='replace')
+
+          for p in files:
+              try: f=opener(p)
+              except: continue
+              with f:
+                  for line in f:
+                      m=rx.match(line)
+                      if not m: continue
+                      ip,ds,method,target,status,size,ref,ua=m.groups()
+                      try: dt=datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(timezone.utc)
+                      except: continue
+                      if dt < windows["7d"] or dt > now+timedelta(minutes=3): continue
+                      try: path=urlsplit(target).path or '/'
+                      except: path=target.split('?',1)[0] or '/'
+                      ua=ua or ''
+                      dynamic=not bool(asset_ext.search(path))
+                      minute=dt.strftime('%Y-%m-%dT%H:%MZ')
+                      for key,cut in windows.items():
+                          if dt < cut: continue
+                          d=data[key]
+                          d["requests"]+=1; d["dynamic"]+=int(dynamic)
+                          d["ips"][ip]+=1; d["paths"][path]+=1; d["uas"][ua]+=1; d["statuses"][status]+=1
+                          d["ip_path"][(ip,path)]+=1; d["minutes"][minute]+=1
+                          d["ua_ips"][ua].add(ip); d["ua_paths"][ua][path]+=1; d["ip_uas"][ip][ua]+=1
+
+          for key in ["30m","24h","7d"]:
+              d=data[key]
+              print(f"\n### WINDOW {key}")
+              print("requests",d["requests"],"dynamic",d["dynamic"],"unique_ips",len(d["ips"]),"unique_uas",len(d["uas"]))
+              print("statuses",dict(d["statuses"].most_common()))
+              print("peak_requests_per_minute",max(d["minutes"].values()) if d["minutes"] else 0)
+              print("-- top dynamic paths --")
+              shown=0
+              for p,n in d["paths"].most_common():
+                  if asset_ext.search(p): continue
+                  print(n,p)
+                  shown+=1
+                  if shown>=35: break
+              print("-- top user agents --")
+              for ua,n in d["uas"].most_common(30):
+                  print(n,"req",len(d["ua_ips"][ua]),"ips","BOT" if bot_re.search(ua) else "browserlike",ua[:240])
+                  for p,c in d["ua_paths"][ua].most_common(4):
+                      print("   ",c,p)
+              print("-- top ips --")
+              for ip,n in d["ips"].most_common(30):
+                  topua=d["ip_uas"][ip].most_common(1)[0][0] if d["ip_uas"][ip] else ''
+                  print(n,ip,topua[:220])
+              print("-- repeated ip/path pairs --")
+              for (ip,p),n in d["ip_path"].most_common(35):
+                  print(n,ip,p)
+
+          print("\n### TARGET FAMILY 24H")
+          d=data["24h"]
+          target_prefixes=("/en/store/","/en/product-category/")
+          target_total=0
+          target_ua=Counter(); target_ip=Counter(); target_path=Counter()
+          for (ip,p),n in d["ip_path"].items():
+              if p.startswith(target_prefixes):
+                  target_total+=n; target_ip[ip]+=n; target_path[p]+=n
+          # reconstruct UA contribution by path counts
+          for ua,pc in d["ua_paths"].items():
+              for p,n in pc.items():
+                  if p.startswith(target_prefixes): target_ua[ua]+=n
+          print("target_total",target_total)
+          print("top_target_paths")
+          for p,n in target_path.most_common(25): print(n,p)
+          print("top_target_uas")
+          for ua,n in target_ua.most_common(25): print(n,"req",len(d["ua_ips"][ua]),"ips",ua[:240])
+          print("top_target_ips")
+          for ip,n in target_ip.most_common(25): print(n,ip)
+          PY
+
+          echo
+          echo "=== RECENT ERROR/TIMEOUT SIGNALS ==="
+          for log in "$LOGDIR/error_log" "$LOGDIR/proxy_error_log" "$ROOT/wp-content/debug.log"; do
+            [ -f "$log" ] || continue
+            echo "--- $log"
+            tail -n 1000 "$log" | grep -Ei 'timeout|upstream|max children|memory|fatal|slow|resource|connection reset|too many|502|503|504' | tail -n 100 || true
+          done
+          REMOTE
+
+      - name: Show report
+        run: cat live-bot-performance-audit.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: live-bot-performance-audit-20260929
+          path: live-bot-performance-audit.txt
+          retention-days: 7
