@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
  * Description: Removes duplicated in-content H1s, defers the inline newsletter, applies data-led SERP copy and reinforces contextual internal links to the highest-opportunity blog posts.
- * Version: 2026.09.29.13
+ * Version: 2026.09.29.14
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -217,6 +217,27 @@ function mdo_blog_seo_top3_title_20260908( $title ): string {
         'fresh-cheese-what-it-is-how-made-storage-vs-matured-cheese'             => 'Fresh Cheese: What It Is, Storage and How It Differs',
         'what-is-rennet-in-cheese-animal-vegetable-microbial-coagulation'        => 'What Is Rennet in Cheese? Animal, Plant & Microbial',
         'how-to-store-cheese-properly-fridge-wrapping-temperature'               => 'How to Store Cheese in the Fridge: Wrap & Temperature',
+        'se-pueden-congelar-legumbres-cocidas-como-hacerlo'                     => '¿Se pueden congelar legumbres cocidas? Cómo hacerlo',
+        'cuanto-dura-carne-cocinada-nevera-conservacion-segura'                 => 'Carne cocinada en nevera: cuánto dura y cómo guardarla',
+        'how-long-opened-canned-food-keeps-in-fridge-how-to-store-it'            => 'Opened Canned Food: How Long It Keeps in the Fridge',
+        'se-puede-volver-congelar-carne-descongelada-cuando-si-cuando-no'        => '¿Se puede volver a congelar carne descongelada?',
+        'why-meat-releases-water-in-pan-how-to-stop-it'                          => 'Why Meat Releases Water in the Pan—and How to Stop It',
+        'can-you-freeze-cooked-meat-how-to-store-and-thaw-it'                    => 'Can You Freeze Cooked Meat? Storage and Thawing',
+        'como-conservar-patatas-nevera-despensa-evitar-brotes'                  => 'Cómo conservar patatas y evitar brotes',
+        'espuma-cocer-garbanzos-lentejas-alubias-que-es-retirarla'              => 'Espuma al cocer legumbres: qué es y si hay que retirarla',
+        'como-conservar-chorizo-salchichon-lomo-curado-una-vez-abiertos'         => 'Cómo conservar chorizo, salchichón y lomo abiertos',
+        'foam-when-cooking-chickpeas-lentils-beans-what-it-is-remove-it'          => 'Foam When Cooking Pulses: What It Is and Whether to Remove It',
+        'que-legumbre-tiene-mas-hierro-comparativa'                              => 'Qué legumbre tiene más hierro: comparativa por 100 g',
+        'se-puede-congelar-carne-cocinada-como-conservar-descongelar'            => '¿Se puede congelar carne cocinada? Cómo hacerlo',
+        'que-legumbre-tiene-mas-proteina-comparativa'                            => 'Qué legumbre tiene más proteína: comparativa por 100 g',
+        'como-saber-queso-mal-estado-moho-olor-textura'                          => 'Cómo saber si un queso está malo: moho, olor y textura',
+        'dented-can-when-safe-when-to-discard'                                   => 'Dented Can: When It’s Safe and When to Discard It',
+        'se-puede-guardar-lata-abierta-nevera-por-que-cambiar-recipiente'        => '¿Se puede guardar una lata abierta en la nevera?',
+        'why-oil-foams-when-frying-causes-when-to-worry'                         => 'Why Oil Foams When Frying: Causes and When to Replace It',
+        'can-you-store-an-open-can-in-the-fridge-why-transfer-food'              => 'Can You Store an Open Can in the Fridge?',
+        'green-sprouted-potatoes-when-safe-when-to-discard'                      => 'Green or Sprouted Potatoes: When to Discard Them',
+        'caducan-conservas-cuanto-duran-como-saber-buen-estado'                 => '¿Caducan las conservas? Duración y señales de mal estado',
+        'verduras-mas-potasio-comparativa'                                       => 'Verduras con más potasio: comparativa por 100 g',
     );
 
     return isset( $titles[ $slug ] ) ? $titles[ $slug ] : (string) $title;
@@ -258,6 +279,17 @@ function mdo_blog_seo_top3_description_20260908( $description ): string {
         'sobrasada-iberica-que-es-como-se-elabora-que-mirar-al-comprarla'         => 'Qué es la sobrasada ibérica, cómo se elabora y qué conviene mirar en ingredientes, curación, formato y etiquetado antes de comprarla.',
         'como-descongelar-carne-correctamente-nevera-agua-fria-microondas'        => 'Cómo descongelar carne correctamente en nevera, agua fría o microondas, qué método elegir según el tiempo disponible y qué prácticas evitar.',
         'hay-que-tirar-agua-remojo-legumbres-se-puede-aprovechar'                => '¿Conviene tirar el agua de remojo de garbanzos, lentejas y alubias? Explicamos qué pasa al líquido, cuándo desecharlo y cuándo puede aprovecharse.',
+        'se-puede-volver-congelar-carne-descongelada-cuando-si-cuando-no'        => 'Cuándo se puede volver a congelar carne descongelada, qué cambia según cómo se descongeló y en qué situaciones es más seguro cocinarla primero.',
+        'como-conservar-patatas-nevera-despensa-evitar-brotes'                  => 'Cómo conservar las patatas para retrasar brotes, verdor y deterioro: luz, temperatura, ventilación y cuándo conviene evitar la nevera.',
+        'espuma-cocer-garbanzos-lentejas-alubias-que-es-retirarla'              => 'Qué es la espuma que aparece al cocer garbanzos, lentejas y alubias, por qué se forma y cuándo retirarla es útil o simplemente opcional.',
+        'como-conservar-chorizo-salchichon-lomo-curado-una-vez-abiertos'         => 'Cómo conservar chorizo, salchichón y lomo curado una vez abiertos: envoltorio, frío, tiempo orientativo y señales de deterioro.',
+        'que-legumbre-tiene-mas-hierro-comparativa'                              => 'Compara el hierro de lentejas, garbanzos, alubias y otras legumbres por 100 g y entiende cómo cambia la cifra entre producto seco y cocido.',
+        'se-puede-congelar-carne-cocinada-como-conservar-descongelar'            => 'Sí, la carne cocinada se puede congelar. Aprende a enfriarla, envasarla, cuánto tiempo conservarla y cómo descongelarla de forma segura.',
+        'que-legumbre-tiene-mas-proteina-comparativa'                            => 'Compara la proteína de lentejas, garbanzos, alubias y otras legumbres por 100 g, diferenciando valores en seco y después de la cocción.',
+        'como-saber-queso-mal-estado-moho-olor-textura'                          => 'Cómo saber si un queso está en mal estado: qué indican el moho, el olor, la textura y el envase, y cuándo conviene desecharlo.',
+        'se-puede-guardar-lata-abierta-nevera-por-que-cambiar-recipiente'        => '¿Se puede guardar una lata abierta en la nevera? Explicamos cuándo conviene pasar el alimento a otro recipiente y cómo conservarlo mejor.',
+        'caducan-conservas-cuanto-duran-como-saber-buen-estado'                 => '¿Caducan las conservas? Aprende a interpretar la fecha, revisar el envase y reconocer señales de que una conserva ya no está en buen estado.',
+        'verduras-mas-potasio-comparativa'                                       => 'Comparativa de verduras y hortalizas con más potasio por 100 g, con contexto para entender porciones y diferencias entre alimentos.',
     );
 
     return isset( $descriptions[ $slug ] ) ? $descriptions[ $slug ] : (string) $description;
