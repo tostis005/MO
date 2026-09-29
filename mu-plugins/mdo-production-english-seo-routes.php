@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO English SEO Routes
  * Description: Stable English slugs, hreflang and SEO routes without changing Spanish WooCommerce URLs.
- * Version: 1.2.4
+ * Version: 1.2.5
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
@@ -307,14 +307,62 @@ add_action( 'template_redirect', static function(): void {
     exit;
 }, -1500 );
 
-/* Redirect only legacy PUBLIC English URLs. */
+/* Redirect legacy PUBLIC English URLs to the single clean translated URL. */
 add_action( 'template_redirect', static function(): void {
-    if ( ! mdoer_en() || wp_doing_ajax() ) { return; }
+    if ( ! mdoer_en() || is_admin() || wp_doing_ajax() ) { return; }
+
     $public = trailingslashit( mdoer_public_path() );
-    $x = mdoer_preferred();
+    $x      = mdoer_preferred();
+
     if ( ! $x['en'] ) { return; }
+
     $wanted = trailingslashit( (string) wp_parse_url( $x['en'], PHP_URL_PATH ) );
-    if ( $public !== $wanted && ( '/en/tienda/' === $public || str_starts_with( $public, '/en/producto/' ) ) ) { wp_safe_redirect( $x['en'], 301, 'MDO-English-Routing' ); exit; }
+    if ( $public === $wanted ) { return; }
+
+    $legacy = '/en/tienda/' === $public || str_starts_with( $public, '/en/producto/' );
+    $object = get_queried_object();
+
+    if ( ! $legacy && is_singular() && $object instanceof WP_Post ) {
+        $legacy_paths = array();
+
+        if ( 'post' === $object->post_type ) {
+            $legacy_paths[] = '/en/' . $object->post_name . '/';
+        } elseif ( 'page' === $object->post_type ) {
+            $legacy_paths[] = '/en' . mdoer_native_page_path( (int) $object->ID );
+        } elseif ( 'product' === $object->post_type ) {
+            $legacy_paths[] = '/en/producto/' . $object->post_name . '/';
+            $legacy_paths[] = '/en/product/' . $object->post_name . '/';
+        }
+
+        $legacy = in_array( $public, $legacy_paths, true );
+    }
+
+    if ( ! $legacy ) { return; }
+
+    /*
+     * Preserve only attribution parameters. Unknown query parameters may carry
+     * functional state, so do not redirect those requests automatically.
+     */
+    $query = (string) wp_parse_url( mdoer_public_uri(), PHP_URL_QUERY );
+    if ( '' !== $query ) {
+        $args = array();
+        wp_parse_str( $query, $args );
+        $tracking = array();
+
+        foreach ( $args as $key => $value ) {
+            if ( is_array( $value ) || ! preg_match( '/^(?:utm_[a-z0-9_]+|gclid|fbclid|msclkid)$/i', (string) $key ) ) {
+                return;
+            }
+            $tracking[ (string) $key ] = (string) $value;
+        }
+
+        if ( $tracking ) {
+            $x['en'] = add_query_arg( $tracking, $x['en'] );
+        }
+    }
+
+    wp_safe_redirect( $x['en'], 301, 'MDO-English-Legacy-Canonical' );
+    exit;
 }, -1000 );
 
 function mdoer_sitemap(): array {

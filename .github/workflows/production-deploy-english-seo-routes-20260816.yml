@@ -93,6 +93,12 @@ jobs:
           printf '%s' "$query_expected" | grep -q "^$base/en/"
           ! printf '%s' "$query_expected" | grep -q '[?&]p='
 
+          echo '=== PREDEPLOY LEGACY NATIVE-SLUG SAMPLE ==='
+          legacy_post_path='/en/como-saber-queso-mal-estado-moho-olor-textura/'
+          legacy_post_before=$(curl -ksS --connect-timeout 10 --max-time 30 -o /dev/null -w '%{http_code}' "$base$legacy_post_path")
+          echo "legacy_post_before=$legacy_post_before path=$legacy_post_path expected=$query_expected"
+          test "$legacy_post_before" = 200 -o "$legacy_post_before" = 301
+
           echo '=== PREDEPLOY ENGLISH SITEMAP BASELINE ==='
           pre_sm_code=$(curl -ksSL --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 45 -o /tmp/en-sitemap-before.xml -w '%{http_code}' "$base/english-sitemap.xml" || true)
           pre_sm_count=$(grep -o '<url>' /tmp/en-sitemap-before.xml 2>/dev/null | wc -l | tr -d ' ' || true)
@@ -172,6 +178,19 @@ jobs:
           printf '%s' "$tracking_location" | grep -q 'utm_source=gsc-test'
           printf '%s' "$tracking_location" | grep -q 'utm_medium=verify'
           ! printf '%s' "$tracking_location" | grep -q '[?&]p='
+
+          echo '=== ENGLISH LEGACY NATIVE-SLUG REDIRECT ==='
+          legacy_post_code=$(curl -ksS --max-time 30 -o /dev/null -w '%{http_code}' "$base$legacy_post_path")
+          legacy_post_location=$(curl -ksSI --max-time 30 "$base$legacy_post_path" | tr -d '\r' | awk 'tolower($1)=="location:"{print $2}' | tail -n1)
+          echo "legacy_post=$legacy_post_code location=$legacy_post_location expected=$query_expected"
+          test "$legacy_post_code" = 301
+          test "$legacy_post_location" = "$query_expected"
+
+          legacy_tracking=$(curl -ksSI --max-time 30 "$base$legacy_post_path?utm_source=gsc-test&utm_medium=verify" | tr -d '\r' | awk 'tolower($1)=="location:"{print $2}' | tail -n1)
+          echo "legacy_tracking=$legacy_tracking"
+          printf '%s' "$legacy_tracking" | grep -q "$query_expected"
+          printf '%s' "$legacy_tracking" | grep -q 'utm_source=gsc-test'
+          printf '%s' "$legacy_tracking" | grep -q 'utm_medium=verify'
 
           echo '=== ENGLISH SITEMAP NON-REGRESSION ==='
           sm_code=$(curl -ksSL --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 45 -o /tmp/en-sitemap.xml -w '%{http_code}' "$base/english-sitemap.xml" || true)
