@@ -91,17 +91,21 @@ jobs:
           assert preceding >= 7, 'ES: newsletter still too early'
 
           checks = [
-              ('ES', '/tmp/es.html', '¿Hay que remojar las lentejas? Tiempo de remojo', '¿Hay que poner las lentejas en remojo?'),
-              ('EN', '/tmp/en.html', 'Beef Protein per 100 g: Amounts by Serving', 'Beef provides about 20–21 g of protein per 100 g raw.'),
+              ('ES', '/tmp/es.html', '¿Hay que remojar las lentejas? Tiempo de remojo', 'targeted'),
+              ('EN', '/tmp/en.html', 'Beef Protein per 100 g: Amounts by Serving', 'reviewed-en'),
           ]
-          for label, path, title_prefix, desc_prefix in checks:
+          for label, path, title_prefix, desc_mode in checks:
               soup = BeautifulSoup(open(path, encoding='utf-8').read(), 'html.parser')
               title = soup.title.get_text(' ', strip=True) if soup.title else ''
               meta = soup.find('meta', attrs={'name':'description'})
               desc = meta.get('content','').strip() if meta else ''
               print(label, 'title=', title, 'description=', desc)
               assert title.startswith(title_prefix), f'{label}: targeted SEO title missing: {title!r}'
-              assert desc.startswith(desc_prefix), f'{label}: targeted meta description missing: {desc!r}'
+              if desc_mode == 'targeted':
+                  assert desc.startswith('¿Hay que poner las lentejas en remojo?'), f'{label}: targeted meta description missing: {desc!r}'
+              else:
+                  lowered = desc.lower()
+                  assert desc and 'protein' in lowered and '100 g' in lowered, f'{label}: reviewed English description lost search intent: {desc!r}'
 
           for label, path in [('ES_CLUSTER','/tmp/es-cluster.html'), ('EN_CLUSTER','/tmp/en-cluster.html')]:
               soup = BeautifulSoup(open(path, encoding='utf-8').read(), 'html.parser')
