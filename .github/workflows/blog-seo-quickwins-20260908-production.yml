@@ -68,7 +68,7 @@ jobs:
           EN_ANSWER="https://www.elmercadodeorigen.com/en/yellow-broccoli-why-it-changes-colour-and-when-it-is-edible/?mdo_seo_verify=${GITHUB_RUN_ID}"
           EN_CHEESE="https://www.elmercadodeorigen.com/en/what-is-cheese-affinage-maturation-humidity-rind-care-affineur/?mdo_seo_verify=${GITHUB_RUN_ID}"
           EN_CHEESE_BAD="https://www.elmercadodeorigen.com/en/how-to-tell-cheese-gone-bad-mould-smell-texture-discard/?mdo_seo_verify=${GITHUB_RUN_ID}"
-          ES_PHASE5="https://www.elmercadodeorigen.com/se-pueden-congelar-legumbres-cocidas-como-hacerlo/?mdo_seo_verify=${GITHUB_RUN_ID}"
+          ES_PHASE5="https://www.elmercadodeorigen.com/se-pueden-congelar-las-legumbres-cocidas-como-hacerlo/?mdo_seo_verify=${GITHUB_RUN_ID}"
           EN_PHASE5="https://www.elmercadodeorigen.com/en/how-long-opened-canned-food-keeps-in-fridge-how-to-store-it/?mdo_seo_verify=${GITHUB_RUN_ID}"
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES" -o /tmp/es.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN" -o /tmp/en.html
