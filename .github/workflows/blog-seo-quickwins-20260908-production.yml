@@ -55,15 +55,19 @@ jobs:
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; php=\$(command -v php || true); [ -n \"\$php\" ] || php=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php\" -l '$REMOTE' >/dev/null; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$TARGET' ]; then cp -p '$TARGET' '$BACKUP'; fi; install -m 0644 '$REMOTE' '$TARGET'; rm -f '$REMOTE'"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp=\$(command -v wp || true); php=\$(command -v php || true); [ -n \"\$php\" ] || php=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php\" \"\$wp\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php\" \"\$wp\" eval 'if ( function_exists(\"wp_cache_flush\") ) { wp_cache_flush(); } if ( has_action(\"litespeed_purge_all\") ) { do_action(\"litespeed_purge_all\"); }' --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
 
-      - name: Verify H1 and newsletter live
+      - name: Verify H1, SERP copy and cluster links live
         shell: bash
         run: |
           set -euo pipefail
           python -m pip install --quiet beautifulsoup4
           ES="https://www.elmercadodeorigen.com/hay-que-poner-lentejas-en-remojo-cuanto-tiempo/?mdo_seo_verify=${GITHUB_RUN_ID}"
           EN="https://www.elmercadodeorigen.com/en/how-much-protein-in-beef/?mdo_seo_verify=${GITHUB_RUN_ID}"
+          ES_CLUSTER="https://www.elmercadodeorigen.com/que-legumbre-tiene-mas-hierro-comparativa/?mdo_seo_verify=${GITHUB_RUN_ID}"
+          EN_CLUSTER="https://www.elmercadodeorigen.com/en/how-much-iron-in-beef/?mdo_seo_verify=${GITHUB_RUN_ID}"
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES" -o /tmp/es.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN" -o /tmp/en.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES_CLUSTER" -o /tmp/es-cluster.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN_CLUSTER" -o /tmp/en-cluster.html
           python - <<'PY'
           from bs4 import BeautifulSoup
           for label, path in [('ES','/tmp/es.html'), ('EN','/tmp/en.html')]:
@@ -85,6 +89,27 @@ jobs:
           preceding = sum(1 for child in direct[:anchor_index] if getattr(child, 'name', None) == 'p')
           print('ES newsletter_after_direct_paragraphs=', preceding)
           assert preceding >= 7, 'ES: newsletter still too early'
+
+          checks = [
+              ('ES', '/tmp/es.html', '¿Hay que remojar las lentejas? Tiempo de remojo', '¿Hay que poner las lentejas en remojo?'),
+              ('EN', '/tmp/en.html', 'Beef Protein per 100 g: Amounts by Serving', 'Beef provides about 20–21 g of protein per 100 g raw.'),
+          ]
+          for label, path, title_prefix, desc_prefix in checks:
+              soup = BeautifulSoup(open(path, encoding='utf-8').read(), 'html.parser')
+              title = soup.title.get_text(' ', strip=True) if soup.title else ''
+              meta = soup.find('meta', attrs={'name':'description'})
+              desc = meta.get('content','').strip() if meta else ''
+              print(label, 'title=', title, 'description=', desc)
+              assert title.startswith(title_prefix), f'{label}: targeted SEO title missing: {title!r}'
+              assert desc.startswith(desc_prefix), f'{label}: targeted meta description missing: {desc!r}'
+
+          for label, path in [('ES_CLUSTER','/tmp/es-cluster.html'), ('EN_CLUSTER','/tmp/en-cluster.html')]:
+              soup = BeautifulSoup(open(path, encoding='utf-8').read(), 'html.parser')
+              block = soup.select_one('.emo-article-content p.mdo-seo-cluster-links[data-mdo-seo-cluster]')
+              assert block is not None, f'{label}: contextual cluster block missing'
+              links = block.find_all('a', href=True)
+              print(label, 'cluster=', block.get('data-mdo-seo-cluster'), 'links=', [a.get('href') for a in links])
+              assert len(links) >= 2, f'{label}: expected at least two contextual cluster links'
           PY
 
       - name: Diagnose canonical and HTTP routing
