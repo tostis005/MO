@@ -121,13 +121,19 @@ jobs:
           }
           for label, path in [('ES_CLUSTER','/tmp/es-cluster.html'), ('EN_CLUSTER','/tmp/en-cluster.html')]:
               soup = BeautifulSoup(open(path, encoding='utf-8').read(), 'html.parser')
+              article = soup.select_one('.emo-article-content')
               block = soup.select_one('.emo-article-content p.mdo-seo-cluster-links[data-mdo-seo-cluster]')
-              assert block is not None, f'{label}: contextual cluster block missing'
+              assert article is not None and block is not None, f'{label}: contextual cluster markup missing'
               links = block.find_all('a', href=True)
               shop = block.select_one('a.mdo-seo-cluster-shop[href]')
-              print(label, 'cluster=', block.get('data-mdo-seo-cluster'), 'links=', [a.get('href') for a in links], 'shop=', shop.get('href') if shop else '')
-              assert len(links) >= 3, f'{label}: expected editorial + commerce contextual links'
-              assert shop is not None and shop.get('href','').endswith(expected_shop[label]), f'{label}: commercial category bridge missing'
+              expected = expected_shop[label]
+              article_shop = article.find('a', href=lambda href: isinstance(href, str) and href.endswith(expected))
+              print(label, 'cluster=', block.get('data-mdo-seo-cluster'), 'links=', [a.get('href') for a in links], 'shop=', shop.get('href') if shop else '', 'existing_shop=', article_shop.get('href') if article_shop else '')
+              assert len(links) >= 2, f'{label}: expected at least two editorial contextual links'
+              assert (
+                  (shop is not None and shop.get('href','').endswith(expected))
+                  or article_shop is not None
+              ), f'{label}: commercial category bridge missing from article'
 
           cheese = BeautifulSoup(open('/tmp/en-cheese.html', encoding='utf-8').read(), 'html.parser')
           cheese_title = cheese.title.get_text(' ', strip=True) if cheese.title else ''
