@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
  * Description: Removes duplicated in-content H1s, defers the inline newsletter, applies data-led SERP copy and reinforces contextual internal links to the highest-opportunity blog posts.
- * Version: 2026.09.29.11
+ * Version: 2026.09.29.12
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -737,6 +737,19 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
         return $content;
     }
 
+    $shop_targets = array(
+        'es-legumbres'  => array( '/categoria-producto/legumbres/', 'comprar legumbres online' ),
+        'es-carne'      => array( '/categoria-producto/carnes/', 'comprar carne online' ),
+        'es-conservas'  => array( '/categoria-producto/conservas/', 'comprar conservas online' ),
+        'es-aceite'     => array( '/categoria-producto/aceites/', 'comprar aceite de oliva online' ),
+        'es-hortalizas' => array( '/categoria-producto/hortalizas-verduras/', 'comprar hortalizas y verduras' ),
+        'en-pulses'     => array( '/en/product-category/pulses/', 'shop pulses' ),
+        'en-meat'       => array( '/en/product-category/meat/', 'shop meat' ),
+        'en-canned'     => array( '/en/product-category/preserves/', 'shop preserves' ),
+        'en-olive-oil'  => array( '/en/product-category/oils/', 'shop olive oil' ),
+        'en-vegetables' => array( '/en/product-category/vegetables/', 'shop vegetables' ),
+    );
+
     $links = array();
 
     foreach ( $cluster['targets'] as $target ) {
@@ -757,6 +770,15 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
 
     if ( count( $links ) < 2 ) {
         return $content;
+    }
+
+    if ( isset( $shop_targets[ $cluster_key ] ) ) {
+        $shop_path  = (string) $shop_targets[ $cluster_key ][0];
+        $shop_label = (string) $shop_targets[ $cluster_key ][1];
+
+        if ( '' !== $shop_path && false === strpos( $content, $shop_path ) ) {
+            $links[] = '<a class="mdo-seo-cluster-shop" href="' . esc_url( home_url( $shop_path ) ) . '">' . esc_html( $shop_label ) . '</a>';
+        }
     }
 
     $separator = '<span aria-hidden="true"> · </span>';
