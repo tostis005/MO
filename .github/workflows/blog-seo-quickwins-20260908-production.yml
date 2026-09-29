@@ -55,7 +55,7 @@ jobs:
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; php=\$(command -v php || true); [ -n \"\$php\" ] || php=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php\" -l '$REMOTE' >/dev/null; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$TARGET' ]; then cp -p '$TARGET' '$BACKUP'; fi; install -m 0644 '$REMOTE' '$TARGET'; rm -f '$REMOTE'"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp=\$(command -v wp || true); php=\$(command -v php || true); [ -n \"\$php\" ] || php=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php\" \"\$wp\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php\" \"\$wp\" eval 'if ( function_exists(\"wp_cache_flush\") ) { wp_cache_flush(); } if ( has_action(\"litespeed_purge_all\") ) { do_action(\"litespeed_purge_all\"); }' --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
 
-      - name: Verify H1, SERP copy, direct answers and cluster links live
+      - name: Verify H1, SERP copy, direct answers, cheese cleanup and cluster links live
         shell: bash
         run: |
           set -euo pipefail
@@ -66,12 +66,16 @@ jobs:
           EN_CLUSTER="https://www.elmercadodeorigen.com/en/how-much-iron-in-beef/?mdo_seo_verify=${GITHUB_RUN_ID}"
           ES_ANSWER="https://www.elmercadodeorigen.com/aguja-ternera-que-corte-es-como-cocinarla/?mdo_seo_verify=${GITHUB_RUN_ID}"
           EN_ANSWER="https://www.elmercadodeorigen.com/en/yellow-broccoli-why-it-changes-colour-and-when-it-is-edible/?mdo_seo_verify=${GITHUB_RUN_ID}"
+          EN_CHEESE="https://www.elmercadodeorigen.com/en/what-is-cheese-affinage-maturation-humidity-rind-care-affineur/?mdo_seo_verify=${GITHUB_RUN_ID}"
+          EN_CHEESE_BAD="https://www.elmercadodeorigen.com/en/how-to-tell-cheese-gone-bad-mould-smell-texture-discard/?mdo_seo_verify=${GITHUB_RUN_ID}"
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES" -o /tmp/es.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN" -o /tmp/en.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES_CLUSTER" -o /tmp/es-cluster.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN_CLUSTER" -o /tmp/en-cluster.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES_ANSWER" -o /tmp/es-answer.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN_ANSWER" -o /tmp/en-answer.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN_CHEESE" -o /tmp/en-cheese.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN_CHEESE_BAD" -o /tmp/en-cheese-bad.html
           python - <<'PY'
           from bs4 import BeautifulSoup
           for label, path in [('ES','/tmp/es.html'), ('EN','/tmp/en.html')]:
@@ -124,6 +128,27 @@ jobs:
               print(label, 'cluster=', block.get('data-mdo-seo-cluster'), 'links=', [a.get('href') for a in links], 'shop=', shop.get('href') if shop else '')
               assert len(links) >= 3, f'{label}: expected editorial + commerce contextual links'
               assert shop is not None and shop.get('href','').endswith(expected_shop[label]), f'{label}: commercial category bridge missing'
+
+          cheese = BeautifulSoup(open('/tmp/en-cheese.html', encoding='utf-8').read(), 'html.parser')
+          cheese_title = cheese.title.get_text(' ', strip=True) if cheese.title else ''
+          cheese_block = cheese.select_one('.emo-article-content p.mdo-seo-cluster-links[data-mdo-seo-cluster="en-cheese"]')
+          assert cheese_title.startswith('Cheese Affinage: What It Means and How It Works'), f'EN_CHEESE: SEO title missing: {cheese_title!r}'
+          assert cheese_block is not None, 'EN_CHEESE: cheese cluster block missing'
+          cheese_links = cheese_block.find_all('a', href=True)
+          print('EN_CHEESE', 'title=', cheese_title, 'links=', [a.get('href') for a in cheese_links])
+          assert len(cheese_links) >= 2, 'EN_CHEESE: expected at least two cheese authority links'
+
+          bad = BeautifulSoup(open('/tmp/en-cheese-bad.html', encoding='utf-8').read(), 'html.parser')
+          bad_title = bad.title.get_text(' ', strip=True) if bad.title else ''
+          bad_content = bad.select_one('.emo-article-content')
+          assert bad_content is not None, 'EN_CHEESE_BAD: article content missing'
+          bad_text = bad_content.get_text(' ', strip=True)
+          bad_html = str(bad_content)
+          print('EN_CHEESE_BAD', 'title=', bad_title)
+          assert bad_title.startswith('How to Tell If Cheese Is Bad: Mould, Smell & Texture'), f'EN_CHEESE_BAD: SEO title missing: {bad_title!r}'
+          assert 'This guide is designed to answer the full search intent' not in bad_text, 'EN_CHEESE_BAD: generic search-intent sentence remains'
+          import re
+          assert re.search(r'[.!?]nn[A-Z]', bad_html) is None, 'EN_CHEESE_BAD: literal nn paragraph artifact remains'
 
           answer_checks = [
               ('ES_ANSWER', '/tmp/es-answer.html', 'Aguja de ternera: qué corte es y cómo cocinarla', 'Respuesta rápida'),
