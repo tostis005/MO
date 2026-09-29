@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
  * Description: Removes duplicated in-content H1s, defers the inline newsletter, applies data-led SERP copy and reinforces contextual internal links to the highest-opportunity blog posts.
- * Version: 2026.09.29.2
+ * Version: 2026.09.29.3
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -122,16 +122,31 @@ add_filter( 'the_content', 'mdo_blog_seo_defer_newsletter_20260908', 36 );
 /**
  * Return the current post slug only on a front-end singular post request.
  */
+function mdo_blog_seo_public_request_uri_20260929(): string {
+    if ( function_exists( 'mdoer_public_uri' ) ) {
+        return (string) mdoer_public_uri();
+    }
+
+    if ( isset( $GLOBALS['mdoer_public_request_uri'] ) ) {
+        return (string) $GLOBALS['mdoer_public_request_uri'];
+    }
+
+    return isset( $_SERVER['REQUEST_URI'] )
+        ? (string) wp_unslash( $_SERVER['REQUEST_URI'] )
+        : '';
+}
+
 function mdo_blog_seo_current_slug_20260908(): string {
     if ( is_admin() || ! is_singular( 'post' ) ) {
         return '';
     }
 
     /*
-     * Falang puede conservar el post_name original en algunas rutas /en/.
-     * La URL pública es la señal más fiable para seleccionar el snippet.
+     * La capa inglesa resuelve /en/<slug-ingles>/ sobre el post nativo y puede
+     * reescribir REQUEST_URI muy pronto. Conservamos por ello la URL pública
+     * original para seleccionar title, description y clúster correctos.
      */
-    $request_uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+    $request_uri = mdo_blog_seo_public_request_uri_20260929();
     $path        = (string) wp_parse_url( $request_uri, PHP_URL_PATH );
     $path        = trim( rawurldecode( $path ), '/' );
 
@@ -218,6 +233,28 @@ add_filter( 'aioseo_description', 'mdo_blog_seo_top3_description_20260908', 20 )
 add_filter( 'wpseo_metadesc', 'mdo_blog_seo_top3_description_20260908', 20 );
 add_filter( 'rank_math/frontend/description', 'mdo_blog_seo_top3_description_20260908', 20 );
 add_filter( 'seopress_titles_desc', 'mdo_blog_seo_top3_description_20260908', 20 );
+
+/**
+ * La capa de rutas inglesa registra sus filtros AIOSEO a PHP_INT_MAX y se
+ * carga antes de que WordPress conozca la consulta singular. Registramos de
+ * nuevo nuestros overrides en wp, a la misma prioridad pero después de ella,
+ * para que las URLs GSC prioritarias mantengan el snippet decidido aquí.
+ */
+function mdo_blog_seo_register_final_serp_filters_20260929(): void {
+    if ( is_admin() || ! is_singular( 'post' ) ) {
+        return;
+    }
+
+    add_filter( 'aioseo_title', 'mdo_blog_seo_top3_title_20260908', PHP_INT_MAX );
+    add_filter( 'aioseo_description', 'mdo_blog_seo_top3_description_20260908', PHP_INT_MAX );
+    add_filter( 'wpseo_title', 'mdo_blog_seo_top3_title_20260908', PHP_INT_MAX );
+    add_filter( 'wpseo_metadesc', 'mdo_blog_seo_top3_description_20260908', PHP_INT_MAX );
+    add_filter( 'rank_math/frontend/title', 'mdo_blog_seo_top3_title_20260908', PHP_INT_MAX );
+    add_filter( 'rank_math/frontend/description', 'mdo_blog_seo_top3_description_20260908', PHP_INT_MAX );
+    add_filter( 'seopress_titles_title', 'mdo_blog_seo_top3_title_20260908', PHP_INT_MAX );
+    add_filter( 'seopress_titles_desc', 'mdo_blog_seo_top3_description_20260908', PHP_INT_MAX );
+}
+add_action( 'wp', 'mdo_blog_seo_register_final_serp_filters_20260929', PHP_INT_MAX );
 
 /**
  * Reinforce the three highest-opportunity URLs with contextual internal links.
@@ -359,7 +396,7 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
         return $content;
     }
 
-    $request_uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+    $request_uri = mdo_blog_seo_public_request_uri_20260929();
     $path        = (string) wp_parse_url( $request_uri, PHP_URL_PATH );
     $is_english  = 0 === strpos( $path, '/en/' );
 
