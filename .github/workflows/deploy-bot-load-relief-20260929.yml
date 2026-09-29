@@ -1,0 +1,97 @@
+name: Deploy bot load relief 2026-09-29
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-bot-load-relief-20260929.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint cache drop-in
+        run: php -l elmercadodeorigen-child/dropins/advanced-cache.php
+
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Upload cache drop-in
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e scp             -P "$PORT"             -o ConnectTimeout=15             -o PreferredAuthentications=password,keyboard-interactive             -o PubkeyAuthentication=no             -o StrictHostKeyChecking=no             elmercadodeorigen-child/dropins/advanced-cache.php             "$STAGING_USER@$STAGING_HOST:/tmp/emdo-advanced-cache-20260929.php"
+
+      - name: Activate cache and production cron
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          PHP="/opt/plesk/php/8.2/bin/php"
+          WP="/usr/local/bin/wp"
+          DROPIN="$ROOT/wp-content/advanced-cache.php"
+          STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+
+          echo "=== BACKUP ==="
+          cp -a "$DROPIN" "$DROPIN.bak-bot-relief-$STAMP"
+          cp -a "$ROOT/wp-config.php" "$ROOT/wp-config.php.bak-bot-relief-$STAMP"
+          crontab -l > "/root/crontab.bak-bot-relief-$STAMP" 2>/dev/null || true
+
+          echo "=== INSTALL DROPIN ==="
+          "$PHP" -l /tmp/emdo-advanced-cache-20260929.php
+          install -m 0644 -o root -g root /tmp/emdo-advanced-cache-20260929.php "$DROPIN"
+          "$PHP" -l "$DROPIN"
+          rm -f /tmp/emdo-advanced-cache-20260929.php
+
+          echo "=== DISABLE TRAFFIC-DRIVEN WP CRON ==="
+          "$PHP" "$WP" config set DISABLE_WP_CRON true --raw --path="$ROOT" --allow-root
+          "$PHP" "$WP" config get DISABLE_WP_CRON --path="$ROOT" --allow-root
+
+          echo "=== INSTALL REAL PRODUCTION CRON ==="
+          TMP=$(mktemp)
+          (crontab -l 2>/dev/null || true) | sed '/# BEGIN EMDO PRODUCTION CRON/,/# END EMDO PRODUCTION CRON/d' > "$TMP"
+          cat >> "$TMP" <<CRON
+# BEGIN EMDO PRODUCTION CRON
+*/5 * * * * flock -n /tmp/emdo-production-wp-cron.lock "$PHP" -d memory_limit=768M "$WP" cron event run --due-now --path="$ROOT" --allow-root --quiet >/dev/null 2>&1
+# END EMDO PRODUCTION CRON
+CRON
+          crontab "$TMP"
+          rm -f "$TMP"
+          crontab -l
+
+          echo "=== WARM / VERIFY HOT CACHE ==="
+          for url in             "https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/"             "https://www.elmercadodeorigen.com/en/store/montjam/"             "https://www.elmercadodeorigen.com/en/product-category/hams-and-shoulders/"             "https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/"; do
+            echo "--- WARM $url"
+            curl -k -sS --max-time 30 -A 'MDO-Cache-Warm/1.0' -D /tmp/emdo-h1 -o /dev/null               -w 'first_http=%{http_code} first_total=%{time_total} first_start=%{time_starttransfer}\n' "$url" || true
+            grep -Ei 'HTTP/|X-El-Mercado-Hot-Early-Cache' /tmp/emdo-h1 || true
+            sleep 1
+            curl -k -sS --max-time 30 -A 'MDO-Cache-Warm/1.0' -D /tmp/emdo-h2 -o /dev/null               -w 'second_http=%{http_code} second_total=%{time_total} second_start=%{time_starttransfer}\n' "$url" || true
+            grep -Ei 'HTTP/|X-El-Mercado-Hot-Early-Cache' /tmp/emdo-h2 || true
+          done
+
+          echo "=== CACHE FILES ==="
+          ls -lah "$ROOT/wp-content/uploads/elmercado-hot-static-v1" 2>/dev/null || true
+          echo "=== LOAD AFTER WARM ==="
+          uptime
+          ps -eo pid,ppid,user,stat,etimes,%cpu,%mem,rss,comm,args --sort=-%cpu | head -n 20 || true
+          REMOTE
