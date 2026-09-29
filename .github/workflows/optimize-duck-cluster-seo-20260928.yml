@@ -88,9 +88,14 @@ jobs:
           jq -e '.visible_normal_query == 60' /tmp/duck-seo-optimize.json >/dev/null
           jq -e '.category_query == 60' /tmp/duck-seo-optimize.json >/dev/null
           jq -e '.homepage_unsuppressed == 60' /tmp/duck-seo-optimize.json >/dev/null
+          jq -e '.category.hub_marker == true' /tmp/duck-seo-optimize.json >/dev/null
+          jq -e '.seo.title_max <= 60' /tmp/duck-seo-optimize.json >/dev/null
+          jq -e '.seo.description_min >= 100 and .seo.description_max <= 180' /tmp/duck-seo-optimize.json >/dev/null
+          jq -e '([.seo.groups[]] | add) == 60' /tmp/duck-seo-optimize.json >/dev/null
           jq -e '[.rows[] | select(.home_suppress != "")] | length == 0' /tmp/duck-seo-optimize.json >/dev/null
           jq -e '[.rows[] | select(.hidden != "")] | length == 0' /tmp/duck-seo-optimize.json >/dev/null
           jq -e '[.rows[] | select((.categories|length)!=1)] | length == 0' /tmp/duck-seo-optimize.json >/dev/null
+          jq -e '[.rows[] | select(.group == "" or .seo_title == "" or .seo_description == "")] | length == 0' /tmp/duck-seo-optimize.json >/dev/null
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST"             "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$REMOTE_SCRIPT'"
@@ -107,19 +112,30 @@ jobs:
             curl -fsSL --retry 4 --retry-delay 2 --max-time 60               -A 'Mozilla/5.0 EMDO SEO verifier'               -H 'Cache-Control: no-cache'               "$url" -o "$out"
           }
 
-          get_page "$base/category/pato/?emdo_seo_verify=1" /tmp/pato-category.html
+          get_page "$base/category/carnes/pato/?emdo_seo_verify=1" /tmp/pato-category.html
           grep -qi '<h1[^>]*>Pato</h1>' /tmp/pato-category.html
-          grep -q 'carne-de-pato-guia-completa-cortes-sabor-preparacion' /tmp/pato-category.html
+          grep -q 'data-emdo-duck-topic-hub="1"' /tmp/pato-category.html
+          grep -q 'Carne de pato y cortes' /tmp/pato-category.html
+          grep -q 'Foie, paté, mousse y rillettes' /tmp/pato-category.html
+          grep -q 'Magret de pato' /tmp/pato-category.html
+          grep -q 'Confit de pato' /tmp/pato-category.html
+          grep -q 'Jamón de pato' /tmp/pato-category.html
+          grep -q 'Salsas, maridajes y menús' /tmp/pato-category.html
           ! grep -qi 'noindex' /tmp/pato-category.html
 
           get_page "$base/carne-de-pato-guia-completa-cortes-sabor-preparacion/?emdo_seo_verify=1" /tmp/duck-pillar.html
           grep -q '>Pato</a>' /tmp/duck-pillar.html
+          grep -q 'data-emdo-duck-related-topic="carne-cortes"' /tmp/duck-pillar.html
           grep -q 'data-emdo-duck-hub-link="1"' /tmp/duck-pillar.html
-          grep -qi '<title>Carne de pato: cortes, sabor, preparación y cómo elegirla' /tmp/duck-pillar.html
+          grep -qi '<title>Carne de pato: cortes, sabor y cómo elegirla' /tmp/duck-pillar.html
+          grep -qi 'name="description"[^>]*Conoce los principales cortes de pato' /tmp/duck-pillar.html
           ! grep -qi 'noindex' /tmp/duck-pillar.html
 
           get_page "$base/como-preparar-confit-de-pato-al-horno-piel-crujiente/?emdo_seo_verify=1" /tmp/duck-confit.html
           grep -qi '<title>Confit de pato crujiente: horno, grill y air fryer' /tmp/duck-confit.html
+          grep -q 'data-emdo-duck-related-topic="confit"' /tmp/duck-confit.html
+          grep -qi 'name="description"[^>]*Cómo dejar crujiente la piel' /tmp/duck-confit.html
+          ! grep -qi 'crujiente en el confit de pato: horno, grill y air fryer: Comparativa' /tmp/duck-confit.html
 
           get_page "$base/blog/?emdo_seo_verify=1" /tmp/blog-home.html
           grep -q 'carne-de-pato-guia-completa-cortes-sabor-preparacion' /tmp/blog-home.html
@@ -136,11 +152,14 @@ jobs:
               title=re.search(r'<title[^>]*>(.*?)</title>',html,re.I|re.S)
               desc=re.search(r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']*)',html,re.I)
               canon=re.search(r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)',html,re.I)
+              related=re.findall(r'data-emdo-duck-related-topic=["\']([^"\']+)',html,re.I)
               checks[name]={
                   'title': re.sub(r'\s+',' ',title.group(1)).strip() if title else None,
                   'description': desc.group(1) if desc else None,
                   'canonical': canon.group(1) if canon else None,
                   'noindex': 'noindex' in html.lower(),
+                  'related_topic': related[0] if related else None,
+                  'hub_marker': 'data-emdo-duck-topic-hub="1"' in html,
               }
           import json
           print(json.dumps(checks,ensure_ascii=False,indent=2))
@@ -152,7 +171,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .deploy-status
-          jq -n             --arg generated_at "$(date -u +%FT%TZ)"             --arg run_id "$GITHUB_RUN_ID"             --arg source_sha "$GITHUB_SHA"             --slurpfile deployment /tmp/duck-seo-optimize.json             --slurpfile public /tmp/duck-public-seo.json             '{generated_at:$generated_at,run_id:($run_id|tonumber),source_sha:$source_sha,verified:true,batch:"20260928-duck-seo-global-optimization",deployment:$deployment[0],public_verification:$public[0]}'             > .deploy-status/duck-seo-global-20260928.json
+          jq -n             --arg generated_at "$(date -u +%FT%TZ)"             --arg run_id "$GITHUB_RUN_ID"             --arg source_sha "$GITHUB_SHA"             --slurpfile deployment /tmp/duck-seo-optimize.json             --slurpfile public /tmp/duck-public-seo.json             '{generated_at:$generated_at,run_id:($run_id|tonumber),source_sha:$source_sha,verified:true,batch:"20260930-duck-seo-refinement",deployment:$deployment[0],public_verification:$public[0]}'             > .deploy-status/duck-seo-global-20260928.json
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
