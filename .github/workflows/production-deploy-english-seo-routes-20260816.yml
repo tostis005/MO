@@ -161,7 +161,7 @@ jobs:
           ! printf '%s' "$tracking_location" | grep -q '[?&]p='
 
           echo '=== ENGLISH SITEMAP ==='
-          sm_code=$(curl -ksS --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 45 -o /tmp/en-sitemap.xml -w '%{http_code}' "$base/english-sitemap.xml" || true)
+          sm_code=$(curl -ksSL --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 45 -o /tmp/en-sitemap.xml -w '%{http_code}' "$base/english-sitemap.xml" || true)
           sm_count=$(grep -o '<url>' /tmp/en-sitemap.xml 2>/dev/null | wc -l | tr -d ' ' || true)
           echo "sitemap=$sm_code urls=${sm_count:-0}"
           test "$sm_code" = 200
