@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO English SEO Routes
  * Description: Stable English slugs, hreflang and SEO routes without changing Spanish WooCommerce URLs.
- * Version: 1.2.0
+ * Version: 1.2.1
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
@@ -245,6 +245,67 @@ function mdoer_html( string $html ): string {
     }
     return $html;
 }
+
+/*
+ * Canonicalise query-ID article URLs such as /en/?p=13879.
+ *
+ * WordPress normally handles ?p= through redirect_canonical(), but that
+ * canonical redirect is intentionally disabled on the English island because
+ * public English slugs are mapped to native objects internally. Limit this
+ * replacement to published translated posts on the /en/ root and preserve only
+ * recognised attribution parameters.
+ */
+add_action( 'template_redirect', static function(): void {
+    if ( ! mdoer_en() || is_admin() || wp_doing_ajax() ) { return; }
+
+    $public_path = trailingslashit( mdoer_public_path() );
+    if ( '/en/' !== $public_path ) { return; }
+
+    $query = (string) wp_parse_url( mdoer_public_uri(), PHP_URL_QUERY );
+    if ( '' === $query ) { return; }
+
+    $args = array();
+    wp_parse_str( $query, $args );
+
+    if ( ! isset( $args['p'] ) || is_array( $args['p'] ) ) { return; }
+    $raw_id = trim( (string) $args['p'] );
+    if ( '' === $raw_id || ! ctype_digit( $raw_id ) ) { return; }
+
+    foreach ( array_keys( $args ) as $key ) {
+        if ( 'p' === $key ) { continue; }
+        if ( ! preg_match( '/^(?:utm_[a-z0-9_]+|gclid|fbclid|msclkid)$/i', (string) $key ) ) {
+            return;
+        }
+    }
+
+    $post = get_post( (int) $raw_id );
+    if (
+        ! $post instanceof WP_Post
+        || 'post' !== $post->post_type
+        || 'publish' !== $post->post_status
+        || ! mdoer_en_pub( (int) $post->ID )
+    ) {
+        return;
+    }
+
+    $target = mdoer_en_url( $post );
+    if ( '' === $target ) { return; }
+
+    $tracking = array();
+    foreach ( $args as $key => $value ) {
+        if ( 'p' === $key || is_array( $value ) ) { continue; }
+        if ( preg_match( '/^(?:utm_[a-z0-9_]+|gclid|fbclid|msclkid)$/i', (string) $key ) ) {
+            $tracking[ (string) $key ] = (string) $value;
+        }
+    }
+
+    if ( $tracking ) {
+        $target = add_query_arg( $tracking, $target );
+    }
+
+    wp_safe_redirect( $target, 301, 'MDO-English-Query-Canonical' );
+    exit;
+}, -1500 );
 
 /* Redirect only legacy PUBLIC English URLs. */
 add_action( 'template_redirect', static function(): void {
