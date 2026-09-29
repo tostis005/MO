@@ -123,7 +123,9 @@ jobs:
           echo "privacy=$privacy_code"
           test "$privacy_code" = 200
           grep -q 'rel="canonical" href="https://www.elmercadodeorigen.com/en/privacy-policy/' /tmp/en-privacy.html
-          prod_slug=$(wp db query "SELECT pm.meta_value FROM $(wp db prefix)postmeta pm JOIN $(wp db prefix)posts p ON p.ID=pm.post_id JOIN $(wp db prefix)postmeta pub ON pub.post_id=p.ID AND pub.meta_key='_en_US_published' AND pub.meta_value='1' WHERE pm.meta_key='_en_US_post_name' AND pm.meta_value<>'' AND p.post_type='product' AND p.post_status='publish' ORDER BY p.ID LIMIT 1" --skip-column-names 2>/dev/null | tail -n1)
+          db_prefix=$(wp --skip-plugins --skip-themes db prefix 2>/dev/null | tail -n1)
+          test -n "$db_prefix"
+          prod_slug=$(wp --skip-plugins --skip-themes db query "SELECT pm.meta_value FROM ${db_prefix}postmeta pm JOIN ${db_prefix}posts p ON p.ID=pm.post_id JOIN ${db_prefix}postmeta pub ON pub.post_id=p.ID AND pub.meta_key='_en_US_published' AND pub.meta_value='1' WHERE pm.meta_key='_en_US_post_name' AND pm.meta_value<>'' AND p.post_type='product' AND p.post_status='publish' ORDER BY p.ID LIMIT 1" --skip-column-names 2>/dev/null | tail -n1)
           test -n "$prod_slug"
           prod_code=$(curl -ksS --max-time 30 -o /tmp/en-product.html -w '%{http_code}' "$base/en/product/$prod_slug/?mdo_verify=1")
           echo "product_slug=$prod_slug http=$prod_code"
@@ -132,7 +134,7 @@ jobs:
           grep -q "rel=\"canonical\" href=\"$base/en/product/$prod_slug/" /tmp/en-product.html
 
           echo '=== ENGLISH QUERY-ID CANONICAL REDIRECT ==='
-          post_row=$(wp db query "SELECT p.ID,slug.meta_value FROM $(wp db prefix)posts p JOIN $(wp db prefix)postmeta slug ON slug.post_id=p.ID AND slug.meta_key='_en_US_post_name' AND slug.meta_value<>'' JOIN $(wp db prefix)postmeta pub ON pub.post_id=p.ID AND pub.meta_key='_en_US_published' AND pub.meta_value='1' WHERE p.post_status='publish' AND p.post_type='post' ORDER BY p.ID ASC LIMIT 1" --skip-column-names 2>/dev/null | tail -n1)
+          post_row=$(wp --skip-plugins --skip-themes db query "SELECT p.ID,slug.meta_value FROM ${db_prefix}posts p JOIN ${db_prefix}postmeta slug ON slug.post_id=p.ID AND slug.meta_key='_en_US_post_name' AND slug.meta_value<>'' JOIN ${db_prefix}postmeta pub ON pub.post_id=p.ID AND pub.meta_key='_en_US_published' AND pub.meta_value='1' WHERE p.post_status='publish' AND p.post_type='post' ORDER BY p.ID ASC LIMIT 1" --skip-column-names 2>/dev/null | tail -n1)
           test -n "$post_row"
           post_id=$(printf '%s' "$post_row" | awk '{print $1}')
           post_slug=$(printf '%s' "$post_row" | awk '{print $2}')
