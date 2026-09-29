@@ -123,7 +123,7 @@ jobs:
           echo "privacy=$privacy_code"
           test "$privacy_code" = 200
           grep -q 'rel="canonical" href="https://www.elmercadodeorigen.com/en/privacy-policy/' /tmp/en-privacy.html
-          db_prefix=$(wp --skip-plugins --skip-themes db prefix 2>/dev/null | tail -n1)
+          db_prefix=$(wp config get table_prefix --type=variable 2>/dev/null | tail -n1)
           test -n "$db_prefix"
           prod_slug=$(wp --skip-plugins --skip-themes db query "SELECT pm.meta_value FROM ${db_prefix}postmeta pm JOIN ${db_prefix}posts p ON p.ID=pm.post_id JOIN ${db_prefix}postmeta pub ON pub.post_id=p.ID AND pub.meta_key='_en_US_published' AND pub.meta_value='1' WHERE pm.meta_key='_en_US_post_name' AND pm.meta_value<>'' AND p.post_type='product' AND p.post_status='publish' ORDER BY p.ID LIMIT 1" --skip-column-names 2>/dev/null | tail -n1)
           test -n "$prod_slug"
