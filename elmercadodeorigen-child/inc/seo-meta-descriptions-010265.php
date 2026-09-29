@@ -111,6 +111,19 @@ function elmercado_seo_generated_description() {
 		return '';
 	}
 
+	/*
+	 * 0.10.313: las URLs priorizadas desde Search Console disponen de una
+	 * description específica. Esta llamada se resuelve en runtime después de
+	 * cargar todos los módulos, también cuando no hay plugin SEO activo.
+	 */
+	if ( 'post' === $post->post_type && function_exists( 'elmercado_gsc_fallback_description_010313' ) ) {
+		$gsc_description = elmercado_gsc_fallback_description_010313();
+
+		if ( '' !== $gsc_description ) {
+			return elmercado_seo_trim_description( $gsc_description );
+		}
+	}
+
 	$title   = elmercado_seo_plain_text( get_the_title( $post ) );
 	$english = elmercado_seo_is_english();
 
