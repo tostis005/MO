@@ -77,10 +77,18 @@ jobs:
 
           echo '=== PREDEPLOY QUERY-ID SAMPLE ==='
           query_sample_id=13879
-          query_before_code=$(curl -ksS --connect-timeout 10 --max-time 30 -o /tmp/en-query-before.html -w '%{http_code}' "$base/en/?p=$query_sample_id&utm_source=mdo-precheck")
-          query_expected=$(grep -oE 'rel="canonical" href="[^"]+"' /tmp/en-query-before.html | sed -E 's/.*href="([^"]+)".*/\1/' | head -n1)
+          query_before_code=$(curl -ksS --connect-timeout 10 --max-time 30 -D /tmp/en-query-before.headers -o /tmp/en-query-before.html -w '%{http_code}' "$base/en/?p=$query_sample_id&utm_source=mdo-precheck")
+          query_expected=''
+          if [ "$query_before_code" = 200 ]; then
+            query_expected=$(grep -oE 'rel="canonical" href="[^"]+"' /tmp/en-query-before.html 2>/dev/null | sed -E 's/.*href="([^"]+)".*/\1/' | head -n1 || true)
+          elif [ "$query_before_code" = 301 ]; then
+            query_expected=$(tr -d '\r' < /tmp/en-query-before.headers | awk 'tolower($1)=="location:"{print $2}' | tail -n1)
+            query_expected=${query_expected%%\?*}
+          else
+            echo "Unexpected predeploy query-ID status: $query_before_code"
+            exit 1
+          fi
           echo "query_before=$query_before_code id=$query_sample_id expected=$query_expected"
-          test "$query_before_code" = 200
           test -n "$query_expected"
           printf '%s' "$query_expected" | grep -q "^$base/en/"
           ! printf '%s' "$query_expected" | grep -q '[?&]p='
