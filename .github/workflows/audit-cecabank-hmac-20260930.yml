@@ -1,0 +1,140 @@
+name: Audit Cecabank HMAC after key rotation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-cecabank-hmac-20260930.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install SSH helper
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Audit production HMAC safely
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            $gateways = WC()->payment_gateways()->payment_gateways();
+            $g = $gateways["cecabank_gateway"] ?? null;
+            if (!$g) { echo "gateway=missing\n"; exit(10); }
+
+            $secret = (string) $g->get_option("secret_key");
+            $decoded = base64_decode($secret, true);
+            $cfg = $g->get_client_config();
+
+            echo "plugin_version=" . get_file_data(WP_PLUGIN_DIR . "/cecabank-woocommerce/wc_gateway_cecabank.php", ["Version"=>"Version"])["Version"] . "\n";
+            echo "gateway_enabled=" . $g->enabled . "\n";
+            echo "gateway_available=" . ($g->is_available() ? "yes" : "no") . "\n";
+            echo "secret_length=" . strlen($secret) . "\n";
+            echo "secret_base64_valid=" . ($decoded !== false ? "yes" : "no") . "\n";
+            echo "secret_decoded_length=" . ($decoded !== false ? strlen($decoded) : 0) . "\n";
+            echo "configured_cipher=" . ($cfg["Cifrado"] ?? "missing") . "\n";
+            echo "environment=" . ($cfg["Environment"] ?? "missing") . "\n";
+
+            $client = new Cecabank\Client($cfg);
+            $sample = [
+              "Num_operacion" => "987654321",
+              "Importe" => "1.23",
+              "URL_OK" => "https://www.elmercadodeorigen.com/",
+              "URL_NOK" => "https://www.elmercadodeorigen.com/",
+              "Descripcion" => "HMAC audit",
+              "Tipo_operacion" => "200"
+            ];
+            $client->setFormHiddens($sample);
+            $form = $client->getFormFields();
+            $sig = (string)($form["Firma"] ?? "");
+            echo "outgoing_cifrado=" . ($form["Cifrado"] ?? "missing") . "\n";
+            echo "outgoing_signature_present=" . ($sig !== "" ? "yes" : "no") . "\n";
+            echo "outgoing_signature_length=" . strlen($sig) . "\n";
+            echo "outgoing_signature_base64_valid=" . (base64_decode($sig, true) !== false ? "yes" : "no") . "\n";
+
+            $post = [
+              "MerchantID" => $form["MerchantID"],
+              "AcquirerBIN" => $form["AcquirerBIN"],
+              "TerminalID" => $form["TerminalID"],
+              "Num_operacion" => $form["Num_operacion"],
+              "Importe" => $form["Importe"],
+              "TipoMoneda" => $form["TipoMoneda"],
+              "Exponente" => $form["Exponente"],
+              "Referencia" => "AUDITREF"
+            ];
+
+            $hmacClient = new Cecabank\Client($cfg);
+            $ref = new ReflectionClass($hmacClient);
+            $valuesProp = $ref->getProperty("values");
+            $valuesProp->setAccessible(true);
+            $valuesProp->setValue($hmacClient, $post);
+            $getSig = $ref->getMethod("getSignature");
+            $post["Firma"] = $getSig->invoke($hmacClient);
+
+            try {
+              $hmacClient->checkTransaction($post);
+              echo "synthetic_hmac_callback_validates_under_hmac=yes\n";
+            } catch (Throwable $e) {
+              echo "synthetic_hmac_callback_validates_under_hmac=no\n";
+            }
+
+            $shaCfg = $cfg;
+            $shaCfg["Cifrado"] = "SHA2";
+            $shaClient = new Cecabank\Client($shaCfg);
+            try {
+              $shaClient->checkTransaction($post);
+              echo "synthetic_hmac_callback_validates_under_forced_sha2=yes\n";
+            } catch (Throwable $e) {
+              echo "synthetic_hmac_callback_validates_under_forced_sha2=no\n";
+            }
+          ' --path="$PROD_PATH" --allow-root
+
+          echo '--- callback source check ---'
+          grep -n -A8 -B3 "function check_notification" "$PROD_PATH/wp-content/plugins/cecabank-woocommerce/wc_gateway_cecabank.php" | head -n 20
+          REMOTE
+
+      - name: Verify live checkout reference
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://www.elmercadodeorigen.com'
+          jar=/tmp/ceca-hmac.cookies
+          curl -ksSL -c "$jar" -b "$jar" "$base/?add-to-cart=11058&quantity=1&mdo_hmac_audit=${GITHUB_RUN_ID}" -o /tmp/add.html
+          code=$(curl -ksSL -c "$jar" -b "$jar" -w '%{http_code}' "$base/finalizar-compra/?mdo_hmac_audit=${GITHUB_RUN_ID}" -o /tmp/checkout.html)
+          echo "checkout_http=$code"
+          grep -q 'cecabank_gateway' /tmp/checkout.html
+          echo "checkout_cecabank_reference=yes"
