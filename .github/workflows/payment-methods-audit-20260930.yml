@@ -1,0 +1,120 @@
+name: Audit payment methods production 2026-09-30
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/payment-methods-audit-20260930.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install SSH helper
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Inspect live WooCommerce gateways safely
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+
+          echo '=== ACTIVE PAYMENT-RELATED PLUGINS ==='
+          "$php_bin" "$wp_bin" plugin list --status=active --fields=name,version,title --format=csv --path="$PROD_PATH" --allow-root 2>/dev/null | grep -Ei 'stripe|paypal|mollie|redsys|bizum|payment|payments|gateway|woocommerce' || true
+
+          cat > /tmp/mdo-payment-audit.php <<'PHP'
+          <?php
+          if ( ! class_exists('WooCommerce') || ! function_exists('WC') ) {
+              echo "WooCommerce unavailable\n";
+              return;
+          }
+          $all = WC()->payment_gateways()->payment_gateways();
+          foreach ($all as $id => $g) {
+              $enabled = isset($g->enabled) ? (string) $g->enabled : '';
+              $available = false;
+              try { $available = $g->is_available(); } catch (Throwable $e) {}
+              $supports = isset($g->supports) && is_array($g->supports) ? implode(',', $g->supports) : '';
+              $title = isset($g->title) ? wp_strip_all_tags((string)$g->title) : '';
+              $method_title = isset($g->method_title) ? wp_strip_all_tags((string)$g->method_title) : '';
+              printf("GATEWAY id=%s class=%s enabled=%s available=%s title=%s method_title=%s supports=%s\n",
+                  $id, get_class($g), $enabled, $available ? 'yes':'no', $title, $method_title, $supports);
+          }
+
+          $safe_options = [
+            'woocommerce_stripe_settings' => ['enabled','title','testmode','payment_request','payment_request_button_type','payment_request_button_theme','upe_checkout_experience_enabled','saved_cards'],
+            'woocommerce_paypal_settings' => ['enabled','title','testmode'],
+            'woocommerce_ppec_paypal_settings' => ['enabled','title','environment'],
+            'woocommerce_mollie_wc_gateway_creditcard_settings' => ['enabled','title'],
+            'woocommerce_redsys_settings' => ['enabled','title','testmode'],
+            'woocommerce_bizumredsys_settings' => ['enabled','title','testmode'],
+          ];
+          foreach ($safe_options as $opt => $keys) {
+              $v = get_option($opt, null);
+              if (!is_array($v)) continue;
+              $out = [];
+              foreach ($keys as $k) if (array_key_exists($k,$v)) $out[$k] = is_scalar($v[$k]) ? (string)$v[$k] : gettype($v[$k]);
+              echo 'OPTION '.$opt.' '.wp_json_encode($out, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)."\n";
+          }
+          PHP
+          "$php_bin" "$wp_bin" eval-file /tmp/mdo-payment-audit.php --path="$PROD_PATH" --allow-root
+          rm -f /tmp/mdo-payment-audit.php
+
+          echo '=== APPLE PAY DOMAIN ASSOCIATION ==='
+          if [ -f "$PROD_PATH/.well-known/apple-developer-merchantid-domain-association" ]; then
+            echo "apple_domain_file=present size=$(wc -c < "$PROD_PATH/.well-known/apple-developer-merchantid-domain-association")"
+          else
+            echo 'apple_domain_file=not_present_on_disk'
+          fi
+          REMOTE
+
+      - name: Inspect public checkout payment labels
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://www.elmercadodeorigen.com'
+          jar=/tmp/mdo-payment-audit.cookies
+          rm -f "$jar"
+          added=0
+          for product_id in 11058 5348 1380; do
+            code=$(curl -ksSL --max-time 45 -c "$jar" -b "$jar" -o /tmp/add.html -w '%{http_code}' "$base/?add-to-cart=$product_id&quantity=1&mdo_payment_audit=${GITHUB_RUN_ID}" || true)
+            cart=$(curl -ksSL --max-time 45 -c "$jar" -b "$jar" -o /tmp/cart.html -w '%{http_code}' "$base/carrito/?mdo_payment_audit=${GITHUB_RUN_ID}" || true)
+            if grep -qiE 'remove|quantity|Cantidad|Subtotal|Total' /tmp/cart.html; then added=1; echo "seed_product=$product_id add_http=$code cart_http=$cart"; break; fi
+          done
+          echo "cart_seeded=$added"
+          code=$(curl -ksSL --max-time 60 -c "$jar" -b "$jar" -o /tmp/checkout.html -w '%{http_code}' "$base/finalizar-compra/?mdo_payment_audit=${GITHUB_RUN_ID}" || true)
+          echo "checkout_http=$code bytes=$(wc -c </tmp/checkout.html 2>/dev/null || echo 0)"
+          echo '=== PAYMENT METHOD MARKUP ==='
+          grep -Eio 'payment_method_[A-Za-z0-9_-]+' /tmp/checkout.html | sort -u || true
+          echo '=== PAYMENT LABEL EXCERPTS ==='
+          grep -Eio '.{0,120}(Tarjeta|Credit card|Stripe|PayPal|Mollie|Redsys|Bizum|Apple Pay|Google Pay).{0,180}' /tmp/checkout.html | head -n 80 || true
