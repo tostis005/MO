@@ -59,3 +59,27 @@ jobs:
             \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root
             rm -f '$REMOTE'
           "
+
+          STORE_HTML="/tmp/selectos-store-${GITHUB_RUN_ID}.html"
+          curl -fsSL --connect-timeout 10 --max-time 60 \
+            -H 'Cache-Control: no-cache, no-store' \
+            'https://www.elmercadodeorigen.com/tienda/selectos-de-castilla/?probe=1' \
+            -o "$STORE_HTML"
+          python3 .github/scripts/check-producer-store-html-20260821.py "$STORE_HTML" | sed 's/^/STOREFRONT_FIRST_PAGE=/'
+          python3 - "$STORE_HTML" <<'PY'
+          import re,sys,html
+          s=open(sys.argv[1],encoding='utf-8',errors='ignore').read()
+          txt=html.unescape(re.sub(r'<[^>]+>',' ',s))
+          txt=re.sub(r'\s+',' ',txt)
+          pats=[
+              r'Mostrando[^.]{0,160}',
+              r'\d+\s+resultados?',
+              r'\d+\s+productos?',
+              r'Página\s+\d+\s+de\s+\d+',
+          ]
+          found=[]
+          for pat in pats:
+              found += re.findall(pat,txt,re.I)
+          print("STOREFRONT_TEXT="+repr(found[:20]))
+          print("STOREFRONT_HTML_BYTES="+str(len(s.encode("utf-8"))))
+          PY
