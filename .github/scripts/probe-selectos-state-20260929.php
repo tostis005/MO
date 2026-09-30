@@ -244,6 +244,30 @@ $store_url = function_exists( 'wcfmmp_get_store_url' ) && $vendor_id > 0
 	? (string) wcfmmp_get_store_url( $vendor_id )
 	: '';
 
+$store_truth_ids = function_exists( 'elmercado_vendor_store_product_ids_010225' )
+	? elmercado_vendor_store_product_ids_010225( $vendor_id )
+	: array();
+$store_categories = function_exists( 'elmercado_vendor_store_categories_010225' )
+	? elmercado_vendor_store_categories_010225( $store_truth_ids )
+	: array();
+$implicit_category = 1 === count( $store_categories ) ? reset( $store_categories ) : null;
+$store_filtered_ids = $store_truth_ids;
+if ( is_array( $implicit_category ) && isset( $implicit_category['term'] ) && $implicit_category['term'] instanceof WP_Term && function_exists( 'elmercado_vendor_store_product_ids_010225' ) ) {
+	$store_filtered_ids = elmercado_vendor_store_product_ids_010225( $vendor_id, $implicit_category['term'] );
+}
+$store_category_summary = array();
+foreach ( $store_categories as $data ) {
+	if ( ! isset( $data['term'] ) || ! $data['term'] instanceof WP_Term ) {
+		continue;
+	}
+	$store_category_summary[] = array(
+		'id'    => (int) $data['term']->term_id,
+		'slug'  => $data['term']->slug,
+		'name'  => $data['term']->name,
+		'count' => (int) ( $data['count'] ?? 0 ),
+	);
+}
+
 $run_errors = array();
 if ( $run && ! empty( $run['id'] ) ) {
 	$events_table = MDO_Database::table( 'sync_events' );
@@ -299,6 +323,9 @@ echo 'PROBE=' . wp_json_encode(
 		'vendor_published_products'=> $vendor_published,
 		'vendor_post_status'       => $vendor_post_status,
 		'hide_out_of_stock_items'  => $hide_outofstock,
+		'store_truth_count'        => count( $store_truth_ids ),
+		'store_filtered_count'     => count( $store_filtered_ids ),
+		'store_categories'         => $store_category_summary,
 		'pending_group_actions'    => $pending_actions,
 		'latest_run_errors'       => $run_errors,
 		'mismatches'               => array_slice( $mismatches, 0, 100 ),
