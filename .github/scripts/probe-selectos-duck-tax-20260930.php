@@ -87,6 +87,22 @@ $iva10_products = $wpdb->get_results(
     ARRAY_A
 ) ?: array();
 
+$calc = array();
+foreach (array('', 'iva-10', 'iva-21', 'iva-4', 'iva-5', 'iva-2') as $cls) {
+    $found = WC_Tax::find_rates(array(
+        'country'=>'ES',
+        'state'=>'',
+        'postcode'=>'28001',
+        'city'=>'Madrid',
+        'tax_class'=>$cls,
+    ));
+    $taxes = WC_Tax::calc_tax(100.0, $found, false);
+    $calc[$cls === '' ? '(standard)' : $cls] = array(
+        'rates'=>$found,
+        'tax_on_100'=>array_sum(array_map('floatval',$taxes)),
+    );
+}
+
 echo 'TAX_PROBE=' . wp_json_encode(array(
     'supplier'=>array('id'=>$sid,'name'=>$s['name'],'vendor_user_id'=>(int)$s['vendor_user_id']),
     'source_total'=>count($rows),
@@ -97,5 +113,6 @@ echo 'TAX_PROBE=' . wp_json_encode(array(
     'tax_classes_option'=>$tax_classes_option,
     'global_tax_class_counts'=>$global_tax_class_counts,
     'iva10_products'=>$iva10_products,
+    'calculation_es'=>$calc,
     'tax_rates'=>$rates,
 ), JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) . PHP_EOL;
