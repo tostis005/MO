@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO GSC Commerce SEO 2026-09-29
  * Description: Data-led SERP titles and descriptions for high-impression commerce URLs from Google Search Console.
- * Version: 2026.09.29.3
+ * Version: 2026.09.30.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -35,6 +35,10 @@ function mdo_gsc_commerce_path_20260929(): string {
  */
 function mdo_gsc_commerce_map_20260929(): array {
     return array(
+        '/categoria-producto/aceites/' => array(
+            'title' => 'Comprar Aceite de Oliva Virgen Extra | El Mercado de Origen',
+            'description' => 'Compra aceite de oliva virgen extra directamente a productores seleccionados. Compara formatos, precios y opciones disponibles con origen claro.',
+        ),
         '/producto/sobrasada-de-bellota-100-iberica/' => array(
             'title' => 'Comprar Sobrasada de Bellota 100% Ibérica',
             'description' => 'Compra sobrasada de bellota 100% ibérica directamente al productor. Consulta precio, formato, características y disponibilidad actual.',
