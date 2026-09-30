@@ -1,0 +1,9 @@
+--- a/wc_gateway_cecabank.php
++++ b/wc_gateway_cecabank.php
+@@ -916,7 +916,6 @@
+             global $woocommerce;
+ 
+             $config = $this->get_client_config();
+-            $config['Cifrado'] = 'SHA2';
+ 
+             $cecabank_client = new Cecabank\Client($config);
