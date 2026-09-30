@@ -62,6 +62,30 @@ $rates = $wpdb->get_results(
 ) ?: array();
 
 $classes = class_exists('WC_Tax') ? WC_Tax::get_tax_classes() : array();
+$class_slugs = class_exists('WC_Tax') && method_exists('WC_Tax','get_tax_class_slugs') ? WC_Tax::get_tax_class_slugs() : array();
+$tax_classes_option = get_option('woocommerce_tax_classes', '');
+
+$global_tax_class_counts = $wpdb->get_results(
+    "SELECT COALESCE(pm.meta_value,'') tax_class, COUNT(*) n
+     FROM {$wpdb->posts} p
+     LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_tax_class'
+     WHERE p.post_type='product'
+     GROUP BY COALESCE(pm.meta_value,'')
+     ORDER BY n DESC",
+    ARRAY_A
+) ?: array();
+
+$iva10_products = $wpdb->get_results(
+    $wpdb->prepare(
+        "SELECT p.ID,p.post_title,p.post_status,p.post_author,pm.meta_value tax_class
+         FROM {$wpdb->posts} p
+         JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_tax_class'
+         WHERE p.post_type='product' AND pm.meta_value=%s
+         ORDER BY p.ID LIMIT 100",
+        'iva-10'
+    ),
+    ARRAY_A
+) ?: array();
 
 echo 'TAX_PROBE=' . wp_json_encode(array(
     'supplier'=>array('id'=>$sid,'name'=>$s['name'],'vendor_user_id'=>(int)$s['vendor_user_id']),
@@ -69,5 +93,9 @@ echo 'TAX_PROBE=' . wp_json_encode(array(
     'source_groups'=>$groups,
     'woo_product_tax_classes'=>$product_tax_classes,
     'tax_classes'=>$classes,
+    'tax_class_slugs'=>$class_slugs,
+    'tax_classes_option'=>$tax_classes_option,
+    'global_tax_class_counts'=>$global_tax_class_counts,
+    'iva10_products'=>$iva10_products,
     'tax_rates'=>$rates,
 ), JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) . PHP_EOL;
