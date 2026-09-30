@@ -1,0 +1,79 @@
+name: Verify Cecabank 0.4.2 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-cecabank-042-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Verify server state
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+
+          version=$("$php_bin" -d memory_limit=512M "$wp_bin" plugin get cecabank-woocommerce --field=version --path="$PROD_PATH" --allow-root)
+          status=$("$php_bin" -d memory_limit=512M "$wp_bin" plugin get cecabank-woocommerce --field=status --path="$PROD_PATH" --allow-root)
+          echo "version=$version"
+          echo "status=$status"
+          [ "$version" = "0.4.2" ]
+          [ "$status" = "active" ]
+
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            $g=WC()->payment_gateways()->payment_gateways();
+            $x=$g["cecabank_gateway"] ?? null;
+            if(!$x){exit(2);}
+            echo "enabled=".$x->enabled."\n";
+            echo "available=".($x->is_available()?"yes":"no")."\n";
+            echo "secret_length=".strlen((string)$x->get_option("secret_key"))."\n";
+          ' --path="$PROD_PATH" --allow-root
+          REMOTE
+
+      - name: Verify live checkout references Cecabank
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://www.elmercadodeorigen.com'
+          jar=/tmp/ceca.cookies
+          rm -f "$jar"
+          curl -ksSL -c "$jar" -b "$jar" "$base/?add-to-cart=11058&quantity=1&mdo_verify=${GITHUB_RUN_ID}" -o /tmp/add.html
+          curl -ksSL -c "$jar" -b "$jar" "$base/finalizar-compra/?mdo_verify=${GITHUB_RUN_ID}" -o /tmp/checkout.html
+          grep -q 'cecabank_gateway' /tmp/checkout.html
+          echo "checkout_cecabank_reference=yes"
