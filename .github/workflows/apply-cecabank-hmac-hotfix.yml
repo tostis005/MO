@@ -1,0 +1,83 @@
+name: Apply Cecabank HMAC callback hotfix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-cecabank-hmac-hotfix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SSH helper
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Locate production
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+
+      - name: Backup and apply patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          sshpass -e scp $SCP patches/cecabank-woocommerce-0.4.2-hmac-callback.patch "$STAGING_USER@$STAGING_HOST:/tmp/cecabank-hmac.patch"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          plugin="$PROD_PATH/wp-content/plugins/cecabank-woocommerce"
+          file="$plugin/wc_gateway_cecabank.php"
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+
+          grep -q 'Version: 0.4.2' "$file"
+
+          ts=$(date -u +%Y%m%dT%H%M%SZ)
+          backup="$(dirname "$PROD_PATH")/private/mdo-backups/cecabank-hmac-hotfix-$ts"
+          mkdir -p "$backup"
+          chmod 700 "$backup" || true
+          tar -C "$PROD_PATH/wp-content/plugins" -czf "$backup/cecabank-woocommerce-0.4.2-before-hmac-hotfix.tar.gz" cecabank-woocommerce
+          chmod 600 "$backup/cecabank-woocommerce-0.4.2-before-hmac-hotfix.tar.gz" || true
+          echo "backup_created=yes"
+
+          patch --dry-run -p1 -d "$plugin" < /tmp/cecabank-hmac.patch
+          patch -p1 -d "$plugin" < /tmp/cecabank-hmac.patch
+          "$php_bin" -l "$file" >/dev/null
+          ! grep -Fq "\$config['Cifrado'] = 'SHA2';" "$file"
+          rm -f /tmp/cecabank-hmac.patch
+          echo "hotfix_applied=yes"
+          REMOTE
