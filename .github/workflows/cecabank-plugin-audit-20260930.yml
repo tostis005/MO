@@ -60,6 +60,10 @@ jobs:
           grep -nE '^\s*\* Version:|@version' "$PROD_PATH/wp-content/plugins/cecabank-woocommerce/wc_gateway_cecabank.php" | head -n 10 || true
           find "$PROD_PATH/wp-content/plugins/cecabank-woocommerce" -maxdepth 2 -type f | sed "s#^$PROD_PATH/##" | sort | head -n 200
 
+          echo '=== INSTALLED CRYPTO SUPPORT ==='
+          grep -nE 'HMAC|SHA2|secret_key|ClaveCifrado|Cifrado|Pago_soportado|versionMod' "$PROD_PATH/wp-content/plugins/cecabank-woocommerce/wc_gateway_cecabank.php" | head -n 80 || true
+          grep -RniE 'HMAC|SHA2' "$PROD_PATH/wp-content/plugins/cecabank-woocommerce/lib" --include='*.php' 2>/dev/null | head -n 80 || true
+
           echo '=== MASKED GATEWAY SETTINGS ==='
           "$php_bin" -d memory_limit=512M "$wp_bin" eval '
             $o=get_option("woocommerce_cecabank_gateway_settings",[]);
