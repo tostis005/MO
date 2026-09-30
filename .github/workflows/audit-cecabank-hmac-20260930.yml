@@ -98,12 +98,11 @@ jobs:
             ];
 
             $hmacClient = new Cecabank\Client($cfg);
+            $message = $post["MerchantID"] . $post["AcquirerBIN"] . $post["TerminalID"] . $post["Num_operacion"] . $post["Importe"] . $post["TipoMoneda"] . $post["Exponente"] . $post["Referencia"];
             $ref = new ReflectionClass($hmacClient);
-            $valuesProp = $ref->getProperty("values");
-            $valuesProp->setAccessible(true);
-            $valuesProp->setValue($hmacClient, $post);
-            $getSig = $ref->getMethod("getSignature");
-            $post["Firma"] = $getSig->invoke($hmacClient);
+            $makeHash = $ref->getMethod("makeHash");
+            $makeHash->setAccessible(true);
+            $post["Firma"] = $makeHash->invoke($hmacClient, $message, true, $post["Num_operacion"]);
 
             try {
               $hmacClient->checkTransaction($post);
