@@ -123,7 +123,13 @@ jobs:
           ' --path="$PROD_PATH" --allow-root
 
           echo '--- callback source check ---'
-          grep -n -A8 -B3 "function check_notification" "$PROD_PATH/wp-content/plugins/cecabank-woocommerce/wc_gateway_cecabank.php" | head -n 20
+          if grep -Fq "\$config['Cifrado'] = 'SHA2';" "$PROD_PATH/wp-content/plugins/cecabank-woocommerce/wc_gateway_cecabank.php"; then
+            echo "callback_forced_sha2=present"
+            exit 20
+          else
+            echo "callback_forced_sha2=absent"
+          fi
+          grep -n -A7 -B3 "function check_notification" "$PROD_PATH/wp-content/plugins/cecabank-woocommerce/wc_gateway_cecabank.php" | head -n 18
           REMOTE
 
       - name: Verify live checkout reference
