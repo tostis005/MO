@@ -51,7 +51,7 @@ jobs:
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
 
           echo '=== ACTIVE PAYMENT-RELATED PLUGINS ==='
-          "$php_bin" -d memory_limit=512M "$wp_bin" plugin list --status=active --fields=name,version,title --format=csv --path="$PROD_PATH" --allow-root 2>/dev/null | grep -Ei 'stripe|paypal|mollie|redsys|bizum|payment|payments|gateway|woocommerce' || true
+          "$php_bin" -d memory_limit=512M "$wp_bin" plugin list --status=active --fields=name,version,title --format=csv --path="$PROD_PATH" --allow-root 2>/dev/null | grep -Ei 'stripe|paypal|mollie|redsys|bizum|ceca|payment|payments|gateway|woocommerce' || true
 
           cat > /tmp/mdo-payment-audit.php <<'PHP'
           <?php
@@ -89,6 +89,15 @@ jobs:
           PHP
           "$php_bin" -d memory_limit=512M "$wp_bin" eval-file /tmp/mdo-payment-audit.php --path="$PROD_PATH" --allow-root
           rm -f /tmp/mdo-payment-audit.php
+
+          echo '=== CECABANK GATEWAY SOURCE/CAPABILITIES ==='
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval 'foreach (WC()->payment_gateways()->payment_gateways() as $id=>$g) { if ($id==="cecabank_gateway") { $r=new ReflectionClass($g); echo "cecabank_class_file=".$r->getFileName()."\\n"; echo "cecabank_class=".get_class($g)."\\n"; } }' --path="$PROD_PATH" --allow-root || true
+          CECA_FILE=$("$php_bin" -d memory_limit=512M "$wp_bin" eval 'foreach (WC()->payment_gateways()->payment_gateways() as $id=>$g) { if ($id==="cecabank_gateway") { $r=new ReflectionClass($g); echo $r->getFileName(); } }' --path="$PROD_PATH" --allow-root 2>/dev/null || true)
+          if [ -n "$CECA_FILE" ] && [ -f "$CECA_FILE" ]; then
+            CECA_DIR=$(dirname "$CECA_FILE")
+            echo "cecabank_plugin_dir=$CECA_DIR"
+            grep -RniE 'apple[ _-]?pay|google[ _-]?pay|xpay|wallet' "$CECA_DIR" --include='*.php' --include='*.js' 2>/dev/null | head -n 80 || true
+          fi
 
           echo '=== APPLE PAY DOMAIN ASSOCIATION ==='
           if [ -f "$PROD_PATH/.well-known/apple-developer-merchantid-domain-association" ]; then
