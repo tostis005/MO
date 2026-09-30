@@ -88,12 +88,13 @@ jobs:
           tar -C "$PROD_PATH/wp-content/plugins" -czf "$candidate/cecabank-woocommerce-$current.tar.gz" cecabank-woocommerce
           chmod 600 "$candidate/cecabank-woocommerce-$current.tar.gz" || true
 
-          "$php_bin" -d memory_limit=512M "$wp_bin" db export "$candidate/database-before-update.sql" --path="$PROD_PATH" --allow-root >/dev/null
-          chmod 600 "$candidate/database-before-update.sql" || true
-
-          "$php_bin" -d memory_limit=512M "$wp_bin" option get woocommerce_cecabank_gateway_settings --format=json --path="$PROD_PATH" --allow-root 2>/dev/null \
-            | sha256sum | awk '{print $1}' > "$candidate/settings.sha256"
+          "$php_bin" -d memory_limit=512M "$wp_bin" option get woocommerce_cecabank_gateway_settings --format=json --path="$PROD_PATH" --allow-root 2>/dev/null > "$candidate/gateway-settings.json"
+          chmod 600 "$candidate/gateway-settings.json" || true
+          sha256sum "$candidate/gateway-settings.json" | awk '{print $1}' > "$candidate/settings.sha256"
           chmod 600 "$candidate/settings.sha256" || true
+
+          "$php_bin" -d memory_limit=512M "$wp_bin" option get active_plugins --format=json --path="$PROD_PATH" --allow-root 2>/dev/null > "$candidate/active-plugins.json"
+          chmod 600 "$candidate/active-plugins.json" || true
 
           echo "$candidate"
           REMOTE
@@ -203,5 +204,5 @@ jobs:
           status=$("$php_bin" -d memory_limit=512M "$wp_bin" plugin get cecabank-woocommerce --field=status --path="$PROD_PATH" --allow-root)
           echo "installed_version=$version"
           echo "plugin_status=$status"
-          echo "backup_exists=$(test -s "$BACKUP_DIR/database-before-update.sql" && test -s "$BACKUP_DIR"/cecabank-woocommerce-*.tar.gz && echo yes || echo no)"
+          echo "backup_exists=$(test -s "$BACKUP_DIR/gateway-settings.json" && test -s "$BACKUP_DIR/active-plugins.json" && test -s "$BACKUP_DIR"/cecabank-woocommerce-*.tar.gz && echo yes || echo no)"
           REMOTE
