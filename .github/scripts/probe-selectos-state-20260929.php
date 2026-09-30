@@ -44,7 +44,7 @@ $run = $wpdb->get_row(
 	ARRAY_A
 );
 
-$source_status = $wpdb->get_results(
+$source_status_counts = $wpdb->get_results(
 	$wpdb->prepare(
 		"SELECT status, COUNT(*) n
 		 FROM {$pt}
@@ -244,6 +244,27 @@ $store_url = function_exists( 'wcfmmp_get_store_url' ) && $vendor_id > 0
 	? (string) wcfmmp_get_store_url( $vendor_id )
 	: '';
 
+$run_errors = array();
+if ( $run && ! empty( $run['id'] ) ) {
+	$events_table = MDO_Database::table( 'sync_events' );
+	$run_errors = $wpdb->get_results(
+		$wpdb->prepare(
+			"SELECT event_type, severity, message, payload
+			 FROM {$events_table}
+			 WHERE run_id = %d
+			   AND severity = 'error'
+			 ORDER BY id ASC",
+			(int) $run['id']
+		),
+		ARRAY_A
+	) ?: array();
+	foreach ( $run_errors as &$event ) {
+		$payload = json_decode( (string) ( $event['payload'] ?? '' ), true );
+		$event['payload'] = is_array( $payload ) ? $payload : null;
+	}
+	unset( $event );
+}
+
 $pending_actions = null;
 if ( function_exists( 'as_get_scheduled_actions' ) ) {
 	$pending_actions = count(
@@ -271,7 +292,7 @@ echo 'PROBE=' . wp_json_encode(
 			'store_url'      => $store_url,
 		),
 		'latest_run'          => $run,
-		'source_status'       => $source_status,
+		'source_status'       => $source_status_counts,
 		'source_stock'        => $source_stock,
 		'woo'                 => $bucket,
 		'vendor_total_products'    => $vendor_total,
@@ -279,6 +300,7 @@ echo 'PROBE=' . wp_json_encode(
 		'vendor_post_status'       => $vendor_post_status,
 		'hide_out_of_stock_items'  => $hide_outofstock,
 		'pending_group_actions'    => $pending_actions,
+		'latest_run_errors'       => $run_errors,
 		'mismatches'               => array_slice( $mismatches, 0, 100 ),
 	),
 	JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
