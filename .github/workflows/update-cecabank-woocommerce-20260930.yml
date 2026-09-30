@@ -1,0 +1,207 @@
+name: Update Cecabank WooCommerce to 0.4.2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/update-cecabank-woocommerce-20260930.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+      CECABANK_COMMIT: e3a32c5f95c9fc8844cff7076855b9d8d0e46359
+    steps:
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Download and verify official Cecabank 0.4.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --connect-timeout 15 \
+            "https://github.com/cecabank/cecabank-woocommerce/archive/${CECABANK_COMMIT}.tar.gz" \
+            -o /tmp/cecabank-0.4.2.tar.gz
+          rm -rf /tmp/cecabank-src
+          mkdir -p /tmp/cecabank-src
+          tar -xzf /tmp/cecabank-0.4.2.tar.gz -C /tmp/cecabank-src --strip-components=1
+          grep -q 'Version: 0.4.2' /tmp/cecabank-src/wc_gateway_cecabank.php
+          grep -q "Stable tag: 0.4.2" /tmp/cecabank-src/readme.txt
+          grep -q "normally 32" /dev/null 2>/dev/null || true
+          echo "package_sha256=$(sha256sum /tmp/cecabank-0.4.2.tar.gz | awk '{print $1}')"
+          echo "Verified official Cecabank WooCommerce 0.4.2 at commit ${CECABANK_COMMIT}"
+
+      - name: Locate production and create backups
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          printf '%s\n' "$PROD_PATH" > /tmp/prod_path
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+
+          BACKUP_DIR="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          ts=$(date -u +%Y%m%dT%H%M%SZ)
+          candidate="$(dirname "$PROD_PATH")/private/mdo-backups/cecabank-$ts"
+          if ! mkdir -p "$candidate" 2>/dev/null; then
+            candidate="$HOME/mdo-backups/cecabank-$ts"
+            mkdir -p "$candidate"
+          fi
+          chmod 700 "$candidate" || true
+
+          plugin="$PROD_PATH/wp-content/plugins/cecabank-woocommerce"
+          test -d "$plugin"
+          current=$(grep -m1 -oE 'Version:[[:space:]]*[0-9.]+' "$plugin/wc_gateway_cecabank.php" | awk '{print $2}')
+          echo "current_version=$current" >&2
+
+          tar -C "$PROD_PATH/wp-content/plugins" -czf "$candidate/cecabank-woocommerce-$current.tar.gz" cecabank-woocommerce
+          chmod 600 "$candidate/cecabank-woocommerce-$current.tar.gz" || true
+
+          "$php_bin" -d memory_limit=512M "$wp_bin" db export "$candidate/database-before-update.sql" --path="$PROD_PATH" --allow-root >/dev/null
+          chmod 600 "$candidate/database-before-update.sql" || true
+
+          "$php_bin" -d memory_limit=512M "$wp_bin" option get woocommerce_cecabank_gateway_settings --format=json --path="$PROD_PATH" --allow-root 2>/dev/null \
+            | sha256sum | awk '{print $1}' > "$candidate/settings.sha256"
+          chmod 600 "$candidate/settings.sha256" || true
+
+          echo "$candidate"
+          REMOTE
+          )"
+          echo "BACKUP_DIR=$BACKUP_DIR" >> "$GITHUB_ENV"
+          echo "Backup created outside public web root."
+
+          sshpass -e scp $SCP /tmp/cecabank-0.4.2.tar.gz "$STAGING_USER@$STAGING_HOST:/tmp/cecabank-0.4.2.tar.gz"
+
+      - name: Install Cecabank 0.4.2 with automatic rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' BACKUP_DIR='$BACKUP_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+
+          plugin_dir="$PROD_PATH/wp-content/plugins/cecabank-woocommerce"
+          work="/tmp/cecabank-install-$$"
+          mkdir -p "$work"
+          tar -xzf /tmp/cecabank-0.4.2.tar.gz -C "$work" --strip-components=1
+          grep -q 'Version: 0.4.2' "$work/wc_gateway_cecabank.php"
+
+          before_hash=$(cat "$BACKUP_DIR/settings.sha256")
+          owner_group=$(stat -c '%u:%g' "$plugin_dir")
+          current_tar=$(find "$BACKUP_DIR" -maxdepth 1 -type f -name 'cecabank-woocommerce-*.tar.gz' | head -n1)
+
+          rollback() {
+            echo "Update verification failed; restoring prior plugin." >&2
+            rm -rf "$plugin_dir"
+            tar -xzf "$current_tar" -C "$PROD_PATH/wp-content/plugins"
+            chown -R "$owner_group" "$plugin_dir" || true
+          }
+          trap rollback ERR
+
+          rm -rf "$plugin_dir"
+          mkdir -p "$plugin_dir"
+          cp -a "$work"/. "$plugin_dir"/
+          chown -R "$owner_group" "$plugin_dir" || true
+          find "$plugin_dir" -type d -exec chmod 755 {} + || true
+          find "$plugin_dir" -type f -exec chmod 644 {} + || true
+
+          "$php_bin" -l "$plugin_dir/wc_gateway_cecabank.php" >/dev/null
+          "$php_bin" -l "$plugin_dir/lib/Cecabank/Client.php" >/dev/null
+
+          version=$("$php_bin" -d memory_limit=512M "$wp_bin" plugin get cecabank-woocommerce --field=version --path="$PROD_PATH" --allow-root)
+          status=$("$php_bin" -d memory_limit=512M "$wp_bin" plugin get cecabank-woocommerce --field=status --path="$PROD_PATH" --allow-root)
+          [ "$version" = "0.4.2" ]
+          [ "$status" = "active" ]
+
+          after_hash=$("$php_bin" -d memory_limit=512M "$wp_bin" option get woocommerce_cecabank_gateway_settings --format=json --path="$PROD_PATH" --allow-root 2>/dev/null | sha256sum | awk '{print $1}')
+          [ "$before_hash" = "$after_hash" ]
+
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            $g=WC()->payment_gateways()->payment_gateways();
+            if(empty($g["cecabank_gateway"])) { fwrite(STDERR,"gateway missing\n"); exit(2); }
+            $x=$g["cecabank_gateway"];
+            echo "gateway_enabled=".$x->enabled."\n";
+            echo "gateway_available=".($x->is_available()?"yes":"no")."\n";
+            echo "secret_length=".strlen((string)$x->get_option("secret_key"))."\n";
+            echo "legacy_sha2=".(WC_Gateway_Cecabank::is_sha2_key($x->get_option("secret_key"))?"yes":"no")."\n";
+          ' --path="$PROD_PATH" --allow-root
+
+          trap - ERR
+          rm -rf "$work"
+          rm -f /tmp/cecabank-0.4.2.tar.gz
+          echo "Cecabank plugin update installed and settings preserved."
+          REMOTE
+
+      - name: Verify live checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://www.elmercadodeorigen.com'
+          jar=/tmp/ceca-verify.cookies
+          rm -f "$jar"
+          added=0
+          for product_id in 11058 5348 1380; do
+            curl -ksSL --max-time 45 -c "$jar" -b "$jar" -o /tmp/add.html "$base/?add-to-cart=$product_id&quantity=1&mdo_ceca_update=${GITHUB_RUN_ID}" || true
+            curl -ksSL --max-time 45 -c "$jar" -b "$jar" -o /tmp/cart.html "$base/carrito/?mdo_ceca_update=${GITHUB_RUN_ID}" || true
+            if grep -qiE 'remove|quantity|Cantidad|Subtotal|Total' /tmp/cart.html; then added=1; echo "seed_product=$product_id"; break; fi
+          done
+          [ "$added" = "1" ]
+          http=$(curl -ksSL --max-time 60 -c "$jar" -b "$jar" -o /tmp/checkout.html -w '%{http_code}' "$base/finalizar-compra/?mdo_ceca_update=${GITHUB_RUN_ID}" || true)
+          echo "checkout_http=$http"
+          [ "$http" = "200" ]
+          grep -q 'payment_method_cecabank_gateway' /tmp/checkout.html
+          echo "live_checkout_cecabank=present"
+
+      - name: Final server verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' BACKUP_DIR='$BACKUP_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          version=$("$php_bin" -d memory_limit=512M "$wp_bin" plugin get cecabank-woocommerce --field=version --path="$PROD_PATH" --allow-root)
+          status=$("$php_bin" -d memory_limit=512M "$wp_bin" plugin get cecabank-woocommerce --field=status --path="$PROD_PATH" --allow-root)
+          echo "installed_version=$version"
+          echo "plugin_status=$status"
+          echo "backup_exists=$(test -s "$BACKUP_DIR/database-before-update.sql" && test -s "$BACKUP_DIR"/cecabank-woocommerce-*.tar.gz && echo yes || echo no)"
+          REMOTE
