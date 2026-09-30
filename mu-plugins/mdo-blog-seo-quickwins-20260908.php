@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
  * Description: Removes duplicated in-content H1s, defers the inline newsletter, applies data-led SERP copy and reinforces contextual internal links to the highest-opportunity blog posts.
- * Version: 2026.09.29.21
+ * Version: 2026.09.30.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -300,6 +300,20 @@ function mdo_blog_seo_top3_title_20260908( $title ): string {
         'nutrientes-chorizo-iberico-proteinas-grasas-hierro-vitaminas-minerales' => 'Nutrientes del chorizo ibérico: proteína, grasa y hierro',
         'legumbres-secas-vs-cocidas-calorias-nutrientes'                        => 'Legumbres secas vs cocidas: calorías y nutrientes',
         'why-burgers-shrink-when-cooked-causes-and-how-to-reduce-it'            => 'Why Burgers Shrink When Cooked—and How to Reduce It',
+        'raw-wagyu-tataki-carpaccio-safety'                                  => 'Can Wagyu Be Eaten Raw? Tataki, Carpaccio & Safety',
+        'what-is-cured-sausage-how-it-is-made-difference-fresh-sausage'        => 'What Is Cured Sausage? How It’s Made vs Fresh Sausage',
+        'vegetables-highest-in-iron'                                            => 'Vegetables Highest in Iron: Comparison per 100 g',
+        'why-olive-oil-solidifies-turns-cloudy-in-cold-is-it-bad'              => 'Why Olive Oil Turns Cloudy or Solid in the Cold',
+        'when-to-salt-meat-before-or-after-cooking'                             => 'When to Salt Meat: Before or After Cooking?',
+        'nutrients-iberian-chorizo-protein-fat-iron-vitamins-minerals'         => 'Iberian Chorizo Nutrition: Protein, Fat, Iron & Vitamins',
+        'vegetables-highest-calcium-comparison'                                 => 'Vegetables Highest in Calcium: Comparison per 100 g',
+        'ph-acidity-cheese-what-they-measure-texture-flavour-safety'           => 'Cheese pH and Acidity: Texture, Flavour and Safety',
+        'nutrientes-jamon-iberico-proteinas-grasas-hierro-vitaminas-minerales' => 'Nutrientes del jamón ibérico: proteína, grasa y hierro',
+        'precio-wagyu-japones-factores'                                        => 'Precio del Wagyu japonés: qué factores lo encarecen',
+        'jamon-demasiado-salado-por-que-ocurre-que-significa'                  => 'Jamón demasiado salado: por qué ocurre y qué significa',
+        'por-que-carne-se-pega-sarten-cuando-darle-vuelta'                     => 'Por qué la carne se pega a la sartén y cuándo darle la vuelta',
+        'como-cocinar-ternera-cortes-minutos-horas'                             => 'Cómo cocinar ternera: cortes que necesitan minutos u horas',
+        'verduras-frescas-vs-congeladas-diferencias-nutrientes-sabor'           => 'Verduras frescas vs congeladas: nutrientes, sabor y textura',
     );
 
     return isset( $titles[ $slug ] ) ? $titles[ $slug ] : (string) $title;
@@ -398,6 +412,12 @@ function mdo_blog_seo_top3_description_20260908( $description ): string {
         'como-cortar-carne-contrapelo-mas-tierna'                               => 'Cómo identificar la dirección de las fibras y cortar la carne a contrapelo para que resulte más fácil de masticar y parezca más tierna.',
         'nutrientes-chorizo-iberico-proteinas-grasas-hierro-vitaminas-minerales' => 'Qué nutrientes aporta el chorizo ibérico: proteína, grasa, hierro y otros micronutrientes, con contexto sobre raciones y contenido de sal.',
         'legumbres-secas-vs-cocidas-calorias-nutrientes'                        => 'Por qué cambian las calorías y nutrientes por 100 g entre legumbres secas y cocidas y cómo compararlas correctamente teniendo en cuenta el agua.',
+        'nutrientes-jamon-iberico-proteinas-grasas-hierro-vitaminas-minerales' => 'Qué nutrientes aporta el jamón ibérico: proteína, grasa, hierro y otros micronutrientes, con contexto sobre raciones, sal y diferencias entre piezas.',
+        'precio-wagyu-japones-factores'                                        => 'Qué factores explican el precio del Wagyu japonés: origen, A4/A5, marmoleo, corte, trazabilidad, formato, logística y coste por ración.',
+        'jamon-demasiado-salado-por-que-ocurre-que-significa'                  => 'Por qué un jamón puede resultar demasiado salado, qué influyen el salado, secado, curación y corte, y cuándo el sabor intenso indica un problema.',
+        'por-que-carne-se-pega-sarten-cuando-darle-vuelta'                     => 'Por qué la carne se pega a la sartén, qué papel tienen la temperatura y la humedad y cómo saber cuándo está lista para darle la vuelta.',
+        'como-cocinar-ternera-cortes-minutos-horas'                             => 'Por qué algunos cortes de ternera necesitan sólo minutos y otros horas: tejido conjuntivo, grosor, temperatura y técnica de cocción adecuada.',
+        'verduras-frescas-vs-congeladas-diferencias-nutrientes-sabor'           => 'Compara verduras frescas y congeladas en nutrientes, textura, sabor, conservación y cocina para entender cuándo cada formato puede ser más útil.',
     );
 
     return isset( $descriptions[ $slug ] ) ? $descriptions[ $slug ] : (string) $description;
@@ -780,6 +800,9 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
                 'como-cortar-carne-contrapelo-mas-tierna',
                 'vaca-vs-ternera-diferencias-sabor-textura-cual-elegir',
                 'tomahawk-que-corte-es-como-cocinarlo-casa',
+                'precio-wagyu-japones-factores',
+                'por-que-carne-se-pega-sarten-cuando-darle-vuelta',
+                'como-cocinar-ternera-cortes-minutos-horas',
             ),
             'label' => 'Guías relacionadas',
             'targets' => array(
@@ -968,6 +991,8 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
                 'how-long-to-marinate-beef-hours-salt-acid',
                 'ground-beef-what-it-is-how-to-choose-and-cook',
                 'kuroge-washu-japanese-black-wagyu',
+                'raw-wagyu-tataki-carpaccio-safety',
+                'when-to-salt-meat-before-or-after-cooking',
             ),
             'label' => 'Related guides',
             'targets' => array(
