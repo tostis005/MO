@@ -51,7 +51,7 @@ jobs:
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
 
           echo '=== ACTIVE PAYMENT-RELATED PLUGINS ==='
-          "$php_bin" "$wp_bin" plugin list --status=active --fields=name,version,title --format=csv --path="$PROD_PATH" --allow-root 2>/dev/null | grep -Ei 'stripe|paypal|mollie|redsys|bizum|payment|payments|gateway|woocommerce' || true
+          "$php_bin" -d memory_limit=512M "$wp_bin" plugin list --status=active --fields=name,version,title --format=csv --path="$PROD_PATH" --allow-root 2>/dev/null | grep -Ei 'stripe|paypal|mollie|redsys|bizum|payment|payments|gateway|woocommerce' || true
 
           cat > /tmp/mdo-payment-audit.php <<'PHP'
           <?php
@@ -87,7 +87,7 @@ jobs:
               echo 'OPTION '.$opt.' '.wp_json_encode($out, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)."\n";
           }
           PHP
-          "$php_bin" "$wp_bin" eval-file /tmp/mdo-payment-audit.php --path="$PROD_PATH" --allow-root
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval-file /tmp/mdo-payment-audit.php --path="$PROD_PATH" --allow-root
           rm -f /tmp/mdo-payment-audit.php
 
           echo '=== APPLE PAY DOMAIN ASSOCIATION ==='
