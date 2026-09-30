@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO GSC Commerce SEO 2026-09-29
  * Description: Data-led SERP titles and descriptions for high-impression commerce URLs from Google Search Console.
- * Version: 2026.09.30.1
+ * Version: 2026.09.30.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -62,6 +62,16 @@ function mdo_gsc_commerce_map_20260929(): array {
         '/producto/tapilla-o-picana-de-ternera/' => array(
             'title' => 'Comprar Picaña de Ternera | Tapilla de Vacuno',
             'description' => 'Compra tapilla o picaña de ternera directamente a Tolecarnes. Consulta el formato, precio, disponibilidad y la información del corte antes de pedir.',
+        ),
+        '/producto/jamon-cebo-de-campo-iberico-50-montjam/' => array(
+            'title' => 'Comprar Jamón de Cebo de Campo Ibérico 50% | Montjam',
+            'description' => 'Jamón de cebo de campo ibérico 50% Montjam, brida verde y curación mínima de 24 meses. Consulta peso, formato, precio y disponibilidad.',
+        ),
+        '/en/product/beef-tenderloin/' => array(
+            'title' => 'Buy Beef Tenderloin | Price per Kg | Tolecarnes',
+        ),
+        '/en/product/extra-virgin-olive-oil-15-x-1l/' => array(
+            'title' => 'Buy Extra Virgin Olive Oil 15 × 1L | Free Shipping',
         ),
         '/en/product/mature-beef-entrecote/' => array(
             'title' => 'Buy Mature Beef Entrecôte | 20+ Day Aged Beef',
