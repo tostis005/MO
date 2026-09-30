@@ -68,6 +68,9 @@ jobs:
           JAMON50="https://www.elmercadodeorigen.com/producto/jamon-de-bellota-50-iberico-brida-roja/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           ENTRECOTE="https://www.elmercadodeorigen.com/en/product/mature-beef-entrecote/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           PADRON="https://www.elmercadodeorigen.com/en/product/padron-peppers-kg/?mdo_commerce_verify=${GITHUB_RUN_ID}"
+          JAMON_CEBO50="https://www.elmercadodeorigen.com/producto/jamon-cebo-de-campo-iberico-50-montjam/?mdo_commerce_verify=${GITHUB_RUN_ID}"
+          TENDERLOIN="https://www.elmercadodeorigen.com/en/product/beef-tenderloin/?mdo_commerce_verify=${GITHUB_RUN_ID}"
+          EVOO15="https://www.elmercadodeorigen.com/en/product/extra-virgin-olive-oil-15-x-1l/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ACEITES" -o /tmp/aceites.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$SOB" -o /tmp/sob.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$AGUJA" -o /tmp/aguja.html
@@ -76,6 +79,9 @@ jobs:
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$JAMON50" -o /tmp/jamon50.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ENTRECOTE" -o /tmp/entrecote.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$PADRON" -o /tmp/padron.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$JAMON_CEBO50" -o /tmp/jamon-cebo50.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$TENDERLOIN" -o /tmp/tenderloin.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EVOO15" -o /tmp/evoo15.html
           python - <<'PY'
           from bs4 import BeautifulSoup
 
@@ -88,6 +94,9 @@ jobs:
               ('JAMON50','/tmp/jamon50.html','Comprar Jamón de Bellota 50% Ibérico | Brida Roja','targeted','Jamón de bellota 50% ibérico de brida roja','/producto/jamon-de-bellota-50-iberico-brida-roja/'),
               ('ENTRECOTE','/tmp/entrecote.html','Buy Mature Beef Entrecôte | 20+ Day Aged Beef','reviewed-en','matured for more than 20 days','/en/product/mature-beef-entrecote/'),
               ('PADRON','/tmp/padron.html','Buy Fresh Padrón Peppers by the Kg','reviewed-en','padrón','/en/product/padron-peppers-kg/'),
+              ('JAMON_CEBO50','/tmp/jamon-cebo50.html','Comprar Jamón de Cebo de Campo Ibérico 50% | Montjam','targeted','Jamón de cebo de campo ibérico 50% Montjam','/producto/jamon-cebo-de-campo-iberico-50-montjam/'),
+              ('TENDERLOIN','/tmp/tenderloin.html','Buy Beef Tenderloin | Price per Kg | Tolecarnes','reviewed-en','tenderness','/en/product/beef-tenderloin/'),
+              ('EVOO15','/tmp/evoo15.html','Buy Extra Virgin Olive Oil 15 × 1L | Free Shipping','reviewed-en','15 x 1 L','/en/product/extra-virgin-olive-oil-15-x-1l/'),
           ]
 
           for label, path, title_prefix, desc_mode, desc_signal, canonical_path in checks:
