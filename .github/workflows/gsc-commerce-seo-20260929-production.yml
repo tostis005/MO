@@ -60,6 +60,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --quiet beautifulsoup4
+          ACEITES="https://www.elmercadodeorigen.com/categoria-producto/aceites/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           SOB="https://www.elmercadodeorigen.com/producto/sobrasada-de-bellota-100-iberica/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           AGUJA="https://www.elmercadodeorigen.com/producto/filetes-aguja-de-ternera/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           PITO="https://www.elmercadodeorigen.com/producto/pito-de-vacuno-fileteado/?mdo_commerce_verify=${GITHUB_RUN_ID}"
@@ -67,6 +68,7 @@ jobs:
           JAMON50="https://www.elmercadodeorigen.com/producto/jamon-de-bellota-50-iberico-brida-roja/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           ENTRECOTE="https://www.elmercadodeorigen.com/en/product/mature-beef-entrecote/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           PADRON="https://www.elmercadodeorigen.com/en/product/padron-peppers-kg/?mdo_commerce_verify=${GITHUB_RUN_ID}"
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ACEITES" -o /tmp/aceites.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$SOB" -o /tmp/sob.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$AGUJA" -o /tmp/aguja.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$PITO" -o /tmp/pito.html
@@ -78,6 +80,7 @@ jobs:
           from bs4 import BeautifulSoup
 
           checks = [
+              ('ACEITES','/tmp/aceites.html','Comprar Aceite de Oliva Virgen Extra | El Mercado de Origen','targeted','Compra aceite de oliva virgen extra directamente a productores seleccionados','/categoria-producto/aceites/'),
               ('SOB','/tmp/sob.html','Comprar Sobrasada de Bellota 100% Ibérica','targeted','Compra sobrasada de bellota 100% ibérica','/producto/sobrasada-de-bellota-100-iberica/'),
               ('AGUJA','/tmp/aguja.html','Filetes de Aguja de Ternera | 1 kg | Tolecarnes','targeted','Filetes de aguja de ternera jugosos','/producto/filetes-aguja-de-ternera/'),
               ('PITO','/tmp/pito.html','Comprar Pito de Vacuno Fileteado | Tolecarnes','targeted','Pito de vacuno fileteado','/producto/pito-de-vacuno-fileteado/'),
@@ -102,7 +105,14 @@ jobs:
               else:
                   assert desc and desc_signal.lower() in desc.lower(), f'{label}: reviewed English description lost key intent: {desc!r}'
               assert canon.endswith(canonical_path), f'{label}: unexpected canonical: {canon!r}'
-              assert h1 is not None, f'{label}: product H1 missing'
+              assert h1 is not None, f'{label}: H1 missing'
+
+          aceites = BeautifulSoup(open('/tmp/aceites.html', encoding='utf-8').read(), 'html.parser')
+          editorial = aceites.select_one('.emdo-seo-category-description')
+          assert editorial is not None, 'ACEITES: persisted category editorial description missing'
+          editorial_text = editorial.get_text(' ', strip=True)
+          print('ACEITES editorial_chars=', len(editorial_text))
+          assert len(editorial_text) >= 200, 'ACEITES: category editorial description unexpectedly thin'
           PY
 
       - name: Verify HTTP consolidation and legacy alias
