@@ -1,0 +1,97 @@
+name: Deploy category hub copy 20261001
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/page-categorias.php'
+      - '.github/workflows/deploy-category-hub-copy-20261001.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate template
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/page-categorias.php >/dev/null
+          grep -q "Pescados y mariscos en distintos formatos" elmercadodeorigen-child/page-categorias.php
+          grep -q "Foie gras, patés, mousses" elmercadodeorigen-child/page-categorias.php
+
+      - name: Deploy template to production
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break ;;
+              esac
+            done
+            [ -n "$prod" ] || exit 22
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+
+          REMOTE="/tmp/emdo-page-categorias-20261001-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP elmercadodeorigen-child/page-categorias.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sh -s -- '$PROD' '$PHP' '$WP' '$REMOTE' '$GITHUB_SHA'" <<'REMOTE_SCRIPT'
+          set -eu
+          prod="$1"; php="$2"; wp="$3"; incoming="$4"; sha="$5"
+          theme="$prod/wp-content/themes/elmercadodeorigen-child"
+          target="$theme/page-categorias.php"
+          [ -d "$theme" ] && [ -f "$incoming" ] || exit 23
+          "$php" -l "$incoming" >/dev/null
+          backup="$HOME/.elmercado-rollbacks/elmercadodeorigen.com/$(date -u +%Y%m%dT%H%M%SZ)-before-category-hub-copy-$sha"
+          mkdir -p "$backup"
+          [ -f "$target" ] && cp "$target" "$backup/page-categorias.php"
+          cp "$incoming" "$target"
+          "$php" -l "$target" >/dev/null
+          "$php" "$wp" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
+          if "$php" "$wp" plugin is-active wp-rocket --path="$prod" --allow-root >/dev/null 2>&1; then
+            "$php" "$wp" rocket clean --confirm --path="$prod" --allow-root >/dev/null 2>&1 || true
+          fi
+          rm -f "$incoming"
+          REMOTE_SCRIPT
+
+      - name: Verify Spanish and English category hub
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -k -L -sS --connect-timeout 8 --max-time 35 'https://www.elmercadodeorigen.com/categorias/?qa=20261001-copy' -o /tmp/categorias-es.html
+          curl -k -L -sS --connect-timeout 8 --max-time 35 'https://www.elmercadodeorigen.com/en/categories/?qa=20261001-copy' -o /tmp/categorias-en.html
+          grep -q 'Pescados y mariscos en distintos formatos' /tmp/categorias-es.html
+          grep -q 'Foie gras, patés, mousses' /tmp/categorias-es.html
+          grep -q 'Fish and seafood in different formats' /tmp/categorias-en.html
+          grep -q 'Foie gras, pâtés, mousses' /tmp/categorias-en.html
+          ! grep -Eqi 'Fatal error:|Parse error:|There has been a critical error' /tmp/categorias-es.html /tmp/categorias-en.html
