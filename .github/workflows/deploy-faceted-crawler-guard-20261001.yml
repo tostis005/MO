@@ -53,7 +53,7 @@ jobs:
           # are receiving combinatorial crawler traffic. Normal browsing with
           # session/consent cookies and simple filters is untouched.
           RewriteCond %{REQUEST_METHOD} ^(?:GET|HEAD)$
-          RewriteCond %{HTTP:Cookie} ^$
+          RewriteCond %{HTTP_COOKIE} ^$
           RewriteCond %{REQUEST_URI} ^/(?:en/store/(?:hidalgo-de-la-jara|montjam)|en/product-category/(?:hams-and-shoulders|cured-meats)|categoria-producto/(?:jamones-paletas|embutidos-y-curados))/? [NC]
           RewriteCond %{QUERY_STRING} (?:filter_|query_type_)[^&]*&[^#]*(?:filter_|query_type_)[^&]*&[^#]*(?:filter_|query_type_)[^&]*&[^#]*(?:filter_|query_type_) [NC]
           RewriteRule ^ - [R=429,L]
@@ -62,7 +62,7 @@ jobs:
           # current crawler pattern. Apply only to anonymous requests on the same
           # hot catalogue routes.
           RewriteCond %{REQUEST_METHOD} ^(?:GET|HEAD)$
-          RewriteCond %{HTTP:Cookie} ^$
+          RewriteCond %{HTTP_COOKIE} ^$
           RewriteCond %{REQUEST_URI} ^/(?:en/store/(?:hidalgo-de-la-jara|montjam)|en/product-category/(?:hams-and-shoulders|cured-meats)|categoria-producto/(?:jamones-paletas|embutidos-y-curados))/? [NC]
           RewriteCond %{QUERY_STRING} (?:filter_[^=&]+|emo_vendor_cat)=[^&]*(?:%2C|,) [NC]
           RewriteCond %{QUERY_STRING} (?:^|&)(?:filter_|query_type_|emo_vendor_cat) [NC]
