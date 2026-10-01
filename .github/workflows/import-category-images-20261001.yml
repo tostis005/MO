@@ -1,0 +1,43 @@
+name: Import category images 20261001
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/import-category-images-20261001.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download final images
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .github/assets/category-images-20261001
+          curl -fL --retry 3 --max-time 90 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-f0b4-820e-a28e-ffdbd60be8f6/raw?se=2026-10-01T10%3A39%3A15Z&sp=r&sv=2026-02-06&sr=b&scid=df5a5c7d-77ab-5fd5-9939-1f3701f6e0cd&skoid=bdd24bd8-9af5-4138-bfb1-19fba97a8611&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-01T09%3A54%3A51Z&ske=2026-10-02T09%3A54%3A51Z&sks=b&skv=2026-02-06&sig=h/CkBoUwqHRhLM%2Brm9mVMjF%2BKnZfMI%2Bi7HZKdiu9NUA%3D' -o .github/assets/category-images-20261001/category-pescados-mariscos.webp
+          curl -fL --retry 3 --max-time 90 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-f834-820e-9833-1603d155be34/raw?se=2026-10-01T10%3A39%3A14Z&sp=r&sv=2026-02-06&sr=b&scid=2301a7cd-d3db-578a-a8be-bca221b4d1bd&skoid=bdd24bd8-9af5-4138-bfb1-19fba97a8611&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-01T09%3A24%3A18Z&ske=2026-10-02T09%3A24%3A18Z&sks=b&skv=2026-02-06&sig=rYDUYNu3E3a3xaT5pHm/SbnpxyDKEH73Bk4s04PIerE%3D' -o .github/assets/category-images-20261001/category-foie-pates-untables.webp
+          test "$(stat -c%s .github/assets/category-images-20261001/category-pescados-mariscos.webp)" -eq 143118
+          test "$(stat -c%s .github/assets/category-images-20261001/category-foie-pates-untables.webp)" -eq 169964
+          sha256sum .github/assets/category-images-20261001/*.webp
+
+      - name: Commit binary assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/assets/category-images-20261001/*.webp
+          git rm -f .github/assets/category-images-20261001/pescados.part01.b64 2>/dev/null || true
+          git commit -m 'Add final category images [skip ci]'
+          git pull --rebase origin main
+          git push origin HEAD:main
