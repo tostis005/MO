@@ -126,7 +126,7 @@ final class MDO_TikTok_Shop_Feed {
 						<td><?php echo esc_html( $row['product_name'] ); ?></td>
 						<td><?php echo esc_html( $row['variation'] ?: '—' ); ?></td>
 						<td><code><?php echo esc_html( $row['seller_sku'] ?: '—' ); ?></code></td>
-						<td><?php echo esc_html( wc_price( (float) $row['price'] ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></td>
+						<td><?php echo esc_html( number_format_i18n( (float) $row['price'], 2 ) . ' €' ); ?></td>
 						<td><a href="<?php echo esc_url( get_edit_post_link( (int) $row['product_id'] ) ); ?>">Abrir producto</a></td>
 					</tr>
 				<?php endforeach; ?>
