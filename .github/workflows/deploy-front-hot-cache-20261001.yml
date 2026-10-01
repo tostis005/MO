@@ -128,7 +128,7 @@ jobs:
             file="${item%%|*}"
             url="${item#*|}"
             [ -f "$CACHE/$file" ] && touch -d '10 minutes ago' "$CACHE/$file"
-            curl -k -sS --max-time 45 --resolve www.elmercadodeorigen.com:443:127.0.0.1               -H "X-EMDO-Hot-Refresh: $TOKEN" -A 'MDO-Hot-Cache-Refresh/1.0'               -o /dev/null "$url" || true
+            curl -k -sS --max-time 45               -H "X-EMDO-Hot-Refresh: $TOKEN" -A 'MDO-Hot-Cache-Refresh/1.0'               -o /dev/null "$url" || true
             sleep 2
           done
           EOF_SCRIPT
@@ -150,7 +150,7 @@ jobs:
           echo "=== VERIFY ANONYMOUS FRONT CACHE ==="
           for url in             "https://www.elmercadodeorigen.com/en/store/montjam/"             "https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/"             "https://www.elmercadodeorigen.com/en/product-category/hams-and-shoulders/"             "https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/"; do
             echo "--- $url"
-            curl -k -sS --max-time 8 --resolve www.elmercadodeorigen.com:443:127.0.0.1               -A 'MDO-Front-Cache-Verify/1.0' -D /tmp/h -o /dev/null               -w 'http=%{http_code} total=%{time_total} start=%{time_starttransfer}\n' "$url" || true
+            curl -k -sS --max-time 8               -A 'MDO-Front-Cache-Verify/1.0' -D /tmp/h -o /dev/null               -w 'http=%{http_code} total=%{time_total} start=%{time_starttransfer}\n' "$url" || true
             grep -Ei 'HTTP/|x-powered-by|x-el-mercado' /tmp/h || true
           done
 
