@@ -217,7 +217,7 @@ final class MDO_Auto_Categorizer {
 				}
 			}
 		} elseif ( str_contains( $url, '/confit/' ) ) {
-			if ( str_contains( $title, 'cochinillo' ) || str_contains( $title, 'codorniz' ) ) {
+			if ( str_contains( $title, 'cochinillo' ) || str_contains( $title, 'codorniz' ) || str_contains( $title, 'codornic' ) ) {
 				$slugs = array( 'carnes' );
 			} elseif ( str_contains( $title, 'rillettes' ) ) {
 				$slugs = str_contains( $title, 'lechazo' ) && ! str_contains( $title, 'pato' )
