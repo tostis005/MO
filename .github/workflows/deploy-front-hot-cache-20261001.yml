@@ -1,0 +1,159 @@
+name: Deploy front hot cache 2026-10-01
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-front-hot-cache-20261001.yml'
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Install anonymous front cache
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          HT="$ROOT/.htaccess"
+          CACHE="$ROOT/wp-content/uploads/elmercado-hot-static-v1"
+          TOKEN_FILE="/root/.emdo-hot-cache-refresh-token"
+          SCRIPT="/usr/local/sbin/emdo-hot-cache-refresh"
+          STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+          BACKUP="/root/emdo-front-cache-$STAMP"
+          mkdir -p "$BACKUP"
+          cp -a "$HT" "$BACKUP/.htaccess"
+          crontab -l > "$BACKUP/root-crontab.txt" 2>/dev/null || true
+          [ ! -f "$SCRIPT" ] || cp -a "$SCRIPT" "$BACKUP/"
+          echo "backup=$BACKUP"
+
+          [ -s "$TOKEN_FILE" ] || (umask 077 && openssl rand -hex 24 > "$TOKEN_FILE")
+          TOKEN=$(cat "$TOKEN_FILE")
+
+          echo "=== INSTALL FRONT CACHE RULES ==="
+          python3 - "$HT" "$TOKEN" <<'PY'
+          import sys,re
+          path,token=sys.argv[1],sys.argv[2]
+          with open(path,'r',encoding='utf-8',errors='replace') as f:
+              s=f.read()
+          s=re.sub(r'\n?# BEGIN EMDO HOT STATIC FRONT CACHE\n.*?# END EMDO HOT STATIC FRONT CACHE\n?', '\n', s, flags=re.S)
+          block=f"""# BEGIN EMDO HOT STATIC FRONT CACHE
+          <IfModule mod_rewrite.c>
+          RewriteEngine On
+          RewriteCond %{{REQUEST_METHOD}} ^(?:GET|HEAD)$
+          RewriteCond %{{QUERY_STRING}} ^$
+          RewriteCond %{{HTTP:Cookie}} ^$
+          RewriteCond %{{HTTP:X-EMDO-Hot-Refresh}} !^{token}$
+          RewriteCond %{{DOCUMENT_ROOT}}/wp-content/uploads/elmercado-hot-static-v1/en-store-hidalgo-de-la-jara.html -f
+          RewriteRule ^en/store/hidalgo-de-la-jara/?$ wp-content/uploads/elmercado-hot-static-v1/en-store-hidalgo-de-la-jara.html [L]
+
+          RewriteCond %{{REQUEST_METHOD}} ^(?:GET|HEAD)$
+          RewriteCond %{{QUERY_STRING}} ^$
+          RewriteCond %{{HTTP:Cookie}} ^$
+          RewriteCond %{{HTTP:X-EMDO-Hot-Refresh}} !^{token}$
+          RewriteCond %{{DOCUMENT_ROOT}}/wp-content/uploads/elmercado-hot-static-v1/en-store-montjam.html -f
+          RewriteRule ^en/store/montjam/?$ wp-content/uploads/elmercado-hot-static-v1/en-store-montjam.html [L]
+
+          RewriteCond %{{REQUEST_METHOD}} ^(?:GET|HEAD)$
+          RewriteCond %{{QUERY_STRING}} ^$
+          RewriteCond %{{HTTP:Cookie}} ^$
+          RewriteCond %{{HTTP:X-EMDO-Hot-Refresh}} !^{token}$
+          RewriteCond %{{DOCUMENT_ROOT}}/wp-content/uploads/elmercado-hot-static-v1/en-cat-hams-and-shoulders.html -f
+          RewriteRule ^en/product-category/hams-and-shoulders/?$ wp-content/uploads/elmercado-hot-static-v1/en-cat-hams-and-shoulders.html [L]
+
+          RewriteCond %{{REQUEST_METHOD}} ^(?:GET|HEAD)$
+          RewriteCond %{{QUERY_STRING}} ^$
+          RewriteCond %{{HTTP:Cookie}} ^$
+          RewriteCond %{{HTTP:X-EMDO-Hot-Refresh}} !^{token}$
+          RewriteCond %{{DOCUMENT_ROOT}}/wp-content/uploads/elmercado-hot-static-v1/en-cat-hams-and-shoulders-p2.html -f
+          RewriteRule ^en/product-category/hams-and-shoulders/page/2/?$ wp-content/uploads/elmercado-hot-static-v1/en-cat-hams-and-shoulders-p2.html [L]
+
+          RewriteCond %{{REQUEST_METHOD}} ^(?:GET|HEAD)$
+          RewriteCond %{{QUERY_STRING}} ^$
+          RewriteCond %{{HTTP:Cookie}} ^$
+          RewriteCond %{{HTTP:X-EMDO-Hot-Refresh}} !^{token}$
+          RewriteCond %{{DOCUMENT_ROOT}}/wp-content/uploads/elmercado-hot-static-v1/en-cat-cured-meats.html -f
+          RewriteRule ^en/product-category/cured-meats/?$ wp-content/uploads/elmercado-hot-static-v1/en-cat-cured-meats.html [L]
+
+          RewriteCond %{{REQUEST_METHOD}} ^(?:GET|HEAD)$
+          RewriteCond %{{QUERY_STRING}} ^$
+          RewriteCond %{{HTTP:Cookie}} ^$
+          RewriteCond %{{HTTP:X-EMDO-Hot-Refresh}} !^{token}$
+          RewriteCond %{{DOCUMENT_ROOT}}/wp-content/uploads/elmercado-hot-static-v1/es-cat-jamones-paletas.html -f
+          RewriteRule ^categoria-producto/jamones-paletas/?$ wp-content/uploads/elmercado-hot-static-v1/es-cat-jamones-paletas.html [L]
+
+          RewriteCond %{{REQUEST_METHOD}} ^(?:GET|HEAD)$
+          RewriteCond %{{QUERY_STRING}} ^$
+          RewriteCond %{{HTTP:Cookie}} ^$
+          RewriteCond %{{HTTP:X-EMDO-Hot-Refresh}} !^{token}$
+          RewriteCond %{{DOCUMENT_ROOT}}/wp-content/uploads/elmercado-hot-static-v1/es-cat-embutidos-curados.html -f
+          RewriteRule ^categoria-producto/embutidos-y-curados/?$ wp-content/uploads/elmercado-hot-static-v1/es-cat-embutidos-curados.html [L]
+          </IfModule>
+          # END EMDO HOT STATIC FRONT CACHE
+
+          """
+          with open(path,'w',encoding='utf-8') as f:
+              f.write(block+s.lstrip('\n'))
+          PY
+
+          echo "=== INSTALL REFRESH SCRIPT ==="
+          cat > "$SCRIPT" <<'EOF_SCRIPT'
+          #!/bin/bash
+          set -u
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          CACHE="$ROOT/wp-content/uploads/elmercado-hot-static-v1"
+          TOKEN=$(cat /root/.emdo-hot-cache-refresh-token)
+          items=(
+            "en-store-hidalgo-de-la-jara.html|https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/"
+            "en-store-montjam.html|https://www.elmercadodeorigen.com/en/store/montjam/"
+            "en-cat-hams-and-shoulders.html|https://www.elmercadodeorigen.com/en/product-category/hams-and-shoulders/"
+            "en-cat-hams-and-shoulders-p2.html|https://www.elmercadodeorigen.com/en/product-category/hams-and-shoulders/page/2/"
+            "en-cat-cured-meats.html|https://www.elmercadodeorigen.com/en/product-category/cured-meats/"
+            "es-cat-jamones-paletas.html|https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/"
+            "es-cat-embutidos-curados.html|https://www.elmercadodeorigen.com/categoria-producto/embutidos-y-curados/"
+          )
+          for item in "${items[@]}"; do
+            file="${item%%|*}"
+            url="${item#*|}"
+            [ -f "$CACHE/$file" ] && touch -d '10 minutes ago' "$CACHE/$file"
+            curl -k -sS --max-time 45 --resolve www.elmercadodeorigen.com:443:127.0.0.1               -H "X-EMDO-Hot-Refresh: $TOKEN" -A 'MDO-Hot-Cache-Refresh/1.0'               -o /dev/null "$url" || true
+            sleep 2
+          done
+          EOF_SCRIPT
+          chmod 0700 "$SCRIPT"
+
+          TMP=$(mktemp)
+          (crontab -l 2>/dev/null || true) | sed '/# BEGIN EMDO HOT FRONT CACHE/,/# END EMDO HOT FRONT CACHE/d' > "$TMP"
+          cat >> "$TMP" <<'EOF_CRON'
+          # BEGIN EMDO HOT FRONT CACHE
+          */5 * * * * flock -n /tmp/emdo-hot-front-cache.lock /usr/local/sbin/emdo-hot-cache-refresh >/dev/null 2>&1
+          # END EMDO HOT FRONT CACHE
+          EOF_CRON
+          crontab "$TMP"
+          rm -f "$TMP"
+
+          echo "=== VALIDATE APACHE CONFIG ==="
+          apachectl -t
+
+          echo "=== VERIFY ANONYMOUS FRONT CACHE ==="
+          for url in             "https://www.elmercadodeorigen.com/en/store/montjam/"             "https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/"             "https://www.elmercadodeorigen.com/en/product-category/hams-and-shoulders/"             "https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/"; do
+            echo "--- $url"
+            curl -k -sS --max-time 8 --resolve www.elmercadodeorigen.com:443:127.0.0.1               -A 'MDO-Front-Cache-Verify/1.0' -D /tmp/h -o /dev/null               -w 'http=%{http_code} total=%{time_total} start=%{time_starttransfer}\n' "$url" || true
+            grep -Ei 'HTTP/|x-powered-by|x-el-mercado' /tmp/h || true
+          done
+
+          echo "=== LOAD ==="
+          uptime
+          REMOTE
