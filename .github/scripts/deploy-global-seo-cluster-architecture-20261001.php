@@ -328,6 +328,9 @@ if(!$wagyu_blog instanceof WP_Term || (int)$wagyu_blog->parent!==(int)$carnes_bl
 if(!$wagyu_shop instanceof WP_Term || (int)$wagyu_shop->parent!==(int)$carnes_shop->term_id) throw new Exception('Wagyu shop hierarchy failed.');
 $wagyu_category_count=count(mdo_global_final_direct_posts_20261001($wagyu_blog));
 if(65!==$wagyu_category_count) throw new Exception('Wagyu category expected 65 posts, got '.$wagyu_category_count);
+$wagyu_sample_url=$wagyu_ids ? (string)get_permalink((int)$wagyu_ids[0]) : '';
+$wagyu_blog_url=mdo_global_final_term_url_20261001($wagyu_blog);
+$wagyu_shop_url=mdo_global_final_term_url_20261001($wagyu_shop);
 
 $uncat_after=0;
 if($uncat instanceof WP_Term){
@@ -352,6 +355,9 @@ echo wp_json_encode(array(
         'shop_parent'=>(int)$wagyu_shop->parent,
         'published_products'=>mdo_global_final_published_products_20261001($wagyu_shop),
         'generic_carnes_blocks_removed'=>$wagyu_generic_blocks_removed,
+        'blog_url'=>$wagyu_blog_url,
+        'shop_url'=>$wagyu_shop_url,
+        'sample_post_url'=>$wagyu_sample_url,
     ),
     'foie'=>array(
         'blog_term_id'=>(int)$foie_blog->term_id,
