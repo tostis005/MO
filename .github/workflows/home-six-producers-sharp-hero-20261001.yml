@@ -1,0 +1,209 @@
+name: Home six producers sharp hero 20261001
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-six-producers-sharp-hero-20261001.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: home-six-producers-sharp-hero-production
+  cancel-in-progress: false
+
+jobs:
+  deploy-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Home hero PHP
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/mu-plugins/elmercado-home-fresh.php
+          php -l elmercadodeorigen-child/mu-plugins/elmercado-home-hero-vendors-fluid-20260904.php
+          php -l elmercadodeorigen-child/mu-plugins/elmercado-home-responsive-vendors-010253.php
+          : "${STAGING_HOST:?}"
+          : "${STAGING_USER:?}"
+          : "${STAGING_PASSWORD:?}"
+
+      - name: Deploy, audit and rollback on failure
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          npm install --no-save --silent puppeteer-core@24.16.0
+
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] && [ -n "$php_bin" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          MU="$PROD_PATH/wp-content/mu-plugins"
+          RUN="$GITHUB_RUN_ID"
+          FILES=(
+            "elmercado-home-fresh.php"
+            "elmercado-home-hero-vendors-fluid-20260904.php"
+            "elmercado-home-responsive-vendors-010253.php"
+          )
+
+          rollback() {
+            echo "ROLLBACK_HOME_HERO=1"
+            for name in "${FILES[@]}"; do
+              sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "if [ -f '$MU/${name}.bak-${RUN}' ]; then cp -a '$MU/${name}.bak-${RUN}' '$MU/${name}'; fi"
+            done
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+              wp_bin=\$(command -v wp || true)
+              php_bin=\$(command -v php || true)
+              [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+              [ -n \"\$wp_bin\" ] && \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+              rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
+              rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static'/home-deferred-*.css
+            " || true
+          }
+          trap 'rc=$?; if [ $rc -ne 0 ]; then rollback; fi; exit $rc' EXIT
+
+          for name in "${FILES[@]}"; do
+            src="elmercadodeorigen-child/mu-plugins/$name"
+            remote="/tmp/$name-${RUN}"
+            sshpass -e scp $SCP "$src" "$STAGING_USER@$STAGING_HOST:$remote"
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+              set -e
+              php_bin=\$(command -v php || true)
+              [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+              mkdir -p '$MU'
+              \"\$php_bin\" -l '$remote'
+              if [ -f '$MU/$name' ]; then cp -a '$MU/$name' '$MU/$name.bak-${RUN}'; fi
+              install -m0644 '$remote' '$MU/$name'
+              \"\$php_bin\" -l '$MU/$name'
+              rm -f '$remote'
+            "
+          done
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            wp_bin=\$(command -v wp || true)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static'/home-deferred-*.css
+          "
+
+          VERIFY="https://www.elmercadodeorigen.com/?home_six_verify=${RUN}"
+          HTML="/tmp/home-six-${RUN}.html"
+          curl -LfsS --compressed --max-time 60 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$VERIFY" -o "$HTML"
+          grep -Fq 'emo-vendor-count-6' "$HTML"
+          grep -Fq 'data-emo-vendor-count="6"' "$HTML"
+          for vendor in "1957" "Hidalgo de la Jara" "La Huerta de Ana Mary" "Montjam" "Selectos de Castilla" "Tolecarnes"; do
+            grep -Fq "$vendor" "$HTML"
+          done
+
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          : "${CHROME:?Chrome/Chromium not found}"
+          CHROME_BIN="$CHROME" RUN_ID="$RUN" node <<'NODE'
+          const puppeteer = require('puppeteer-core');
+          const chrome = process.env.CHROME_BIN;
+          const runId = process.env.RUN_ID;
+          const widths = [390, 768, 1366];
+
+          (async () => {
+            const browser = await puppeteer.launch({
+              executablePath: chrome,
+              headless: true,
+              args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+            });
+            try {
+              for (const width of widths) {
+                const page = await browser.newPage();
+                await page.setViewport({ width, height: 1200, deviceScaleFactor: 2 });
+                await page.goto('https://www.elmercadodeorigen.com/?home_six_browser=' + runId + '-' + width, {
+                  waitUntil: 'networkidle2',
+                  timeout: 60000
+                });
+                await page.waitForSelector('.emo-hero__visual--vendors.emo-vendor-count-6', { timeout: 30000 });
+
+                const data = await page.evaluate(() => {
+                  const visual = document.querySelector('.emo-hero__visual--vendors.emo-vendor-count-6');
+                  const cards = [...visual.querySelectorAll(':scope > .emo-hero-card')].map((card, index) => {
+                    const r = card.getBoundingClientRect();
+                    const img = card.querySelector('img');
+                    const ir = img ? img.getBoundingClientRect() : null;
+                    return {
+                      index: index + 1,
+                      name: card.querySelector('figcaption strong')?.textContent?.trim() || '',
+                      href: card.getAttribute('href') || '',
+                      width: Math.round(r.width),
+                      height: Math.round(r.height),
+                      imgWidth: ir ? Math.round(ir.width) : 0,
+                      imgHeight: ir ? Math.round(ir.height) : 0,
+                      currentSrc: img?.currentSrc || '',
+                      srcset: img?.getAttribute('srcset') || '',
+                      sizes: img?.getAttribute('sizes') || '',
+                      objectFit: img ? getComputedStyle(img).objectFit : ''
+                    };
+                  });
+                  return { count: cards.length, cards };
+                });
+
+                if (data.count !== 6) throw new Error('width ' + width + ': expected 6 cards, got ' + data.count);
+                const expected = ['1957','Hidalgo de la Jara','La Huerta de Ana Mary','Montjam','Selectos de Castilla','Tolecarnes'];
+                for (const name of expected) {
+                  if (!data.cards.some(c => c.name === name)) throw new Error('width ' + width + ': missing ' + name);
+                }
+                for (const c of data.cards) {
+                  if (c.width < 120 || c.height < 120) throw new Error('width ' + width + ': tiny card ' + c.name + ' ' + c.width + 'x' + c.height);
+                  if (c.imgWidth < c.width - 2 || c.imgHeight < c.height - 2) throw new Error('width ' + width + ': image does not fill ' + c.name);
+                  if (c.objectFit !== 'cover') throw new Error('width ' + width + ': object-fit ' + c.name + '=' + c.objectFit);
+                  if (!c.href) throw new Error('width ' + width + ': empty vendor link ' + c.name);
+                  if (!c.srcset) throw new Error('width ' + width + ': missing srcset ' + c.name);
+                }
+
+                const tole = data.cards.find(c => c.name === 'Tolecarnes');
+                const hidalgo = data.cards.find(c => c.name === 'Hidalgo de la Jara');
+                if (/400x400/.test(tole.currentSrc)) throw new Error('width ' + width + ': Tolecarnes still uses 400px crop');
+                if (/450x300/.test(hidalgo.currentSrc)) throw new Error('width ' + width + ': Hidalgo still uses 450px crop');
+
+                console.log('HOME_SIX_GEOMETRY', width, JSON.stringify(data));
+                await page.close();
+              }
+              console.log('HOME_SIX_PRODUCERS_AUDIT_SUCCESS');
+            } finally {
+              await browser.close();
+            }
+          })().catch(err => { console.error(err); process.exit(1); });
+          NODE
+
+          trap - EXIT
+          echo "HOME_SIX_PRODUCERS_DEPLOY_SUCCESS"
