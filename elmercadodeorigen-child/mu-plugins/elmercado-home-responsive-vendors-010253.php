@@ -2,8 +2,9 @@
 /**
  * Responsive-image pass for the Home producer collage.
  *
- * Adds small, card-specific crops for the two oversized producer images called
- * out by Lighthouse, while keeping the original media untouched everywhere else.
+ * Delivers a sufficiently large responsive source for every producer card.
+ * The browser still chooses an efficient srcset candidate, but never starts from
+ * the old 400–450px crops that could look soft on HiDPI screens.
  *
  * @package ElMercadoDeOrigen
  */
@@ -11,15 +12,6 @@
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
-
-add_action(
-	'after_setup_theme',
-	static function (): void {
-		add_image_size( 'elmercado_vendor_square_400', 400, 400, true );
-		add_image_size( 'elmercado_vendor_landscape_450', 450, 300, true );
-	},
-	PHP_INT_MAX
-);
 
 function elmercado_home_responsive_vendor_images_010253( string $html ): string {
 	if ( '' === $html || false === strpos( $html, 'emo-hero__visual--vendors' ) ) {
@@ -66,12 +58,7 @@ function elmercado_home_responsive_vendor_images_010253( string $html ): string 
 				$loading = strtolower( $loading_match[2] );
 			}
 
-			$size = 'medium_large';
-			if ( 11052 === $attachment_id ) {
-				$size = 'elmercado_vendor_square_400';
-			} elseif ( 12667 === $attachment_id ) {
-				$size = 'elmercado_vendor_landscape_450';
-			}
+			$size = 'large';
 
 			$responsive = wp_get_attachment_image(
 				$attachment_id,
@@ -82,7 +69,7 @@ function elmercado_home_responsive_vendor_images_010253( string $html ): string 
 					'alt'      => $alt,
 					'loading'  => $loading,
 					'decoding' => 'async',
-					'sizes'    => '(max-width: 767px) calc(100vw - 32px), 375px',
+					'sizes'    => '(max-width: 599px) calc((100vw - 34px) / 2), (max-width: 1180px) min(342px, calc((100vw - 56px) / 2)), 220px',
 				)
 			);
 
