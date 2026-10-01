@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/workflows/publish-wagyu-65-production.yml'
       - '.github/scripts/publish-wagyu-65-production.php'
       - '.github/data/editorial-wagyu-batch01-20260910/**'
       - '.github/data/editorial-wagyu-batch02-20260910/**'
