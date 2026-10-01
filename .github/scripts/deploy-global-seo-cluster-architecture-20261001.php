@@ -192,6 +192,7 @@ $pairs=array(
     'foie'=>array('blog'=>'foie-pates-untables','shop'=>'foie-pates-untables','label'=>'foie, patés y untables'),
 );
 $paired=array();
+$pair_samples=array();
 foreach($pairs as $key=>$cfg){
     $bt=get_term_by('slug',$cfg['blog'],'category');
     $st=get_term_by('slug',$cfg['shop'],'product_cat');
@@ -213,6 +214,18 @@ foreach($pairs as $key=>$cfg){
         $res=wp_update_term((int)$st->term_id,'product_cat',array('description'=>$sdesc));
         if(is_wp_error($res)) throw new Exception($res->get_error_message());
     }
+    $sample_products=get_posts(array(
+        'post_type'=>'product','post_status'=>'publish','posts_per_page'=>1,'fields'=>'ids',
+        'tax_query'=>array(array('taxonomy'=>'product_cat','field'=>'term_id','terms'=>array((int)$st->term_id),'include_children'=>false)),
+        'meta_query'=>array(array('key'=>'_stock_status','value'=>'instock','compare'=>'='))
+    ));
+    $sample_posts=mdo_global_final_direct_posts_20261001($bt);
+    $pair_samples[$key]=array(
+        'blog_url'=>$burl,
+        'shop_url'=>$surl,
+        'sample_product_url'=>$sample_products ? (string)get_permalink((int)$sample_products[0]) : '',
+        'sample_post_url'=>$sample_posts ? (string)get_permalink((int)$sample_posts[0]->ID) : '',
+    );
     $paired[]=$key;
 }
 
@@ -330,6 +343,7 @@ if(function_exists('wp_cache_flush')) wp_cache_flush();
 echo wp_json_encode(array(
     'batch'=>'20261001-global-seo-cluster-architecture',
     'paired_clusters'=>$paired,
+    'pair_samples'=>$pair_samples,
     'wagyu'=>array(
         'blog_term_id'=>(int)$wagyu_blog->term_id,
         'blog_parent'=>(int)$wagyu_blog->parent,
