@@ -1,0 +1,110 @@
+name: Home panoramic producer sharpness audit 20261001
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-panorama-sharp-audit-20261001.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Audit real selected image pixels
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --silent puppeteer-core@24.16.0
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          : "${CHROME:?Chrome/Chromium not found}"
+          CHROME_BIN="$CHROME" node <<'NODE'
+          const puppeteer = require('puppeteer-core');
+          const targets = ['Montjam', 'Selectos de Castilla'];
+          const viewports = [390, 768, 1366];
+
+          async function intrinsicPixels(page, src) {
+            return page.evaluate(async (url) => {
+              const res = await fetch(url, {cache:'no-store'});
+              if (!res.ok) throw new Error('image fetch ' + res.status + ' ' + url);
+              const blob = await res.blob();
+              const bitmap = await createImageBitmap(blob);
+              const out = {width: bitmap.width, height: bitmap.height};
+              bitmap.close();
+              return out;
+            }, src);
+          }
+
+          (async () => {
+            const browser = await puppeteer.launch({
+              executablePath: process.env.CHROME_BIN,
+              headless: true,
+              args: ['--no-sandbox','--disable-dev-shm-usage','--disable-gpu']
+            });
+
+            try {
+              for (const width of viewports) {
+                const page = await browser.newPage();
+                await page.setViewport({width, height: 1200, deviceScaleFactor: 2});
+                await page.goto('https://www.elmercadodeorigen.com/?panorama_sharp_audit=' + Date.now() + '-' + width, {
+                  waitUntil: 'networkidle2',
+                  timeout: 60000
+                });
+                await page.waitForSelector('.emo-hero__visual--vendors.emo-vendor-count-6', {timeout: 30000});
+
+                const rows = await page.evaluate((names) => names.map(name => {
+                  const card = [...document.querySelectorAll('.emo-hero__visual--vendors .emo-hero-card')]
+                    .find(el => el.querySelector('figcaption strong')?.textContent?.trim() === name);
+                  if (!card) return {name, missing:true};
+                  const img = card.querySelector('img');
+                  const r = card.getBoundingClientRect();
+                  return {
+                    name,
+                    missing:false,
+                    cardWidth:r.width,
+                    cardHeight:r.height,
+                    currentSrc:img?.currentSrc || '',
+                    sizes:img?.getAttribute('sizes') || '',
+                    classes:img?.className || '',
+                    objectFit:img ? getComputedStyle(img).objectFit : ''
+                  };
+                }), targets);
+
+                for (const row of rows) {
+                  if (row.missing) throw new Error(width + ': missing ' + row.name);
+                  if (!row.currentSrc) throw new Error(width + ': no currentSrc for ' + row.name);
+                  if (row.objectFit !== 'cover') throw new Error(width + ': object-fit is not cover for ' + row.name);
+                  if (/^auto,\s*/i.test(row.sizes)) throw new Error(width + ': sizes still starts with auto for ' + row.name);
+                  if (!row.classes.includes('emo-home-vendor-panorama')) throw new Error(width + ': panorama class missing for ' + row.name);
+
+                  const pixels = await intrinsicPixels(page, row.currentSrc);
+                  row.sourceWidth = pixels.width;
+                  row.sourceHeight = pixels.height;
+                  row.requiredHeightAt2x = Math.ceil(row.cardHeight * 2);
+                  row.verticalPixelRatio = +(pixels.height / row.requiredHeightAt2x).toFixed(3);
+
+                  if (pixels.height < row.requiredHeightAt2x) {
+                    throw new Error(width + ': ' + row.name + ' source is too short: ' +
+                      pixels.width + 'x' + pixels.height + ', needs at least ' + row.requiredHeightAt2x + 'px height at DPR2');
+                  }
+                }
+
+                console.log('PANORAMA_SHARPNESS', width, JSON.stringify(rows));
+                await page.close();
+              }
+
+              console.log('HOME_PANORAMA_SHARPNESS_SUCCESS');
+            } finally {
+              await browser.close();
+            }
+          })().catch(err => {
+            console.error(err);
+            process.exit(1);
+          });
+          NODE
