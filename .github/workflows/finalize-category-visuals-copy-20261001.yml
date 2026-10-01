@@ -32,16 +32,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Rebuild and validate category images
+      - name: Download and validate category images
         shell: bash
+        env:
+          FISH_IMAGE_URL: 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-dc80-820e-95ab-9d6c87e5d89c/raw?se=2026-10-01T10%3A35%3A12Z&sp=r&sv=2026-02-06&sr=b&scid=19c23ca9-377d-5047-949f-bdc1e3958253&skoid=bdd24bd8-9af5-4138-bfb1-19fba97a8611&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-01T09%3A34%3A03Z&ske=2026-10-02T09%3A34%3A03Z&sks=b&skv=2026-02-06&sig=gERIQ20/drlN1Xb3hvh7k43FA3HaC9i8FCgv7ndTBEA%3D'
+          FOIE_IMAGE_URL: 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-4aa8-820e-93ed-c4137b863c8c/raw?se=2026-10-01T10%3A35%3A12Z&sp=r&sv=2026-02-06&sr=b&scid=2e65a798-4d2b-5162-b506-ef5aaad8db86&skoid=bdd24bd8-9af5-4138-bfb1-19fba97a8611&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-01T07%3A43%3A10Z&ske=2026-10-02T07%3A43%3A10Z&sks=b&skv=2026-02-06&sig=Hr%2BnLMYiA1OUrKRDZhEectcg5klXGJf0qwkqST/jiHY%3D'
         run: |
           set -euo pipefail
           php -l .github/scripts/finalize-category-visuals-copy-20261001.php >/dev/null
           mkdir -p /tmp/category-visuals-20261001
-          base64 -d .github/assets/category-visuals-20261001/pescados-mariscos.webp.b64 > /tmp/category-visuals-20261001/pescados-mariscos.webp
-          base64 -d .github/assets/category-visuals-20261001/foie-pates-untables.webp.b64 > /tmp/category-visuals-20261001/foie-pates-untables.webp
-          test -s /tmp/category-visuals-20261001/pescados-mariscos.webp
-          test -s /tmp/category-visuals-20261001/foie-pates-untables.webp
+          curl -fL --retry 3 --connect-timeout 10 --max-time 60 "$FISH_IMAGE_URL" -o /tmp/category-visuals-20261001/pescados-mariscos.webp
+          curl -fL --retry 3 --connect-timeout 10 --max-time 60 "$FOIE_IMAGE_URL" -o /tmp/category-visuals-20261001/foie-pates-untables.webp
+          test "$(stat -c%s /tmp/category-visuals-20261001/pescados-mariscos.webp)" -eq 143118
+          test "$(stat -c%s /tmp/category-visuals-20261001/foie-pates-untables.webp)" -eq 169964
           file /tmp/category-visuals-20261001/*.webp | grep -q 'Web/P image'
 
       - name: Publish images and category metadata
