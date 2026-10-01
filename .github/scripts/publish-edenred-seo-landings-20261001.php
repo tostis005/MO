@@ -158,7 +158,11 @@ function emdo_edenred_aioseo( $post_id, $title, $description ) {
 function emdo_edenred_render( array $p, array $products, $category_url ) {
     $shop = home_url( '/tienda/' );
     if ( ! $category_url ) $category_url = $shop;
-    return strtr( $p['content'], array(
+
+    $semantic_note = '<p><strong>Edenred y Ticket Restaurant en El Mercado de Origen:</strong> el pago está habilitado para la tienda completa, no por producto individual. Puedes preparar un carrito con cualquiera de los productos disponibles y elegir Edenred / Ticket Restaurant al pagar. Si la conoces como tarjeta Edenred, tarjeta Ticket Restaurant o tarjeta restaurante Edenred, hablamos del mismo método de pago disponible en la tienda.</p>';
+    $content = preg_replace( '/<\/p>/', '</p>' . $semantic_note, $p['content'], 1 );
+
+    return strtr( $content, array(
         '{{PRODUCT_GRID}}' => emdo_edenred_shortcode( $products ),
         '{{SHOP_URL}}' => esc_url( $shop ),
         '{{CATEGORY_URL}}' => esc_url( $category_url ),
@@ -168,10 +172,10 @@ function emdo_edenred_render( array $p, array $products, $category_url ) {
 $pages = array(
 array(
 'key'=>'food','slug'=>'comprar-comida-online-edenred',
-'title'=>'Comprar comida online con Edenred (Ticket Restaurant)',
+'title'=>'Comprar comida online con Edenred Ticket Restaurant',
 'excerpt'=>'Compra comida online con Edenred o Ticket Restaurant en El Mercado de Origen. Descubre aceite, jamón, carne, verduras, conservas, legumbres y más.',
-'seo_title'=>'Comprar comida online con Edenred | El Mercado de Origen',
-'seo_description'=>'¿Tienes saldo Edenred? Compra comida online: aceite, jamón, carne, verduras, conservas, legumbres y más productos para casa.',
+'seo_title'=>'Comprar comida online con Edenred | Ticket Restaurant',
+'seo_description'=>'Compra comida online y paga con Edenred Ticket Restaurant: aceite, jamón, carne, verduras, conservas, legumbres y más productos para casa.',
 'focus'=>'comprar comida online con Edenred','mode'=>'general',
 'content'=><<<'HTML'
 <p>Si tienes una tarjeta <strong>Edenred Ticket Restaurant</strong> y quieres utilizarla para comprar comida online, en El Mercado de Origen puedes preparar una compra de alimentación con productos de distintos productores españoles. Entra en la tienda, elige lo que realmente necesitas para casa y utiliza Edenred como método de pago al finalizar el pedido.</p>
@@ -202,10 +206,10 @@ HTML
 ),
 array(
 'key'=>'oil','slug'=>'comprar-aceite-oliva-edenred',
-'title'=>'Comprar aceite de oliva virgen extra con Edenred',
+'title'=>'Comprar aceite de oliva virgen extra con Edenred Ticket Restaurant',
 'excerpt'=>'Compra aceite de oliva virgen extra online y paga con Edenred Ticket Restaurant. Encuentra AOVE de productor en distintos formatos para casa.',
-'seo_title'=>'Comprar aceite de oliva con Edenred | AOVE online',
-'seo_description'=>'Compra AOVE online y paga con Edenred. Descubre aceite de oliva virgen extra de productor en formatos para consumo diario.',
+'seo_title'=>'Comprar AOVE con Edenred | Ticket Restaurant',
+'seo_description'=>'Compra AOVE online y paga con Edenred Ticket Restaurant. Descubre aceite de oliva virgen extra de productor en formatos para casa.',
 'focus'=>'comprar aceite de oliva con Edenred','term_needles'=>array('aceites','aceite de oliva','aove'),
 'content'=><<<'HTML'
 <p>Si utilizas aceite de oliva a diario, dedicar parte de tu saldo de <strong>Edenred Ticket Restaurant</strong> a comprar AOVE online puede ser una forma práctica de convertirlo en un básico para casa. En El Mercado de Origen encontrarás aceite de oliva virgen extra de productor en diferentes formatos, incluidos formatos pensados para un consumo frecuente.</p>
@@ -234,10 +238,10 @@ HTML
 ),
 array(
 'key'=>'meat','slug'=>'comprar-carne-online-edenred',
-'title'=>'Comprar carne online con Edenred (Ticket Restaurant)',
+'title'=>'Comprar carne online con Edenred Ticket Restaurant',
 'excerpt'=>'Compra carne online y paga con Edenred Ticket Restaurant. Descubre cortes y formatos de productores presentes en El Mercado de Origen.',
 'seo_title'=>'Comprar carne online con Edenred | Ticket Restaurant',
-'seo_description'=>'Compra carne online y paga con Edenred. Elige productos de carnicería y completa tu cesta con alimentación de distintos productores.',
+'seo_description'=>'Compra carne online y paga con Edenred Ticket Restaurant. Elige productos de carnicería y completa tu cesta con alimentación de distintos productores.',
 'focus'=>'comprar carne online con Edenred','term_needles'=>array('carnes','carne'),
 'content'=><<<'HTML'
 <p>Si estás buscando <strong>comprar carne online con Edenred</strong>, en El Mercado de Origen puedes utilizar Ticket Restaurant para preparar una compra de alimentación para casa. La carne puede formar parte de una cesta para varios días y combinarse con aceite, verduras, legumbres, conservas, jamón y otros productos.</p>
@@ -265,10 +269,10 @@ HTML
 ),
 array(
 'key'=>'ham','slug'=>'comprar-jamon-iberico-edenred',
-'title'=>'Comprar jamón ibérico y paleta con Edenred',
+'title'=>'Comprar jamón ibérico y paleta con Edenred Ticket Restaurant',
 'excerpt'=>'Compra jamón ibérico, paleta y otros formatos y paga con Edenred Ticket Restaurant. Compara productores, categorías y presentaciones.',
 'seo_title'=>'Comprar jamón ibérico con Edenred | Ticket Restaurant',
-'seo_description'=>'Compra jamón ibérico y paleta online y paga con Edenred. Compara piezas, formatos y productores en El Mercado de Origen.',
+'seo_description'=>'Compra jamón ibérico y paleta online y paga con Edenred Ticket Restaurant. Compara piezas, formatos y productores.',
 'focus'=>'comprar jamón ibérico con Edenred','term_needles'=>array('jamones','jamon','paletas','paleta'),
 'content'=><<<'HTML'
 <p>Si tienes saldo de <strong>Edenred Ticket Restaurant</strong> y quieres dedicarlo a una compra gastronómica, el jamón y la paleta son una de las familias con más profundidad de El Mercado de Origen. Puedes encontrar piezas y otros formatos según productor, categoría y disponibilidad.</p>
@@ -297,10 +301,10 @@ HTML
 ),
 array(
 'key'=>'cured','slug'=>'comprar-embutidos-edenred',
-'title'=>'Comprar embutidos e ibéricos con Edenred',
+'title'=>'Comprar embutidos e ibéricos con Edenred Ticket Restaurant',
 'excerpt'=>'Compra embutidos, curados e ibéricos online y paga con Edenred Ticket Restaurant. Descubre productores y formatos para casa.',
-'seo_title'=>'Comprar embutidos con Edenred | Ibéricos online',
-'seo_description'=>'Compra embutidos e ibéricos online y paga con Edenred. Descubre chorizo, salchichón, lomo y otros curados según disponibilidad.',
+'seo_title'=>'Comprar embutidos con Edenred | Ticket Restaurant',
+'seo_description'=>'Compra embutidos e ibéricos online y paga con Edenred Ticket Restaurant. Descubre chorizo, salchichón, lomo y otros curados.',
 'focus'=>'comprar embutidos con Edenred','term_needles'=>array('embutidos','embutido','curados'),
 'content'=><<<'HTML'
 <p>Los embutidos y curados permiten preparar una compra flexible si quieres utilizar <strong>Edenred Ticket Restaurant</strong> en alimentación. En El Mercado de Origen puedes encontrar referencias de distintos productores y añadirlas al carrito junto con jamón, aceite, conservas u otros productos.</p>
@@ -328,10 +332,10 @@ HTML
 ),
 array(
 'key'=>'vegetables','slug'=>'comprar-verduras-hortalizas-edenred',
-'title'=>'Comprar verduras y hortalizas frescas con Edenred',
+'title'=>'Comprar verduras y hortalizas frescas con Edenred Ticket Restaurant',
 'excerpt'=>'Compra verduras y hortalizas online y paga con Edenred Ticket Restaurant. Descubre producto de huerta y completa tu compra de alimentación.',
-'seo_title'=>'Comprar verduras con Edenred | Hortalizas online',
-'seo_description'=>'Compra verduras y hortalizas online y paga con Edenred. Descubre producto de huerta y completa tu cesta en El Mercado de Origen.',
+'seo_title'=>'Comprar verduras con Edenred | Ticket Restaurant',
+'seo_description'=>'Compra verduras y hortalizas online y paga con Edenred Ticket Restaurant. Descubre producto de huerta y completa tu cesta.',
 'focus'=>'comprar verduras con Edenred','term_needles'=>array('verduras','hortalizas','huerta'),
 'content'=><<<'HTML'
 <p>Si quieres utilizar <strong>Edenred Ticket Restaurant</strong> en una compra cotidiana, las verduras y hortalizas son una de las opciones más ligadas a la cesta semanal. En El Mercado de Origen puedes comprar producto de huerta online y combinarlo con carne, aceite, legumbres, conservas y otras familias.</p>
@@ -360,10 +364,10 @@ HTML
 ),
 array(
 'key'=>'preserves','slug'=>'comprar-conservas-edenred',
-'title'=>'Comprar conservas online con Edenred',
+'title'=>'Comprar conservas online con Edenred Ticket Restaurant',
 'excerpt'=>'Compra conservas online y paga con Edenred Ticket Restaurant. Añade productos de despensa de productores españoles y completa tu cesta.',
-'seo_title'=>'Comprar conservas con Edenred | Tienda online',
-'seo_description'=>'Compra conservas online y paga con Edenred. Descubre productos de despensa y completa tu cesta de alimentación.',
+'seo_title'=>'Comprar conservas con Edenred | Ticket Restaurant',
+'seo_description'=>'Compra conservas online y paga con Edenred Ticket Restaurant. Descubre productos de despensa y completa tu cesta de alimentación.',
 'focus'=>'comprar conservas con Edenred','term_needles'=>array('conservas','conserva'),
 'content'=><<<'HTML'
 <p>Las conservas son una opción práctica para quien quiere utilizar saldo de <strong>Edenred Ticket Restaurant</strong> en productos que pueda guardar y consumir poco a poco. En El Mercado de Origen encontrarás referencias de productores y puedes combinarlas con aceite, legumbres, carne, verduras, jamón y otros alimentos.</p>
@@ -391,10 +395,10 @@ HTML
 ),
 array(
 'key'=>'legumes','slug'=>'comprar-legumbres-edenred',
-'title'=>'Comprar legumbres online con Edenred',
+'title'=>'Comprar legumbres online con Edenred Ticket Restaurant',
 'excerpt'=>'Compra legumbres online y paga con Edenred Ticket Restaurant. Descubre productos de despensa y completa tu cesta con alimentación para casa.',
 'seo_title'=>'Comprar legumbres con Edenred | Ticket Restaurant',
-'seo_description'=>'Compra legumbres online y paga con Edenred. Descubre productos para tu despensa y completa la compra con otros alimentos.',
+'seo_description'=>'Compra legumbres online y paga con Edenred Ticket Restaurant. Descubre productos para tu despensa y completa la compra con otros alimentos.',
 'focus'=>'comprar legumbres con Edenred','term_needles'=>array('legumbres','legumbre'),
 'content'=><<<'HTML'
 <p>Si buscas una forma práctica de utilizar <strong>Edenred Ticket Restaurant</strong> en alimentación para casa, las legumbres son un básico de despensa que encaja bien en una compra planificada. En El Mercado de Origen puedes comprar legumbres online y completar la cesta con aceite, verduras, carne, conservas y otras familias.</p>
@@ -423,10 +427,10 @@ HTML
 ),
 array(
 'key'=>'packs','slug'=>'comprar-packs-lotes-comida-edenred',
-'title'=>'Comprar packs y lotes de comida con Edenred',
+'title'=>'Comprar packs y lotes de comida con Edenred Ticket Restaurant',
 'excerpt'=>'Compra packs, cajas y lotes de alimentación y paga con Edenred Ticket Restaurant. Descubre formatos para casa y productos de distintos productores.',
-'seo_title'=>'Comprar packs y lotes de comida con Edenred',
-'seo_description'=>'Compra packs y lotes de alimentación online y paga con Edenred. Descubre cajas y formatos para casa en El Mercado de Origen.',
+'seo_title'=>'Packs de comida con Edenred | Ticket Restaurant',
+'seo_description'=>'Compra packs y lotes de alimentación online y paga con Edenred Ticket Restaurant. Descubre cajas y formatos para casa.',
 'focus'=>'comprar lotes de comida con Edenred','term_needles'=>array('packs','pack','lotes','lote'),'title_needles'=>array('pack','lote','caja'),
 'content'=><<<'HTML'
 <p>Cuando quieres utilizar una cantidad mayor de <strong>saldo Edenred</strong> en una compra, los packs, cajas y lotes de alimentación pueden resultar cómodos porque reúnen varias unidades o productos en un mismo formato. En El Mercado de Origen la disponibilidad depende de cada productor.</p>
@@ -454,10 +458,10 @@ HTML
 ),
 array(
 'key'=>'balance','slug'=>'como-gastar-saldo-edenred-comida-online',
-'title'=>'Cómo gastar el saldo de Edenred en comida online',
+'title'=>'Cómo gastar el saldo de Edenred Ticket Restaurant en comida online',
 'excerpt'=>'Ideas para aprovechar el saldo de Edenred Ticket Restaurant comprando comida online: aceite, carne, jamón, verduras, conservas, legumbres y más.',
-'seo_title'=>'Cómo gastar el saldo de Edenred en comida online',
-'seo_description'=>'¿Te queda saldo en Edenred? Descubre cómo utilizarlo en una compra de alimentación online con productos para casa y despensa.',
+'seo_title'=>'Cómo gastar saldo Edenred | Ticket Restaurant online',
+'seo_description'=>'¿Te queda saldo en Edenred o Ticket Restaurant? Descubre cómo utilizarlo en una compra de alimentación online para casa y despensa.',
 'focus'=>'cómo gastar saldo Edenred','mode'=>'general',
 'content'=><<<'HTML'
 <p>Si te queda saldo en <strong>Edenred Ticket Restaurant</strong> y estás buscando cómo aprovecharlo, una opción es utilizarlo en una compra de comida online para casa. En El Mercado de Origen puedes preparar un carrito con distintas familias de alimentación y pagar con Edenred al finalizar.</p>
