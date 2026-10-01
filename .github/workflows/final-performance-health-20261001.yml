@@ -1,0 +1,101 @@
+name: Final performance health 2026-10-01
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/final-performance-health-20261001.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Final live health check
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          LOG="/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log"
+          DEVLOG="/var/www/vhosts/system/dev.elmercadodeorigen.com/logs/access_ssl_log"
+          PHP="/opt/plesk/php/8.2/bin/php"
+          WP="/usr/local/bin/wp"
+
+          echo "=== SYSTEM ==="
+          date -Is
+          uptime
+          free -m
+          apachectl -t
+
+          echo "=== SECURITY ==="
+          fail2ban-client status emdo-xmlrpc-abuse || true
+          fail2ban-client status plesk-permanent-ban || true
+
+          SITE=$("$PHP" "$WP" option get siteurl --path="$ROOT" --allow-root)
+          CART_ID=$("$PHP" "$WP" option get woocommerce_cart_page_id --path="$ROOT" --allow-root)
+          CHECKOUT_ID=$("$PHP" "$WP" option get woocommerce_checkout_page_id --path="$ROOT" --allow-root)
+          CART_SLUG=$("$PHP" "$WP" post get "$CART_ID" --field=post_name --path="$ROOT" --allow-root)
+          CHECKOUT_SLUG=$("$PHP" "$WP" post get "$CHECKOUT_ID" --field=post_name --path="$ROOT" --allow-root)
+
+          echo "=== CORE PAGE HEALTH ==="
+          for spec in             "home|$SITE/"             "shop|$SITE/tienda/"             "cart|$SITE/$CART_SLUG/"             "checkout|$SITE/$CHECKOUT_SLUG/"             "product|$SITE/producto/sobres-de-lomo-de-bellota-100/"             "hot_montjam|$SITE/en/store/montjam/"             "hot_hidalgo|$SITE/en/store/hidalgo-de-la-jara/"             "hot_hams|$SITE/en/product-category/hams-and-shoulders/"; do
+            label="${spec%%|*}"; url="${spec#*|}"
+            echo "--- $label $url"
+            curl -k -sS -L --max-time 20 -A 'MDO-Final-Health/1.0' -o /dev/null               -w 'http=%{http_code} total=%{time_total} start=%{time_starttransfer} redirects=%{num_redirects}\n' "$url" || true
+          done
+
+          echo "=== FILTER GUARD HEALTH ==="
+          BASE="$SITE/categoria-producto/jamones-paletas/"
+          SIMPLE='?filter_raza-iberica=50-iberico'
+          COMPLEX='?filter_alimentacion=bellota&filter_calidad=bellota-iberico&filter_curacion=24-36-meses&query_type_alimentacion=or&query_type_calidad=or'
+          MULTI='?filter_rango-peso=55-65-kg%2C75-85-kg&query_type_rango-peso=or'
+          curl -k -sS --max-time 20 -A 'MDO-Final-Health/1.0' -o /dev/null -w 'simple http=%{http_code} total=%{time_total}\n' "$BASE$SIMPLE" || true
+          curl -k -sS --max-time 8 -A 'MDO-Final-Health/1.0' -o /dev/null -w 'complex_anon http=%{http_code} total=%{time_total}\n' "$BASE$COMPLEX" || true
+          curl -k -sS --max-time 8 -A 'MDO-Final-Health/1.0' -o /dev/null -w 'multi_anon http=%{http_code} total=%{time_total}\n' "$BASE$MULTI" || true
+          curl -k -sS --max-time 20 -A 'MDO-Final-Health/1.0' -H 'Cookie: CookieLawInfoConsent=yes' -o /dev/null             -w 'complex_cookie http=%{http_code} total=%{time_total}\n' "$BASE$COMPLEX" || true
+
+          echo "=== RECENT TRAFFIC / ERRORS 5M ==="
+          python3 - "$LOG" "$DEVLOG" <<'PY'
+          import sys,re,os
+          from datetime import datetime,timezone,timedelta
+          from collections import Counter
+          from urllib.parse import urlsplit
+          now=datetime.now(timezone.utc); cut=now-timedelta(minutes=5)
+          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+')
+          for p in sys.argv[1:]:
+            label='prod' if 'elmercadodeorigen.com/logs' in p and 'dev.' not in p else 'dev'
+            statuses=Counter(); paths=Counter(); ips=Counter(); total=0
+            if not os.path.isfile(p):
+              print(label,'missing'); continue
+            with open(p,'rt',encoding='utf-8',errors='replace') as f:
+              for line in f:
+                m=rx.match(line)
+                if not m: continue
+                ip,ds,method,target,status=m.groups()
+                try: dt=datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(timezone.utc)
+                except: continue
+                if dt < cut: continue
+                try: path=urlsplit(target).path or '/'
+                except: path=target.split('?',1)[0] or '/'
+                total+=1; statuses[status]+=1; paths[path]+=1; ips[ip]+=1
+            print(label,'total',total,'statuses',dict(statuses))
+            print(label,'xmlrpc',paths['/xmlrpc.php'],'top_paths',paths.most_common(12),'top_ips',ips.most_common(8))
+          PY
+
+          echo "=== PHP WORKERS ==="
+          ps -eo pid,user,stat,etimes,%cpu,%mem,rss,args --sort=-%cpu |             grep -E 'php-fpm: pool (elmercadodeorigen.com|dev.elmercadodeorigen.com)' | head -n 30 || true
+
+          echo "=== RECENT SEVERE ERRORS ==="
+          tail -n 1000 /var/www/vhosts/system/elmercadodeorigen.com/logs/error_log 2>/dev/null |             grep -Ei 'PHP Fatal|Allowed memory|upstream timed out|502|503|504|max children' | tail -n 40 || true
+          REMOTE
