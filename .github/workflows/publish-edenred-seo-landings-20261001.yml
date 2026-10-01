@@ -93,7 +93,7 @@ jobs:
           sshpass -e scp $SCP .github/scripts/publish-edenred-seo-landings-20261001.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
 
           set +e
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE' --path='$PROD' --allow-root; rc=\$?; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -f '$REMOTE'; exit \$rc" > /tmp/publish.json
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE' --path='$PROD' --skip-plugins=woocommerce-checkout-manager --allow-root; rc=\$?; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -f '$REMOTE'; exit \$rc" > /tmp/publish.json
           rc=$?
           set -e
 
