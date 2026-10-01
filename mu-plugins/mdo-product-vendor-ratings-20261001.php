@@ -283,7 +283,11 @@ add_action(
 add_action(
 	'wp_head',
 	static function (): void {
-		if ( is_admin() ) {
+		if (
+			is_admin()
+			|| mdo_vendor_rating_is_vendor_store_20261001()
+			|| ! ( ( function_exists( 'is_product' ) && is_product() ) || ( function_exists( 'is_shop' ) && is_shop() ) || ( function_exists( 'is_product_taxonomy' ) && is_product_taxonomy() ) )
+		) {
 			return;
 		}
 		?>
@@ -369,12 +373,6 @@ add_action(
 			}
 			.mdo-vendor-rating--empty .mdo-vendor-rating__empty {
 				font-style: italic;
-			}
-
-			/* Si WCFM activase su rating nativo, evitamos mostrar dos notas del productor. */
-			body:not(.wcfmmp-store-page) .wcfmmp_sold_by_container .wcfmmp-store-rating,
-			body:not(.wcfmmp-store-page) .wcfmmp_sold_by_container_advanced .wcfmmp-store-rating {
-				display: none !important;
 			}
 
 			@media (max-width: 600px) {
