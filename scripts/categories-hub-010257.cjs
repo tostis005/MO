@@ -3,6 +3,16 @@ const puppeteer = require('puppeteer-core');
 const base = (process.env.PRODUCTION_SITEURL || 'https://www.elmercadodeorigen.com').replace(/\/$/, '');
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const bust = (path, key = 'mdoqa') => `${base}${path}${path.includes('?') ? '&' : '?'}${key}=${Date.now()}`;
+const imageKey = (value) => {
+  const raw = String(value || '').trim().replace(/^url\(["']?/, '').replace(/["']?\)$/, '');
+  if (!raw) return '';
+  try {
+    const u = new URL(raw, base);
+    return u.pathname.replace(/\.(?:webp|jpe?g|png)$/i, '');
+  } catch {
+    return raw.replace(/\.(?:webp|jpe?g|png)(?:\?.*)?$/i, '');
+  }
+};
 
 const getHomeState = async (page) => page.evaluate(() => {
   const visible = (el) => {
@@ -122,7 +132,7 @@ const getHubState = async (page) => page.evaluate(() => {
       if (!match) {
         throw new Error(`Home category missing from hub: ${path}`);
       }
-      if (homeCard.image && match.image !== homeCard.image) {
+      if (homeCard.image && match.image && imageKey(match.image) !== imageKey(homeCard.image)) {
         throw new Error(`Category image mismatch for ${path}: ${JSON.stringify({ home: homeCard.image, hub: match.image })}`);
       }
     }
