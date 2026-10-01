@@ -108,47 +108,70 @@ $hot_cache_paths = array(
 if ( isset( $hot_cache_paths[ $path ] ) ) {
 	$hot_cache_dir  = __DIR__ . '/uploads/elmercado-hot-static-v1';
 	$hot_cache_file = $hot_cache_dir . '/' . $hot_cache_paths[ $path ] . '.html';
+	$hot_lock_file  = $hot_cache_file . '.lock';
 	$hot_ttl        = 300;
+	$hot_stale_ttl  = 3600;
+	$hot_age        = null;
+	$hot_valid      = false;
 
 	if (
 		is_readable( $hot_cache_file ) &&
-		( time() - (int) @filemtime( $hot_cache_file ) ) < $hot_ttl &&
 		(int) @filesize( $hot_cache_file ) > 50000
 	) {
+		$hot_mtime = @filemtime( $hot_cache_file );
+		if ( false !== $hot_mtime ) {
+			$hot_age   = max( 0, time() - (int) $hot_mtime );
+			$hot_valid = true;
+		}
+	}
+
+	$serve_hot_cache = static function ( $status ) use ( $hot_cache_file ) {
 		if ( ! headers_sent() ) {
 			header( 'Content-Type: text/html; charset=UTF-8' );
 			header( 'Cache-Control: private, no-store, max-age=0' );
 			header( 'Vary: Cookie', false );
-			header( 'X-El-Mercado-Hot-Early-Cache: HIT' );
+			header( 'X-El-Mercado-Hot-Early-Cache: ' . $status );
 			setcookie( 'total_page', '1', time() + 7200, '/' );
 		}
 		readfile( $hot_cache_file );
 		exit;
+	};
+
+	if ( $hot_valid && null !== $hot_age && $hot_age < $hot_ttl ) {
+		$serve_hot_cache( 'HIT' );
+	}
+
+	if ( ! is_dir( $hot_cache_dir ) ) {
+		@mkdir( $hot_cache_dir, 0755, true );
+	}
+
+	$hot_lock_handle = is_dir( $hot_cache_dir ) ? @fopen( $hot_lock_file, 'c' ) : false;
+	$hot_have_lock   = $hot_lock_handle && @flock( $hot_lock_handle, LOCK_EX | LOCK_NB );
+
+	// If another request is already regenerating, serve the last complete copy.
+	// This prevents a thundering herd from exhausting PHP-FPM/MySQL every 5 minutes.
+	if ( ! $hot_have_lock && $hot_valid && null !== $hot_age && $hot_age < $hot_stale_ttl ) {
+		if ( is_resource( $hot_lock_handle ) ) {
+			@fclose( $hot_lock_handle );
+		}
+		$serve_hot_cache( 'STALE' );
 	}
 
 	if ( ! headers_sent() ) {
-		header( 'X-El-Mercado-Hot-Early-Cache: MISS' );
+		header( 'X-El-Mercado-Hot-Early-Cache: ' . ( $hot_have_lock ? 'REVALIDATE' : 'MISS' ) );
 	}
 
 	ob_start(
-		static function ( $html ) use ( $hot_cache_dir, $hot_cache_file ) {
-			if ( ! is_string( $html ) || strlen( $html ) < 50000 ) {
-				return $html;
-			}
+		static function ( $html ) use ( $hot_cache_dir, $hot_cache_file, $hot_lock_handle, $hot_have_lock ) {
+			$can_store =
+				$hot_have_lock &&
+				is_string( $html ) &&
+				strlen( $html ) >= 50000 &&
+				false !== stripos( $html, '</html>' ) &&
+				false === stripos( $html, 'WordPress database error' ) &&
+				false === stripos( $html, 'There has been a critical error' );
 
-			if (
-				false === stripos( $html, '</html>' ) ||
-				false !== stripos( $html, 'WordPress database error' ) ||
-				false !== stripos( $html, 'There has been a critical error' )
-			) {
-				return $html;
-			}
-
-			if ( ! is_dir( $hot_cache_dir ) ) {
-				@mkdir( $hot_cache_dir, 0755, true );
-			}
-
-			if ( is_dir( $hot_cache_dir ) && is_writable( $hot_cache_dir ) ) {
+			if ( $can_store && is_dir( $hot_cache_dir ) && is_writable( $hot_cache_dir ) ) {
 				$tmp = $hot_cache_file . '.tmp-' . getmypid();
 				if ( false !== @file_put_contents( $tmp, $html, LOCK_EX ) ) {
 					@rename( $tmp, $hot_cache_file );
@@ -157,11 +180,16 @@ if ( isset( $hot_cache_paths[ $path ] ) ) {
 				}
 			}
 
+			if ( $hot_have_lock && is_resource( $hot_lock_handle ) ) {
+				@flock( $hot_lock_handle, LOCK_UN );
+				@fclose( $hot_lock_handle );
+			}
+
 			return $html;
 		}
 	);
 
-	// Let WordPress render the first request; the output buffer above stores it.
+	// The lock holder refreshes the cache. Concurrent requests receive stale HTML.
 	return;
 }
 
