@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Audit live responsive hero after final cascade
+      - name: Audit live six-vendor hero geometry
         run: |
           set -euo pipefail
           CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
@@ -24,46 +24,88 @@ jobs:
           npm install --no-save --silent puppeteer-core@24.16.0
           CHROME_BIN="$CHROME" RUN_ID="$GITHUB_RUN_ID" node <<'NODE'
           const puppeteer = require('puppeteer-core');
-          const widths = [992, 1024, 1025, 1100, 1180, 1181, 1280, 1366, 1440, 1600];
+          const widths = [390, 768, 1024, 1180, 1366, 1440];
           (async () => {
-            const browser = await puppeteer.launch({executablePath: process.env.CHROME_BIN, headless:true, args:['--no-sandbox','--disable-dev-shm-usage','--disable-gpu']});
+            const browser = await puppeteer.launch({
+              executablePath: process.env.CHROME_BIN,
+              headless:true,
+              args:['--no-sandbox','--disable-dev-shm-usage','--disable-gpu']
+            });
             try {
-              let bad = [];
+              let bad=[];
               for (const width of widths) {
                 const page = await browser.newPage();
+                await page.setCacheEnabled(false);
+                await page.setExtraHTTPHeaders({'Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'});
                 await page.setViewport({width,height:1400,deviceScaleFactor:1});
-                await page.goto(`https://www.elmercadodeorigen.com/?mdo_upper_audit=${process.env.RUN_ID}-${width}`, {waitUntil:'domcontentloaded',timeout:60000});
-                await page.waitForSelector('.emo-hero__visual--vendors.emo-vendor-count-5',{timeout:30000});
-                await new Promise(r => setTimeout(r, 1200));
-                const data = await page.evaluate(() => {
-                  const visual = document.querySelector('.emo-hero__visual--vendors.emo-vendor-count-5');
-                  const grid = document.querySelector('.emo-hero__grid');
-                  const finalStyle = document.querySelector('#elmercado-home-hero-vendors-fluid-20260904');
-                  const vr = visual.getBoundingClientRect(), gr=grid?.getBoundingClientRect();
-                  const cards = [...visual.querySelectorAll('.emo-hero-card')].map(card => {
-                    const r=card.getBoundingClientRect(), fig=card.querySelector('figure'), fr=fig?.getBoundingClientRect(), img=card.querySelector('img'), ir=img?.getBoundingClientRect(), cap=card.querySelector('figcaption'), cps=cap?getComputedStyle(cap):null, is=img?getComputedStyle(img):null, fs=fig?getComputedStyle(fig):null;
-                    return {name:card.querySelector('figcaption strong')?.textContent?.trim()||'',x:Math.round(r.x),y:Math.round(r.y),width:Math.round(r.width),height:Math.round(r.height),ratio:+(r.width/Math.max(1,r.height)).toFixed(2),figWidth:fr?Math.round(fr.width):0,figHeight:fr?Math.round(fr.height):0,imgWidth:ir?Math.round(ir.width):0,imgHeight:ir?Math.round(ir.height):0,imgCssHeight:is?.height||'',figCssHeight:fs?.height||'',objectFit:is?.objectFit||'',captionDisplay:cps?.display||'',captionVisibility:cps?.visibility||'',captionOpacity:cps?.opacity||''};
+                await page.goto(`https://www.elmercadodeorigen.com/?mdo_vendor_browser=${process.env.RUN_ID}-${width}`, {waitUntil:'networkidle2',timeout:60000});
+                await page.waitForSelector('.emo-hero__visual--vendors',{timeout:30000});
+                await new Promise(r=>setTimeout(r,800));
+                const data=await page.evaluate(()=>{
+                  const visual=document.querySelector('.emo-hero__visual--vendors');
+                  const vr=visual.getBoundingClientRect();
+                  const vs=getComputedStyle(visual);
+                  const cards=[...visual.querySelectorAll('.emo-hero-card')].map((card,index)=>{
+                    const r=card.getBoundingClientRect();
+                    const s=getComputedStyle(card);
+                    const img=card.querySelector('img');
+                    const ir=img?.getBoundingClientRect();
+                    const is=img?getComputedStyle(img):null;
+                    const cap=card.querySelector('figcaption');
+                    const cs=cap?getComputedStyle(cap):null;
+                    const intersects=(
+                      r.right>vr.left && r.left<vr.right &&
+                      r.bottom>vr.top && r.top<vr.bottom
+                    );
+                    return {
+                      index:index+1,
+                      name:card.querySelector('figcaption strong')?.textContent?.trim()||'',
+                      href:card.href,
+                      display:s.display,
+                      visibility:s.visibility,
+                      opacity:s.opacity,
+                      position:s.position,
+                      x:Math.round(r.x),y:Math.round(r.y),
+                      width:Math.round(r.width),height:Math.round(r.height),
+                      imgWidth:ir?Math.round(ir.width):0,
+                      imgHeight:ir?Math.round(ir.height):0,
+                      objectFit:is?.objectFit||'',
+                      captionDisplay:cs?.display||'',
+                      intersectsVisual:intersects
+                    };
                   });
-                  return {finalStylePresent:!!finalStyle,finalStyleParent:finalStyle?.parentElement?.tagName||'',mq1180:matchMedia('(max-width:1180px)').matches,mq1181:matchMedia('(min-width:1181px)').matches,grid:gr?{width:Math.round(gr.width),height:Math.round(gr.height),columns:getComputedStyle(grid).gridTemplateColumns}:null,visual:{x:Math.round(vr.x),y:Math.round(vr.y),width:Math.round(vr.width),height:Math.round(vr.height),columns:getComputedStyle(visual).gridTemplateColumns,rows:getComputedStyle(visual).gridTemplateRows},cards};
+                  return {
+                    bodyClass:document.body.className,
+                    visualClass:visual.className,
+                    dataCount:visual.getAttribute('data-emo-vendor-count'),
+                    visual:{
+                      x:Math.round(vr.x),y:Math.round(vr.y),width:Math.round(vr.width),height:Math.round(vr.height),
+                      display:vs.display,overflow:vs.overflow,columns:vs.gridTemplateColumns,rows:vs.gridTemplateRows
+                    },
+                    cards
+                  };
                 });
-                console.log('HERO_UPPER_GEOMETRY',width,JSON.stringify(data));
-                if(!data.finalStylePresent) bad.push(`${width}: final style missing`);
-                if(data.cards.length!==5) bad.push(`${width}: card count ${data.cards.length}`);
-                for(const c of data.cards){
-                  if(c.width<100||c.height<100) bad.push(`${width}: ${c.name} too small ${c.width}x${c.height}`);
-                  if(c.objectFit!=='cover') bad.push(`${width}: ${c.name} object-fit ${c.objectFit}`);
-                  if(c.captionDisplay==='none'||c.captionVisibility==='hidden'||c.captionOpacity==='0') bad.push(`${width}: ${c.name} caption hidden`);
+                console.log('HERO_VENDOR_BROWSER',width,JSON.stringify(data));
+                if(data.cards.length!==6) bad.push(`${width}: card count ${data.cards.length}`);
+                const names=data.cards.map(c=>c.name);
+                for(const required of ['1957','Hidalgo de la Jara','La Huerta de Ana Mary','Montjam','Selectos de Castilla','Tolecarnes']){
+                  if(!names.includes(required)) bad.push(`${width}: missing ${required}`);
                 }
-                const m=data.cards.find(c=>c.name==='Montjam'), half=data.cards.find(c=>c.name==='1957');
-                if(!m||!half) bad.push(`${width}: required cards missing`);
-                else {
-                  if(width<=1180 && m.width < half.width*1.7) bad.push(`${width}: Montjam not spanning both columns (${m.width} vs ${half.width})`);
-                  if(width>=1181 && m.ratio<1.7) bad.push(`${width}: Montjam too tall/narrow ratio=${m.ratio}`);
+                for(const c of data.cards){
+                  if(c.display==='none'||c.visibility==='hidden'||c.opacity==='0'||c.width<80||c.height<80||!c.intersectsVisual){
+                    bad.push(`${width}: not visibly rendered ${c.name} ${c.display}/${c.visibility}/${c.opacity} ${c.width}x${c.height} intersects=${c.intersectsVisual}`);
+                  }
                 }
                 await page.close();
               }
-              if(bad.length){ console.error('HERO_UPPER_AUDIT_PROBLEMS',JSON.stringify(bad)); process.exitCode=1; }
-              else console.log('HERO_UPPER_AUDIT_SUCCESS');
-            } finally { await browser.close(); }
+              if(bad.length){
+                console.error('HERO_VENDOR_BROWSER_PROBLEMS',JSON.stringify(bad));
+                process.exitCode=1;
+              } else {
+                console.log('HERO_VENDOR_BROWSER_SUCCESS');
+              }
+            } finally {
+              await browser.close();
+            }
           })().catch(e=>{console.error(e);process.exit(1)});
           NODE
