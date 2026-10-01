@@ -1,0 +1,191 @@
+name: Production cart recommendations layout 0.10.314
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-cart-cross-sells-layout-010314.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate source
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/functions.php >/dev/null
+          php -l elmercadodeorigen-child/inc/cart-cross-sells-layout-010314.php >/dev/null
+          grep -q "ELMERCADO_THEME_VERSION', '0.10.314'" elmercadodeorigen-child/functions.php
+          grep -q "cart-cross-sells-layout-010314.php" elmercadodeorigen-child/functions.php
+          grep -q 'grid-template-areas' elmercadodeorigen-child/inc/cart-cross-sells-layout-010314.php
+          grep -q '"cart totals"' elmercadodeorigen-child/inc/cart-cross-sells-layout-010314.php
+          grep -q '"cross totals"' elmercadodeorigen-child/inc/cart-cross-sells-layout-010314.php
+
+      - name: Install deployment tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Backup and deploy cart layout files to production
+        id: deploy
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s" "$p"
+                  break
+                  ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+
+          THEME="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
+          FUNCTIONS="$THEME/functions.php"
+          MODULE="$THEME/inc/cart-cross-sells-layout-010314.php"
+          BACKUP="/tmp/elmercado-cart-layout-${GITHUB_RUN_ID}"
+          mkdir -p /tmp/empty-dir
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; test -d '$THEME'; test -f '$FUNCTIONS'; mkdir -p '$BACKUP'; cp -p '$FUNCTIONS' '$BACKUP/functions.php'; if [ -f '$MODULE' ]; then cp -p '$MODULE' '$BACKUP/cart-cross-sells-layout-010314.php'; printf 1 > '$BACKUP/module-existed'; else printf 0 > '$BACKUP/module-existed'; fi"
+
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          echo "THEME=$THEME" >> "$GITHUB_ENV"
+          echo "FUNCTIONS=$FUNCTIONS" >> "$GITHUB_ENV"
+          echo "MODULE=$MODULE" >> "$GITHUB_ENV"
+          echo "BACKUP=$BACKUP" >> "$GITHUB_ENV"
+
+          sshpass -e scp $SCP elmercadodeorigen-child/functions.php "$STAGING_USER@$STAGING_HOST:$FUNCTIONS"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/cart-cross-sells-layout-010314.php "$STAGING_USER@$STAGING_HOST:$MODULE"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            php_bin=$(command -v php || true)
+            [ -n \"$php_bin\" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=$(command -v wp || true)
+            \"$php_bin\" -l '$FUNCTIONS' >/dev/null
+            \"$php_bin\" -l '$MODULE' >/dev/null
+            grep -q \"ELMERCADO_THEME_VERSION', '0.10.314'\" '$FUNCTIONS'
+            grep -q 'cart-cross-sells-layout-010314.php' '$FUNCTIONS'
+            active=$(\"$php_bin\" \"$wp_bin\" option get stylesheet --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root)
+            [ \"$active\" = 'elmercadodeorigen-child' ]
+            \"$php_bin\" -d memory_limit=512M \"$wp_bin\" cache flush --path='$PROD_PATH' --skip-plugins --allow-root >/dev/null 2>&1 || true
+          "
+
+          PROBE="elmercado-opcache-cart-layout-${GITHUB_RUN_ID}.php"
+          echo "PROBE=$PROBE" >> "$GITHUB_ENV"
+          sshpass -e scp $SCP .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$PROBE"
+          for i in $(seq 1 6); do
+            body="$(curl -fsSL --connect-timeout 10 --max-time 30 -H 'Cache-Control: no-store' -H 'Pragma: no-cache' "$BASE_URL/$PROBE?run=$GITHUB_RUN_ID-$i" 2>/dev/null || true)"
+            if printf '%s\n' "$body" | grep -q '^OPCACHE_RESET_OK$'; then
+              break
+            fi
+            [ "$i" -lt 6 ] || { echo "OPcache reset failed"; exit 1; }
+            sleep 2
+          done
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$PROBE'"
+
+      - name: Verify production cart layout release
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+
+          runtime="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            php_bin=$(command -v php || true)
+            [ -n \"$php_bin\" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=$(command -v wp || true)
+            \"$php_bin\" -d memory_limit=512M \"$wp_bin\" eval 'echo defined(\"ELMERCADO_THEME_VERSION\") ? ELMERCADO_THEME_VERSION : \"missing\";' --path='$PROD_PATH' --skip-plugins --allow-root
+          ")"
+          [ "$runtime" = "0.10.314" ]
+
+          for attempt in $(seq 1 8); do
+            code="$(curl -ksSL -o /tmp/cart-layout.html -w '%{http_code}' --max-time 40 -H 'Cache-Control: no-store' -H 'Pragma: no-cache' "$BASE_URL/carrito/?cart-layout-010314=$GITHUB_RUN_ID-$attempt" || true)"
+            if [ "$code" = "200" ] && grep -q 'elmercado-cart-cross-sells-layout-010314' /tmp/cart-layout.html; then
+              break
+            fi
+            [ "$attempt" -lt 8 ] || { echo "Cart layout CSS not visible in production HTML (HTTP $code)"; exit 1; }
+            sleep 3
+          done
+
+          grep -q 'grid-template-areas' /tmp/cart-layout.html
+          grep -q '"cart totals"' /tmp/cart-layout.html
+          grep -q '"cross totals"' /tmp/cart-layout.html
+          grep -q 'grid-area: totals' /tmp/cart-layout.html
+          grep -q 'grid-area: cross' /tmp/cart-layout.html
+          echo PRODUCTION_CART_LAYOUT_010314_OK
+
+      - name: Cleanup backup
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$BACKUP'"
+          echo PRODUCTION_CART_LAYOUT_010314_CLEAN
+
+      - name: Roll back production on failure
+        if: failure() && steps.deploy.outcome == 'success'
+        shell: bash
+        run: |
+          set +e
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          if [ -n "${BACKUP:-}" ] && [ -n "${FUNCTIONS:-}" ] && [ -n "${MODULE:-}" ]; then
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+              if [ -f '$BACKUP/functions.php' ]; then cp -p '$BACKUP/functions.php' '$FUNCTIONS'; fi
+              if [ -f '$BACKUP/module-existed' ] && [ \"$(cat '$BACKUP/module-existed')\" = '1' ]; then
+                cp -p '$BACKUP/cart-cross-sells-layout-010314.php' '$MODULE'
+              else
+                rm -f '$MODULE'
+              fi
+              wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+              rm -rf '$BACKUP'
+            "
+          fi
+          echo PRODUCTION_CART_LAYOUT_010314_ROLLED_BACK
