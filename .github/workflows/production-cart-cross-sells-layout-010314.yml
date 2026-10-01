@@ -101,19 +101,23 @@ jobs:
           sshpass -e scp $SCP elmercadodeorigen-child/functions.php "$STAGING_USER@$STAGING_HOST:$FUNCTIONS"
           sshpass -e scp $SCP elmercadodeorigen-child/inc/cart-cross-sells-layout-010314.php "$STAGING_USER@$STAGING_HOST:$MODULE"
 
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
-            set -e
-            php_bin=$(command -v php || true)
-            [ -n \"$php_bin\" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-            wp_bin=$(command -v wp || true)
-            \"$php_bin\" -l '$FUNCTIONS' >/dev/null
-            \"$php_bin\" -l '$MODULE' >/dev/null
-            grep -q \"ELMERCADO_THEME_VERSION', '0.10.314'\" '$FUNCTIONS'
-            grep -q 'cart-cross-sells-layout-010314.php' '$FUNCTIONS'
-            active=$(\"$php_bin\" \"$wp_bin\" option get stylesheet --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root)
-            [ \"$active\" = 'elmercadodeorigen-child' ]
-            \"$php_bin\" -d memory_limit=512M \"$wp_bin\" cache flush --path='$PROD_PATH' --skip-plugins --allow-root >/dev/null 2>&1 || true
-          "
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sh -s -- '$PROD_PATH' '$FUNCTIONS' '$MODULE'" <<'REMOTE'
+          set -eu
+          prod="$1"
+          functions="$2"
+          module="$3"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          [ -x "$php_bin" ] && [ -n "$wp_bin" ]
+          "$php_bin" -l "$functions" >/dev/null
+          "$php_bin" -l "$module" >/dev/null
+          grep -q "ELMERCADO_THEME_VERSION', '0.10.314'" "$functions"
+          grep -q 'cart-cross-sells-layout-010314.php' "$functions"
+          active="$("$php_bin" "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root)"
+          [ "$active" = 'elmercadodeorigen-child' ]
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+          REMOTE
 
           PROBE="elmercado-opcache-cart-layout-${GITHUB_RUN_ID}.php"
           echo "PROBE=$PROBE" >> "$GITHUB_ENV"
@@ -135,12 +139,15 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
 
-          runtime="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
-            php_bin=$(command -v php || true)
-            [ -n \"$php_bin\" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-            wp_bin=$(command -v wp || true)
-            \"$php_bin\" -d memory_limit=512M \"$wp_bin\" eval 'echo defined(\"ELMERCADO_THEME_VERSION\") ? ELMERCADO_THEME_VERSION : \"missing\";' --path='$PROD_PATH' --skip-plugins --allow-root
-          ")"
+          runtime="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sh -s -- '$PROD_PATH'" <<'REMOTE'
+          set -eu
+          prod="$1"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo defined("ELMERCADO_THEME_VERSION") ? ELMERCADO_THEME_VERSION : "missing";' --path="$prod" --skip-plugins --allow-root
+          REMOTE
+          )"
           [ "$runtime" = "0.10.314" ]
 
           for attempt in $(seq 1 8); do
@@ -170,22 +177,27 @@ jobs:
           echo PRODUCTION_CART_LAYOUT_010314_CLEAN
 
       - name: Roll back production on failure
-        if: failure() && steps.deploy.outcome == 'success'
+        if: failure()
         shell: bash
         run: |
           set +e
           PORT="${STAGING_PORT:-22}"
           SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
           if [ -n "${BACKUP:-}" ] && [ -n "${FUNCTIONS:-}" ] && [ -n "${MODULE:-}" ]; then
-            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
-              if [ -f '$BACKUP/functions.php' ]; then cp -p '$BACKUP/functions.php' '$FUNCTIONS'; fi
-              if [ -f '$BACKUP/module-existed' ] && [ \"$(cat '$BACKUP/module-existed')\" = '1' ]; then
-                cp -p '$BACKUP/cart-cross-sells-layout-010314.php' '$MODULE'
-              else
-                rm -f '$MODULE'
-              fi
-              wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
-              rm -rf '$BACKUP'
-            "
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sh -s -- '$PROD_PATH' '$FUNCTIONS' '$MODULE' '$BACKUP'" <<'REMOTE'
+            set +e
+            prod="$1"
+            functions="$2"
+            module="$3"
+            backup="$4"
+            if [ -f "$backup/functions.php" ]; then cp -p "$backup/functions.php" "$functions"; fi
+            if [ -f "$backup/module-existed" ] && [ "$(cat "$backup/module-existed")" = '1' ]; then
+              cp -p "$backup/cart-cross-sells-layout-010314.php" "$module"
+            else
+              rm -f "$module"
+            fi
+            wp cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
+            rm -rf "$backup"
+            REMOTE
           fi
           echo PRODUCTION_CART_LAYOUT_010314_ROLLED_BACK
