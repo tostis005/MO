@@ -50,7 +50,7 @@ jobs:
           node --check scripts/categories-hub-010257.cjs
           grep -q 'data-emo-categories-link="010257"' elmercadodeorigen-child/inc/home-category-output-final-010226.php
           grep -q 'Ver todas las categorías' elmercadodeorigen-child/inc/home-category-output-final-010226.php
-          grep -q 'data-emo-categories-hub="010257"' elmercadodeorigen-child/page-categorias.php
+          grep -q 'data-emo-categories-hub="010259"' elmercadodeorigen-child/page-categorias.php
           grep -q 'elmercado_catalog_visible_category_counts_010217' elmercadodeorigen-child/inc/categories-hub-010257.php
           grep -q 'mdo_mentta_enable_frontend_for_admin_010257' mu-plugins/mdo-mentta-admin-frontend-010257.php
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
@@ -226,7 +226,7 @@ jobs:
           [ "$home_code" = 200 ] || { echo "Home HTTP $home_code" >&2; exit 1; }
           [ "$hub_code" = 200 ] || { echo "Categories HTTP $hub_code" >&2; exit 1; }
           grep -q 'data-emo-categories-link="010257"' /tmp/mdo-home-010257
-          grep -q 'data-emo-categories-hub="010257"' /tmp/mdo-categories-010257
+          grep -q 'data-emo-categories-hub="010259"' /tmp/mdo-categories-010257
           ! grep -Eqi 'Fatal error:|Parse error:|Uncaught Error:|There has been a critical error on this website' /tmp/mdo-home-010257 /tmp/mdo-categories-010257
 
           trap - EXIT
