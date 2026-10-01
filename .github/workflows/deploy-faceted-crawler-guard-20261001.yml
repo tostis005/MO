@@ -68,12 +68,6 @@ jobs:
           RewriteCond %{QUERY_STRING} (?:^|&)(?:filter_|query_type_|emo_vendor_cat) [NC]
           RewriteRule ^ - [R=429,L]
 
-          # Anonymous GET add-to-cart URLs on catalogue/content pages are a bot
-          # amplification vector. Real WooCommerce sessions carry cookies.
-          RewriteCond %{REQUEST_METHOD} ^(?:GET|HEAD)$
-          RewriteCond %{HTTP:Cookie} ^$
-          RewriteCond %{QUERY_STRING} (?:^|&)add-to-cart=[0-9]+(?:&|$) [NC]
-          RewriteRule ^ - [R=429,L]
           </IfModule>
           # END EMDO FACET CRAWLER GUARD
 
