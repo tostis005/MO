@@ -1,0 +1,409 @@
+name: Deploy duck commerce SEO 20261001
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-duck-commerce-seo-20261001.php'
+      - '.github/scripts/deploy-duck-commerce-seo-20261001.php'
+      - '.github/workflows/deploy-duck-commerce-seo-20261001.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-duck-commerce-seo-20261001
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PHP
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-duck-commerce-seo-20261001.php >/dev/null
+          php -l .github/scripts/deploy-duck-commerce-seo-20261001.php >/dev/null
+          : "${STAGING_HOST:?}"
+          : "${STAGING_USER:?}"
+          : "${STAGING_PASSWORD:?}"
+
+      - name: Deploy and build duck commerce cluster
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq curl >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true)
+            php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;;
+              esac
+            done
+            [ -n "$prod" ] || exit 22
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+          : "${PROD:?production path not found}"
+
+          echo "PROD_PATH=$PROD" >> "$GITHUB_ENV"
+          PLUGIN='mdo-duck-commerce-seo-20261001.php'
+          TARGET="$PROD/wp-content/mu-plugins/$PLUGIN"
+          BACKUP="/tmp/${PLUGIN%.php}-backup-${GITHUB_RUN_ID}.php"
+          REMOTE_PLUGIN="/tmp/${PLUGIN%.php}-${GITHUB_RUN_ID}.php"
+          REMOTE_SCRIPT="/tmp/deploy-duck-commerce-${GITHUB_RUN_ID}.php"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$PROD/wp-content/mu-plugins'; if [ -f '$TARGET' ]; then cp -p '$TARGET' '$BACKUP'; fi"
+          sshpass -e scp $SCP "mu-plugins/$PLUGIN" "$STAGING_USER@$STAGING_HOST:$REMOTE_PLUGIN"
+          sshpass -e scp $SCP .github/scripts/deploy-duck-commerce-seo-20261001.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; '$PHP' -l '$REMOTE_PLUGIN' >/dev/null; install -m 0644 '$REMOTE_PLUGIN' '$TARGET'; rm -f '$REMOTE_PLUGIN'"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST"             "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE_SCRIPT' --path='$PROD' --allow-root"             > /tmp/duck-commerce-deploy.json
+
+          jq '{batch,supplier_id,selectos_published,duck_products,group_counts,uncategorized_removed,uncategorized_after,root_missing,noindex_meta,image_alt_updated,seo,category_urls,sample_urls}' /tmp/duck-commerce-deploy.json
+
+          jq -e '.batch == "20261001-duck-commerce-seo-cluster"' /tmp/duck-commerce-deploy.json >/dev/null
+          jq -e '.selectos_published >= 70' /tmp/duck-commerce-deploy.json >/dev/null
+          jq -e '.duck_products >= 40' /tmp/duck-commerce-deploy.json >/dev/null
+          jq -e '.uncategorized_after == 0' /tmp/duck-commerce-deploy.json >/dev/null
+          jq -e '.root_missing == 0' /tmp/duck-commerce-deploy.json >/dev/null
+          jq -e '.noindex_meta == 0' /tmp/duck-commerce-deploy.json >/dev/null
+          jq -e '.seo.title_max <= 60' /tmp/duck-commerce-deploy.json >/dev/null
+          jq -e '.seo.description_min >= 100 and .seo.description_max <= 170' /tmp/duck-commerce-deploy.json >/dev/null
+          jq -e '.group_counts.magret >= 1' /tmp/duck-commerce-deploy.json >/dev/null
+          jq -e '.group_counts.foie >= 5' /tmp/duck-commerce-deploy.json >/dev/null
+          jq -e '.group_counts.confit >= 5' /tmp/duck-commerce-deploy.json >/dev/null
+          jq -e '.group_counts.jamon >= 2' /tmp/duck-commerce-deploy.json >/dev/null
+          jq -e '.group_counts.prepared >= 5' /tmp/duck-commerce-deploy.json >/dev/null
+          jq -e '.group_counts.fresh >= 3' /tmp/duck-commerce-deploy.json >/dev/null
+
+          cp /tmp/duck-commerce-deploy.json /tmp/duck-commerce-deploy-preserved.json
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST"             "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' eval 'if ( function_exists("wp_cache_flush") ) { wp_cache_flush(); } if ( has_action("litespeed_purge_all") ) { do_action("litespeed_purge_all"); }' --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$REMOTE_SCRIPT'"
+
+      - name: Verify commercial cluster in production
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://www.elmercadodeorigen.com'
+          ROOT="$(jq -r '.category_urls.root' /tmp/duck-commerce-deploy-preserved.json)"
+          MAGRET="$(jq -r '.category_urls.magret' /tmp/duck-commerce-deploy-preserved.json)"
+          FOIE="$(jq -r '.category_urls.foie' /tmp/duck-commerce-deploy-preserved.json)"
+          CONFIT="$(jq -r '.category_urls.confit' /tmp/duck-commerce-deploy-preserved.json)"
+          JAMON="$(jq -r '.category_urls.jamon' /tmp/duck-commerce-deploy-preserved.json)"
+          PREPARED="$(jq -r '.category_urls.prepared' /tmp/duck-commerce-deploy-preserved.json)"
+          FRESH="$(jq -r '.category_urls.fresh' /tmp/duck-commerce-deploy-preserved.json)"
+
+          get_page() {
+            local url="$1"
+            local out="$2"
+            curl -fsSL --retry 4 --retry-delay 2 --max-time 60               -A 'Mozilla/5.0 EMDO duck commerce SEO verifier'               -H 'Cache-Control: no-cache'               "${url}?emdo_duck_commerce_verify=${GITHUB_RUN_ID}" -o "$out"
+          }
+
+          get_page "$ROOT" /tmp/root.html
+          get_page "$MAGRET" /tmp/magret-cat.html
+          get_page "$FOIE" /tmp/foie-cat.html
+          get_page "$CONFIT" /tmp/confit-cat.html
+          get_page "$JAMON" /tmp/jamon-cat.html
+          get_page "$PREPARED" /tmp/prepared-cat.html
+          get_page "$FRESH" /tmp/fresh-cat.html
+
+          MAGRET_PRODUCT="$(jq -r '.sample_urls.magret // empty' /tmp/duck-commerce-deploy-preserved.json)"
+          FOIE_PRODUCT="$(jq -r '.sample_urls.foie // empty' /tmp/duck-commerce-deploy-preserved.json)"
+          CONFIT_PRODUCT="$(jq -r '.sample_urls.confit // empty' /tmp/duck-commerce-deploy-preserved.json)"
+          JAMON_PRODUCT="$(jq -r '.sample_urls.jamon // empty' /tmp/duck-commerce-deploy-preserved.json)"
+          PREPARED_PRODUCT="$(jq -r '.sample_urls.prepared // empty' /tmp/duck-commerce-deploy-preserved.json)"
+          FRESH_PRODUCT="$(jq -r '.sample_urls.fresh // empty' /tmp/duck-commerce-deploy-preserved.json)"
+
+          test -n "$MAGRET_PRODUCT"
+          test -n "$FOIE_PRODUCT"
+          test -n "$CONFIT_PRODUCT"
+          test -n "$JAMON_PRODUCT"
+          test -n "$PREPARED_PRODUCT"
+          test -n "$FRESH_PRODUCT"
+
+          get_page "$MAGRET_PRODUCT" /tmp/magret-product.html
+          get_page "$FOIE_PRODUCT" /tmp/foie-product.html
+          get_page "$CONFIT_PRODUCT" /tmp/confit-product.html
+          get_page "$JAMON_PRODUCT" /tmp/jamon-product.html
+          get_page "$PREPARED_PRODUCT" /tmp/prepared-product.html
+          get_page "$FRESH_PRODUCT" /tmp/fresh-product.html
+
+          get_page "$BASE/carne-de-pato-guia-completa-cortes-sabor-preparacion/" /tmp/blog-pillar.html
+          get_page "$BASE/foie-gras-de-pato-que-es-tipos-diferencias-como-elegirlo/" /tmp/blog-foie.html
+          get_page "$BASE/category/carnes/pato/" /tmp/blog-hub.html
+
+          curl -fsSL --retry 4 --max-time 60 -A 'Mozilla/5.0 EMDO duck commerce SEO verifier' "$BASE/sitemap.xml" -o /tmp/sitemap.xml
+          PRODUCT_SITEMAP="$(python3 - <<'PY'
+          import re
+          s=open('/tmp/sitemap.xml',encoding='utf-8',errors='ignore').read()
+          urls=re.findall(r'<loc>([^<]+)</loc>',s,re.I)
+          print(next((u for u in urls if 'products' in u.lower() and 'sitemap' in u.lower()),''))
+          PY
+          )"
+          CATEGORY_SITEMAP="$(python3 - <<'PY'
+          import re
+          s=open('/tmp/sitemap.xml',encoding='utf-8',errors='ignore').read()
+          urls=re.findall(r'<loc>([^<]+)</loc>',s,re.I)
+          print(next((u for u in urls if 'categories' in u.lower() and 'blog-categories' not in u.lower() and 'sitemap' in u.lower()),''))
+          PY
+          )"
+          test -n "$PRODUCT_SITEMAP"
+          test -n "$CATEGORY_SITEMAP"
+          curl -fsSL --retry 4 --max-time 60 -A 'Mozilla/5.0 EMDO duck commerce SEO verifier' "$PRODUCT_SITEMAP" -o /tmp/products-sitemap.xml
+          curl -fsSL --retry 4 --max-time 60 -A 'Mozilla/5.0 EMDO duck commerce SEO verifier' "$CATEGORY_SITEMAP" -o /tmp/categories-sitemap.xml
+
+          python3 - <<'PY'
+          import json,re
+          from html.parser import HTMLParser
+          from pathlib import Path
+          from urllib.parse import urlsplit
+
+          deploy=json.loads(Path('/tmp/duck-commerce-deploy-preserved.json').read_text())
+
+          class P(HTMLParser):
+              def __init__(self):
+                  super().__init__(convert_charrefs=True)
+                  self.in_title=False
+                  self.title=[]
+                  self.text=[]
+                  self.h1=[]
+                  self.in_h1=False
+                  self.description=None
+                  self.canonical=None
+                  self.noindex=False
+                  self.hrefs=[]
+                  self.attrs=[]
+                  self.jsonld=[]
+                  self.in_jsonld=False
+                  self.jsonld_buf=[]
+              def handle_starttag(self,tag,attrs):
+                  a=dict(attrs)
+                  self.attrs.append((tag,a))
+                  if tag.lower()=='title': self.in_title=True
+                  if tag.lower()=='h1': self.in_h1=True
+                  if tag.lower()=='meta':
+                      name=(a.get('name') or '').lower()
+                      if name=='description': self.description=a.get('content')
+                      if name=='robots' and 'noindex' in (a.get('content') or '').lower(): self.noindex=True
+                  if tag.lower()=='link' and 'canonical' in (a.get('rel') or '').lower(): self.canonical=a.get('href')
+                  if tag.lower()=='a' and a.get('href'): self.hrefs.append(a['href'])
+                  if tag.lower()=='script' and (a.get('type') or '').lower()=='application/ld+json':
+                      self.in_jsonld=True
+                      self.jsonld_buf=[]
+              def handle_endtag(self,tag):
+                  if tag.lower()=='title': self.in_title=False
+                  if tag.lower()=='h1': self.in_h1=False
+                  if tag.lower()=='script' and self.in_jsonld:
+                      self.in_jsonld=False
+                      raw=''.join(self.jsonld_buf).strip()
+                      if raw:
+                          try: self.jsonld.append(json.loads(raw))
+                          except Exception: pass
+              def handle_data(self,data):
+                  if self.in_title: self.title.append(data)
+                  if self.in_h1: self.h1.append(data)
+                  if self.in_jsonld: self.jsonld_buf.append(data)
+                  if data.strip(): self.text.append(data.strip())
+
+          def parse(path):
+              raw=Path(path).read_text(encoding='utf-8',errors='ignore')
+              p=P(); p.feed(raw)
+              return {
+                  'title':re.sub(r'\s+',' ',' '.join(p.title)).strip(),
+                  'description':p.description or '',
+                  'canonical':p.canonical or '',
+                  'noindex':p.noindex,
+                  'h1':re.sub(r'\s+',' ',' '.join(p.h1)).strip(),
+                  'text':' '.join(p.text),
+                  'hrefs':p.hrefs,
+                  'attrs':p.attrs,
+                  'jsonld':p.jsonld,
+              }
+
+          def has_attr(page,key,value=None):
+              for _,attrs in page['attrs']:
+                  if key in attrs and (value is None or attrs.get(key)==value):
+                      return True
+              return False
+
+          def norm(url):
+              s=urlsplit(url)
+              return f'{s.scheme}://{s.netloc}{s.path}'
+
+          cats={
+              'root':parse('/tmp/root.html'),
+              'magret':parse('/tmp/magret-cat.html'),
+              'foie':parse('/tmp/foie-cat.html'),
+              'confit':parse('/tmp/confit-cat.html'),
+              'jamon':parse('/tmp/jamon-cat.html'),
+              'prepared':parse('/tmp/prepared-cat.html'),
+              'fresh':parse('/tmp/fresh-cat.html'),
+          }
+          expected_prefix={
+              'root':'Comprar productos de pato online | Foie, magret y confit',
+              'magret':'Comprar magret de pato online | Selectos de Castilla',
+              'foie':'Comprar foie gras de pato online | Selectos de Castilla',
+              'confit':'Comprar confit de pato online | Selectos de Castilla',
+              'jamon':'Comprar jamón de pato online | Selectos de Castilla',
+              'prepared':'Comprar paté, mousse y rillettes de pato online',
+              'fresh':'Comprar pato fresco online | Cortes de pato',
+          }
+
+          for key,page in cats.items():
+              assert page['title'].startswith(expected_prefix[key]), (key,page['title'])
+              assert norm(page['canonical'])==norm(deploy['category_urls'][key]), (key,page['canonical'])
+              assert not page['noindex'], key
+              assert page['h1'], (key,'missing h1')
+              assert '/producto/' in ' '.join(page['hrefs']), (key,'no product links')
+
+          root=cats['root']
+          assert 'Selectos de Castilla' in root['description'], root['description']
+          for key in ['magret','foie','confit','jamon','prepared','fresh']:
+              assert norm(deploy['category_urls'][key]) in [norm(h) for h in root['hrefs']], (key,'root child link missing')
+          assert any('carne-de-pato-guia-completa-cortes-sabor-preparacion' in h for h in root['hrefs'])
+          assert 'Compra productos de pato' in root['text']
+
+          products={
+              'magret':parse('/tmp/magret-product.html'),
+              'foie':parse('/tmp/foie-product.html'),
+              'confit':parse('/tmp/confit-product.html'),
+              'jamon':parse('/tmp/jamon-product.html'),
+              'prepared':parse('/tmp/prepared-product.html'),
+              'fresh':parse('/tmp/fresh-product.html'),
+          }
+
+          rows={r['group']:r for r in deploy['rows'] if r['url'] in set(deploy['sample_urls'].values())}
+          for key,page in products.items():
+              url=deploy['sample_urls'][key]
+              row=next((r for r in deploy['rows'] if r['url']==url),None)
+              assert row is not None, (key,'row missing')
+              assert page['title'].startswith(row['seo_title']), (key,page['title'],row['seo_title'])
+              assert page['description'].startswith(row['seo_description']), (key,page['description'],row['seo_description'])
+              assert norm(page['canonical'])==norm(url), (key,page['canonical'],url)
+              assert not page['noindex'], key
+              assert has_attr(page,'data-emdo-duck-product-guides'), (key,'product guide block missing')
+              assert norm(deploy['category_urls']['root']) in [norm(h) for h in page['hrefs']], (key,'root commerce link missing')
+              assert any('pato' in h or 'foie' in h or 'magret' in h or 'confit' in h for h in page['hrefs'] if '/producto/' not in h), (key,'editorial guide link missing')
+
+              found_brand=False
+              def walk(v):
+                  nonlocal_found=[]
+                  if isinstance(v,dict):
+                      t=v.get('@type')
+                      types=t if isinstance(t,list) else [t] if t else []
+                      if 'Product' in types:
+                          brand=v.get('brand')
+                          if isinstance(brand,dict) and brand.get('name')=='Selectos de Castilla':
+                              nonlocal_found.append(True)
+                      for vv in v.values(): nonlocal_found.extend(walk(vv))
+                  elif isinstance(v,list):
+                      for vv in v: nonlocal_found.extend(walk(vv))
+                  return nonlocal_found
+              for obj in page['jsonld']:
+                  if walk(obj):
+                      found_brand=True
+                      break
+              assert found_brand, (key,'Product schema brand missing')
+
+          blog_pillar=parse('/tmp/blog-pillar.html')
+          assert has_attr(blog_pillar,'data-emdo-duck-commerce'), 'blog pillar commerce block missing'
+          assert any('/categoria-producto/' in h and ('pato' in h or 'carne' in h) for h in blog_pillar['hrefs'])
+          assert any('/producto/' in h for h in blog_pillar['hrefs']), 'blog pillar has no dynamic product link'
+
+          blog_foie=parse('/tmp/blog-foie.html')
+          assert has_attr(blog_foie,'data-emdo-duck-commerce','foie-gras-de-pato')
+          assert norm(deploy['category_urls']['foie']) in [norm(h) for h in blog_foie['hrefs']]
+          assert any('/producto/' in h for h in blog_foie['hrefs'])
+
+          blog_hub=parse('/tmp/blog-hub.html')
+          assert 'Comprar productos de pato' in blog_hub['text']
+          assert norm(deploy['category_urls']['root']) in [norm(h) for h in blog_hub['hrefs']]
+          assert not blog_hub['noindex']
+
+          product_sm=Path('/tmp/products-sitemap.xml').read_text(encoding='utf-8',errors='ignore')
+          category_sm=Path('/tmp/categories-sitemap.xml').read_text(encoding='utf-8',errors='ignore')
+          sample_slug=urlsplit(deploy['sample_urls']['foie']).path.strip('/').split('/')[-1]
+          assert sample_slug in product_sm, 'sample duck product missing from product sitemap'
+          assert urlsplit(deploy['category_urls']['root']).path in category_sm, 'duck commerce root missing from category sitemap'
+
+          result={
+              'root':{k:root[k] for k in ['title','description','canonical','h1','noindex']},
+              'categories':{k:{kk:v[kk] for kk in ['title','canonical','h1','noindex']} for k,v in cats.items()},
+              'products':{k:{kk:v[kk] for kk in ['title','description','canonical','h1','noindex']} for k,v in products.items()},
+              'blog_bridge':True,
+              'product_schema_brand':True,
+              'product_sitemap':True,
+              'category_sitemap':True,
+          }
+          print(json.dumps(result,ensure_ascii=False,indent=2))
+          Path('/tmp/duck-commerce-public.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Record verified duck commerce SEO
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          jq -n             --arg generated_at "$(date -u +%FT%TZ)"             --arg run_id "$GITHUB_RUN_ID"             --arg source_sha "$GITHUB_SHA"             --slurpfile deployment /tmp/duck-commerce-deploy-preserved.json             --slurpfile public /tmp/duck-commerce-public.json             '{generated_at:$generated_at,run_id:($run_id|tonumber),source_sha:$source_sha,verified:true,batch:"20261001-duck-commerce-seo-cluster",deployment:$deployment[0],public_verification:$public[0]}'             > .deploy-status/duck-commerce-seo-20261001.json
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/duck-commerce-seo-20261001.json
+          git commit -m 'Record verified duck commerce SEO [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Roll back MU plugin on failure
+        if: failure() && env.PROD_PATH != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PLUGIN='mdo-duck-commerce-seo-20261001.php'
+          TARGET="$PROD_PATH/wp-content/mu-plugins/$PLUGIN"
+          BACKUP="/tmp/${PLUGIN%.php}-backup-${GITHUB_RUN_ID}.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "if [ -f '$BACKUP' ]; then install -m 0644 '$BACKUP' '$TARGET' && rm -f '$BACKUP'; else rm -f '$TARGET'; fi"
+
+      - name: Clean deployment backup
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PLUGIN='mdo-duck-commerce-seo-20261001.php'
+          BACKUP="/tmp/${PLUGIN%.php}-backup-${GITHUB_RUN_ID}.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP'"
