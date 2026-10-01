@@ -124,6 +124,27 @@ jobs:
           cp "$REMOTE/theme/page-categorias.php" "$TARGET"
           "$PHP" -l "$TARGET" >/dev/null
 
+          # Force the PHP-FPM opcode cache to see the newly deployed template.
+          # The endpoint is random, token-protected and deleted immediately.
+          RESET_TOKEN="$(date +%s)-$-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+          RESET_FILE="$PROD/.mdo-opcache-reset-$RESET_TOKEN.php"
+          cat > "$RESET_FILE" <<PHP_RESET
+<?php
+$token = (string) ( $_GET['t'] ?? '' );
+if ( ! hash_equals( '$RESET_TOKEN', $token ) ) { http_response_code( 403 ); exit; }
+$target = __DIR__ . '/wp-content/themes/elmercadodeorigen-child/page-categorias.php';
+header( 'Content-Type: application/json; charset=UTF-8' );
+echo json_encode( array(
+  'invalidate' => function_exists( 'opcache_invalidate' ) ? opcache_invalidate( $target, true ) : null,
+  'reset' => function_exists( 'opcache_reset' ) ? opcache_reset() : null,
+  'md5' => is_readable( $target ) ? md5_file( $target ) : '',
+) );
+PHP_RESET
+          RESET_URL="https://www.elmercadodeorigen.com/$(basename "$RESET_FILE")?t=$RESET_TOKEN"
+          curl -fsS --max-time 30 "$RESET_URL" >/tmp/mdo-opcache-reset.json
+          rm -f "$RESET_FILE"
+          grep -q '"md5"' /tmp/mdo-opcache-reset.json
+
           export MDO_CATEGORY_ASSET_DIR="$REMOTE/assets"
           "$PHP" -d memory_limit=768M "$WP" eval-file "$REMOTE/scripts/set-new-category-images-copy-20261001.php" --path="$PROD" --allow-root
 
