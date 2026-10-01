@@ -29,7 +29,8 @@ jobs:
           ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
           LOG="/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log"
           DEVLOG="/var/www/vhosts/system/dev.elmercadodeorigen.com/logs/access_ssl_log"
-          PHP="/opt/plesk/php/8.2/bin/php"\n          PHP_ARGS="-d memory_limit=768M"
+          PHP="/opt/plesk/php/8.2/bin/php"
+          PHP_ARGS="-d memory_limit=768M"
           WP="/usr/local/bin/wp"
 
           echo "=== SYSTEM ==="
