@@ -48,9 +48,11 @@ jobs:
           CHECKOUT_ID=$("$PHP" $PHP_ARGS "$WP" option get woocommerce_checkout_page_id --path="$ROOT" --allow-root)
           CART_SLUG=$("$PHP" $PHP_ARGS "$WP" post get "$CART_ID" --field=post_name --path="$ROOT" --allow-root)
           CHECKOUT_SLUG=$("$PHP" $PHP_ARGS "$WP" post get "$CHECKOUT_ID" --field=post_name --path="$ROOT" --allow-root)
+          PRODUCT_ID=$("$PHP" $PHP_ARGS "$WP" post list --post_type=product --post_status=publish --posts_per_page=1 --format=ids --path="$ROOT" --allow-root | awk '{print $1}')
+          PRODUCT_URL=$("$PHP" $PHP_ARGS "$WP" post url "$PRODUCT_ID" --path="$ROOT" --allow-root)
 
           echo "=== CORE PAGE HEALTH ==="
-          for spec in             "home|$SITE/"             "shop|$SITE/tienda/"             "cart|$SITE/$CART_SLUG/"             "checkout|$SITE/$CHECKOUT_SLUG/"             "product|$SITE/producto/sobres-de-lomo-de-bellota-100/"             "hot_montjam|$SITE/en/store/montjam/"             "hot_hidalgo|$SITE/en/store/hidalgo-de-la-jara/"             "hot_hams|$SITE/en/product-category/hams-and-shoulders/"; do
+          for spec in             "home|$SITE/"             "shop|$SITE/tienda/"             "cart|$SITE/$CART_SLUG/"             "checkout|$SITE/$CHECKOUT_SLUG/"             "product|$PRODUCT_URL"             "hot_montjam|$SITE/en/store/montjam/"             "hot_hidalgo|$SITE/en/store/hidalgo-de-la-jara/"             "hot_hams|$SITE/en/product-category/hams-and-shoulders/"; do
             label="${spec%%|*}"; url="${spec#*|}"
             echo "--- $label $url"
             curl -k -sS -L --max-time 20 -A 'MDO-Final-Health/1.0' -o /dev/null               -w 'http=%{http_code} total=%{time_total} start=%{time_starttransfer} redirects=%{num_redirects}\n' "$url" || true
@@ -64,7 +66,12 @@ jobs:
           curl -k -sS --max-time 20 -A 'MDO-Final-Health/1.0' -o /dev/null -w 'simple http=%{http_code} total=%{time_total}\n' "$BASE$SIMPLE" || true
           curl -k -sS --max-time 8 -A 'MDO-Final-Health/1.0' -o /dev/null -w 'complex_anon http=%{http_code} total=%{time_total}\n' "$BASE$COMPLEX" || true
           curl -k -sS --max-time 8 -A 'MDO-Final-Health/1.0' -o /dev/null -w 'multi_anon http=%{http_code} total=%{time_total}\n' "$BASE$MULTI" || true
-          curl -k -sS --max-time 20 -A 'MDO-Final-Health/1.0' -H 'Cookie: CookieLawInfoConsent=yes' -o /dev/null             -w 'complex_cookie http=%{http_code} total=%{time_total}\n' "$BASE$COMPLEX" || true
+          curl -k -sS --max-time 20 -A 'MDO-Final-Health/1.0' -H 'Cookie: woocommerce_cart_hash=healthcheck' -o /dev/null             -w 'complex_cart_cookie http=%{http_code} total=%{time_total}\n' "$BASE$COMPLEX" || true
+          curl -k -sS --max-time 20 -A 'MDO-Final-Health/1.0' -H 'Cookie: woocommerce_cart_hash=healthcheck' -D /tmp/hot-cookie-h -o /dev/null             -w 'hot_cart_cookie http=%{http_code} total=%{time_total}\n' "$SITE/en/store/montjam/" || true
+          grep -Ei 'HTTP/|x-powered-by|x-el-mercado-hot' /tmp/hot-cookie-h || true
+
+          echo "=== HOT CACHE FILES ==="
+          find "$ROOT/wp-content/uploads/elmercado-hot-static-v1" -maxdepth 1 -type f -name '*.html' -mmin -10 -printf '%f %s bytes %TY-%Tm-%TdT%TH:%TM:%TS\n' | sort || true
 
           echo "=== RECENT TRAFFIC / ERRORS 5M ==="
           python3 - "$LOG" "$DEVLOG" <<'PY'
