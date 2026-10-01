@@ -75,7 +75,7 @@ $classify=static function(string $url,string $title): array{
    return $out;
  }
  if(str_contains($url,'/confit/')){
-   if(str_contains($t,'cochinillo') || str_contains($t,'codorniz')) return array('carnes');
+   if(str_contains($t,'cochinillo') || str_contains($t,'codorniz') || str_contains($t,'codornic')) return array('carnes');
    if(str_contains($t,'rillettes')){
      if(str_contains($t,'lechazo') && !str_contains($t,'pato')) return array('foie-pates-untables');
      return array('foie-pates-untables','pato','pate-mousse-rillettes-de-pato');

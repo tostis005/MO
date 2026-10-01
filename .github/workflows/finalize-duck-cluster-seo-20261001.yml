@@ -103,7 +103,7 @@ jobs:
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST"             "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE_SCRIPT' --path='$PROD' --allow-root"             > /tmp/duck-final.json
 
-          jq '{batch,active_selectos,true_duck_products,taxonomy_changes,cluster_meta_repaired,stale_meta_cleared,removed_non_duck_count,removed_non_duck,group_counts,category_counts,stock_counts,producer_description_chars,global_foie_description_chars,blog,seo,sample_repaired_url,sample_non_duck_url}' /tmp/duck-final.json
+          jq '{batch,active_selectos,true_duck_products,taxonomy_changes,cluster_meta_repaired,stale_meta_cleared,stale_seo_cleared,removed_non_duck_count,removed_non_duck,group_counts,category_counts,stock_counts,producer_description_chars,global_foie_description_chars,blog,seo,sample_repaired_url,sample_non_duck_url}' /tmp/duck-final.json
 
           jq -e '.batch == "20261001-duck-cluster-final"' /tmp/duck-final.json >/dev/null
           jq -e '.active_selectos >= 100' /tmp/duck-final.json >/dev/null
@@ -135,6 +135,7 @@ jobs:
           BLOG_HUB="$(jq -r '.blog.hub_url' /tmp/duck-final-preserved.json)"
           BLOG_SAMPLE='https://www.elmercadodeorigen.com/rillettes-de-pato-que-son-como-se-elaboran-y-como-se-comen/'
           BASE='https://www.elmercadodeorigen.com'
+          CODORNICES="$BASE/producto/confit-de-codornices/"
 
           get_page() {
             local url="$1" out="$2"
@@ -150,6 +151,7 @@ jobs:
           get_page "$REPAIRED" /tmp/repaired-product.html
           get_page "$BLOG_HUB" /tmp/duck-blog-hub.html
           get_page "$BLOG_SAMPLE" /tmp/duck-blog-sample.html
+          get_page "$CODORNICES" /tmp/codornices.html
 
           curl -fsSL --retry 4 --max-time 60 -A 'Mozilla/5.0 EMDO final duck SEO verifier' "$BASE/sitemap.xml" -o /tmp/sitemap.xml
 
@@ -165,14 +167,15 @@ jobs:
               raw=Path(path).read_text(encoding='utf-8',errors='ignore')
               soup=BeautifulSoup(raw,'html.parser')
               title=soup.title.get_text(' ',strip=True) if soup.title else ''
-              meta=soup.find('meta',attrs={'name':'description'})
+              metas=soup.find_all('meta',attrs={'name':'description'})
+              meta=metas[0] if metas else None
               desc=meta.get('content','').strip() if meta else ''
               canon=soup.find('link',rel=lambda v:v and 'canonical' in v)
               canonical=canon.get('href','') if canon else ''
               robots=' '.join(m.get('content','') for m in soup.find_all('meta',attrs={'name':'robots'})).lower()
               hrefs=[a.get('href','') for a in soup.find_all('a',href=True)]
               text=soup.get_text(' ',strip=True)
-              return raw,soup,{'title':title,'description':desc,'canonical':canonical,'noindex':'noindex' in robots,'hrefs':hrefs,'text':text}
+              return raw,soup,{'title':title,'description':desc,'description_count':len(metas),'canonical':canonical,'noindex':'noindex' in robots,'hrefs':hrefs,'text':text}
 
           def norm(url):
               s=urlsplit(url)
@@ -185,12 +188,14 @@ jobs:
           product_raw,product_soup,product=parse('/tmp/repaired-product.html')
           hub_raw,hub_soup,hub=parse('/tmp/duck-blog-hub.html')
           blog_raw,blog_soup,blog=parse('/tmp/duck-blog-sample.html')
+          codornices_raw,codornices_soup,codornices=parse('/tmp/codornices.html')
 
           assert root['title'].startswith('Comprar productos de pato online | Foie, magret y confit'), root['title']
           assert norm(root['canonical'])==norm(data['commercial_root_url']), root['canonical']
           assert not root['noindex']
           assert any('/tienda/selectos-de-castilla' in h for h in root['hrefs']), 'producer link missing from duck root'
           assert 'Selectos de Castilla' in root['text']
+          assert 'Confit de codornices' not in root['text'], 'codornices still rendered inside Pato'
 
           assert globalp['title'].startswith('Comprar foie, patés y untables online | El Mercado de Origen'), globalp['title']
           assert norm(globalp['canonical'])==norm(data['global_foie_url']), globalp['canonical']
@@ -199,8 +204,13 @@ jobs:
           assert any('/categoria-producto/carnes/pato/foie-gras-de-pato/' in h for h in globalp['hrefs'])
           assert any('foie-gras-pate-mousse-parfait-bloc-micuit-diferencias' in h for h in globalp['hrefs'])
 
+          expected_store_desc='Conoce Selectos de Castilla y compra sus productos de pato: foie gras, confit, magret, jamón de pato, patés, mousses y otras elaboraciones.'
           assert store['title'].startswith('Selectos de Castilla | Pato, foie gras, confit y más'), store['title']
           assert about['title'].startswith('Selectos de Castilla | Pato, foie gras, confit y más'), about['title']
+          assert store['description']==expected_store_desc, store['description']
+          assert about['description']==expected_store_desc, about['description']
+          assert store['description_count']==1, ('store description count',store['description_count'])
+          assert about['description_count']==1, ('about description count',about['description_count'])
           assert 'creada en 1989' in about['text']
           assert 'Villamartín de Campos' in about['text']
           assert any('/categoria-producto/carnes/pato/' in h for h in about['hrefs'])
@@ -213,6 +223,9 @@ jobs:
           assert any('/category/carnes/pato/' in h or 'pato' in h for h in product['hrefs'])
           scripts=' '.join(s.get_text(' ',strip=True) for s in product_soup.find_all('script',attrs={'type':'application/ld+json'}))
           assert 'Selectos de Castilla' in scripts, 'Selectos brand missing from product schema'
+
+          assert codornices_soup.select_one('[data-emdo-duck-product-guides]') is None, 'codornices still receives duck guide block'
+          assert not codornices['title'].startswith('Comprar Confit de codornices | Selectos de Castilla'), codornices['title']
 
           forbidden=[
               'Detalles prácticos para completar la guía',
@@ -241,6 +254,7 @@ jobs:
               'producer_store':{'title':store['title'],'description':store['description']},
               'producer_about':{'title':about['title'],'description':about['description']},
               'sample_product':{'title':product['title'],'description':product['description'],'canonical':product['canonical'],'noindex':product['noindex']},
+              'codornices_outside_duck':{'title':codornices['title'],'duck_guides':False},
               'blog_sample_clean':True,
               'blog_commerce_bridge':True,
               'blog_hub_global_bridge':True,

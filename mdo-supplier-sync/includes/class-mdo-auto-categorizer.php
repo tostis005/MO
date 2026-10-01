@@ -93,6 +93,82 @@ final class MDO_Auto_Categorizer {
 		} else {
 			delete_post_meta( $product_id, '_emdo_auto_category_score' );
 		}
+
+		if ( 'selectos_rules' === (string) ( $result['reason'] ?? '' ) ) {
+			self::sync_selectos_duck_cluster_metadata( $product_id, $ids );
+		}
+	}
+
+	/**
+	 * Keep the duck SEO layer aligned with the canonical Selectos taxonomy on
+	 * every supplier import/update. This makes future nightly syncs self-healing
+	 * instead of relying on a one-off SEO reconciliation.
+	 */
+	private static function sync_selectos_duck_cluster_metadata( int $product_id, array $category_ids ): void {
+		$slugs = array();
+		foreach ( array_values( array_unique( array_map( 'absint', $category_ids ) ) ) as $term_id ) {
+			$term = get_term( $term_id, 'product_cat' );
+			if ( $term instanceof WP_Term ) {
+				$slugs[] = (string) $term->slug;
+			}
+		}
+
+		$was_duck = '1' === (string) get_post_meta( $product_id, '_emdo_duck_commercial_cluster', true );
+		$is_duck  = in_array( 'pato', $slugs, true );
+
+		if ( $is_duck ) {
+			$group_map = array(
+				'magret-de-pato'                => 'magret',
+				'confit-de-pato'                => 'confit',
+				'jamon-de-pato'                 => 'jamon',
+				'pato-fresco'                   => 'fresh',
+				'foie-gras-de-pato'             => 'foie',
+				'pate-mousse-rillettes-de-pato' => 'prepared',
+			);
+			$group = 'root';
+			foreach ( $group_map as $slug => $candidate ) {
+				if ( in_array( $slug, $slugs, true ) ) {
+					$group = $candidate;
+					break;
+				}
+			}
+
+			update_post_meta( $product_id, '_emdo_duck_commercial_cluster', '1' );
+			update_post_meta( $product_id, '_emdo_duck_product_cluster', $group );
+			update_post_meta( $product_id, '_emdo_duck_commerce_version', '20261001-sync' );
+
+			if ( function_exists( 'mdo_duck_commerce_product_title_for_id_20261001' ) ) {
+				$title = mdo_duck_commerce_product_title_for_id_20261001( $product_id );
+				$desc  = mdo_duck_commerce_product_description_for_id_20261001( $product_id );
+				update_post_meta( $product_id, '_yoast_wpseo_title', $title );
+				update_post_meta( $product_id, '_yoast_wpseo_metadesc', $desc );
+				update_post_meta( $product_id, 'rank_math_title', $title );
+				update_post_meta( $product_id, 'rank_math_description', $desc );
+			}
+			delete_post_meta( $product_id, '_yoast_wpseo_meta-robots-noindex' );
+			return;
+		}
+
+		if ( $was_duck && function_exists( 'mdo_duck_commerce_product_title_for_id_20261001' ) ) {
+			$old_title = mdo_duck_commerce_product_title_for_id_20261001( $product_id );
+			$old_desc  = mdo_duck_commerce_product_description_for_id_20261001( $product_id );
+			if ( $old_title === (string) get_post_meta( $product_id, '_yoast_wpseo_title', true ) ) {
+				delete_post_meta( $product_id, '_yoast_wpseo_title' );
+			}
+			if ( $old_desc === (string) get_post_meta( $product_id, '_yoast_wpseo_metadesc', true ) ) {
+				delete_post_meta( $product_id, '_yoast_wpseo_metadesc' );
+			}
+			if ( $old_title === (string) get_post_meta( $product_id, 'rank_math_title', true ) ) {
+				delete_post_meta( $product_id, 'rank_math_title' );
+			}
+			if ( $old_desc === (string) get_post_meta( $product_id, 'rank_math_description', true ) ) {
+				delete_post_meta( $product_id, 'rank_math_description' );
+			}
+		}
+
+		delete_post_meta( $product_id, '_emdo_duck_commercial_cluster' );
+		delete_post_meta( $product_id, '_emdo_duck_product_cluster' );
+		delete_post_meta( $product_id, '_emdo_duck_commerce_version' );
 	}
 
 	private static function infer( array $payload, array $source_row ): array {
@@ -217,7 +293,7 @@ final class MDO_Auto_Categorizer {
 				}
 			}
 		} elseif ( str_contains( $url, '/confit/' ) ) {
-			if ( str_contains( $title, 'cochinillo' ) || str_contains( $title, 'codorniz' ) ) {
+			if ( str_contains( $title, 'cochinillo' ) || str_contains( $title, 'codorniz' ) || str_contains( $title, 'codornic' ) ) {
 				$slugs = array( 'carnes' );
 			} elseif ( str_contains( $title, 'rillettes' ) ) {
 				$slugs = str_contains( $title, 'lechazo' ) && ! str_contains( $title, 'pato' )

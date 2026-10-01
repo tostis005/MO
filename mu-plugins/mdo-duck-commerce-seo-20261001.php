@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Duck Commerce SEO 2026-10-01
  * Description: Connects the duck editorial cluster with Selectos de Castilla's duck catalog through commercial taxonomy, metadata, internal links and product schema.
- * Version: 2026.10.01.3
+ * Version: 2026.10.01.4
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -143,11 +143,15 @@ function mdo_duck_commerce_seo_title_20261001( $current ): string {
     return (string) $current;
 }
 
+function mdo_duck_commerce_selectos_store_description_20261001(): string {
+    return 'Conoce Selectos de Castilla y compra sus productos de pato: foie gras, confit, magret, jamón de pato, patés, mousses y otras elaboraciones.';
+}
+
 function mdo_duck_commerce_seo_description_20261001( $current ): string {
     if ( is_admin() ) { return (string) $current; }
 
     if ( mdo_duck_commerce_is_selectos_store_request_20261001() ) {
-        return 'Conoce Selectos de Castilla y compra sus productos de pato: foie gras, confit, magret, jamón de pato, patés, mousses y otras elaboraciones.';
+        return mdo_duck_commerce_selectos_store_description_20261001();
     }
 
     $slug = mdo_duck_commerce_current_term_slug_20261001();
@@ -181,6 +185,36 @@ function mdo_duck_commerce_register_seo_filters_20261001(): void {
  * duck override is therefore appended last and wins only on this cluster.
  */
 add_action( 'wp', 'mdo_duck_commerce_register_seo_filters_20261001', PHP_INT_MAX );
+
+/**
+ * WCFM's store template can print its own generic description after SEO-plugin
+ * filters have run. For this one producer only, normalize the final HTML so
+ * crawlers receive a single, specific description on both store and About URLs.
+ */
+function mdo_duck_commerce_fix_selectos_meta_html_20261001( $html ): string {
+    $html = (string) $html;
+    if ( '' === $html || false === stripos( $html, '</head>' ) ) {
+        return $html;
+    }
+
+    $pattern = '#<meta\\b[^>]*\\bname\\s*=\\s*(?:"description"|\'description\'|description)[^>]*>\\s*#iu';
+    $cleaned = preg_replace( $pattern, '', $html );
+    if ( ! is_string( $cleaned ) ) {
+        return $html;
+    }
+
+    $meta = '<meta name="description" content="' . esc_attr( mdo_duck_commerce_selectos_store_description_20261001() ) . '" />' . "\n";
+    $final = preg_replace( '#</head>#i', $meta . '</head>', $cleaned, 1 );
+
+    return is_string( $final ) ? $final : $cleaned;
+}
+
+add_action( 'template_redirect', static function (): void {
+    if ( is_admin() || wp_doing_ajax() || ! mdo_duck_commerce_is_selectos_store_request_20261001() ) {
+        return;
+    }
+    ob_start( 'mdo_duck_commerce_fix_selectos_meta_html_20261001' );
+}, -9999 );
 
 function mdo_duck_commerce_blog_target_slug_20261001( int $post_id ): string {
     $key = (string) get_post_meta( $post_id, '_emdo_seo_landing_key', true );
