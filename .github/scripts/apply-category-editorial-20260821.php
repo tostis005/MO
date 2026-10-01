@@ -25,6 +25,30 @@ $targets = array(
         'en' => 'Beans, chickpeas and lentils in different varieties, selected for stews, casseroles and other recipes.',
         'required' => true,
     ),
+    'pescados-mariscos' => array(
+        'es' => 'Pescados, huevas y especialidades del mar en distintos formatos y elaboraciones.',
+        'en_name' => 'Fish and seafood',
+        'en_slug' => 'fish-seafood',
+        'en' => 'Fish, roe and seafood specialities in different preparations and formats.',
+        'required' => true,
+        'image_url' => 'https://raw.githubusercontent.com/tostis005/MO/main/.github/assets/category-images-20261001/category-pescados-mariscos.webp',
+        'image_file' => 'category-pescados-mariscos.webp',
+        'image_alt' => 'Salmón ahumado sobre pizarra',
+        'image_marker' => 'pescados-mariscos-20261001',
+        'image_size' => 143118,
+    ),
+    'foie-pates-untables' => array(
+        'es' => 'Foie gras, patés, mousses, rillettes y otras especialidades untables de distintos productores.',
+        'en_name' => 'Foie, pâtés and spreads',
+        'en_slug' => 'foie-pates-spreads',
+        'en' => 'Foie gras, pâtés, mousses, rillettes and other spreadable specialities from selected producers.',
+        'required' => true,
+        'image_url' => 'https://raw.githubusercontent.com/tostis005/MO/main/.github/assets/category-images-20261001/category-foie-pates-untables.webp',
+        'image_file' => 'category-foie-pates-untables.webp',
+        'image_alt' => 'Foie gras, paté y untables sobre pizarra',
+        'image_marker' => 'foie-pates-untables-20261001',
+        'image_size' => 169964,
+    ),
     'naranjas' => array(
         'es' => 'Naranjas frescas de distintas variedades, seleccionadas para mesa, zumo y otros usos.',
         'en_name' => 'Oranges',
@@ -50,6 +74,11 @@ foreach ( $targets as $slug => $copy ) {
         continue;
     }
     $id = (int) $term->term_id;
+    $term_update = wp_update_term($id, 'product_cat', array('description'=>$copy['es']));
+    if ( is_wp_error($term_update) ) {
+        $out['issues'][] = array('slug'=>$slug,'reason'=>'term_description_update_failed','message'=>$term_update->get_error_message());
+        continue;
+    }
     update_term_meta($id, '_en_US_published', '1');
     update_term_meta($id, '_en_US_ready', '1');
     update_term_meta($id, '_en_US_name', $copy['en_name']);
@@ -57,6 +86,68 @@ foreach ( $targets as $slug => $copy ) {
     update_term_meta($id, '_en_US_description', $copy['en']);
     update_term_meta($id, '_emdo_en_hub_summary', $copy['en']);
     update_term_meta($id, '_emdo_es_hub_summary', $copy['es']);
+
+    $image_id = (int) get_term_meta($id, 'thumbnail_id', true);
+    if ( ! empty($copy['image_url']) ) {
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+        require_once ABSPATH . 'wp-admin/includes/media.php';
+
+        $marked = get_posts(array(
+            'post_type'=>'attachment',
+            'post_status'=>'inherit',
+            'posts_per_page'=>1,
+            'fields'=>'ids',
+            'meta_key'=>'_emdo_category_visual_marker',
+            'meta_value'=>$copy['image_marker'],
+        ));
+        $candidate = $marked ? (int) $marked[0] : 0;
+        $candidate_file = $candidate ? get_attached_file($candidate) : '';
+        $candidate_meta = $candidate ? wp_get_attachment_metadata($candidate) : array();
+        $candidate_ok = $candidate > 0
+            && is_string($candidate_file) && is_readable($candidate_file)
+            && (int) @filesize($candidate_file) === (int) $copy['image_size']
+            && (int) ($candidate_meta['width'] ?? 0) === 768
+            && (int) ($candidate_meta['height'] ?? 0) === 1152;
+
+        if ( ! $candidate_ok ) {
+            if ( $candidate > 0 ) { wp_delete_attachment($candidate, true); }
+            $response = wp_remote_get($copy['image_url'], array('timeout'=>60,'redirection'=>5));
+            if ( is_wp_error($response) || 200 !== (int) wp_remote_retrieve_response_code($response) ) {
+                $out['issues'][] = array('slug'=>$slug,'reason'=>'image_download_failed');
+                continue;
+            }
+            $body = wp_remote_retrieve_body($response);
+            if ( strlen($body) !== (int) $copy['image_size'] ) {
+                $out['issues'][] = array('slug'=>$slug,'reason'=>'image_size_mismatch','bytes'=>strlen($body));
+                continue;
+            }
+            $upload = wp_upload_bits($copy['image_file'], null, $body);
+            if ( ! empty($upload['error']) ) {
+                $out['issues'][] = array('slug'=>$slug,'reason'=>'image_upload_failed','message'=>$upload['error']);
+                continue;
+            }
+            $filetype = wp_check_filetype(basename($upload['file']), null);
+            $candidate = wp_insert_attachment(array(
+                'post_mime_type'=>$filetype['type'] ?: 'image/webp',
+                'post_title'=>$copy['en_name'],
+                'post_content'=>'',
+                'post_status'=>'inherit',
+            ), $upload['file']);
+            if ( is_wp_error($candidate) || ! $candidate ) {
+                $out['issues'][] = array('slug'=>$slug,'reason'=>'attachment_create_failed');
+                continue;
+            }
+            $candidate = (int) $candidate;
+            $metadata = wp_generate_attachment_metadata($candidate, $upload['file']);
+            if ( is_array($metadata) ) { wp_update_attachment_metadata($candidate, $metadata); }
+            update_post_meta($candidate, '_wp_attachment_image_alt', $copy['image_alt']);
+            update_post_meta($candidate, '_emdo_category_visual_marker', $copy['image_marker']);
+        }
+        $image_id = (int) $candidate;
+        update_term_meta($id, 'thumbnail_id', $image_id);
+    }
+
     $out['updated'][] = array(
         'id'=>$id,'slug'=>$slug,'count'=>(int)$term->count,
         'en_name'=>(string)get_term_meta($id,'_en_US_name',true),
@@ -64,6 +155,9 @@ foreach ( $targets as $slug => $copy ) {
         'en_description'=>(string)get_term_meta($id,'_en_US_description',true),
         'en_hub_summary'=>(string)get_term_meta($id,'_emdo_en_hub_summary',true),
         'en_published'=>(string)get_term_meta($id,'_en_US_published',true),
+        'description_es'=>(string)get_term_field('description',$id,'product_cat','raw'),
+        'thumbnail_id'=>$image_id,
+        'image_url'=>$image_id ? (string)wp_get_attachment_image_url($image_id,'full') : '',
     );
 }
 
