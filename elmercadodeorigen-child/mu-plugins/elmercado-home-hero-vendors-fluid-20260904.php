@@ -90,16 +90,23 @@ html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card img {
 
 
 	/* Six active producers: two balanced rows, no tiny cells and no stretched imagery. */
-	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-6 {
+	html body.home.elmercado-child-theme .emo-home .emo-hero__grid > .emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-6 {
 		display: grid !important;
 		grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
 		grid-template-rows: repeat(2, clamp(178px, 12.5vw, 205px)) !important;
+		grid-auto-rows: auto !important;
 		gap: 12px !important;
+		height: clamp(368px, calc(25vw + 12px), 422px) !important;
+		min-height: 368px !important;
+		max-height: none !important;
 		transform: translateY(8px) !important;
 	}
-	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-6 .emo-hero-card {
+	html body.home.elmercado-child-theme .emo-home .emo-hero__grid > .emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-6 > .emo-hero-card {
 		grid-column: auto !important;
 		grid-row: auto !important;
+		width: auto !important;
+		height: auto !important;
+		min-width: 0 !important;
 		min-height: 0 !important;
 		transform: none !important;
 	}
@@ -145,18 +152,25 @@ html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card img {
 		grid-row: 3 !important;
 	}
 
-	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-6 {
+	html body.home.elmercado-child-theme .emo-home .emo-hero__grid > .emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-6 {
 		display: grid !important;
 		width: min(100%, 720px) !important;
+		height: auto !important;
+		min-height: 0 !important;
+		max-height: none !important;
 		margin: .35rem auto 0 !important;
 		grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
 		grid-template-rows: repeat(3, clamp(170px, 22vw, 215px)) !important;
+		grid-auto-rows: auto !important;
 		gap: clamp(10px, 1.8vw, 16px) !important;
 		transform: none !important;
 	}
-	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-6 .emo-hero-card {
+	html body.home.elmercado-child-theme .emo-home .emo-hero__grid > .emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-6 > .emo-hero-card {
 		grid-column: auto !important;
 		grid-row: auto !important;
+		width: auto !important;
+		height: auto !important;
+		min-width: 0 !important;
 		min-height: 0 !important;
 		transform: none !important;
 	}
