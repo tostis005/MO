@@ -102,20 +102,61 @@ function mdo_vendor_rating_stats_20261001( int $vendor_id ): array {
 		return $cache[ $vendor_id ];
 	}
 
-	$rating = (float) get_user_meta( $vendor_id, '_wcfmmp_avg_review_rating', true );
-	$count  = (int) get_user_meta( $vendor_id, '_wcfmmp_total_review_count', true );
+	$rating = 0.0;
+	$count  = 0;
 
 	/*
-	 * Respaldo para instalaciones donde el meta agregado no se haya regenerado
-	 * todavía: usamos las mismas funciones que alimentan la pestaña Reseñas.
+	 * Fuente de verdad: el sistema propio de reseñas de EMDO, exactamente el
+	 * mismo que alimenta la pestaña pública "Reseñas" de cada productor.
+	 *
+	 * Es importante no caer a WCFM cuando EMDO devuelve cero: un productor sin
+	 * reseñas EMDO debe mostrarse igualmente sin reseñas, aunque WCFM conserve
+	 * datos históricos distintos.
 	 */
-	global $WCFMmp;
-	if ( isset( $WCFMmp->wcfmmp_reviews ) ) {
-		if ( $rating <= 0 && method_exists( $WCFMmp->wcfmmp_reviews, 'get_vendor_review_rating' ) ) {
-			$rating = (float) $WCFMmp->wcfmmp_reviews->get_vendor_review_rating( $vendor_id );
+	$using_emdo_reviews = (
+		class_exists( 'MDO_Database' )
+		&& class_exists( 'MDO_Reviews_Vendors' )
+		&& method_exists( 'MDO_Database', 'table' )
+		&& method_exists( 'MDO_Reviews_Vendors', 'review_matches_vendor_sql' )
+	);
+
+	if ( $using_emdo_reviews ) {
+		global $wpdb;
+
+		$table      = MDO_Database::table( 'reviews' );
+		$vendor_sql = MDO_Reviews_Vendors::review_matches_vendor_sql( 'r' );
+		$summary    = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT COUNT(*) AS total, AVG(r.rating) AS average_rating
+				 FROM {$table} r
+				 WHERE r.status='validated' AND r.rating>0 AND {$vendor_sql}",
+				$vendor_id,
+				$vendor_id,
+				$vendor_id
+			),
+			ARRAY_A
+		);
+
+		if ( is_array( $summary ) ) {
+			$count  = (int) ( $summary['total'] ?? 0 );
+			$rating = (float) ( $summary['average_rating'] ?? 0 );
 		}
-		if ( $count <= 0 && method_exists( $WCFMmp->wcfmmp_reviews, 'get_vendor_reviews_count' ) ) {
-			$count = (int) $WCFMmp->wcfmmp_reviews->get_vendor_reviews_count( $vendor_id, 'approved' );
+	} else {
+		/*
+		 * Compatibilidad defensiva si el plugin EMDO no estuviera cargado.
+		 * No se usa mientras el sistema propio esté disponible.
+		 */
+		$rating = (float) get_user_meta( $vendor_id, '_wcfmmp_avg_review_rating', true );
+		$count  = (int) get_user_meta( $vendor_id, '_wcfmmp_total_review_count', true );
+
+		global $WCFMmp;
+		if ( isset( $WCFMmp->wcfmmp_reviews ) ) {
+			if ( $rating <= 0 && method_exists( $WCFMmp->wcfmmp_reviews, 'get_vendor_review_rating' ) ) {
+				$rating = (float) $WCFMmp->wcfmmp_reviews->get_vendor_review_rating( $vendor_id );
+			}
+			if ( $count <= 0 && method_exists( $WCFMmp->wcfmmp_reviews, 'get_vendor_reviews_count' ) ) {
+				$count = (int) $WCFMmp->wcfmmp_reviews->get_vendor_reviews_count( $vendor_id, 'approved' );
+			}
 		}
 	}
 
