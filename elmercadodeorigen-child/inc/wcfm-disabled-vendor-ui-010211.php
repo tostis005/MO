@@ -16,14 +16,16 @@ if ( is_readable( $elmercado_wcfm_publish_policy_010216 ) ) {
 unset( $elmercado_wcfm_publish_policy_010216 );
 
 /**
- * Devuelve los vendedores WCFM bloqueados que deben desaparecer del filtro.
+ * Devuelve los vendedores que deben desaparecer del filtro para el usuario actual.
+ * Disabled siempre; Offline solo para público/no administradores.
  *
  * @return int[]
  */
 function elmercado_wcfm_disabled_vendor_ui_ids_010211(): array {
-	if ( ! function_exists( 'elmercado_wcfm_disabled_visibility_can_view_010210' ) || elmercado_wcfm_disabled_visibility_can_view_010210() ) {
-		return array();
+	if ( function_exists( 'elmercado_wcfm_hidden_vendor_ids_010210' ) ) {
+		return array_values( array_filter( array_map( 'absint', elmercado_wcfm_hidden_vendor_ids_010210() ) ) );
 	}
+
 	if ( ! function_exists( 'elmercado_wcfm_disabled_vendor_ids_010210' ) ) {
 		return array();
 	}
@@ -38,12 +40,16 @@ function elmercado_wcfm_disabled_vendor_ui_ids_010211(): array {
 add_action(
 	'template_redirect',
 	static function (): void {
-		if ( ! function_exists( 'elmercado_wcfm_disabled_visibility_can_view_010210' ) || elmercado_wcfm_disabled_visibility_can_view_010210() ) {
+		$vendor_id = function_exists( 'elmercado_wcfm_requested_vendor_id_010210' ) ? elmercado_wcfm_requested_vendor_id_010210() : 0;
+		if ( $vendor_id <= 0 ) {
 			return;
 		}
 
-		$vendor_id = function_exists( 'elmercado_wcfm_requested_vendor_id_010210' ) ? elmercado_wcfm_requested_vendor_id_010210() : 0;
-		if ( $vendor_id <= 0 || ! function_exists( 'elmercado_wcfm_vendor_is_disabled_010210' ) || ! elmercado_wcfm_vendor_is_disabled_010210( $vendor_id ) ) {
+		$is_hidden = function_exists( 'elmercado_wcfm_vendor_is_hidden_010210' )
+			? elmercado_wcfm_vendor_is_hidden_010210( $vendor_id )
+			: ( function_exists( 'elmercado_wcfm_vendor_is_disabled_010210' ) && elmercado_wcfm_vendor_is_disabled_010210( $vendor_id ) );
+
+		if ( ! $is_hidden ) {
 			return;
 		}
 
