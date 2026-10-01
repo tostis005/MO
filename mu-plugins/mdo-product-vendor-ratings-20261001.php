@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: MDO - Valoraciones del productor en productos
- * Description: Muestra la valoración real del productor en el catálogo global y en la ficha individual, reutilizando los datos de reseñas de WCFM.
+ * Description: Muestra la valoración real del productor en el catálogo global y en la ficha individual, reutilizando la fuente de reseñas EMDO.
  * Version: 1.0.0
  */
 
@@ -240,11 +240,6 @@ function mdo_vendor_rating_markup_20261001( int $vendor_id, bool $compact ): str
 
 	$is_en = mdo_vendor_rating_is_english_20261001();
 	$name  = mdo_vendor_rating_vendor_name_20261001( $vendor_id );
-
-	$label = $compact
-		? ( $is_en ? 'Producer' : 'Productor' )
-		: ( $is_en ? 'Producer rating' : 'Valoración del productor' );
-
 	$count = (int) $stats['count'];
 	$rating = (float) $stats['rating'];
 
@@ -258,7 +253,17 @@ function mdo_vendor_rating_markup_20261001( int $vendor_id, bool $compact ): str
 			? sprintf( 'Producer %s: %s out of 5, %s', $name, $score, $reviews_text )
 			: sprintf( 'Productor %s: %s de 5, %s', $name, $score, $reviews_text );
 
-		return '<a class="mdo-vendor-rating mdo-vendor-rating--' . ( $compact ? 'loop' : 'single' ) . '" href="' . esc_url( $url ) . '" aria-label="' . esc_attr( $aria ) . '">'
+		if ( $compact ) {
+			return '<a class="mdo-vendor-rating mdo-vendor-rating--loop" href="' . esc_url( $url ) . '" aria-label="' . esc_attr( $aria ) . '">'
+				. '<span class="mdo-vendor-rating__stars" aria-hidden="true" style="--mdo-vendor-rating-width:' . esc_attr( $rating_percent ) . '%"></span>'
+				. '<span class="mdo-vendor-rating__score">' . esc_html( $score ) . '</span>'
+				. '<span class="mdo-vendor-rating__count">· ' . esc_html( $reviews_text ) . '</span>'
+				. '</a>';
+		}
+
+		$label = $is_en ? 'Producer rating' : 'Valoración del productor';
+
+		return '<a class="mdo-vendor-rating mdo-vendor-rating--single" href="' . esc_url( $url ) . '" aria-label="' . esc_attr( $aria ) . '">'
 			. '<span class="mdo-vendor-rating__label">' . esc_html( $label ) . '</span>'
 			. '<span class="mdo-vendor-rating__stars" aria-hidden="true" style="--mdo-vendor-rating-width:' . esc_attr( $rating_percent ) . '%"></span>'
 			. '<span class="mdo-vendor-rating__score">' . esc_html( $score ) . '</span>'
@@ -266,19 +271,29 @@ function mdo_vendor_rating_markup_20261001( int $vendor_id, bool $compact ): str
 			. '</a>';
 	}
 
-	$empty = $is_en ? 'No producer reviews yet' : 'Sin reseñas del productor';
+	$empty = $is_en ? 'No reviews yet' : 'Sin reseñas';
 	$aria  = $is_en
 		? sprintf( 'Producer %s: no reviews yet', $name )
 		: sprintf( 'Productor %s: todavía sin reseñas', $name );
 
-	return '<a class="mdo-vendor-rating mdo-vendor-rating--' . ( $compact ? 'loop' : 'single' ) . ' mdo-vendor-rating--empty" href="' . esc_url( $url ) . '" aria-label="' . esc_attr( $aria ) . '">'
+	if ( $compact ) {
+		return '<a class="mdo-vendor-rating mdo-vendor-rating--loop mdo-vendor-rating--empty" href="' . esc_url( $url ) . '" aria-label="' . esc_attr( $aria ) . '">'
+			. '<span class="mdo-vendor-rating__stars" aria-hidden="true" style="--mdo-vendor-rating-width:0%"></span>'
+			. '<span class="mdo-vendor-rating__empty">' . esc_html( $empty ) . '</span>'
+			. '</a>';
+	}
+
+	$label = $is_en ? 'Producer rating' : 'Valoración del productor';
+	$empty_single = $is_en ? 'No producer reviews yet' : 'Sin reseñas del productor';
+
+	return '<a class="mdo-vendor-rating mdo-vendor-rating--single mdo-vendor-rating--empty" href="' . esc_url( $url ) . '" aria-label="' . esc_attr( $aria ) . '">'
 		. '<span class="mdo-vendor-rating__label">' . esc_html( $label ) . '</span>'
-		. '<span class="mdo-vendor-rating__empty">' . esc_html( $empty ) . '</span>'
+		. '<span class="mdo-vendor-rating__empty">' . esc_html( $empty_single ) . '</span>'
 		. '</a>';
 }
 
 /**
- * Catálogo global: después del bloque "Vendido por" de WCFM.
+ * Catálogo global: sustituye visualmente el bloque "Vendido por" por una línea compacta de valoración.
  */
 add_action(
 	'woocommerce_after_shop_loop_item',
@@ -401,13 +416,27 @@ add_action(
 				color: #66756f;
 			}
 			.mdo-vendor-rating--loop {
-				margin: .36rem 0 .08rem;
+				display: inline-flex;
+				flex-wrap: nowrap;
+				gap: .28rem;
+				margin: 0;
+				padding: 0;
 				font-size: .76rem;
+				line-height: 1.15;
+				white-space: nowrap;
+				vertical-align: middle;
 			}
-			.mdo-vendor-rating--loop .mdo-vendor-rating__label::after {
-				content: "·";
-				margin-left: .36rem;
-				color: rgba(66, 86, 78, .42);
+			.mdo-vendor-rating--loop .mdo-vendor-rating__stars {
+				width: 5.2em;
+				flex-basis: 5.2em;
+				font-size: .88em;
+			}
+			body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag,.tax-product_brand) ul.products li.product .wcfmmp_sold_by_container,
+			body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag,.tax-product_brand) ul.products li.product .wcfmmp_sold_by_container_advanced,
+			body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag,.tax-product_brand) ul.products li.product [class*="sold_by"] {
+				display: none !important;
+				margin: 0 !important;
+				padding: 0 !important;
 			}
 			.mdo-vendor-rating--single {
 				margin: .6rem 0 .42rem;
@@ -427,7 +456,8 @@ add_action(
 
 			@media (max-width: 600px) {
 				.mdo-vendor-rating--loop {
-					font-size: .73rem;
+					gap: .22rem;
+					font-size: .71rem;
 				}
 				.mdo-vendor-rating--single {
 					width: 100%;

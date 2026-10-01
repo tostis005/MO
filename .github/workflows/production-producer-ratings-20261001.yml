@@ -166,21 +166,34 @@ jobs:
                 const ratings = cards.map(card => card.querySelector('.mdo-vendor-rating--loop')).filter(Boolean);
                 const aove = cards.find(card => /Aceite de oliva virgen extra 5L/i.test(card.innerText || ''));
                 const aoveRating = aove?.querySelector('.mdo-vendor-rating--loop');
+                const visible = el => {
+                  if (!el) return false;
+                  const s=getComputedStyle(el), r=el.getBoundingClientRect();
+                  return s.display!=='none' && s.visibility!=='hidden' && parseFloat(s.opacity||'1')>0 && r.width>0 && r.height>0;
+                };
+                const soldBy = [...document.querySelectorAll('ul.products > li.product .wcfmmp_sold_by_container,ul.products > li.product .wcfmmp_sold_by_container_advanced,ul.products > li.product [class*="sold_by"]')];
+                const ratingStyle = aoveRating ? getComputedStyle(aoveRating) : null;
+                const ratingRect = aoveRating ? aoveRating.getBoundingClientRect() : null;
                 return {
                   cards: cards.length,
-                  ratings: ratings.filter(el => {
-                    const s=getComputedStyle(el), r=el.getBoundingClientRect();
-                    return s.display!=='none' && s.visibility!=='hidden' && r.width>0 && r.height>0;
-                  }).length,
+                  ratings: ratings.filter(visible).length,
+                  visibleSoldBy: soldBy.filter(visible).length,
                   aoveText: (aoveRating?.innerText || '').replace(/\s+/g,' ').trim(),
-                  aoveHref: aoveRating?.href || ''
+                  aoveHref: aoveRating?.href || '',
+                  flexWrap: ratingStyle?.flexWrap || '',
+                  whiteSpace: ratingStyle?.whiteSpace || '',
+                  ratingHeight: ratingRect?.height || 0
                 };
               });
 
               console.log('SHOP_RATINGS', width, JSON.stringify(result));
               if (result.cards < 1 || result.ratings < 1) throw new Error('No visible producer ratings in global shop');
-              if (!/Productor/i.test(result.aoveText) || !result.aoveText.includes(expected1957.score) || !result.aoveText.includes(expectedCount)) throw new Error('Global shop rating does not match EMDO producer review summary');
-              if (!/\/tienda\/1957\/(?:reviews|resenas)\/?(?:\?|$)/i.test(result.aoveHref)) throw new Error('1957 reviews link incorrect in shop');
+              if (result.visibleSoldBy !== 0) throw new Error('Sold-by text is still visible in global catalog cards');
+              if (/Productor|Producer|Vendido por|Sold by/i.test(result.aoveText)) throw new Error('Catalog rating still contains a vendor label');
+              if (!result.aoveText.includes(expected1957.score) || !result.aoveText.includes(expectedCount)) throw new Error('Global shop rating does not match EMDO producer review summary');
+              if (result.flexWrap !== 'nowrap' || result.whiteSpace !== 'nowrap') throw new Error('Catalog rating is allowed to wrap');
+              if (result.ratingHeight > 18) throw new Error('Catalog rating is taller than a compact single line');
+              if (!/\/tienda\/1957\/reviews\/?(?:\?|$)/i.test(result.aoveHref)) throw new Error('1957 reviews link incorrect in shop');
               await page.close();
             }
 
