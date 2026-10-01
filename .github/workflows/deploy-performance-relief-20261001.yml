@@ -1,0 +1,135 @@
+name: Deploy performance relief 2026-10-01
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-performance-relief-20261001.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint cache drop-in
+        run: php -l elmercadodeorigen-child/dropins/advanced-cache.php
+
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Upload cache drop-in
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e scp -P "$PORT"             -o ConnectTimeout=15             -o PreferredAuthentications=password,keyboard-interactive             -o PubkeyAuthentication=no             -o StrictHostKeyChecking=no             elmercadodeorigen-child/dropins/advanced-cache.php             "$STAGING_USER@$STAGING_HOST:/tmp/emdo-advanced-cache-20261001.php"
+
+      - name: Backup and activate mitigation
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          LOG="/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log"
+          PHP="/opt/plesk/php/8.2/bin/php"
+          WP="/usr/local/bin/wp"
+          DROPIN="$ROOT/wp-content/advanced-cache.php"
+          FILTER="/etc/fail2ban/filter.d/emdo-xmlrpc-abuse.conf"
+          JAIL="/etc/fail2ban/jail.d/emdo-xmlrpc-abuse.local"
+          STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+          BACKUP="/root/emdo-performance-relief-$STAMP"
+          mkdir -p "$BACKUP"
+
+          echo "=== BACKUP ==="
+          cp -a "$DROPIN" "$BACKUP/advanced-cache.php"
+          [ ! -f "$FILTER" ] || cp -a "$FILTER" "$BACKUP/"
+          [ ! -f "$JAIL" ] || cp -a "$JAIL" "$BACKUP/"
+          crontab -l > "$BACKUP/root-crontab.txt" 2>/dev/null || true
+          echo "backup=$BACKUP"
+
+          echo "=== INSTALL STAMPEDE-SAFE CACHE ==="
+          "$PHP" -l /tmp/emdo-advanced-cache-20261001.php
+          install -m 0644 -o root -g root /tmp/emdo-advanced-cache-20261001.php "$DROPIN"
+          "$PHP" -l "$DROPIN"
+          rm -f /tmp/emdo-advanced-cache-20261001.php
+
+          echo "=== INSTALL XMLRPC ABUSE JAIL ==="
+          cat > "$FILTER" <<'EOF_FILTER'
+          [Definition]
+          failregex = ^<HOST>\s+\S+\s+\S+\s+\[[^\]]+\]\s+"(?:GET|POST)\s+/xmlrpc\.php(?:\?[^\s"]*)?\s+HTTP/[0-9.]+"\s+\d{3}\s+
+          ignoreregex =
+          EOF_FILTER
+
+          cat > "$JAIL" <<'EOF_JAIL'
+          [emdo-xmlrpc-abuse]
+          enabled = true
+          port = http,https
+          filter = emdo-xmlrpc-abuse
+          logpath = /var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log
+          maxretry = 20
+          findtime = 300
+          bantime = 86400
+          EOF_JAIL
+
+          fail2ban-regex "$LOG" "$FILTER" >/tmp/emdo-f2b-test.txt
+          grep -E 'Failregex:|Total|matched|Lines:' /tmp/emdo-f2b-test.txt | tail -n 20 || true
+          fail2ban-client reload
+          fail2ban-client status emdo-xmlrpc-abuse
+
+          # Immediately remove the currently confirmed abusive source from the request path.
+          fail2ban-client set emdo-xmlrpc-abuse banip 151.243.113.84 || true
+          fail2ban-client status emdo-xmlrpc-abuse
+
+          echo "=== WARM CACHE ==="
+          for url in             "https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/"             "https://www.elmercadodeorigen.com/en/store/montjam/"             "https://www.elmercadodeorigen.com/en/product-category/hams-and-shoulders/"             "https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/"; do
+            echo "--- $url"
+            curl -k -sS --max-time 30 -A 'MDO-Performance-Relief/1.0' -D /tmp/emdo-h -o /dev/null               -w 'http=%{http_code} total=%{time_total} start=%{time_starttransfer}\n' "$url" || true
+            grep -Ei 'HTTP/|X-El-Mercado-Hot-Early-Cache' /tmp/emdo-h || true
+          done
+
+          echo "=== ANTI-STAMPEDE PROBE ==="
+          TESTFILE="$ROOT/wp-content/uploads/elmercado-hot-static-v1/en-cat-cured-meats.html"
+          if [ -f "$TESTFILE" ]; then
+            touch -d '6 minutes ago' "$TESTFILE"
+            seq 1 4 | xargs -P4 -I{} sh -c               "curl -k -sS --max-time 30 -A 'MDO-Herd-Probe/1.0' -D /tmp/emdo-herd-{}.h -o /dev/null -w '{} http=%{http_code} total=%{time_total} start=%{time_starttransfer}\\n' 'https://www.elmercadodeorigen.com/en/product-category/cured-meats/' || true"
+            for h in /tmp/emdo-herd-*.h; do
+              echo "--- $h"
+              grep -Ei 'HTTP/|X-El-Mercado-Hot-Early-Cache' "$h" || true
+            done
+          fi
+
+          echo "=== CART / CHECKOUT HEALTH ==="
+          CART_ID=$("$PHP" "$WP" option get woocommerce_cart_page_id --path="$ROOT" --allow-root 2>/dev/null || true)
+          CHECKOUT_ID=$("$PHP" "$WP" option get woocommerce_checkout_page_id --path="$ROOT" --allow-root 2>/dev/null || true)
+          for ID in "$CART_ID" "$CHECKOUT_ID"; do
+            [ -n "$ID" ] || continue
+            URL=$("$PHP" "$WP" post url "$ID" --path="$ROOT" --allow-root 2>/dev/null || true)
+            [ -n "$URL" ] || continue
+            echo "--- $URL"
+            curl -k -sS -L --max-time 30 -A 'MDO-Health/1.0' -o /dev/null               -w 'http=%{http_code} total=%{time_total} start=%{time_starttransfer}\n' "$URL" || true
+          done
+
+          echo "=== LOAD / PHP AFTER ==="
+          uptime
+          ps -eo pid,user,stat,etimes,%cpu,%mem,rss,args --sort=-%cpu | grep -E 'php-fpm: pool (elmercadodeorigen.com|dev.elmercadodeorigen.com)' | head -n 30 || true
+
+          echo "=== RECENT SEVERE ERRORS ==="
+          tail -n 800 /var/www/vhosts/system/elmercadodeorigen.com/logs/error_log 2>/dev/null |             grep -Ei 'PHP Fatal|Allowed memory|upstream timed out|502|503|504|max children' | tail -n 60 || true
+          REMOTE
