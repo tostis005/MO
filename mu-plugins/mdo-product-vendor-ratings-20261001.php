@@ -187,6 +187,15 @@ function mdo_vendor_rating_reviews_url_20261001( int $vendor_id ): string {
 		return '';
 	}
 
+	/*
+	 * La pestaña propia de EMDO registra literalmente /reviews/.
+	 * No usamos aquí el endpoint traducido de WCFM (p. ej. /resenas/), porque
+	 * pertenece a la ruta nativa y no a la pestaña pública personalizada.
+	 */
+	if ( class_exists( 'MDO_Reviews_Public' ) ) {
+		return trailingslashit( trailingslashit( $store_url ) . 'reviews' );
+	}
+
 	$endpoint = 'reviews';
 	global $WCFMmp;
 	if (

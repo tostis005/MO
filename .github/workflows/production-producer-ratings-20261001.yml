@@ -140,7 +140,7 @@ jobs:
               await page.setCacheEnabled(false);
               await page.setExtraHTTPHeaders({'Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'});
               await page.setViewport({width: 390, height: 1200});
-              await page.goto(`${process.env.BASE_URL}/tienda/1957/resenas/?vendorRatingQA=${Date.now()}`, {waitUntil:'networkidle2', timeout:60000});
+              await page.goto(`${process.env.BASE_URL}/tienda/1957/reviews/?vendorRatingQA=${Date.now()}`, {waitUntil:'networkidle2', timeout:60000});
               await sleep(600);
               expected1957 = await page.evaluate(() => ({
                 score: (document.querySelector('.mdo-review-summary-score')?.textContent || '').replace(/\s+/g,' ').trim(),
