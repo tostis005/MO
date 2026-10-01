@@ -319,6 +319,16 @@ if ( $unmapped ) {
 if ( $active < 100 || count( $duck_ids ) < 45 ) {
     throw new Exception( 'Unexpected final Selectos/duck counts: active=' . $active . ' duck=' . count( $duck_ids ) );
 }
+if ( '' === $sample_repaired_url ) {
+    foreach ( $duck_ids as $candidate_id ) {
+        $candidate = wc_get_product( $candidate_id );
+        if ( $candidate && 'publish' === get_post_status( $candidate_id ) && 'instock' === $candidate->get_stock_status() ) {
+            $sample_repaired_url = (string) get_permalink( $candidate_id );
+            $sample_repaired_title = (string) get_the_title( $candidate_id );
+            break;
+        }
+    }
+}
 
 /* ---------- Strengthen commercial category copy after the global taxonomy change. ---------- */
 $root_url = get_term_link( $terms['pato'] );
