@@ -258,13 +258,16 @@ function mdo_vendor_rating_markup_20261001( int $vendor_id, bool $compact ): str
 				? (string) wcfmmp_get_store_url( $vendor_id )
 				: (string) get_author_posts_url( $vendor_id );
 
+			$count_short = $is_en
+				? sprintf( '%s %s', number_format_i18n( $count ), 1 === $count ? 'review' : 'reviews' )
+				: sprintf( '%s %s', number_format_i18n( $count ), 1 === $count ? 'reseña' : 'reseñas' );
+
 			return '<div class="mdo-vendor-rating-row">'
 				. '<a class="mdo-vendor-rating__vendor" href="' . esc_url( $store_url ) . '">' . esc_html( $name ) . '</a>'
-				. '<span class="mdo-vendor-rating__separator" aria-hidden="true">·</span>'
 				. '<a class="mdo-vendor-rating mdo-vendor-rating--loop" href="' . esc_url( $url ) . '" aria-label="' . esc_attr( $aria ) . '">'
 				. '<span class="mdo-vendor-rating__stars" aria-hidden="true" style="--mdo-vendor-rating-width:' . esc_attr( $rating_percent ) . '%"></span>'
 				. '<span class="mdo-vendor-rating__score">' . esc_html( $score ) . '</span>'
-				. '<span class="mdo-vendor-rating__count">(' . esc_html( number_format_i18n( $count ) ) . ')</span>'
+				. '<span class="mdo-vendor-rating__count">(' . esc_html( $count_short ) . ')</span>'
 				. '</a>'
 				. '</div>';
 		}
@@ -428,43 +431,40 @@ add_action(
 			}
 			.mdo-vendor-rating-row {
 				display: flex;
-				align-items: center;
-				flex-wrap: wrap;
-				column-gap: .34rem;
-				row-gap: .12rem;
+				align-items: flex-start;
+				flex-direction: column;
 				box-sizing: border-box;
 				width: auto;
 				max-width: 100%;
 				margin-top: .42rem;
 				margin-bottom: 0;
 				padding: 0;
+				gap: .2rem;
 				line-height: 1.2;
 			}
 			.mdo-vendor-rating__vendor {
+				display: inline-block;
 				min-width: 0;
 				color: #42564e !important;
 				font-size: .76rem;
 				font-weight: 700;
 				line-height: 1.2;
 				text-decoration: none !important;
+				box-shadow: inset 0 -1px 0 transparent;
+				transition: color .15s ease, box-shadow .15s ease;
 			}
 			.mdo-vendor-rating__vendor:hover,
 			.mdo-vendor-rating__vendor:focus-visible {
 				color: #173f32 !important;
-				text-decoration: underline !important;
-				text-underline-offset: 2px;
-			}
-			.mdo-vendor-rating__separator {
-				color: rgba(66, 86, 78, .42);
-				font-size: .76rem;
-				line-height: 1;
+				text-decoration: none !important;
+				box-shadow: inset 0 -1px 0 currentColor;
 			}
 			.mdo-vendor-rating--loop {
 				display: inline-flex;
 				align-items: center;
 				flex: 0 0 auto;
 				flex-wrap: nowrap;
-				gap: .24rem;
+				gap: .12rem;
 				margin: 0;
 				padding: 0;
 				font-size: .76rem;
@@ -479,9 +479,11 @@ add_action(
 				letter-spacing: .08em;
 			}
 			.mdo-vendor-rating--loop .mdo-vendor-rating__score {
+				margin-left: -.04rem;
 				font-size: .76rem;
 			}
 			.mdo-vendor-rating--loop .mdo-vendor-rating__count {
+				margin-left: .12rem;
 				font-size: .72rem;
 				color: #66756f;
 			}
@@ -510,15 +512,14 @@ add_action(
 
 			@media (max-width: 600px) {
 				.mdo-vendor-rating-row {
-					column-gap: .28rem;
-					row-gap: .1rem;
+					gap: .18rem;
 					margin-top: .38rem;
 				}
 				.mdo-vendor-rating__vendor {
 					font-size: .73rem;
 				}
 				.mdo-vendor-rating--loop {
-					gap: .2rem;
+					gap: .1rem;
 					font-size: .72rem;
 				}
 				.mdo-vendor-rating--loop .mdo-vendor-rating__stars {
