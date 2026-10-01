@@ -199,7 +199,11 @@ final class MDO_Auto_Categorizer {
 		} elseif ( str_contains( $url, '/magret/' ) ) {
 			$slugs = array( 'pato', 'magret-de-pato' );
 		} elseif ( str_contains( $url, '/foie-gras/' ) ) {
-			$slugs = array( 'foie-pates-untables', 'pato', str_contains( $title, 'mousse' ) ? 'pate-mousse-rillettes-de-pato' : 'foie-gras-de-pato' );
+			if ( str_contains( $title, 'oca' ) && ! str_contains( $title, 'pato' ) ) {
+				$slugs = array( 'foie-pates-untables' );
+			} else {
+				$slugs = array( 'foie-pates-untables', 'pato', str_contains( $title, 'mousse' ) ? 'pate-mousse-rillettes-de-pato' : 'foie-gras-de-pato' );
+			}
 		} elseif ( str_contains( $url, '/pates/' ) ) {
 			if ( str_contains( $title, 'trucha' ) ) {
 				$slugs = array( 'pescados-mariscos', 'foie-pates-untables' );
