@@ -1,0 +1,244 @@
+name: Production vendor Offline vs Disabled policy 2026-10-01
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/inc/wcfm-disabled-vendor-visibility-010210.php'
+      - 'elmercadodeorigen-child/inc/wcfm-disabled-vendor-ui-010211.php'
+      - 'elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php'
+      - 'elmercadodeorigen-child/inc/home-category-visibility-010212.php'
+      - '.github/scripts/vendor-visibility-policy-20261001.php'
+      - '.github/workflows/production-vendor-visibility-policy-20261001.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-vendor-visibility-policy
+  cancel-in-progress: false
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate source
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in             elmercadodeorigen-child/inc/wcfm-disabled-vendor-visibility-010210.php             elmercadodeorigen-child/inc/wcfm-disabled-vendor-ui-010211.php             elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php             elmercadodeorigen-child/inc/home-category-visibility-010212.php             .github/scripts/vendor-visibility-policy-20261001.php
+          do
+            php -l "$f" >/dev/null
+          done
+          grep -q 'elmercado_wcfm_vendor_is_hard_disabled_010210' elmercadodeorigen-child/inc/wcfm-disabled-vendor-visibility-010210.php
+          grep -q 'elmercado_wcfm_vendor_is_offline_010210' elmercadodeorigen-child/inc/wcfm-disabled-vendor-visibility-010210.php
+          grep -q 'elmercado_wcfm_hidden_vendor_ids_010210' elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php
+          grep -q 'elmercado_wcfm_hidden_vendor_ids_010210' elmercadodeorigen-child/inc/home-category-visibility-010212.php
+
+      - name: Install deployment tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Locate production and back up files
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s" "$p"
+                  break
+                  ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+
+          THEME="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
+          BACKUP="/tmp/vendor-visibility-policy-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$BACKUP'"
+          for rel in             inc/wcfm-disabled-vendor-visibility-010210.php             inc/wcfm-disabled-vendor-ui-010211.php             inc/catalog-visibility-counts-010217.php             inc/home-category-visibility-010212.php
+          do
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -f '$THEME/$rel' && cp -p '$THEME/$rel' '$BACKUP/$(basename "$rel")'"
+          done
+
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          echo "THEME=$THEME" >> "$GITHUB_ENV"
+          echo "BACKUP=$BACKUP" >> "$GITHUB_ENV"
+
+      - name: Deploy visibility policy
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+
+          for rel in             inc/wcfm-disabled-vendor-visibility-010210.php             inc/wcfm-disabled-vendor-ui-010211.php             inc/catalog-visibility-counts-010217.php             inc/home-category-visibility-010212.php
+          do
+            sshpass -e scp $SCP "elmercadodeorigen-child/$rel" "$STAGING_USER@$STAGING_HOST:$THEME/$rel"
+          done
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            for f in               '$THEME/inc/wcfm-disabled-vendor-visibility-010210.php'               '$THEME/inc/wcfm-disabled-vendor-ui-010211.php'               '$THEME/inc/catalog-visibility-counts-010217.php'               '$THEME/inc/home-category-visibility-010212.php'
+            do
+              \"\$php_bin\" -l \"\$f\" >/dev/null
+            done
+            wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+            wp eval 'if ( function_exists( "elmercado_flush_home_cache" ) ) { elmercado_flush_home_cache(); }' --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+          "
+
+      - name: Reset production OPcache
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          PROBE="elmercado-opcache-vendor-policy-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$PROBE"
+          body="$(curl -fsSL --connect-timeout 10 --max-time 30 -H 'Cache-Control: no-store' -H 'Pragma: no-cache' "$BASE_URL/$PROBE?run=$GITHUB_RUN_ID")"
+          printf '%s\n' "$body" | grep -q '^OPCACHE_RESET_OK$'
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$PROBE'"
+
+      - name: Verify runtime policy
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          REMOTE="/tmp/vendor-visibility-policy-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/vendor-visibility-policy-20261001.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          OUT="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root
+            rm -f '$REMOTE'
+          ")"
+          printf '%s\n' "$OUT"
+          printf '%s\n' "$OUT" | grep -q '^VENDOR_VISIBILITY_POLICY_20261001_OK$'
+          POLICY_B64="$(printf '%s\n' "$OUT" | sed -n 's/^__POLICY__=//p' | tail -n1)"
+          test -n "$POLICY_B64"
+          POLICY_JSON="$(printf '%s' "$POLICY_B64" | base64 -d)"
+          printf '%s\n' "$POLICY_JSON" | jq .
+
+          COOKIE_NAME="$(printf '%s' "$POLICY_JSON" | jq -r '.admin_cookie_name')"
+          COOKIE_VALUE="$(printf '%s' "$POLICY_JSON" | jq -r '.admin_cookie_value')"
+          echo "::add-mask::$COOKIE_VALUE"
+
+          check_code() {
+            local url="$1" expected="$2" mode="$3"
+            local args=(-sS -o /tmp/vendor-policy-body -w '%{http_code}' --connect-timeout 10 --max-time 40 -H 'Cache-Control: no-store' -H 'Pragma: no-cache')
+            if [ "$mode" = admin ]; then
+              args+=(-b "$COOKIE_NAME=$COOKIE_VALUE")
+            fi
+            local sep='?'
+            case "$url" in *\?*) sep='&' ;; esac
+            local code
+            code="$(curl "${args[@]}" "$url${sep}vendorPolicyQA=$GITHUB_RUN_ID-$mode")"
+            echo "HTTP $mode $code $url"
+            test "$code" = "$expected"
+          }
+
+          while IFS= read -r url; do
+            [ -n "$url" ] || continue
+            check_code "$url" 404 public
+            check_code "$url" 404 admin
+          done < <(printf '%s' "$POLICY_JSON" | jq -r '.hard_store_urls[]?')
+
+          HARD_PRODUCT="$(printf '%s' "$POLICY_JSON" | jq -r '.hard_product_url // empty')"
+          if [ -n "$HARD_PRODUCT" ]; then
+            check_code "$HARD_PRODUCT" 404 public
+            check_code "$HARD_PRODUCT" 404 admin
+          fi
+
+          OFFLINE_PRODUCT="$(printf '%s' "$POLICY_JSON" | jq -r '.offline_product_url // empty')"
+          if [ -n "$OFFLINE_PRODUCT" ]; then
+            check_code "$OFFLINE_PRODUCT" 404 public
+            check_code "$OFFLINE_PRODUCT" 200 admin
+          fi
+
+          HOME_URL="$(printf '%s' "$POLICY_JSON" | jq -r '.home_url')"
+          PRODUCERS_URL="$(printf '%s' "$POLICY_JSON" | jq -r '.producer_directory')"
+          curl -fsSL --connect-timeout 10 --max-time 40 -H 'Cache-Control: no-store' -H 'Pragma: no-cache' "$HOME_URL?vendorPolicyQA=$GITHUB_RUN_ID" > /tmp/home-public.html
+          curl -fsSL --connect-timeout 10 --max-time 40 -H 'Cache-Control: no-store' -H 'Pragma: no-cache' -b "$COOKIE_NAME=$COOKIE_VALUE" "$HOME_URL?vendorPolicyQA=$GITHUB_RUN_ID-admin" > /tmp/home-admin.html
+          curl -fsSL --connect-timeout 10 --max-time 40 -H 'Cache-Control: no-store' -H 'Pragma: no-cache' "$PRODUCERS_URL?vendorPolicyQA=$GITHUB_RUN_ID" > /tmp/producers-public.html || true
+          curl -fsSL --connect-timeout 10 --max-time 40 -H 'Cache-Control: no-store' -H 'Pragma: no-cache' -b "$COOKIE_NAME=$COOKIE_VALUE" "$PRODUCERS_URL?vendorPolicyQA=$GITHUB_RUN_ID-admin" > /tmp/producers-admin.html || true
+
+          while IFS= read -r url; do
+            [ -n "$url" ] || continue
+            needle="${url%/}"
+            ! grep -Fq "$needle" /tmp/home-public.html
+            ! grep -Fq "$needle" /tmp/home-admin.html
+            ! grep -Fq "$needle" /tmp/producers-public.html
+            ! grep -Fq "$needle" /tmp/producers-admin.html
+          done < <(printf '%s' "$POLICY_JSON" | jq -r '.hard_store_urls[]?')
+
+          echo PRODUCTION_VENDOR_VISIBILITY_POLICY_20261001_OK
+
+      - name: Cleanup backup
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$BACKUP'"
+
+      - name: Roll back on failure
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          if [ -n "${THEME:-}" ] && [ -n "${BACKUP:-}" ]; then
+            for rel in               inc/wcfm-disabled-vendor-visibility-010210.php               inc/wcfm-disabled-vendor-ui-010211.php               inc/catalog-visibility-counts-010217.php               inc/home-category-visibility-010212.php
+            do
+              base="$(basename "$rel")"
+              sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "[ -f '$BACKUP/$base' ] && cp -p '$BACKUP/$base' '$THEME/$rel'"
+            done
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; rm -rf '$BACKUP'"
+          fi
+          echo PRODUCTION_VENDOR_VISIBILITY_POLICY_ROLLED_BACK
