@@ -219,18 +219,25 @@ html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card img {
 		grid-row: 3 !important;
 	}
 
-	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-6 {
+	html body.home.elmercado-child-theme .emo-home .emo-hero__grid > .emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-6 {
 		display: grid !important;
 		width: 100% !important;
+		height: auto !important;
+		min-height: 0 !important;
+		max-height: none !important;
 		margin: .15rem auto 0 !important;
 		grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
 		grid-template-rows: repeat(3, clamp(132px, 35vw, 158px)) !important;
+		grid-auto-rows: auto !important;
 		gap: 10px !important;
 		transform: none !important;
 	}
-	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-6 .emo-hero-card {
+	html body.home.elmercado-child-theme .emo-home .emo-hero__grid > .emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-6 > .emo-hero-card {
 		grid-column: auto !important;
 		grid-row: auto !important;
+		width: auto !important;
+		height: auto !important;
+		min-width: 0 !important;
 		min-height: 0 !important;
 		border-radius: 14px !important;
 		transform: none !important;
@@ -260,8 +267,9 @@ html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card img {
 		grid-template-rows: 126px 126px 122px !important;
 	}
 
-	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-6 {
+	html body.home.elmercado-child-theme .emo-home .emo-hero__grid > .emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-6 {
 		gap: 8px !important;
+		grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
 		grid-template-rows: 126px 126px 126px !important;
 	}
 	html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card figcaption {
