@@ -5,9 +5,9 @@
  * Regla única:
  * - solo productos publicados y visibles en catálogo;
  * - los productos sin existencias nunca forman parte del catálogo público;
- * - el público excluye vendedores WCFM desactivados/offline;
- * - los administradores conservan la visibilidad de esos vendedores, pero los
- *   productos agotados siguen fuera porque no forman parte del catálogo vendible.
+ * - Disabled se excluye siempre, también para administradores;
+ * - Offline se excluye al público y sigue visible para administradores;
+ * - los productos agotados siguen fuera porque no forman parte del catálogo vendible.
  *
  * @package ElMercadoDeOrigen
  */
@@ -17,7 +17,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Indica si el usuario actual puede ver productos de vendedores desactivados.
+ * Indica si el usuario actual puede auditar productos de tiendas Offline.
+ * Disabled nunca queda exceptuado por esta capacidad.
  */
 function elmercado_catalog_counts_can_view_disabled_010217(): bool {
 	return function_exists( 'elmercado_wcfm_disabled_visibility_can_view_010210' )
@@ -32,8 +33,14 @@ function elmercado_catalog_counts_can_view_disabled_010217(): bool {
 function elmercado_catalog_counts_excluded_authors_010217(): array {
 	$excluded = array();
 
-	/* Los administradores pueden auditar vendedores offline, pero el destino seleccionado sigue aplicando. */
-	if ( ! elmercado_catalog_counts_can_view_disabled_010217() && function_exists( 'elmercado_wcfm_disabled_vendor_ids_010210' ) ) {
+	/*
+	 * Misma política que el catálogo real:
+	 * - Disabled siempre fuera.
+	 * - Offline fuera salvo cuando un administrador audita el frontend.
+	 */
+	if ( function_exists( 'elmercado_wcfm_hidden_vendor_ids_010210' ) ) {
+		$excluded = array_merge( $excluded, (array) elmercado_wcfm_hidden_vendor_ids_010210() );
+	} elseif ( ! elmercado_catalog_counts_can_view_disabled_010217() && function_exists( 'elmercado_wcfm_disabled_vendor_ids_010210' ) ) {
 		$excluded = array_merge( $excluded, (array) elmercado_wcfm_disabled_vendor_ids_010210() );
 	}
 
@@ -194,7 +201,7 @@ function elmercado_catalog_visible_category_counts_010217(): array {
 	static $cache = array();
 
 	$excluded  = elmercado_catalog_counts_excluded_authors_010217();
-	$scope_key = ( elmercado_catalog_counts_can_view_disabled_010217() ? 'admin' : 'public:' . implode( ',', $excluded ) ) . ':stock:hidden';
+	$scope_key = ( elmercado_catalog_counts_can_view_disabled_010217() ? 'admin:' : 'public:' ) . implode( ',', $excluded ) . ':stock:hidden';
 
 	if ( isset( $cache[ $scope_key ] ) ) {
 		return $cache[ $scope_key ];

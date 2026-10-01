@@ -1,10 +1,14 @@
 <?php
 /**
- * Oculta al público los productos de tiendas WCFM desactivadas u offline.
+ * Política de visibilidad para tiendas WCFM Offline y Disabled.
  *
- * Los administradores conservan visibilidad completa para poder auditar y
- * gestionar el catálogo. Para el resto de usuarios, esos productos se tratan
- * como inexistentes en consultas, loops, shortcodes y compra.
+ * - Offline (_wcfm_store_offline): oculto al público, visible en frontend para
+ *   administradores para poder auditar el catálogo.
+ * - Disabled (_disable_vendor / rol disable_vendor): excluido del frontend para
+ *   todos, incluidos administradores. Sigue existiendo en wp-admin para gestión.
+ *
+ * Los productos se mantienen publicados; esta capa decide si forman parte o no
+ * del storefront, consultas, filtros, conteos, relacionados y compra.
  *
  * @package ElMercadoDeOrigen
  */
@@ -14,7 +18,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Solo los administradores pueden ver productos de tiendas desactivadas.
+ * Solo los administradores pueden auditar en frontend una tienda Offline.
+ * Este permiso nunca hace visibles tiendas marcadas como Disabled.
  */
 function elmercado_wcfm_disabled_visibility_can_view_010210(): bool {
 	return is_user_logged_in() && current_user_can( 'manage_options' );
@@ -43,9 +48,9 @@ function elmercado_wcfm_status_flag_is_on_010210( $value ): bool {
 }
 
 /**
- * Indica si WCFM considera al vendedor desactivado o con la tienda offline.
+ * Estado fuerte: vendedor retirado del marketplace.
  */
-function elmercado_wcfm_vendor_is_disabled_010210( int $user_id ): bool {
+function elmercado_wcfm_vendor_is_hard_disabled_010210( int $user_id ): bool {
 	if ( $user_id <= 0 ) {
 		return false;
 	}
@@ -60,11 +65,35 @@ function elmercado_wcfm_vendor_is_disabled_010210( int $user_id ): bool {
 		return true;
 	}
 
-	if ( elmercado_wcfm_status_flag_is_on_010210( get_user_meta( $user_id, '_disable_vendor', true ) ) ) {
+	return elmercado_wcfm_status_flag_is_on_010210( get_user_meta( $user_id, '_disable_vendor', true ) );
+}
+
+/**
+ * Estado temporal: tienda desconectada/offline.
+ */
+function elmercado_wcfm_vendor_is_offline_010210( int $user_id ): bool {
+	return $user_id > 0
+		&& elmercado_wcfm_status_flag_is_on_010210( get_user_meta( $user_id, '_wcfm_store_offline', true ) );
+}
+
+/**
+ * Compatibilidad con llamadas históricas: "disabled" incluye ambos flags.
+ */
+function elmercado_wcfm_vendor_is_disabled_010210( int $user_id ): bool {
+	return elmercado_wcfm_vendor_is_hard_disabled_010210( $user_id )
+		|| elmercado_wcfm_vendor_is_offline_010210( $user_id );
+}
+
+/**
+ * Regla efectiva del frontend para el usuario actual.
+ */
+function elmercado_wcfm_vendor_is_hidden_010210( int $user_id ): bool {
+	if ( elmercado_wcfm_vendor_is_hard_disabled_010210( $user_id ) ) {
 		return true;
 	}
 
-	return elmercado_wcfm_status_flag_is_on_010210( get_user_meta( $user_id, '_wcfm_store_offline', true ) );
+	return elmercado_wcfm_vendor_is_offline_010210( $user_id )
+		&& ! elmercado_wcfm_disabled_visibility_can_view_010210();
 }
 
 /**
@@ -102,6 +131,68 @@ function elmercado_wcfm_disabled_vendor_ids_010210(): array {
 }
 
 /**
+ * Devuelve vendedores retirados de forma absoluta, tengan o no productos
+ * publicados. Se usa también para directorios/listados de productores.
+ *
+ * @return int[]
+ */
+function elmercado_wcfm_hard_disabled_vendor_ids_010210(): array {
+	static $ids = null;
+
+	if ( is_array( $ids ) ) {
+		return $ids;
+	}
+
+	$ids = array();
+
+	$role_ids = get_users(
+		array(
+			'role'   => 'disable_vendor',
+			'fields' => 'ids',
+		)
+	);
+	$ids = array_merge( $ids, array_map( 'absint', (array) $role_ids ) );
+
+	$meta_users = get_users(
+		array(
+			'meta_key'     => '_disable_vendor',
+			'meta_compare' => 'EXISTS',
+			'fields'       => 'ids',
+		)
+	);
+	foreach ( array_map( 'absint', (array) $meta_users ) as $user_id ) {
+		if ( elmercado_wcfm_vendor_is_hard_disabled_010210( $user_id ) ) {
+			$ids[] = $user_id;
+		}
+	}
+
+	$ids = array_values( array_unique( array_filter( array_map( 'absint', $ids ) ) ) );
+	return $ids;
+}
+
+/**
+ * Vendedores que deben quedar ocultos en el frontend para el usuario actual.
+ * Disabled siempre; Offline solo para visitantes/no administradores.
+ *
+ * @return int[]
+ */
+function elmercado_wcfm_hidden_vendor_ids_010210(): array {
+	$hidden = elmercado_wcfm_hard_disabled_vendor_ids_010210();
+
+	if ( elmercado_wcfm_disabled_visibility_can_view_010210() ) {
+		return $hidden;
+	}
+
+	foreach ( elmercado_wcfm_disabled_vendor_ids_010210() as $vendor_id ) {
+		if ( elmercado_wcfm_vendor_is_offline_010210( (int) $vendor_id ) ) {
+			$hidden[] = (int) $vendor_id;
+		}
+	}
+
+	return array_values( array_unique( array_filter( array_map( 'absint', $hidden ) ) ) );
+}
+
+/**
  * Comprueba el vendedor real de un producto o variación.
  */
 function elmercado_wcfm_product_is_from_disabled_vendor_010210( int $product_id ): bool {
@@ -121,7 +212,7 @@ function elmercado_wcfm_product_is_from_disabled_vendor_010210( int $product_id 
 		}
 	}
 
-	return 'product' === $post->post_type && elmercado_wcfm_vendor_is_disabled_010210( (int) $post->post_author );
+	return 'product' === $post->post_type && elmercado_wcfm_vendor_is_hidden_010210( (int) $post->post_author );
 }
 
 /**
@@ -137,7 +228,7 @@ function elmercado_wcfm_requested_vendor_id_010210(): int {
  */
 function elmercado_wcfm_block_disabled_vendor_filter_010210( WP_Query $query ): void {
 	$requested_vendor = elmercado_wcfm_requested_vendor_id_010210();
-	if ( $requested_vendor <= 0 || ! elmercado_wcfm_vendor_is_disabled_010210( $requested_vendor ) ) {
+	if ( $requested_vendor <= 0 || ! elmercado_wcfm_vendor_is_hidden_010210( $requested_vendor ) ) {
 		return;
 	}
 
@@ -180,11 +271,7 @@ function elmercado_wcfm_query_targets_products_010210( WP_Query $query ): bool {
  * @return array<string,mixed>
  */
 function elmercado_wcfm_exclude_disabled_authors_from_args_010210( array $args ): array {
-	if ( elmercado_wcfm_disabled_visibility_can_view_010210() ) {
-		return $args;
-	}
-
-	$disabled = elmercado_wcfm_disabled_vendor_ids_010210();
+	$disabled = elmercado_wcfm_hidden_vendor_ids_010210();
 	if ( ! $disabled ) {
 		return $args;
 	}
@@ -208,11 +295,11 @@ function elmercado_wcfm_exclude_disabled_authors_from_args_010210( array $args )
 add_action(
 	'pre_get_posts',
 	static function ( WP_Query $query ): void {
-		if ( elmercado_wcfm_disabled_visibility_can_view_010210() || ! elmercado_wcfm_query_targets_products_010210( $query ) ) {
+		if ( ! elmercado_wcfm_query_targets_products_010210( $query ) ) {
 			return;
 		}
 
-		$disabled = elmercado_wcfm_disabled_vendor_ids_010210();
+		$disabled = elmercado_wcfm_hidden_vendor_ids_010210();
 		if ( ! $disabled ) {
 			return;
 		}
@@ -241,10 +328,10 @@ add_filter(
 add_action(
 	'woocommerce_product_query',
 	static function ( $query ): void {
-		if ( elmercado_wcfm_disabled_visibility_can_view_010210() || ! is_object( $query ) || ! method_exists( $query, 'get' ) || ! method_exists( $query, 'set' ) ) {
+		if ( ! is_object( $query ) || ! method_exists( $query, 'get' ) || ! method_exists( $query, 'set' ) ) {
 			return;
 		}
-		$disabled = elmercado_wcfm_disabled_vendor_ids_010210();
+		$disabled = elmercado_wcfm_hidden_vendor_ids_010210();
 		if ( ! $disabled ) {
 			return;
 		}
@@ -266,7 +353,7 @@ add_action(
 add_filter(
 	'the_posts',
 	static function ( array $posts, WP_Query $query ): array {
-		if ( elmercado_wcfm_disabled_visibility_can_view_010210() || ! $posts ) {
+		if ( ! $posts ) {
 			return $posts;
 		}
 
@@ -292,9 +379,6 @@ add_filter(
 add_filter(
 	'woocommerce_product_is_visible',
 	static function ( bool $visible, int $product_id ): bool {
-		if ( elmercado_wcfm_disabled_visibility_can_view_010210() ) {
-			return $visible;
-		}
 		return elmercado_wcfm_product_is_from_disabled_vendor_010210( $product_id ) ? false : $visible;
 	},
 	999,
@@ -307,7 +391,7 @@ add_filter(
 add_filter(
 	'woocommerce_is_purchasable',
 	static function ( bool $purchasable, $product ): bool {
-		if ( elmercado_wcfm_disabled_visibility_can_view_010210() || ! is_object( $product ) || ! method_exists( $product, 'get_id' ) ) {
+		if ( ! is_object( $product ) || ! method_exists( $product, 'get_id' ) ) {
 			return $purchasable;
 		}
 		return elmercado_wcfm_product_is_from_disabled_vendor_010210( (int) $product->get_id() ) ? false : $purchasable;
@@ -319,7 +403,7 @@ add_filter(
 add_filter(
 	'woocommerce_variation_is_purchasable',
 	static function ( bool $purchasable, $variation ): bool {
-		if ( elmercado_wcfm_disabled_visibility_can_view_010210() || ! is_object( $variation ) || ! method_exists( $variation, 'get_id' ) ) {
+		if ( ! is_object( $variation ) || ! method_exists( $variation, 'get_id' ) ) {
 			return $purchasable;
 		}
 		return elmercado_wcfm_product_is_from_disabled_vendor_010210( (int) $variation->get_id() ) ? false : $purchasable;
@@ -334,9 +418,6 @@ add_filter(
 add_filter(
 	'woocommerce_related_products',
 	static function ( array $related_posts ): array {
-		if ( elmercado_wcfm_disabled_visibility_can_view_010210() ) {
-			return $related_posts;
-		}
 		return array_values(
 			array_filter(
 				array_map( 'intval', $related_posts ),
@@ -346,3 +427,171 @@ add_filter(
 	},
 	999
 );
+
+/**
+ * Los listados de productores de WCFM nunca deben incluir Disabled.
+ * Offline mantiene el comportamiento nativo de WCFM.
+ */
+function elmercado_wcfm_append_hard_disabled_vendor_exclusions_010210( $ids ): array {
+	$ids = is_array( $ids ) ? $ids : array();
+	return array_values(
+		array_unique(
+			array_filter(
+				array_map(
+					'absint',
+					array_merge( $ids, elmercado_wcfm_hard_disabled_vendor_ids_010210() )
+				)
+			)
+		)
+	);
+}
+
+add_filter(
+	'wcfm_exclude_vendors_list',
+	static function ( $ids ) {
+		return elmercado_wcfm_append_hard_disabled_vendor_exclusions_010210( $ids );
+	},
+	999
+);
+
+add_filter(
+	'wcfmmp_exclude_vendors_list',
+	static function ( $ids ) {
+		return elmercado_wcfm_append_hard_disabled_vendor_exclusions_010210( $ids );
+	},
+	999
+);
+
+add_filter(
+	'wcfmmp_store_list_card_valid',
+	static function ( $store_id ) {
+		$vendor_id = absint( $store_id );
+		return $vendor_id > 0 && elmercado_wcfm_vendor_is_hard_disabled_010210( $vendor_id )
+			? false
+			: $store_id;
+	},
+	999
+);
+
+/**
+ * Una tienda Disabled tampoco debe abrirse directamente aunque el visitante sea
+ * administrador. El backend /wp-admin/ no se toca.
+ */
+add_action(
+	'template_redirect',
+	static function (): void {
+		if ( is_admin() || ! function_exists( 'wcfm_is_store_page' ) || ! wcfm_is_store_page() ) {
+			return;
+		}
+
+		$store_key = function_exists( 'wcfm_get_option' )
+			? (string) wcfm_get_option( 'wcfm_store_url', 'store' )
+			: 'store';
+		$slug = sanitize_title( (string) get_query_var( $store_key ) );
+		if ( '' === $slug ) {
+			return;
+		}
+
+		$user = get_user_by( 'slug', $slug );
+		if ( ! $user instanceof WP_User || ! elmercado_wcfm_vendor_is_hard_disabled_010210( (int) $user->ID ) ) {
+			return;
+		}
+
+		global $wp_query;
+		if ( $wp_query instanceof WP_Query ) {
+			$wp_query->set_404();
+		}
+		status_header( 404 );
+		nocache_headers();
+	},
+	-999
+);
+
+/**
+ * Defensa de Home: si el hero de productores fue construido por una capa
+ * personalizada que no pasa por el listado nativo de WCFM, eliminamos las
+ * tarjetas de vendedores Disabled por su URL de tienda y corregimos el contador
+ * de tarjetas usado por el layout.
+ */
+function elmercado_wcfm_strip_hard_disabled_home_vendors_010210( string $html ): string {
+	if ( '' === $html || false === strpos( $html, 'emo-hero__visual--vendors' ) ) {
+		return $html;
+	}
+
+	foreach ( elmercado_wcfm_hard_disabled_vendor_ids_010210() as $vendor_id ) {
+		$store_url = function_exists( 'wcfmmp_get_store_url' )
+			? (string) wcfmmp_get_store_url( (int) $vendor_id )
+			: '';
+		if ( '' === $store_url ) {
+			continue;
+		}
+
+		$quoted = preg_quote( untrailingslashit( $store_url ), '~' );
+		$html = (string) preg_replace(
+			'~<a\\b(?=[^>]*\\bclass=(["\\\'])[^"\\\']*\\bemo-hero-card\\b[^"\\\']*\\1)(?=[^>]*\\bhref=(["\\\'])' . $quoted . '/?\\2)[^>]*>.*?</a>~is',
+			'',
+			$html
+		);
+	}
+
+	if ( preg_match( '~<div\\b[^>]*\\bclass=(["\\\'])[^"\\\']*\\bemo-hero__visual--vendors\\b[^"\\\']*\\1[^>]*>(.*?)</div>~is', $html, $match ) ) {
+		$count = preg_match_all( '~\\bemo-hero-card\\b~', (string) $match[2] );
+		if ( is_int( $count ) && $count >= 0 ) {
+			$visual = (string) preg_replace( '~\\bemo-vendor-count-\\d+\\b~', 'emo-vendor-count-' . $count, (string) $match[0], 1 );
+			$html   = substr_replace( $html, $visual, (int) strpos( $html, $match[0] ), strlen( $match[0] ) );
+		}
+	}
+
+	return $html;
+}
+
+add_action(
+	'template_redirect',
+	static function (): void {
+		if ( is_admin() || ! is_front_page() || is_feed() || is_trackback() || wp_doing_ajax() ) {
+			return;
+		}
+		ob_start( 'elmercado_wcfm_strip_hard_disabled_home_vendors_010210' );
+	},
+	-10000
+);
+
+/**
+ * Los productos de vendedores Disabled tampoco deben formar parte de sitemaps.
+ * Offline conserva su semántica temporal y no se fuerza aquí.
+ */
+add_filter(
+	'wp_sitemaps_posts_query_args',
+	static function ( array $args, string $post_type ): array {
+		if ( 'product' !== $post_type ) {
+			return $args;
+		}
+		$current = isset( $args['author__not_in'] ) ? array_map( 'absint', (array) $args['author__not_in'] ) : array();
+		$args['author__not_in'] = array_values(
+			array_unique(
+				array_merge( $current, elmercado_wcfm_hard_disabled_vendor_ids_010210() )
+			)
+		);
+		return $args;
+	},
+	999,
+	2
+);
+
+add_filter(
+	'wpseo_sitemap_entry',
+	static function ( $url, string $type, $object ) {
+		if (
+			'post' === $type
+			&& $object instanceof WP_Post
+			&& 'product' === $object->post_type
+			&& elmercado_wcfm_vendor_is_hard_disabled_010210( (int) $object->post_author )
+		) {
+			return false;
+		}
+		return $url;
+	},
+	999,
+	3
+);
+
