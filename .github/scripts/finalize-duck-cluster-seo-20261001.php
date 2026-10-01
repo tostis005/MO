@@ -206,8 +206,8 @@ foreach ( $duck_posts as $post ) {
         'h2'      => (int) $h2,
     );
 }
-if ( $filler_before < 50 ) {
-    throw new Exception( 'Unexpected filler footprint before cleanup: ' . $filler_before );
+if ( 0 !== $filler_before && $filler_before < 50 ) {
+    throw new Exception( 'Unexpected partial filler footprint before cleanup: ' . $filler_before );
 }
 if ( $preflight_min_words < 650 || $preflight_min_h2 < 6 ) {
     throw new Exception(
@@ -360,6 +360,17 @@ foreach ( array(
         $updated = wp_update_term( $term->term_id, 'product_cat', array( 'description'=>$desc ) );
         if ( is_wp_error( $updated ) ) { throw new Exception( $updated->get_error_message() ); }
     }
+}
+
+$blog_term = get_term_by( 'slug', 'pato', 'category' );
+if ( ! $blog_term instanceof WP_Term ) {
+    throw new Exception( 'Duck editorial hub category unavailable.' );
+}
+$blog_desc = (string) term_description( $blog_term );
+if ( false === strpos( $blog_desc, (string) $global_url ) ) {
+    $blog_desc .= '<p>Para comparar foie gras con patés, mousses, parfaits, rillettes y otros formatos más allá de una sola especie, consulta también <a href="' . esc_url( $global_url ) . '">Foie, patés y untables</a>.</p>';
+    $updated = wp_update_term( $blog_term->term_id, 'category', array( 'description'=>$blog_desc ) );
+    if ( is_wp_error( $updated ) ) { throw new Exception( $updated->get_error_message() ); }
 }
 
 /* ---------- Turn the producer into a topical authority node. ---------- */
