@@ -1,6 +1,6 @@
 <?php
 /**
- * Final responsive geometry for the five-producer Home hero collage.
+ * Final responsive geometry for the Home producer hero collage, including six active producers.
  *
  * The producer banners have very different source ratios (square, 4:3,
  * landscape and Montjam's extra-wide 12:5 banner). This layer gives each
@@ -87,11 +87,27 @@ html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card img {
 		transform: rotate(.9deg) !important;
 		z-index: 4;
 	}
+
+
+	/* Six active producers: two balanced rows, no tiny cells and no stretched imagery. */
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-6 {
+		display: grid !important;
+		grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+		grid-template-rows: repeat(2, clamp(178px, 12.5vw, 205px)) !important;
+		gap: 12px !important;
+		transform: translateY(8px) !important;
+	}
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-6 .emo-hero-card {
+		grid-column: auto !important;
+		grid-row: auto !important;
+		min-height: 0 !important;
+		transform: none !important;
+	}
 }
 
 /*
  * Tablet and intermediate widths. The base theme keeps a two-column hero until
- * 991px, which leaves only ~425px for five cards around 1024px. Force the hero
+ * 991px, which leaves too little room for the producer cards around 1024px. Force the hero
  * to one column through 1180px and give every producer a substantial tile.
  */
 @media (min-width: 600px) and (max-width: 1180px) {
@@ -128,6 +144,22 @@ html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card img {
 		grid-column: 1 / -1 !important;
 		grid-row: 3 !important;
 	}
+
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-6 {
+		display: grid !important;
+		width: min(100%, 720px) !important;
+		margin: .35rem auto 0 !important;
+		grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+		grid-template-rows: repeat(3, clamp(170px, 22vw, 215px)) !important;
+		gap: clamp(10px, 1.8vw, 16px) !important;
+		transform: none !important;
+	}
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-6 .emo-hero-card {
+		grid-column: auto !important;
+		grid-row: auto !important;
+		min-height: 0 !important;
+		transform: none !important;
+	}
 	html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card figcaption {
 		display: flex !important;
 		visibility: visible !important;
@@ -143,7 +175,7 @@ html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card img {
 	}
 }
 
-/* Phones: two clean rows plus a full-width Montjam banner. All five remain visible. */
+/* Phones: a clean two-column, three-row grid when six producers are active. */
 @media (max-width: 599px) {
 	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 {
 		display: grid !important;
@@ -172,6 +204,23 @@ html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card img {
 		grid-column: 1 / -1 !important;
 		grid-row: 3 !important;
 	}
+
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-6 {
+		display: grid !important;
+		width: 100% !important;
+		margin: .15rem auto 0 !important;
+		grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+		grid-template-rows: repeat(3, clamp(132px, 35vw, 158px)) !important;
+		gap: 10px !important;
+		transform: none !important;
+	}
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-6 .emo-hero-card {
+		grid-column: auto !important;
+		grid-row: auto !important;
+		min-height: 0 !important;
+		border-radius: 14px !important;
+		transform: none !important;
+	}
 	html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card figcaption {
 		display: flex !important;
 		visibility: visible !important;
@@ -195,6 +244,11 @@ html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card img {
 	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 {
 		gap: 8px !important;
 		grid-template-rows: 126px 126px 122px !important;
+	}
+
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-6 {
+		gap: 8px !important;
+		grid-template-rows: 126px 126px 126px !important;
 	}
 	html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card figcaption {
 		padding: .55rem .62rem !important;
