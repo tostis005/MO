@@ -10,7 +10,6 @@ on:
       - 'elmercadodeorigen-child/inc/home-category-output-final-010226.php'
       - 'elmercadodeorigen-child/inc/categories-hub-010257.php'
       - 'elmercadodeorigen-child/page-categorias.php'
-      - 'mu-plugins/mdo-mentta-admin-frontend-010257.php'
 
 permissions:
   contents: read
@@ -41,7 +40,6 @@ jobs:
             elmercadodeorigen-child/inc/home-category-output-final-010226.php \
             elmercadodeorigen-child/inc/categories-hub-010257.php \
             elmercadodeorigen-child/page-categorias.php \
-            mu-plugins/mdo-mentta-admin-frontend-010257.php \
             scripts/categories-hub-server-010257.php; do
             test -f "$f"
             php -l "$f" >/dev/null
@@ -52,7 +50,6 @@ jobs:
           grep -q 'Ver todas las categorías' elmercadodeorigen-child/inc/home-category-output-final-010226.php
           grep -q 'data-emo-categories-hub="010259"' elmercadodeorigen-child/page-categorias.php
           grep -q 'elmercado_catalog_visible_category_counts_010217' elmercadodeorigen-child/inc/categories-hub-010257.php
-          grep -q 'mdo_mentta_enable_frontend_for_admin_010257' mu-plugins/mdo-mentta-admin-frontend-010257.php
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
           [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
 
@@ -85,11 +82,10 @@ jobs:
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
           REMOTE_TMP="/tmp/mdo-categories-010257-${GITHUB_RUN_ID}"
           echo "REMOTE_TMP=$REMOTE_TMP" >> "$GITHUB_ENV"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE_TMP' && mkdir -p '$REMOTE_TMP/theme/inc' '$REMOTE_TMP/mu' '$REMOTE_TMP/scripts'"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE_TMP' && mkdir -p '$REMOTE_TMP/theme/inc' '$REMOTE_TMP/scripts'"
           sshpass -e rsync -az -e "ssh $SSH_OPTIONS" elmercadodeorigen-child/inc/home-category-output-final-010226.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/theme/inc/home-category-output-final-010226.php"
           sshpass -e rsync -az -e "ssh $SSH_OPTIONS" elmercadodeorigen-child/inc/categories-hub-010257.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/theme/inc/categories-hub-010257.php"
           sshpass -e rsync -az -e "ssh $SSH_OPTIONS" elmercadodeorigen-child/page-categorias.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/theme/page-categorias.php"
-          sshpass -e rsync -az -e "ssh $SSH_OPTIONS" mu-plugins/mdo-mentta-admin-frontend-010257.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/mu/mdo-mentta-admin-frontend-010257.php"
           sshpass -e rsync -az -e "ssh $SSH_OPTIONS" scripts/categories-hub-server-010257.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/scripts/categories-hub-server-010257.php"
 
       - name: Backup and deploy production categories hub
@@ -113,9 +109,7 @@ jobs:
 
           prod="$(dirname "$dev")/httpdocs"
           theme="$prod/wp-content/themes/elmercadodeorigen-child"
-          mu_dir="$prod/wp-content/mu-plugins"
           [ -f "$prod/wp-config.php" ] && [ -d "$theme/inc" ] || { echo 'Production paths invalid.' >&2; exit 1; }
-          mkdir -p "$mu_dir"
 
           php_bin="$(command -v php || true)"
           [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
@@ -129,7 +123,6 @@ jobs:
             "$incoming/theme/inc/home-category-output-final-010226.php" \
             "$incoming/theme/inc/categories-hub-010257.php" \
             "$incoming/theme/page-categorias.php" \
-            "$incoming/mu/mdo-mentta-admin-frontend-010257.php" \
             "$incoming/scripts/categories-hub-server-010257.php"; do
             "$php_bin" -l "$f" >/dev/null
           done
@@ -142,7 +135,6 @@ jobs:
           home_target="$theme/inc/home-category-output-final-010226.php"
           hub_target="$theme/inc/categories-hub-010257.php"
           page_target="$theme/page-categorias.php"
-          mu_target="$mu_dir/mdo-mentta-admin-frontend-010257.php"
 
           backup_file() {
             target="$1"; name="$2"
@@ -165,7 +157,6 @@ jobs:
           backup_file "$home_target" home-category-output-final-010226.php
           backup_file "$hub_target" categories-hub-010257.php
           backup_file "$page_target" page-categorias.php
-          backup_file "$mu_target" mdo-mentta-admin-frontend-010257.php
           printf '%s\n' "$commit" > "$backup_dir/release-sha.txt"
           printf '%s\n' "$siteurl" > "$backup_dir/siteurl.txt"
 
@@ -186,7 +177,6 @@ jobs:
               restore_file "$home_target" home-category-output-final-010226.php
               restore_file "$hub_target" categories-hub-010257.php
               restore_file "$page_target" page-categorias.php
-              restore_file "$mu_target" mdo-mentta-admin-frontend-010257.php
               if [ "$page_created" = yes ] && [ "$page_id" -gt 0 ]; then
                 "$php_bin" -d memory_limit=768M "$wp_bin" post delete "$page_id" --force --path="$prod" --allow-root >/dev/null 2>&1 || true
               elif [ "$page_id" -gt 0 ] && [ -n "$old_status" ]; then
@@ -201,10 +191,9 @@ jobs:
           cp "$incoming/theme/inc/home-category-output-final-010226.php" "$home_target"
           cp "$incoming/theme/inc/categories-hub-010257.php" "$hub_target"
           cp "$incoming/theme/page-categorias.php" "$page_target"
-          cp "$incoming/mu/mdo-mentta-admin-frontend-010257.php" "$mu_target"
           deployed=1
 
-          for f in "$home_target" "$hub_target" "$page_target" "$mu_target"; do
+          for f in "$home_target" "$hub_target" "$page_target"; do
             "$php_bin" -l "$f" >/dev/null
           done
 
@@ -233,7 +222,6 @@ jobs:
           printf '__SITEURL__=%s\n' "$siteurl"
           printf '__PROD__=%s\n' "$prod"
           printf '__THEME__=%s\n' "$theme"
-          printf '__MU_DIR__=%s\n' "$mu_dir"
           printf '__BACKUP_DIR__=%s\n' "$backup_dir"
           printf '__PAGE_ID__=%s\n' "$page_id"
           printf '__PAGE_CREATED__=%s\n' "$page_created"
@@ -244,16 +232,14 @@ jobs:
           SITEURL="$(printf '%s\n' "$OUT" | sed -n 's/^__SITEURL__=//p' | tail -n1)"
           PROD="$(printf '%s\n' "$OUT" | sed -n 's/^__PROD__=//p' | tail -n1)"
           THEME="$(printf '%s\n' "$OUT" | sed -n 's/^__THEME__=//p' | tail -n1)"
-          MU_DIR="$(printf '%s\n' "$OUT" | sed -n 's/^__MU_DIR__=//p' | tail -n1)"
           BACKUP_DIR="$(printf '%s\n' "$OUT" | sed -n 's/^__BACKUP_DIR__=//p' | tail -n1)"
           PAGE_ID="$(printf '%s\n' "$OUT" | sed -n 's/^__PAGE_ID__=//p' | tail -n1)"
           PAGE_CREATED="$(printf '%s\n' "$OUT" | sed -n 's/^__PAGE_CREATED__=//p' | tail -n1)"
           PAGE_OLD_STATUS="$(printf '%s\n' "$OUT" | sed -n 's/^__PAGE_OLD_STATUS__=//p' | tail -n1)"
-          : "${SITEURL:?}"; : "${PROD:?}"; : "${THEME:?}"; : "${MU_DIR:?}"; : "${BACKUP_DIR:?}"; : "${PAGE_ID:?}"; : "${PAGE_CREATED:?}"
+          : "${SITEURL:?}"; : "${PROD:?}"; : "${THEME:?}"; : "${BACKUP_DIR:?}"; : "${PAGE_ID:?}"; : "${PAGE_CREATED:?}"
           echo "PRODUCTION_SITEURL=$SITEURL" >> "$GITHUB_ENV"
           echo "PRODUCTION_ROOT=$PROD" >> "$GITHUB_ENV"
           echo "PRODUCTION_THEME=$THEME" >> "$GITHUB_ENV"
-          echo "PRODUCTION_MU_DIR=$MU_DIR" >> "$GITHUB_ENV"
           echo "PRODUCTION_BACKUP_DIR=$BACKUP_DIR" >> "$GITHUB_ENV"
           echo "PRODUCTION_PAGE_ID=$PAGE_ID" >> "$GITHUB_ENV"
           echo "PRODUCTION_PAGE_CREATED=$PAGE_CREATED" >> "$GITHUB_ENV"
@@ -277,9 +263,9 @@ jobs:
           set -euo pipefail
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$PRODUCTION_ROOT' '$PRODUCTION_THEME' '$PRODUCTION_MU_DIR' '$PRODUCTION_BACKUP_DIR' '$PRODUCTION_PAGE_ID' '$PRODUCTION_PAGE_CREATED' '$PRODUCTION_PAGE_OLD_STATUS'" <<'REMOTE'
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$PRODUCTION_ROOT' '$PRODUCTION_THEME' '$PRODUCTION_BACKUP_DIR' '$PRODUCTION_PAGE_ID' '$PRODUCTION_PAGE_CREATED' '$PRODUCTION_PAGE_OLD_STATUS'" <<'REMOTE'
           set -eu
-          prod="$1"; theme="$2"; mu_dir="$3"; backup_dir="$4"; page_id="$5"; page_created="$6"; old_status="$7"
+          prod="$1"; theme="$2"; backup_dir="$3"; page_id="$4"; page_created="$5"; old_status="$6"
           php_bin="$(command -v php || true)"
           [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
           wp_bin="$(command -v wp || true)"
@@ -295,7 +281,6 @@ jobs:
           restore_file "$theme/inc/home-category-output-final-010226.php" home-category-output-final-010226.php
           restore_file "$theme/inc/categories-hub-010257.php" categories-hub-010257.php
           restore_file "$theme/page-categorias.php" page-categorias.php
-          restore_file "$mu_dir/mdo-mentta-admin-frontend-010257.php" mdo-mentta-admin-frontend-010257.php
 
           if [ "$page_created" = yes ]; then
             "$php_bin" -d memory_limit=512M "$wp_bin" post delete "$page_id" --force --path="$prod" --allow-root >/dev/null 2>&1 || true
