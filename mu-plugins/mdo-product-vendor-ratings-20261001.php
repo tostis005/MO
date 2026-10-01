@@ -254,11 +254,19 @@ function mdo_vendor_rating_markup_20261001( int $vendor_id, bool $compact ): str
 			: sprintf( 'Productor %s: %s de 5, %s', $name, $score, $reviews_text );
 
 		if ( $compact ) {
-			return '<a class="mdo-vendor-rating mdo-vendor-rating--loop" href="' . esc_url( $url ) . '" aria-label="' . esc_attr( $aria ) . '">'
+			$store_url = function_exists( 'wcfmmp_get_store_url' )
+				? (string) wcfmmp_get_store_url( $vendor_id )
+				: (string) get_author_posts_url( $vendor_id );
+
+			return '<div class="mdo-vendor-rating-row">'
+				. '<a class="mdo-vendor-rating__vendor" href="' . esc_url( $store_url ) . '">' . esc_html( $name ) . '</a>'
+				. '<span class="mdo-vendor-rating__separator" aria-hidden="true">·</span>'
+				. '<a class="mdo-vendor-rating mdo-vendor-rating--loop" href="' . esc_url( $url ) . '" aria-label="' . esc_attr( $aria ) . '">'
 				. '<span class="mdo-vendor-rating__stars" aria-hidden="true" style="--mdo-vendor-rating-width:' . esc_attr( $rating_percent ) . '%"></span>'
 				. '<span class="mdo-vendor-rating__score">' . esc_html( $score ) . '</span>'
-				. '<span class="mdo-vendor-rating__count">· ' . esc_html( $reviews_text ) . '</span>'
-				. '</a>';
+				. '<span class="mdo-vendor-rating__count">(' . esc_html( number_format_i18n( $count ) ) . ')</span>'
+				. '</a>'
+				. '</div>';
 		}
 
 		$label = $is_en ? 'Producer rating' : 'Valoración del productor';
@@ -277,10 +285,13 @@ function mdo_vendor_rating_markup_20261001( int $vendor_id, bool $compact ): str
 		: sprintf( 'Productor %s: todavía sin reseñas', $name );
 
 	if ( $compact ) {
-		return '<a class="mdo-vendor-rating mdo-vendor-rating--loop mdo-vendor-rating--empty" href="' . esc_url( $url ) . '" aria-label="' . esc_attr( $aria ) . '">'
-			. '<span class="mdo-vendor-rating__stars" aria-hidden="true" style="--mdo-vendor-rating-width:0%"></span>'
-			. '<span class="mdo-vendor-rating__empty">' . esc_html( $empty ) . '</span>'
-			. '</a>';
+		$store_url = function_exists( 'wcfmmp_get_store_url' )
+			? (string) wcfmmp_get_store_url( $vendor_id )
+			: (string) get_author_posts_url( $vendor_id );
+
+		return '<div class="mdo-vendor-rating-row mdo-vendor-rating-row--no-reviews">'
+			. '<a class="mdo-vendor-rating__vendor" href="' . esc_url( $store_url ) . '">' . esc_html( $name ) . '</a>'
+			. '</div>';
 	}
 
 	$label = $is_en ? 'Producer rating' : 'Valoración del productor';
@@ -415,21 +426,64 @@ add_action(
 			.mdo-vendor-rating__empty {
 				color: #66756f;
 			}
+			.mdo-vendor-rating-row {
+				display: flex;
+				align-items: center;
+				flex-wrap: wrap;
+				column-gap: .34rem;
+				row-gap: .12rem;
+				box-sizing: border-box;
+				width: auto;
+				max-width: 100%;
+				margin-top: .42rem;
+				margin-bottom: 0;
+				padding: 0;
+				line-height: 1.2;
+			}
+			.mdo-vendor-rating__vendor {
+				min-width: 0;
+				color: #42564e !important;
+				font-size: .76rem;
+				font-weight: 700;
+				line-height: 1.2;
+				text-decoration: none !important;
+			}
+			.mdo-vendor-rating__vendor:hover,
+			.mdo-vendor-rating__vendor:focus-visible {
+				color: #173f32 !important;
+				text-decoration: underline !important;
+				text-underline-offset: 2px;
+			}
+			.mdo-vendor-rating__separator {
+				color: rgba(66, 86, 78, .42);
+				font-size: .76rem;
+				line-height: 1;
+			}
 			.mdo-vendor-rating--loop {
 				display: inline-flex;
+				align-items: center;
+				flex: 0 0 auto;
 				flex-wrap: nowrap;
-				gap: .28rem;
+				gap: .24rem;
 				margin: 0;
 				padding: 0;
 				font-size: .76rem;
-				line-height: 1.15;
+				line-height: 1;
 				white-space: nowrap;
 				vertical-align: middle;
 			}
 			.mdo-vendor-rating--loop .mdo-vendor-rating__stars {
-				width: 5.2em;
-				flex-basis: 5.2em;
-				font-size: .88em;
+				width: 5.22em;
+				flex-basis: 5.22em;
+				font-size: .92rem;
+				letter-spacing: .08em;
+			}
+			.mdo-vendor-rating--loop .mdo-vendor-rating__score {
+				font-size: .76rem;
+			}
+			.mdo-vendor-rating--loop .mdo-vendor-rating__count {
+				font-size: .72rem;
+				color: #66756f;
 			}
 			body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag,.tax-product_brand) ul.products li.product .wcfmmp_sold_by_container,
 			body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag,.tax-product_brand) ul.products li.product .wcfmmp_sold_by_container_advanced,
@@ -455,9 +509,20 @@ add_action(
 			}
 
 			@media (max-width: 600px) {
+				.mdo-vendor-rating-row {
+					column-gap: .28rem;
+					row-gap: .1rem;
+					margin-top: .38rem;
+				}
+				.mdo-vendor-rating__vendor {
+					font-size: .73rem;
+				}
 				.mdo-vendor-rating--loop {
-					gap: .22rem;
-					font-size: .71rem;
+					gap: .2rem;
+					font-size: .72rem;
+				}
+				.mdo-vendor-rating--loop .mdo-vendor-rating__stars {
+					font-size: .88rem;
 				}
 				.mdo-vendor-rating--single {
 					width: 100%;
@@ -469,3 +534,62 @@ add_action(
 	},
 	PHP_INT_MAX
 );
+
+/**
+ * Alinea la fila del productor exactamente con el contenido textual de cada
+ * tarjeta. Esto evita depender de los paddings internos que Woostify cambia
+ * según breakpoint y mantiene la integración en carga infinita.
+ */
+add_action(
+	'wp_footer',
+	static function (): void {
+		if (
+			is_admin()
+			|| mdo_vendor_rating_is_vendor_store_20261001()
+			|| ! ( ( function_exists( 'is_shop' ) && is_shop() ) || ( function_exists( 'is_product_taxonomy' ) && is_product_taxonomy() ) )
+		) {
+			return;
+		}
+		?>
+		<script id="mdo-product-vendor-rating-align-20261001">
+		(() => {
+			'use strict';
+
+			let raf = 0;
+			const align = () => {
+				raf = 0;
+				document.querySelectorAll('ul.products > li.product').forEach((card) => {
+					const row = card.querySelector('.mdo-vendor-rating-row');
+					const reference = card.querySelector('.woocommerce-loop-product__title, .woostify-loop-product__title, .product-title, h2, h3');
+					if (!row || !reference) return;
+
+					const cardRect = card.getBoundingClientRect();
+					const refRect = reference.getBoundingClientRect();
+					const left = Math.max(0, refRect.left - cardRect.left);
+					const right = Math.max(0, cardRect.right - refRect.right);
+
+					row.style.marginInlineStart = left + 'px';
+					row.style.marginInlineEnd = right + 'px';
+					row.style.maxWidth = Math.max(0, cardRect.width - left - right) + 'px';
+				});
+			};
+
+			const schedule = () => {
+				if (raf) return;
+				raf = requestAnimationFrame(align);
+			};
+
+			schedule();
+			window.addEventListener('resize', schedule, { passive: true });
+
+			const grid = document.querySelector('ul.products');
+			if (grid) {
+				new MutationObserver(schedule).observe(grid, { childList: true });
+			}
+		})();
+		</script>
+		<?php
+	},
+	PHP_INT_MAX
+);
+
