@@ -173,10 +173,10 @@ function elmercado_home_vendor_url_010244( int $vendor_id ): string {
  *
  * @return int[]
  */
-function elmercado_home_active_vendor_ids_010244( int $limit = 5 ): array {
+function elmercado_home_active_vendor_ids_010244( int $limit = 6 ): array {
 	global $wpdb;
 
-	$limit = max( 1, min( 5, $limit ) );
+	$limit = max( 1, min( 6, $limit ) );
 	$ids   = get_users(
 		array(
 			'role__in' => array( 'wcfm_vendor', 'vendor', 'seller' ),
@@ -232,22 +232,22 @@ function elmercado_home_active_vendor_ids_010244( int $limit = 5 ): array {
 		}
 	);
 
-	/* Allow a few extra candidates so invalid stores do not prevent reaching 5 valid cards. */
-	return array_slice( $vendors, 0, max( 5, $limit + 3 ) );
+	/* Allow a few extra candidates so invalid stores do not prevent reaching 6 valid cards. */
+	return array_slice( $vendors, 0, max( 6, $limit + 3 ) );
 }
 
 /**
- * Render between one and five valid producer cards.
+ * Render between one and six valid producer cards.
  */
 function elmercado_render_home_vendor_visual_010244(): string {
-	$vendor_ids = elmercado_home_active_vendor_ids_010244( 5 );
+	$vendor_ids = elmercado_home_active_vendor_ids_010244( 6 );
 	if ( empty( $vendor_ids ) ) {
 		return '';
 	}
 
 	$cards = array();
 	foreach ( $vendor_ids as $vendor_id ) {
-		if ( count( $cards ) >= 5 ) {
+		if ( count( $cards ) >= 6 ) {
 			break;
 		}
 
@@ -281,7 +281,7 @@ function elmercado_render_home_vendor_visual_010244(): string {
 }
 
 /**
- * Requested Home-only sizing and 1–5 producer collage CSS.
+ * Requested Home-only sizing and 1–6 producer collage CSS.
  */
 function elmercado_home_vendor_css_010244(): string {
 	return <<<'CSS'
@@ -379,6 +379,21 @@ body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--5 {
 	grid-row: 5 / 11 !important;
 	transform: rotate(.65deg) !important;
 }
+
+body.home .emo-hero__visual--vendors.emo-vendor-count-6 {
+	grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+	grid-template-rows: repeat(10, 38px) !important;
+	gap: 12px !important;
+}
+body.home .emo-hero__visual--vendors.emo-vendor-count-6 .emo-hero-card {
+	transform: none !important;
+}
+body.home .emo-hero__visual--vendors.emo-vendor-count-6 .emo-hero-card--1 { grid-column: 1 / 5 !important; grid-row: 1 / 6 !important; }
+body.home .emo-hero__visual--vendors.emo-vendor-count-6 .emo-hero-card--2 { grid-column: 5 / 9 !important; grid-row: 1 / 6 !important; }
+body.home .emo-hero__visual--vendors.emo-vendor-count-6 .emo-hero-card--3 { grid-column: 9 / 13 !important; grid-row: 1 / 6 !important; }
+body.home .emo-hero__visual--vendors.emo-vendor-count-6 .emo-hero-card--4 { grid-column: 1 / 5 !important; grid-row: 6 / 11 !important; }
+body.home .emo-hero__visual--vendors.emo-vendor-count-6 .emo-hero-card--5 { grid-column: 5 / 9 !important; grid-row: 6 / 11 !important; }
+body.home .emo-hero__visual--vendors.emo-vendor-count-6 .emo-hero-card--6 { grid-column: 9 / 13 !important; grid-row: 6 / 11 !important; }
 
 body.home .emo-hero-vendor-fallback {
 	display: grid;
