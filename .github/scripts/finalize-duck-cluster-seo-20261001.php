@@ -105,7 +105,7 @@ $classify = static function ( string $url, string $title ) use ( $normalize ): a
         return $out;
     }
     if ( str_contains( $url, '/confit/' ) ) {
-        if ( str_contains( $t, 'cochinillo' ) || str_contains( $t, 'codorniz' ) ) {
+        if ( str_contains( $t, 'cochinillo' ) || str_contains( $t, 'codorniz' ) || str_contains( $t, 'codornic' ) ) {
             return array( 'carnes' );
         }
         if ( str_contains( $t, 'rillettes' ) ) {
@@ -468,7 +468,7 @@ foreach ( $rows as $row ) {
             $desc_lengths[]  = mdo_duck_commerce_strlen_20261001( mdo_duck_commerce_product_description_for_id_20261001( $wc_id ) );
         }
         $nt=$normalize((string)$row['title']);
-        if ( ( str_contains($nt,'codorniz') || str_contains($nt,'cochinillo') || (str_contains($nt,'oca') && !str_contains($nt,'pato')) ) ) {
+        if ( ( str_contains($nt,'codorniz') || str_contains($nt,'codornic') || str_contains($nt,'cochinillo') || (str_contains($nt,'oca') && !str_contains($nt,'pato')) ) ) {
             $non_duck_species_in_pato[] = array('id'=>$wc_id,'title'=>(string)$row['title'],'categories'=>$actual);
         }
     } elseif ( '1' === $cluster || '' !== $group ) {
