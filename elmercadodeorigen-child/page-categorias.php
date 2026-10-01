@@ -51,6 +51,8 @@ $category_summaries = array(
 	'legumbres'           => 'Alubias, garbanzos y lentejas en distintas variedades, seleccionadas para guisos, potajes y otras recetas.',
 	'naranjas'            => 'Naranjas frescas de distintas variedades, seleccionadas para mesa, zumo y otros usos.',
 	'quesos'              => 'Quesos de distintas procedencias, tipos de leche, curaciones y formatos.',
+	'pescados-mariscos'   => 'Pescados y mariscos en distintos formatos, desde ahumados y huevas hasta otras especialidades del mar.',
+	'foie-pates-untables' => 'Foie gras, patés, mousses, rillettes y otros untables para servir, compartir o acompañar.',
 );
 
 $visible_items = array();
