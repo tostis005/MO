@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.313' );
-/* 0.10.313 incorpora optimizaciones SEO basadas en Search Console. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.314' );
+/* 0.10.314 recoloca las recomendaciones del carrito bajo los productos. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
 	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsense' ); // Adsterra queda conservado pero inactivo.
 }
@@ -173,6 +173,7 @@ $elmercado_modules = array(
 	'inc/seo-search-console-010313.php',
 	'inc/adsense-geo-010266.php',
 	'inc/adsterra-blog-010290.php',
+	'inc/cart-cross-sells-layout-010314.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
