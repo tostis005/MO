@@ -7,6 +7,12 @@
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
+function mdo_global_cluster_is_english_20261001(): bool {
+    $uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '/';
+    $path = (string) wp_parse_url( $uri, PHP_URL_PATH );
+    return (bool) preg_match( '#^/en(?:/|$)#i', $path );
+}
+
 function mdo_global_cluster_registry_20261001(): array {
     return array(
         'jamones' => array(
@@ -325,7 +331,7 @@ function mdo_global_cluster_render_guide_links_20261001( string $key, int $seed 
  * modules on the same article.
  */
 add_filter( 'the_content', static function( string $content ): string {
-    if ( ! is_singular( 'post' ) || ! in_the_loop() || ! is_main_query() ) { return $content; }
+    if ( mdo_global_cluster_is_english_20261001() || ! is_singular( 'post' ) || ! in_the_loop() || ! is_main_query() ) { return $content; }
     if ( false !== strpos( $content, 'data-mdo-global-cluster=' )
         || false !== strpos( $content, 'data-emdo-duck-commerce=' )
         || false !== strpos( $content, 'mdo-seo-cluster-shop' ) ) {
@@ -342,7 +348,7 @@ add_filter( 'the_content', static function( string $content ): string {
 
 /** Product -> editorial bridge. */
 add_action( 'woocommerce_after_single_product_summary', static function(): void {
-    if ( ! function_exists( 'is_product' ) || ! is_product() ) { return; }
+    if ( mdo_global_cluster_is_english_20261001() || ! function_exists( 'is_product' ) || ! is_product() ) { return; }
     $product_id = (int) get_queried_object_id();
     $key = mdo_global_cluster_for_product_20261001( $product_id );
     if ( '' === $key || 'pato' === $key ) { return; }
@@ -353,7 +359,7 @@ add_action( 'woocommerce_after_single_product_summary', static function(): void 
 
 /** Product-category hub -> editorial hub. */
 add_action( 'woocommerce_after_shop_loop', static function(): void {
-    if ( ! function_exists( 'is_product_category' ) || ! is_product_category() || is_paged() ) { return; }
+    if ( mdo_global_cluster_is_english_20261001() || ! function_exists( 'is_product_category' ) || ! is_product_category() || is_paged() ) { return; }
     $term = get_queried_object();
     if ( ! $term instanceof WP_Term ) { return; }
 
@@ -369,7 +375,7 @@ add_action( 'woocommerce_after_shop_loop', static function(): void {
 /** Blog-category hub -> commercial hub and a few currently available products. */
 add_action( 'loop_start', static function( WP_Query $query ): void {
     static $rendered = false;
-    if ( $rendered || is_admin() || ! $query->is_main_query() || ! is_category() ) { return; }
+    if ( $rendered || is_admin() || mdo_global_cluster_is_english_20261001() || ! $query->is_main_query() || ! is_category() ) { return; }
 
     $term = get_queried_object();
     if ( ! $term instanceof WP_Term ) { return; }
@@ -392,8 +398,18 @@ add_action( 'loop_start', static function( WP_Query $query ): void {
 function mdo_global_cluster_is_junk_product_category_20261001(): bool {
     if ( ! function_exists( 'is_product_category' ) || ! is_product_category() ) { return false; }
     $term = get_queried_object();
-    return $term instanceof WP_Term
-        && in_array( (string) $term->slug, array( 'sin-categorizar','uncategorized' ), true );
+    if ( ! $term instanceof WP_Term ) { return false; }
+
+    if ( in_array( (string) $term->slug, array( 'sin-categorizar','uncategorized' ), true ) ) {
+        return true;
+    }
+
+    foreach ( mdo_global_cluster_registry_20261001() as $cfg ) {
+        if ( (string) $cfg['shop'] !== (string) $term->slug ) { continue; }
+        return ! mdo_global_cluster_has_products_20261001( (string) $term->slug );
+    }
+
+    return false;
 }
 add_filter( 'aioseo_robots_meta', static function( $attributes ) {
     if ( ! is_array( $attributes ) || ! mdo_global_cluster_is_junk_product_category_20261001() ) { return $attributes; }
