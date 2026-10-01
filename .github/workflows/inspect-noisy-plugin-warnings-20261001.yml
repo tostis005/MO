@@ -1,0 +1,52 @@
+name: Inspect noisy plugin warnings 2026-10-01
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-noisy-plugin-warnings-20261001.yml'
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Inspect warning sources
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          echo "=== CHECKOUT MANAGER HEADER / LINE 27 ==="
+          nl -ba "$ROOT/wp-content/plugins/woocommerce-checkout-manager/woocommerce-checkout-manager.php" | sed -n '1,55p'
+          echo "=== WOOSIDEBARS AROUND LINE 59 ==="
+          nl -ba "$ROOT/wp-content/plugins/woosidebars/integrations/integration-woocommerce.php" | sed -n '35,80p'
+          echo "=== PLUGIN METADATA ==="
+          grep -E '^(Plugin Name|Version|Requires PHP):' "$ROOT/wp-content/plugins/woocommerce-checkout-manager/woocommerce-checkout-manager.php" || true
+          grep -E '^(Plugin Name|Version|Requires PHP):' "$ROOT/wp-content/plugins/woosidebars/woosidebars.php" || true
+          echo "=== RECENT WARNING COUNTS 15M ==="
+          python3 - <<'PY'
+          from datetime import datetime,timezone,timedelta
+          import re
+          p='/var/www/vhosts/system/elmercadodeorigen.com/logs/error_log'
+          cut=datetime.now(timezone.utc)-timedelta(minutes=15)
+          c={'checkout_constant':0,'woosidebars_key':0}
+          rx=re.compile(r'^\[([^]]+)\]')
+          # Error log timestamps are local-ish Apache strings; count tail instead of time parse.
+          lines=open(p,encoding='utf-8',errors='replace').read().splitlines()[-5000:]
+          for line in lines:
+              if 'Constant WOOCCM_PLUGIN_NAME already defined' in line: c['checkout_constant']+=1
+              if 'Undefined array key -1' in line and 'woosidebars/integrations/integration-woocommerce.php' in line: c['woosidebars_key']+=1
+          print(c)
+          PY
+          REMOTE
