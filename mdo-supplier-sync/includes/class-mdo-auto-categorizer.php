@@ -7,9 +7,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Conservative category inference for products imported by EMDO.
  *
- * It only assigns existing WooCommerce product categories and only when the
- * textual evidence is strong enough. Existing/manual category assignments are
- * never overwritten.
+ * It only assigns existing WooCommerce product categories. Generic products
+ * keep meaningful manual categories; Selectos de Castilla is the exception:
+ * its source taxonomy is deterministic, so every supplier sync re-applies the
+ * canonical mapping to prevent category drift after imports or reorganization.
  */
 final class MDO_Auto_Categorizer {
 	private const MIN_SCORE  = 8.0;
@@ -24,6 +25,22 @@ final class MDO_Auto_Categorizer {
 		$current    = array_values( array_unique( array_filter( array_map( 'absint', (array) $product->get_category_ids() ) ) ) );
 		$default_id = absint( get_option( 'default_product_cat', 0 ) );
 		$meaningful = array_values( array_filter( $current, static fn( int $id ): bool => $id > 0 && $id !== $default_id ) );
+
+		/*
+		 * Selectos has a source-driven taxonomy that we own end to end. Run those
+		 * rules before the generic "keep existing categories" safeguard so nightly
+		 * updates repair drift instead of freezing an obsolete or wrong mapping.
+		 */
+		$selectos = self::infer_selectos( $payload, $source_row );
+		if ( null !== $selectos ) {
+			if ( ! empty( $selectos['category_ids'] ) ) {
+				$product->set_category_ids( array_values( array_unique( array_map( 'absint', $selectos['category_ids'] ) ) ) );
+				$selectos['assigned'] = true;
+			} else {
+				$selectos['assigned'] = false;
+			}
+			return $selectos;
+		}
 
 		if ( $meaningful ) {
 			return array(
@@ -182,7 +199,11 @@ final class MDO_Auto_Categorizer {
 		} elseif ( str_contains( $url, '/magret/' ) ) {
 			$slugs = array( 'pato', 'magret-de-pato' );
 		} elseif ( str_contains( $url, '/foie-gras/' ) ) {
-			$slugs = array( 'foie-pates-untables', 'pato', str_contains( $title, 'mousse' ) ? 'pate-mousse-rillettes-de-pato' : 'foie-gras-de-pato' );
+			if ( str_contains( $title, 'oca' ) && ! str_contains( $title, 'pato' ) ) {
+				$slugs = array( 'foie-pates-untables' );
+			} else {
+				$slugs = array( 'foie-pates-untables', 'pato', str_contains( $title, 'mousse' ) ? 'pate-mousse-rillettes-de-pato' : 'foie-gras-de-pato' );
+			}
 		} elseif ( str_contains( $url, '/pates/' ) ) {
 			if ( str_contains( $title, 'trucha' ) ) {
 				$slugs = array( 'pescados-mariscos', 'foie-pates-untables' );

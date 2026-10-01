@@ -1,0 +1,313 @@
+name: Finalize duck cluster SEO 20261001
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-duck-commerce-seo-20261001.php'
+      - 'mdo-supplier-sync/includes/class-mdo-auto-categorizer.php'
+      - '.github/scripts/finalize-duck-cluster-seo-20261001.php'
+      - '.github/workflows/finalize-duck-cluster-seo-20261001.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-duck-cluster-seo-20261001
+  cancel-in-progress: true
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PHP and guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-duck-commerce-seo-20261001.php >/dev/null
+          php -l mdo-supplier-sync/includes/class-mdo-auto-categorizer.php >/dev/null
+          php -l .github/scripts/finalize-duck-cluster-seo-20261001.php >/dev/null
+          grep -Fq "str_contains( $title, 'oca' )" mdo-supplier-sync/includes/class-mdo-auto-categorizer.php
+          grep -Fq 'Detalles prácticos para completar la guía' .github/scripts/finalize-duck-cluster-seo-20261001.php
+          : "${STAGING_HOST:?}"
+          : "${STAGING_USER:?}"
+          : "${STAGING_PASSWORD:?}"
+
+      - name: Deploy cluster code and reconcile production
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq curl >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true)
+            php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;;
+              esac
+            done
+            [ -n "$prod" ] || exit 22
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+          : "${PROD:?production path not found}"
+          echo "PROD_PATH=$PROD" >> "$GITHUB_ENV"
+
+          MU_NAME='mdo-duck-commerce-seo-20261001.php'
+          MU_TARGET="$PROD/wp-content/mu-plugins/$MU_NAME"
+          AUTO_TARGET="$PROD/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-auto-categorizer.php"
+          REMOTE_MU="/tmp/${MU_NAME%.php}-${GITHUB_RUN_ID}.php"
+          REMOTE_AUTO="/tmp/mdo-auto-categorizer-${GITHUB_RUN_ID}.php"
+          REMOTE_SCRIPT="/tmp/finalize-duck-cluster-${GITHUB_RUN_ID}.php"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -d '$PROD/wp-content/plugins/mdo-supplier-sync/includes'; mkdir -p '$PROD/wp-content/mu-plugins'"
+          sshpass -e scp $SCP mu-plugins/mdo-duck-commerce-seo-20261001.php "$STAGING_USER@$STAGING_HOST:$REMOTE_MU"
+          sshpass -e scp $SCP mdo-supplier-sync/includes/class-mdo-auto-categorizer.php "$STAGING_USER@$STAGING_HOST:$REMOTE_AUTO"
+          sshpass -e scp $SCP .github/scripts/finalize-duck-cluster-seo-20261001.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e
+            '$PHP' -l '$REMOTE_MU' >/dev/null
+            '$PHP' -l '$REMOTE_AUTO' >/dev/null
+            cp -p '$MU_TARGET' '/tmp/${MU_NAME%.php}-backup-${GITHUB_RUN_ID}.php' 2>/dev/null || true
+            cp -p '$AUTO_TARGET' '/tmp/mdo-auto-categorizer-backup-${GITHUB_RUN_ID}.php'
+            install -m 0644 '$REMOTE_MU' '$MU_TARGET'
+            install -m 0644 '$REMOTE_AUTO' '$AUTO_TARGET'
+            rm -f '$REMOTE_MU' '$REMOTE_AUTO'
+          "
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST"             "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE_SCRIPT' --path='$PROD' --allow-root"             > /tmp/duck-final.json
+
+          jq '{batch,active_selectos,true_duck_products,taxonomy_changes,cluster_meta_repaired,stale_meta_cleared,removed_non_duck_count,removed_non_duck,group_counts,category_counts,stock_counts,producer_description_chars,global_foie_description_chars,blog,seo,sample_repaired_url,sample_non_duck_url}' /tmp/duck-final.json
+
+          jq -e '.batch == "20261001-duck-cluster-final"' /tmp/duck-final.json >/dev/null
+          jq -e '.active_selectos >= 100' /tmp/duck-final.json >/dev/null
+          jq -e '.true_duck_products >= 45' /tmp/duck-final.json >/dev/null
+          jq -e '.producer_description_chars >= 900' /tmp/duck-final.json >/dev/null
+          jq -e '.global_foie_description_chars >= 500' /tmp/duck-final.json >/dev/null
+          jq -e '.blog.count == 60' /tmp/duck-final.json >/dev/null
+          jq -e '.blog.filler_after == 0 and .blog.repeated_patterns_after == 0' /tmp/duck-final.json >/dev/null
+          jq -e '.blog.min_words >= 650' /tmp/duck-final.json >/dev/null
+          jq -e '.seo.product_title_max <= 60' /tmp/duck-final.json >/dev/null
+          jq -e '.seo.product_description_min >= 100 and .seo.product_description_max <= 170' /tmp/duck-final.json >/dev/null
+          jq -e '.sample_repaired_url != ""' /tmp/duck-final.json >/dev/null
+
+          cp /tmp/duck-final.json /tmp/duck-final-preserved.json
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST"             "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' eval 'if ( function_exists("wp_cache_flush") ) { wp_cache_flush(); } if ( has_action("litespeed_purge_all") ) { do_action("litespeed_purge_all"); }' --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -f '$REMOTE_SCRIPT'"
+
+      - name: Verify final cluster publicly
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet beautifulsoup4
+
+          ROOT="$(jq -r '.commercial_root_url' /tmp/duck-final-preserved.json)"
+          GLOBAL="$(jq -r '.global_foie_url' /tmp/duck-final-preserved.json)"
+          PRODUCER="$(jq -r '.producer_url' /tmp/duck-final-preserved.json)"
+          ABOUT="$(jq -r '.producer_about_url' /tmp/duck-final-preserved.json)"
+          REPAIRED="$(jq -r '.sample_repaired_url' /tmp/duck-final-preserved.json)"
+          BLOG_HUB="$(jq -r '.blog.hub_url' /tmp/duck-final-preserved.json)"
+          BLOG_SAMPLE='https://www.elmercadodeorigen.com/rillettes-de-pato-que-son-como-se-elaboran-y-como-se-comen/'
+          BASE='https://www.elmercadodeorigen.com'
+
+          get_page() {
+            local url="$1" out="$2"
+            local join='?'
+            case "$url" in *\?*) join='&';; esac
+            curl -fsSL --retry 4 --retry-delay 2 --max-time 60               -A 'Mozilla/5.0 EMDO final duck SEO verifier'               -H 'Cache-Control: no-cache, no-store'               "${url}${join}emdo_duck_final_verify=${GITHUB_RUN_ID}" -o "$out"
+          }
+
+          get_page "$ROOT" /tmp/duck-root.html
+          get_page "$GLOBAL" /tmp/foie-global.html
+          get_page "$PRODUCER" /tmp/selectos-store.html
+          get_page "$ABOUT" /tmp/selectos-about.html
+          get_page "$REPAIRED" /tmp/repaired-product.html
+          get_page "$BLOG_HUB" /tmp/duck-blog-hub.html
+          get_page "$BLOG_SAMPLE" /tmp/duck-blog-sample.html
+
+          curl -fsSL --retry 4 --max-time 60 -A 'Mozilla/5.0 EMDO final duck SEO verifier' "$BASE/sitemap.xml" -o /tmp/sitemap.xml
+
+          python - <<'PY'
+          import json,re
+          from bs4 import BeautifulSoup
+          from pathlib import Path
+          from urllib.parse import urlsplit
+
+          data=json.loads(Path('/tmp/duck-final-preserved.json').read_text(encoding='utf-8'))
+
+          def parse(path):
+              raw=Path(path).read_text(encoding='utf-8',errors='ignore')
+              soup=BeautifulSoup(raw,'html.parser')
+              title=soup.title.get_text(' ',strip=True) if soup.title else ''
+              meta=soup.find('meta',attrs={'name':'description'})
+              desc=meta.get('content','').strip() if meta else ''
+              canon=soup.find('link',rel=lambda v:v and 'canonical' in v)
+              canonical=canon.get('href','') if canon else ''
+              robots=' '.join(m.get('content','') for m in soup.find_all('meta',attrs={'name':'robots'})).lower()
+              hrefs=[a.get('href','') for a in soup.find_all('a',href=True)]
+              text=soup.get_text(' ',strip=True)
+              return raw,soup,{'title':title,'description':desc,'canonical':canonical,'noindex':'noindex' in robots,'hrefs':hrefs,'text':text}
+
+          def norm(url):
+              s=urlsplit(url)
+              return (s.scheme,s.netloc,s.path.rstrip('/')+'/')
+
+          root_raw,root_soup,root=parse('/tmp/duck-root.html')
+          global_raw,global_soup,globalp=parse('/tmp/foie-global.html')
+          store_raw,store_soup,store=parse('/tmp/selectos-store.html')
+          about_raw,about_soup,about=parse('/tmp/selectos-about.html')
+          product_raw,product_soup,product=parse('/tmp/repaired-product.html')
+          hub_raw,hub_soup,hub=parse('/tmp/duck-blog-hub.html')
+          blog_raw,blog_soup,blog=parse('/tmp/duck-blog-sample.html')
+
+          assert root['title'].startswith('Comprar productos de pato online | Foie, magret y confit'), root['title']
+          assert norm(root['canonical'])==norm(data['commercial_root_url']), root['canonical']
+          assert not root['noindex']
+          assert any('/tienda/selectos-de-castilla' in h for h in root['hrefs']), 'producer link missing from duck root'
+          assert 'Selectos de Castilla' in root['text']
+
+          assert globalp['title'].startswith('Comprar foie, patés y untables online | El Mercado de Origen'), globalp['title']
+          assert norm(globalp['canonical'])==norm(data['global_foie_url']), globalp['canonical']
+          assert not globalp['noindex']
+          assert 'No todos significan lo mismo' in globalp['text']
+          assert any('/categoria-producto/carnes/pato/foie-gras-de-pato/' in h for h in globalp['hrefs'])
+          assert any('foie-gras-pate-mousse-parfait-bloc-micuit-diferencias' in h for h in globalp['hrefs'])
+
+          assert store['title'].startswith('Selectos de Castilla | Pato, foie gras, confit y más'), store['title']
+          assert about['title'].startswith('Selectos de Castilla | Pato, foie gras, confit y más'), about['title']
+          assert 'creada en 1989' in about['text']
+          assert 'Villamartín de Campos' in about['text']
+          assert any('/categoria-producto/carnes/pato/' in h for h in about['hrefs'])
+          assert any('/categoria-producto/foie-pates-untables/' in h for h in about['hrefs'])
+          assert any('/category/carnes/pato/' in h for h in about['hrefs'])
+
+          assert not product['noindex']
+          assert 'Selectos de Castilla' in product['title'], product['title']
+          assert product_soup.select_one('[data-emdo-duck-product-guides]') is not None
+          assert any('/category/carnes/pato/' in h or 'pato' in h for h in product['hrefs'])
+          scripts=' '.join(s.get_text(' ',strip=True) for s in product_soup.find_all('script',attrs={'type':'application/ld+json'}))
+          assert 'Selectos de Castilla' in scripts, 'Selectos brand missing from product schema'
+
+          forbidden=[
+              'Detalles prácticos para completar la guía',
+              'Antes de aplicar una regla fija, conviene mirar el formato concreto que tenemos delante.',
+              'Este punto merece atención porque suele ser el que más cambia el resultado final.',
+          ]
+          for phrase in forbidden:
+              assert phrase not in blog['text'], phrase
+          assert blog_soup.select_one('[data-emdo-duck-commerce]') is not None
+          assert blog_soup.select_one('[data-emdo-duck-related-topic]') is not None
+          assert any('/producto/' in h for h in blog['hrefs'])
+          assert any('/categoria-producto/' in h for h in blog['hrefs'])
+
+          assert norm(data['global_foie_url']) in [norm(h) for h in hub['hrefs'] if h.startswith('http')], 'global foie link missing from blog hub'
+          assert not hub['noindex']
+
+          sitemap=Path('/tmp/sitemap.xml').read_text(encoding='utf-8',errors='ignore')
+          sitemap_urls=re.findall(r'<loc>([^<]+)</loc>',sitemap,re.I)
+          product_sm=next((u for u in sitemap_urls if 'products' in u.lower() and 'sitemap' in u.lower()),'')
+          cat_sm=next((u for u in sitemap_urls if 'categories' in u.lower() and 'blog-categories' not in u.lower() and 'sitemap' in u.lower()),'')
+          assert product_sm and cat_sm
+
+          out={
+              'root':root,
+              'global_foie':globalp,
+              'producer_store':{'title':store['title'],'description':store['description']},
+              'producer_about':{'title':about['title'],'description':about['description']},
+              'sample_product':{'title':product['title'],'description':product['description'],'canonical':product['canonical'],'noindex':product['noindex']},
+              'blog_sample_clean':True,
+              'blog_commerce_bridge':True,
+              'blog_hub_global_bridge':True,
+              'product_schema_brand':True,
+              'sitemap_index':{'products':product_sm,'categories':cat_sm},
+          }
+          Path('/tmp/duck-final-public.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(out,ensure_ascii=False,indent=2))
+          PY
+
+          PRODUCT_SITEMAP="$(python - <<'PY'
+          import json
+          print(json.load(open('/tmp/duck-final-public.json'))['sitemap_index']['products'])
+          PY
+          )"
+          CATEGORY_SITEMAP="$(python - <<'PY'
+          import json
+          print(json.load(open('/tmp/duck-final-public.json'))['sitemap_index']['categories'])
+          PY
+          )"
+          curl -fsSL --retry 4 --max-time 60 -A 'Mozilla/5.0 EMDO final duck SEO verifier' "$PRODUCT_SITEMAP" -o /tmp/products-sitemap.xml
+          curl -fsSL --retry 4 --max-time 60 -A 'Mozilla/5.0 EMDO final duck SEO verifier' "$CATEGORY_SITEMAP" -o /tmp/categories-sitemap.xml
+          REPAIRED_SLUG="$(python - <<'PY'
+          import json
+          from urllib.parse import urlsplit
+          d=json.load(open('/tmp/duck-final-preserved.json'))
+          print(urlsplit(d['sample_repaired_url']).path.rstrip('/').split('/')[-1])
+          PY
+          )"
+          ROOT_PATH="$(python - <<'PY'
+          import json
+          from urllib.parse import urlsplit
+          d=json.load(open('/tmp/duck-final-preserved.json'))
+          print(urlsplit(d['commercial_root_url']).path)
+          PY
+          )"
+          GLOBAL_PATH="$(python - <<'PY'
+          import json
+          from urllib.parse import urlsplit
+          d=json.load(open('/tmp/duck-final-preserved.json'))
+          print(urlsplit(d['global_foie_url']).path)
+          PY
+          )"
+          grep -Fq "$REPAIRED_SLUG" /tmp/products-sitemap.xml
+          grep -Fq "$ROOT_PATH" /tmp/categories-sitemap.xml
+          grep -Fq "$GLOBAL_PATH" /tmp/categories-sitemap.xml
+
+      - name: Record final verified cluster
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          jq -n             --arg generated_at "$(date -u +%FT%TZ)"             --arg run_id "$GITHUB_RUN_ID"             --arg source_sha "$GITHUB_SHA"             --slurpfile deployment /tmp/duck-final-preserved.json             --slurpfile public /tmp/duck-final-public.json             '{generated_at:$generated_at,run_id:($run_id|tonumber),source_sha:$source_sha,verified:true,batch:"20261001-duck-cluster-final",deployment:$deployment[0],public_verification:$public[0]}'             > .deploy-status/duck-cluster-final-20261001.json
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/duck-cluster-final-20261001.json
+          git commit -m 'Record final verified duck cluster [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Clean temporary backups
+        if: always() && env.PROD_PATH != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '/tmp/mdo-duck-commerce-seo-20261001-backup-${GITHUB_RUN_ID}.php' '/tmp/mdo-auto-categorizer-backup-${GITHUB_RUN_ID}.php' '/tmp/finalize-duck-cluster-${GITHUB_RUN_ID}.php' || true"
