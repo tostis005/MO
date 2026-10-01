@@ -126,11 +126,6 @@ jobs:
           BASE_URL="$BASE_URL" node <<'NODE'
           const puppeteer = require('puppeteer-core');
           const sleep = ms => new Promise(r => setTimeout(r, ms));
-          const visible = el => {
-            if (!el) return false;
-            const s = getComputedStyle(el), r = el.getBoundingClientRect();
-            return s.display !== 'none' && s.visibility !== 'hidden' && parseFloat(s.opacity || '1') > 0 && r.width > 0 && r.height > 0;
-          };
 
           (async () => {
             const browser = await puppeteer.launch({
@@ -138,6 +133,25 @@ jobs:
               headless: true,
               args: ['--no-sandbox', '--disable-dev-shm-usage']
             });
+
+            let expected1957;
+            {
+              const page = await browser.newPage();
+              await page.setCacheEnabled(false);
+              await page.setExtraHTTPHeaders({'Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'});
+              await page.setViewport({width: 390, height: 1200});
+              await page.goto(`${process.env.BASE_URL}/tienda/1957/resenas/?vendorRatingQA=${Date.now()}`, {waitUntil:'networkidle2', timeout:60000});
+              await sleep(600);
+              expected1957 = await page.evaluate(() => ({
+                score: (document.querySelector('.mdo-review-summary-score')?.textContent || '').replace(/\s+/g,' ').trim(),
+                countText: (document.querySelector('.mdo-review-summary-count')?.textContent || '').replace(/\s+/g,' ').trim()
+              }));
+              console.log('EXPECTED_1957_REVIEW_SUMMARY', JSON.stringify(expected1957));
+              if (!expected1957.score || !/reseñ/i.test(expected1957.countText)) throw new Error('Could not read the EMDO producer review summary');
+              await page.close();
+            }
+
+            const expectedCount = (expected1957.countText.match(/\d+/) || [])[0] || '';
 
             for (const width of [390, 1440]) {
               const page = await browser.newPage();
@@ -165,8 +179,8 @@ jobs:
 
               console.log('SHOP_RATINGS', width, JSON.stringify(result));
               if (result.cards < 1 || result.ratings < 1) throw new Error('No visible producer ratings in global shop');
-              if (!/Productor/i.test(result.aoveText) || !/reseñ/i.test(result.aoveText)) throw new Error('1957 producer rating text missing in shop');
-              if (!/\/tienda\/1957\/reviews\/?(?:\?|$)/i.test(result.aoveHref)) throw new Error('1957 reviews link incorrect in shop');
+              if (!/Productor/i.test(result.aoveText) || !result.aoveText.includes(expected1957.score) || !result.aoveText.includes(expectedCount)) throw new Error('Global shop rating does not match EMDO producer review summary');
+              if (!/\/tienda\/1957\/(?:reviews|resenas)\/?(?:\?|$)/i.test(result.aoveHref)) throw new Error('1957 reviews link incorrect in shop');
               await page.close();
             }
 
@@ -187,8 +201,8 @@ jobs:
                 };
               });
               console.log('SINGLE_RATING', JSON.stringify(result));
-              if (!result.visible || !/Valoración del productor/i.test(result.text) || !/reseñ/i.test(result.text)) throw new Error('Producer rating missing on single product');
-              if (!/\/tienda\/1957\/reviews\/?(?:\?|$)/i.test(result.href)) throw new Error('1957 reviews link incorrect on single product');
+              if (!result.visible || !/Valoración del productor/i.test(result.text) || !result.text.includes(expected1957.score) || !result.text.includes(expectedCount)) throw new Error('Single-product rating does not match EMDO producer review summary');
+              if (!/\/tienda\/1957\/(?:reviews|resenas)\/?(?:\?|$)/i.test(result.href)) throw new Error('1957 reviews link incorrect on single product');
               await page.close();
             }
 
