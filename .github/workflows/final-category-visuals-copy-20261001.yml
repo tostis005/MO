@@ -1,0 +1,170 @@
+name: Final category visuals and bilingual copy 20261001
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/final-category-visuals-copy-20261001.yml'
+      - '.github/scripts/set-new-category-images-copy-20261001.php'
+      - '.github/assets/category-images-20261001/**'
+      - 'elmercadodeorigen-child/page-categorias.php'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: final-category-visuals-copy-20261001
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate and rebuild category images
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/set-new-category-images-copy-20261001.php >/dev/null
+          php -l elmercadodeorigen-child/page-categorias.php >/dev/null
+          grep -q "'pescados-mariscos'" elmercadodeorigen-child/page-categorias.php
+          grep -q "'foie-pates-untables'" elmercadodeorigen-child/page-categorias.php
+
+          mkdir -p /tmp/category-visuals
+          cat .github/assets/category-images-20261001/pescados.part*.b64 | tr -d '\r\n ' | base64 -d > /tmp/category-visuals/category-pescados-mariscos.webp
+          cat .github/assets/category-images-20261001/foie.part*.b64 | tr -d '\r\n ' | base64 -d > /tmp/category-visuals/category-foie-pates-untables.webp
+
+          test "$(stat -c%s /tmp/category-visuals/category-pescados-mariscos.webp)" -eq 30118
+          test "$(stat -c%s /tmp/category-visuals/category-foie-pates-untables.webp)" -eq 43096
+          file /tmp/category-visuals/*.webp | tee /tmp/category-visuals/file.txt
+          grep -Eq '384 ?x ?576|384x576' /tmp/category-visuals/file.txt
+
+      - name: Install deployment tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass rsync jq >/dev/null
+
+      - name: Deploy category visuals and copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true)
+            php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  prod="$p"; break;;
+              esac
+            done
+            [ -n "$prod" ] || exit 22
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+          REMOTE="/tmp/mdo-category-visuals-${GITHUB_RUN_ID}"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE/assets' '$REMOTE/scripts' '$REMOTE/theme'"
+          sshpass -e scp $SCP /tmp/category-visuals/category-pescados-mariscos.webp "$STAGING_USER@$STAGING_HOST:$REMOTE/assets/category-pescados-mariscos.webp"
+          sshpass -e scp $SCP /tmp/category-visuals/category-foie-pates-untables.webp "$STAGING_USER@$STAGING_HOST:$REMOTE/assets/category-foie-pates-untables.webp"
+          sshpass -e scp $SCP .github/scripts/set-new-category-images-copy-20261001.php "$STAGING_USER@$STAGING_HOST:$REMOTE/scripts/set-new-category-images-copy-20261001.php"
+          sshpass -e scp $SCP elmercadodeorigen-child/page-categorias.php "$STAGING_USER@$STAGING_HOST:$REMOTE/theme/page-categorias.php"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sh -s -- '$PROD' '$PHP' '$WP' '$REMOTE'" <<'REMOTE_SCRIPT' > /tmp/category-result.json
+          set -eu
+          PROD="$1"
+          PHP="$2"
+          WP="$3"
+          REMOTE="$4"
+          THEME="$PROD/wp-content/themes/elmercadodeorigen-child"
+          TARGET="$THEME/page-categorias.php"
+
+          [ -f "$PROD/wp-config.php" ] || { echo "Invalid production root" >&2; exit 31; }
+          [ -f "$TARGET" ] || { echo "Missing production category template" >&2; exit 32; }
+
+          BACKUP="$HOME/.elmercado-rollbacks/elmercadodeorigen.com/$(date -u +%Y%m%dT%H%M%SZ)-before-category-visuals-20261001"
+          mkdir -p "$BACKUP"
+          cp "$TARGET" "$BACKUP/page-categorias.php"
+
+          rollback() {
+            status=$?
+            if [ "$status" -ne 0 ]; then
+              cp "$BACKUP/page-categorias.php" "$TARGET" || true
+              "$PHP" "$WP" cache flush --path="$PROD" --allow-root >/dev/null 2>&1 || true
+            fi
+            exit "$status"
+          }
+          trap rollback EXIT
+
+          cp "$REMOTE/theme/page-categorias.php" "$TARGET"
+          "$PHP" -l "$TARGET" >/dev/null
+
+          export MDO_CATEGORY_ASSET_DIR="$REMOTE/assets"
+          "$PHP" -d memory_limit=768M "$WP" eval-file "$REMOTE/scripts/set-new-category-images-copy-20261001.php" --path="$PROD" --allow-root
+
+          "$PHP" "$WP" cache flush --path="$PROD" --allow-root >/dev/null 2>&1 || true
+          trap - EXIT
+          REMOTE_SCRIPT
+
+          jq -e '.batch == "20261001-category-images-copy"' /tmp/category-result.json >/dev/null
+          jq -e '.categories["pescados-mariscos"].image_width == 384 and .categories["pescados-mariscos"].image_height == 576' /tmp/category-result.json >/dev/null
+          jq -e '.categories["foie-pates-untables"].image_width == 384 and .categories["foie-pates-untables"].image_height == 576' /tmp/category-result.json >/dev/null
+          jq -e '.categories["pescados-mariscos"].name_en == "Fish and seafood"' /tmp/category-result.json >/dev/null
+          jq -e '.categories["foie-pates-untables"].name_en == "Foie, pâtés and spreads"' /tmp/category-result.json >/dev/null
+
+          BASE="https://www.elmercadodeorigen.com"
+          curl -fsSL --max-time 60 "$BASE/categorias/?qa=${GITHUB_RUN_ID}" -o /tmp/categories-es.html
+          curl -fsSL --max-time 60 "$BASE/en/categories/?qa=${GITHUB_RUN_ID}" -o /tmp/categories-en.html
+
+          grep -Fq 'Pescados, huevas y especialidades del mar en distintos formatos y elaboraciones.' /tmp/categories-es.html
+          grep -Fq 'Foie gras, patés, mousses, rillettes y otras especialidades untables de distintos productores.' /tmp/categories-es.html
+          grep -Fq 'Fish and seafood' /tmp/categories-en.html
+          grep -Fq 'Fish, roe and seafood specialities in different preparations and formats.' /tmp/categories-en.html
+          grep -Fq 'spreadable specialities from selected producers.' /tmp/categories-en.html
+
+          FISH_IMG="$(jq -r '.categories["pescados-mariscos"].image_url' /tmp/category-result.json)"
+          FOIE_IMG="$(jq -r '.categories["foie-pates-untables"].image_url' /tmp/category-result.json)"
+          test "$(curl -Ls -o /dev/null -w '%{http_code}' --max-time 30 "$FISH_IMG")" = 200
+          test "$(curl -Ls -o /dev/null -w '%{http_code}' --max-time 30 "$FOIE_IMG")" = 200
+
+          mkdir -p .deploy-status
+          cp /tmp/category-result.json .deploy-status/final-category-visuals-copy-20261001.json
+          jq '{batch,categories}' .deploy-status/final-category-visuals-copy-20261001.json
+
+      - name: Record verified deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/final-category-visuals-copy-20261001.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record final category visuals and bilingual copy [skip ci]'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
