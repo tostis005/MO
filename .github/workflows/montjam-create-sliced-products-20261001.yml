@@ -1,0 +1,141 @@
+name: Montjam sliced products 2026-10-01
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/montjam-create-sliced-products-20261001.yml'
+      - '.github/scripts/montjam-create-sliced-products-20261001.php'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  create:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate creator
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/montjam-create-sliced-products-20261001.php >/dev/null
+          : "${STAGING_HOST:?}"
+          : "${STAGING_USER:?}"
+          : "${STAGING_PASSWORD:?}"
+
+      - name: Download temporary Gmail image attachments
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --connect-timeout 20 -o /tmp/montjam-sliced-chorizo.jpg 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-b164-820e-9abf-79b9c7463f54/raw?se=2026-10-01T09%3A10%3A47Z&sp=r&sv=2026-02-06&sr=b&scid=b67e5861-54ce-551b-b56b-cdd5d4b48a3c&skoid=bdd24bd8-9af5-4138-bfb1-19fba97a8611&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-01T08%3A02%3A48Z&ske=2026-10-02T08%3A02%3A48Z&sks=b&skv=2026-02-06&sig=XVaugBVZEU0rhsbEK6eJIrgs54e/Cmp9vrdQsxba7oA%3D'
+          curl -fL --retry 3 --connect-timeout 20 -o /tmp/montjam-sliced-lomo.jpg 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-c9f8-820e-a42e-28f356f7afbb/raw?se=2026-10-01T09%3A10%3A48Z&sp=r&sv=2026-02-06&sr=b&scid=faaf4d65-5105-51bd-b045-21bcacfd2ab0&skoid=bdd24bd8-9af5-4138-bfb1-19fba97a8611&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-01T06%3A09%3A58Z&ske=2026-10-02T06%3A09%3A58Z&sks=b&skv=2026-02-06&sig=HJ%2BpRltiFniL%2Blia4vl6MR%2BK/Y%2BCUhTraU7m4TX8yBg%3D'
+          curl -fL --retry 3 --connect-timeout 20 -o /tmp/montjam-sliced-paleta.jpg 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-86c0-820e-b803-fcde0867a12b/raw?se=2026-10-01T09%3A10%3A49Z&sp=r&sv=2026-02-06&sr=b&scid=df289963-4dae-5e39-bdc2-1731a5382612&skoid=bdd24bd8-9af5-4138-bfb1-19fba97a8611&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-01T08%3A59%3A51Z&ske=2026-10-02T08%3A59%3A51Z&sks=b&skv=2026-02-06&sig=myjMLZKpTYwGrIm3FOPEIVk7O5Xm6gLcbZdrRYHcy8I%3D'
+          curl -fL --retry 3 --connect-timeout 20 -o /tmp/montjam-sliced-jamon.jpg 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-ca6c-820e-b581-8da0eb216869/raw?se=2026-10-01T09%3A10%3A50Z&sp=r&sv=2026-02-06&sr=b&scid=0fb1293d-0c06-55a5-812e-a725ae6f8150&skoid=bdd24bd8-9af5-4138-bfb1-19fba97a8611&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-01T02%3A38%3A08Z&ske=2026-10-02T02%3A38%3A08Z&sks=b&skv=2026-02-06&sig=lS0VravIDG53xftoPcMLbQS4o9FcjDo7l1JfM/nDU5M%3D'
+          for n in chorizo lomo paleta jamon; do
+            test -s "/tmp/montjam-sliced-$n.jpg"
+            file "/tmp/montjam-sliced-$n.jpg" | grep -qi 'JPEG image data'
+          done
+
+      - name: Create Montjam sliced products in production
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          REMOTE_SCRIPT="/tmp/montjam-create-sliced-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/montjam-create-sliced-products-20261001.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+          for n in chorizo lomo paleta jamon; do
+            sshpass -e scp $SCP_OPTIONS "/tmp/montjam-sliced-$n.jpg" "$STAGING_USER@$STAGING_HOST:/tmp/montjam-sliced-$n.jpg"
+          done
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_SCRIPT' /tmp/montjam-sliced-chorizo.jpg /tmp/montjam-sliced-lomo.jpg /tmp/montjam-sliced-paleta.jpg /tmp/montjam-sliced-jamon.jpg; exit \$rc" | tee /tmp/montjam-sliced-result.txt
+
+          grep -q '^MONTJAM_SLICED_PRODUCTS_OK ' /tmp/montjam-sliced-result.txt
+
+      - name: Verify public Spanish and English routes
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          slugs_es=(
+            jamon-bellota-100-iberico-loncheado-montjam
+            paleta-bellota-100-iberica-loncheada-montjam-80g
+            lomo-bellota-100-iberico-loncheado-montjam-96g
+            chorizo-cular-iberico-extra-loncheado-montjam
+          )
+          slugs_en=(
+            montjam-100-iberian-acorn-fed-ham-sliced
+            montjam-100-iberian-acorn-fed-shoulder-ham-sliced-80g
+            montjam-100-iberian-acorn-fed-cured-loin-sliced-96g
+            montjam-extra-iberian-cular-chorizo-sliced
+          )
+          : > /tmp/montjam-sliced-public.txt
+          for s in "${slugs_es[@]}"; do
+            url="https://www.elmercadodeorigen.com/producto/$s/"
+            code="$(curl -L -sS -o /tmp/page.html -w '%{http_code}' "$url")"
+            echo "ES $code $url" | tee -a /tmp/montjam-sliced-public.txt
+            test "$code" = "200"
+            grep -qi 'Montjam' /tmp/page.html
+          done
+          for s in "${slugs_en[@]}"; do
+            url="https://www.elmercadodeorigen.com/en/product/$s/"
+            code="$(curl -L -sS -o /tmp/page.html -w '%{http_code}' "$url")"
+            echo "EN $code $url" | tee -a /tmp/montjam-sliced-public.txt
+            test "$code" = "200"
+            grep -qi 'Montjam' /tmp/page.html
+          done
+
+      - name: Record deployment verification
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "commit=$GITHUB_SHA"
+            echo "deploy_outcome=${{ steps.deploy.outcome }}"
+            echo "verify_outcome=${{ steps.verify.outcome }}"
+            echo "recorded_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            [ -f /tmp/montjam-sliced-result.txt ] && cat /tmp/montjam-sliced-result.txt || true
+            [ -f /tmp/montjam-sliced-public.txt ] && cat /tmp/montjam-sliced-public.txt || true
+          } > runtime/montjam-sliced-products-20261001.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/montjam-sliced-products-20261001.txt
+          git commit -m 'Record Montjam sliced product creation [skip ci]' || exit 0
+          git pull --rebase origin main || true
+          git push origin HEAD:main
