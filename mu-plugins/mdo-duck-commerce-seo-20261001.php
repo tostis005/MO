@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Duck Commerce SEO 2026-10-01
  * Description: Connects the duck editorial cluster with Selectos de Castilla's duck catalog through commercial taxonomy, metadata, internal links and product schema.
- * Version: 2026.10.01.1
+ * Version: 2026.10.01.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -130,7 +130,7 @@ function mdo_duck_commerce_seo_description_20261001( $current ): string {
 
 function mdo_duck_commerce_register_seo_filters_20261001(): void {
     if ( is_admin() ) { return; }
-    $priority = PHP_INT_MAX - 100;
+    $priority = PHP_INT_MAX;
     add_filter( 'aioseo_title', 'mdo_duck_commerce_seo_title_20261001', $priority );
     add_filter( 'aioseo_description', 'mdo_duck_commerce_seo_description_20261001', $priority );
     add_filter( 'wpseo_title', 'mdo_duck_commerce_seo_title_20261001', $priority );
@@ -141,7 +141,12 @@ function mdo_duck_commerce_register_seo_filters_20261001(): void {
     add_filter( 'seopress_titles_desc', 'mdo_duck_commerce_seo_description_20261001', $priority );
     add_filter( 'pre_get_document_title', 'mdo_duck_commerce_seo_title_20261001', $priority );
 }
-add_action( 'plugins_loaded', 'mdo_duck_commerce_register_seo_filters_20261001', PHP_INT_MAX - 100 );
+/*
+ * Register on wp, after MU/plugins have finished installing their generic
+ * commerce/category filters. At the same maximum filter priority this narrow
+ * duck override is therefore appended last and wins only on this cluster.
+ */
+add_action( 'wp', 'mdo_duck_commerce_register_seo_filters_20261001', PHP_INT_MAX );
 
 function mdo_duck_commerce_blog_target_slug_20261001( int $post_id ): string {
     $key = (string) get_post_meta( $post_id, '_emdo_seo_landing_key', true );
