@@ -106,7 +106,18 @@ jobs:
             rm -f '$R_GLOBAL' '$R_QUICK'
           "
 
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST"             "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$R_SCRIPT' --path='$PROD' --allow-root"             > /tmp/global-cluster-deploy.json
+          set +e
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" \
+            "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$R_SCRIPT' --path='$PROD' --allow-root" \
+            > /tmp/global-cluster-deploy.json 2> /tmp/global-cluster-deploy.err
+          RC=$?
+          set -e
+          if [ -s /tmp/global-cluster-deploy.err ]; then cat /tmp/global-cluster-deploy.err >&2; fi
+          if [ "$RC" -ne 0 ]; then
+            echo "GLOBAL_CLUSTER_RECONCILE_FAILED rc=$RC" >&2
+            cat /tmp/global-cluster-deploy.json >&2 || true
+            exit "$RC"
+          fi
 
           jq '{
             batch,paired_clusters,wagyu,foie,pescados,
@@ -294,20 +305,6 @@ jobs:
           git commit -m 'Record verified global SEO cluster architecture [skip ci]' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
-
-      - name: Restore MU plugins if deployment step fails
-        if: failure() && env.PROD_PATH != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          PORT="${STAGING_PORT:-22}"
-          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          GLOBAL="$PROD_PATH/wp-content/mu-plugins/mdo-global-seo-cluster-architecture-20261001.php"
-          QUICK="$PROD_PATH/wp-content/mu-plugins/mdo-blog-seo-quickwins-20260908.php"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
-            if [ -f '/tmp/global-cluster-backup-${GITHUB_RUN_ID}.php' ]; then install -m 0644 '/tmp/global-cluster-backup-${GITHUB_RUN_ID}.php' '$GLOBAL'; else rm -f '$GLOBAL'; fi
-            if [ -f '/tmp/blog-quickwins-backup-${GITHUB_RUN_ID}.php' ]; then install -m 0644 '/tmp/blog-quickwins-backup-${GITHUB_RUN_ID}.php' '$QUICK'; fi
-          " || true
 
       - name: Clean temporary backups
         if: always() && env.PROD_PATH != ''
