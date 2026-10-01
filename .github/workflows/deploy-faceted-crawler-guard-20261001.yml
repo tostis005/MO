@@ -1,0 +1,111 @@
+name: Deploy faceted crawler guard 2026-10-01
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-faceted-crawler-guard-20261001.yml'
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Install selective faceted crawler guard
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          HT="$ROOT/.htaccess"
+          STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+          BACKUP="/root/emdo-faceted-guard-$STAMP"
+          mkdir -p "$BACKUP"
+          cp -a "$HT" "$BACKUP/.htaccess"
+          echo "backup=$BACKUP"
+
+          echo "=== BLOCK CONFIRMED DEV SCANNER ==="
+          fail2ban-client set plesk-permanent-ban banip 45.138.12.44 || true
+          fail2ban-client status plesk-permanent-ban || true
+
+          echo "=== INSTALL SELECTIVE FACET GUARD ==="
+          python3 - "$HT" <<'PY'
+          import sys,re
+          path=sys.argv[1]
+          with open(path,'r',encoding='utf-8',errors='replace') as f:
+              s=f.read()
+          s=re.sub(r'\n?# BEGIN EMDO FACET CRAWLER GUARD\n.*?# END EMDO FACET CRAWLER GUARD\n?', '\n', s, flags=re.S)
+          block=r'''# BEGIN EMDO FACET CRAWLER GUARD
+          <IfModule mod_rewrite.c>
+          RewriteEngine On
+
+          # Protect only anonymous GET/HEAD requests to the catalogue routes that
+          # are receiving combinatorial crawler traffic. Normal browsing with
+          # session/consent cookies and simple filters is untouched.
+          RewriteCond %{REQUEST_METHOD} ^(?:GET|HEAD)$
+          RewriteCond %{HTTP:Cookie} ^$
+          RewriteCond %{REQUEST_URI} ^/(?:en/store/(?:hidalgo-de-la-jara|montjam)|en/product-category/(?:hams-and-shoulders|cured-meats)|categoria-producto/(?:jamones-paletas|embutidos-y-curados))/? [NC]
+          RewriteCond %{QUERY_STRING} (?:^|&)(?:filter_|query_type_)[^&]*&[^#]*(?:filter_|query_type_)[^&]*&[^#]*(?:filter_|query_type_)= [NC]
+          RewriteRule ^ - [R=429,L]
+
+          # Multi-select faceting is disproportionately expensive and is the main
+          # current crawler pattern. Apply only to anonymous requests on the same
+          # hot catalogue routes.
+          RewriteCond %{REQUEST_METHOD} ^(?:GET|HEAD)$
+          RewriteCond %{HTTP:Cookie} ^$
+          RewriteCond %{REQUEST_URI} ^/(?:en/store/(?:hidalgo-de-la-jara|montjam)|en/product-category/(?:hams-and-shoulders|cured-meats)|categoria-producto/(?:jamones-paletas|embutidos-y-curados))/? [NC]
+          RewriteCond %{QUERY_STRING} (?:filter_[^=&]+|emo_vendor_cat)=[^&]*(?:%2C|,) [NC]
+          RewriteCond %{QUERY_STRING} (?:^|&)(?:filter_|query_type_|emo_vendor_cat) [NC]
+          RewriteRule ^ - [R=429,L]
+
+          # Anonymous GET add-to-cart URLs on catalogue/content pages are a bot
+          # amplification vector. Real WooCommerce sessions carry cookies.
+          RewriteCond %{REQUEST_METHOD} ^(?:GET|HEAD)$
+          RewriteCond %{HTTP:Cookie} ^$
+          RewriteCond %{QUERY_STRING} (?:^|&)add-to-cart=[0-9]+(?:&|$) [NC]
+          RewriteRule ^ - [R=429,L]
+          </IfModule>
+          # END EMDO FACET CRAWLER GUARD
+
+          '''
+          with open(path,'w',encoding='utf-8') as f:
+              f.write(block+s.lstrip('\n'))
+          PY
+
+          apachectl -t
+
+          echo "=== VERIFY GUARD ==="
+          BASE='https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/'
+          SIMPLE='?filter_raza-iberica=50-iberico'
+          COMPLEX='?filter_alimentacion=bellota&filter_calidad=bellota-iberico&filter_curacion=24-36-meses&query_type_alimentacion=or&query_type_calidad=or'
+          MULTI='?filter_rango-peso=55-65-kg%2C75-85-kg&query_type_rango-peso=or'
+          for spec in "base|$BASE" "simple|$BASE$SIMPLE" "complex|$BASE$COMPLEX" "multi|$BASE$MULTI"; do
+            label="${spec%%|*}"; url="${spec#*|}"
+            echo "--- $label $url"
+            curl -k -sS --max-time 12 -A 'MDO-Facet-Guard-Test/1.0' -o /dev/null               -w 'http=%{http_code} total=%{time_total} start=%{time_starttransfer}\n' "$url" || true
+          done
+          echo "--- complex with cookie (must bypass guard)"
+          curl -k -sS --max-time 15 -A 'MDO-Facet-Guard-Test/1.0'             -H 'Cookie: CookieLawInfoConsent=yes' -o /dev/null             -w 'http=%{http_code} total=%{time_total} start=%{time_starttransfer}\n' "$BASE$COMPLEX" || true
+
+          echo "=== CLEAR OLD PHP QUEUE ==="
+          if systemctl list-unit-files --type=service | grep -q '^plesk-php82-fpm.service'; then
+            systemctl restart plesk-php82-fpm
+          elif systemctl list-unit-files --type=service | grep -q '^php8.2-fpm.service'; then
+            systemctl restart php8.2-fpm
+          fi
+          sleep 5
+
+          echo "=== LOAD AFTER ==="
+          uptime
+          ps -eo pid,user,stat,etimes,%cpu,%mem,rss,args --sort=-%cpu |             grep -E 'php-fpm: pool (elmercadodeorigen.com|dev.elmercadodeorigen.com)' | head -n 30 || true
+          REMOTE
