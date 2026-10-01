@@ -36,7 +36,7 @@ const getHubState = async (page) => page.evaluate(() => {
     const s = getComputedStyle(el);
     return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden';
   };
-  const main = document.querySelector('main[data-emo-categories-hub="010257"]');
+  const main = document.querySelector('main[data-emo-categories-hub="010259"]');
   const cards = main ? [...main.querySelectorAll('.emo-category-hub-card')].filter(visible) : [];
   const rect = (el) => {
     if (!el) return null;
