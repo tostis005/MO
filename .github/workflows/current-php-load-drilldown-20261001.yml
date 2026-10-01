@@ -1,0 +1,97 @@
+name: Current PHP load drilldown 2026-10-01
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/current-php-load-drilldown-20261001.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Inspect current production load
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          PRODLOG="/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log"
+          DEVLOG="/var/www/vhosts/system/dev.elmercadodeorigen.com/logs/access_ssl_log"
+          echo "=== LOAD ==="
+          date -Is
+          uptime
+          free -m
+          echo "=== TOP CPU ==="
+          ps -eo pid,ppid,user,stat,etimes,%cpu,%mem,rss,args --sort=-%cpu | head -n 45
+          echo "=== LAST 5M ACCESS ANALYSIS ==="
+          python3 - "$PRODLOG" "$DEVLOG" <<'PY'
+          import sys,re,os
+          from datetime import datetime,timezone,timedelta
+          from collections import Counter,defaultdict
+          from urllib.parse import urlsplit
+          now=datetime.now(timezone.utc); cut=now-timedelta(minutes=5)
+          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+(\S+)(?:\s+"([^"]*)"\s+"([^"]*)")?')
+          asset=re.compile(r'\.(?:css|js|mjs|map|png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|eot|mp4|webm|pdf|zip)(?:$|\?)',re.I)
+          for p in sys.argv[1:]:
+            print("\n---",p)
+            if not os.path.isfile(p):
+              print("missing"); continue
+            totals=Counter(); paths=Counter(); targets=Counter(); uas=Counter(); ips=Counter(); methods=Counter(); ipua=defaultdict(Counter)
+            with open(p,'rt',encoding='utf-8',errors='replace') as f:
+              for line in f:
+                m=rx.match(line)
+                if not m: continue
+                ip,ds,method,target,status,size,ref,ua=m.groups()
+                try: dt=datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(timezone.utc)
+                except: continue
+                if dt < cut: continue
+                try: path=urlsplit(target).path or '/'
+                except: path=target.split('?',1)[0] or '/'
+                totals['requests']+=1; totals['dynamic']+=int(not asset.search(path)); totals['5xx']+=int(status.startswith('5'))
+                methods[method]+=1; paths[path]+=1; targets[target]+=1; uas[ua or '']+=1; ips[ip]+=1; ipua[ip][ua or '']+=1
+            print("totals",dict(totals),"methods",dict(methods))
+            print("top_dynamic_paths")
+            shown=0
+            for path,n in paths.most_common():
+              if asset.search(path): continue
+              print(n,path)
+              shown+=1
+              if shown>=30: break
+            print("top_exact_targets")
+            shown=0
+            for target,n in targets.most_common():
+              try: path=urlsplit(target).path or '/'
+              except: path=target.split('?',1)[0] or '/'
+              if asset.search(path): continue
+              print(n,target[:350])
+              shown+=1
+              if shown>=30: break
+            print("top_uas")
+            for ua,n in uas.most_common(20): print(n,ua[:260])
+            print("top_ips")
+            for ip,n in ips.most_common(20):
+              ua=ipua[ip].most_common(1)[0][0] if ipua[ip] else ''
+              print(n,ip,ua[:220])
+          PY
+          echo "=== PHP SLOW LOG CANDIDATES ==="
+          find /var/www/vhosts/system/elmercadodeorigen.com /var/log -maxdepth 4 -type f \( -iname '*slow*' -o -iname '*php*fpm*log*' \) -printf '%TY-%Tm-%Td %TH:%TM:%TS %p\n' 2>/dev/null | sort -r | head -n 30 || true
+          echo "=== RECENT FPM/PROXY SIGNALS ==="
+          for f in /var/www/vhosts/system/elmercadodeorigen.com/logs/error_log /var/www/vhosts/system/elmercadodeorigen.com/logs/proxy_error_log; do
+            [ -f "$f" ] || continue
+            echo "--- $f"
+            tail -n 2000 "$f" | grep -Ei 'max children|slow|timeout|upstream|memory|fatal|pool' | tail -n 100 || true
+          done
+          echo "=== MYSQL PROCESSLIST ==="
+          mysql -NBe "SHOW FULL PROCESSLIST" 2>/dev/null | head -n 80 || true
+          REMOTE
