@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Duck Commerce SEO 2026-10-01
  * Description: Connects the duck editorial cluster with Selectos de Castilla's duck catalog through commercial taxonomy, metadata, internal links and product schema.
- * Version: 2026.10.01.2
+ * Version: 2026.10.01.3
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -39,6 +39,10 @@ function mdo_duck_commerce_category_meta_20261001(): array {
             'title' => 'Comprar pato fresco online | Cortes de pato',
             'description' => 'Compra pato fresco y cortes de pato de Selectos de Castilla: muslo, solomillo, corazones, mollejas y otras piezas según disponibilidad.',
         ),
+        'foie-pates-untables' => array(
+            'title' => 'Comprar foie, patés y untables online | El Mercado de Origen',
+            'description' => 'Compra foie gras, patés, mousses, parfaits y rillettes de productores seleccionados. Compara formatos, composición, conservación y disponibilidad.',
+        ),
     );
 }
 
@@ -63,8 +67,30 @@ function mdo_duck_commerce_is_product_20261001( int $product_id = 0 ): bool {
     if ( $product_id <= 0 ) { $product_id = (int) get_queried_object_id(); }
     return $product_id > 0
         && 'product' === get_post_type( $product_id )
-        && '1' === (string) get_post_meta( $product_id, '_emdo_duck_commercial_cluster', true )
-        && EMDO_DUCK_COMMERCE_SUPPLIER_ID_20261001 === (int) get_post_meta( $product_id, '_emdo_supplier_id', true );
+        && EMDO_DUCK_COMMERCE_SUPPLIER_ID_20261001 === (int) get_post_meta( $product_id, '_emdo_supplier_id', true )
+        && has_term( 'pato', 'product_cat', $product_id );
+}
+
+function mdo_duck_commerce_product_group_20261001( int $product_id ): string {
+    $groups = array(
+        'magret-de-pato'                 => 'magret',
+        'confit-de-pato'                 => 'confit',
+        'jamon-de-pato'                  => 'jamon',
+        'pato-fresco'                    => 'fresh',
+        'foie-gras-de-pato'              => 'foie',
+        'pate-mousse-rillettes-de-pato'  => 'prepared',
+    );
+    foreach ( $groups as $slug => $group ) {
+        if ( has_term( $slug, 'product_cat', $product_id ) ) { return $group; }
+    }
+    return 'root';
+}
+
+function mdo_duck_commerce_is_selectos_store_request_20261001(): bool {
+    if ( is_admin() ) { return false; }
+    $uri  = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+    $path = (string) wp_parse_url( $uri, PHP_URL_PATH );
+    return (bool) preg_match( '#^/tienda/selectos-de-castilla(?:/|$)#i', $path );
 }
 
 function mdo_duck_commerce_product_title_for_id_20261001( int $product_id ): string {
@@ -101,6 +127,10 @@ function mdo_duck_commerce_current_term_slug_20261001(): string {
 function mdo_duck_commerce_seo_title_20261001( $current ): string {
     if ( is_admin() ) { return (string) $current; }
 
+    if ( mdo_duck_commerce_is_selectos_store_request_20261001() ) {
+        return 'Selectos de Castilla | Pato, foie gras, confit y más';
+    }
+
     $slug = mdo_duck_commerce_current_term_slug_20261001();
     $map  = mdo_duck_commerce_category_meta_20261001();
     if ( '' !== $slug && isset( $map[ $slug ] ) ) { return (string) $map[ $slug ]['title']; }
@@ -115,6 +145,10 @@ function mdo_duck_commerce_seo_title_20261001( $current ): string {
 
 function mdo_duck_commerce_seo_description_20261001( $current ): string {
     if ( is_admin() ) { return (string) $current; }
+
+    if ( mdo_duck_commerce_is_selectos_store_request_20261001() ) {
+        return 'Conoce Selectos de Castilla y compra sus productos de pato: foie gras, confit, magret, jamón de pato, patés, mousses y otras elaboraciones.';
+    }
 
     $slug = mdo_duck_commerce_current_term_slug_20261001();
     $map  = mdo_duck_commerce_category_meta_20261001();
@@ -191,7 +225,6 @@ function mdo_duck_commerce_product_ids_for_category_20261001( string $slug ): ar
         'meta_query'     => array(
             'relation' => 'AND',
             array( 'key'=>'_emdo_supplier_id', 'value'=>EMDO_DUCK_COMMERCE_SUPPLIER_ID_20261001, 'compare'=>'=' ),
-            array( 'key'=>'_emdo_duck_commercial_cluster', 'value'=>'1', 'compare'=>'=' ),
             array( 'key'=>'_stock_status', 'value'=>'instock', 'compare'=>'=' ),
         ),
     ) );
@@ -246,8 +279,14 @@ add_filter( 'the_content', static function ( string $content ): string {
         }
         $html .= '</ul>';
     }
-    $html .= '<p><a class="emdo-duck-commerce-category" href="' . esc_url( $term_url ) . '">Ver ' . esc_html( strtolower( $term->name ) ) . ' →</a></p>';
-    $html .= '</aside>';
+    $html .= '<p><a class="emdo-duck-commerce-category" href="' . esc_url( $term_url ) . '">Ver ' . esc_html( strtolower( $term->name ) ) . ' →</a>';
+    if ( in_array( $slug, array( 'foie-gras-de-pato', 'pate-mousse-rillettes-de-pato' ), true ) ) {
+        $global_url = mdo_duck_commerce_term_url_20261001( 'foie-pates-untables' );
+        if ( '' !== $global_url ) {
+            $html .= ' <span aria-hidden="true">·</span> <a class="emdo-duck-commerce-global" href="' . esc_url( $global_url ) . '">Ver todo foie, patés y untables →</a>';
+        }
+    }
+    $html .= '</p></aside>';
 
     return $content . "\n" . $html;
 }, 44 );
@@ -299,7 +338,7 @@ function mdo_duck_commerce_guides_for_group_20261001( string $group ): array {
 add_action( 'woocommerce_after_single_product_summary', static function (): void {
     if ( ! function_exists( 'is_product' ) || ! is_product() || ! mdo_duck_commerce_is_product_20261001() ) { return; }
     $product_id = (int) get_queried_object_id();
-    $group = (string) get_post_meta( $product_id, '_emdo_duck_product_cluster', true );
+    $group = mdo_duck_commerce_product_group_20261001( $product_id );
     $guides = mdo_duck_commerce_guides_for_group_20261001( $group );
     $root_url = mdo_duck_commerce_term_url_20261001( 'pato' );
     if ( empty( $guides ) && '' === $root_url ) { return; }
@@ -315,7 +354,14 @@ add_action( 'woocommerce_after_single_product_summary', static function (): void
         echo '</ul>';
     }
     if ( '' !== $root_url ) {
-        echo '<p><a class="emdo-duck-product-hub" href="' . esc_url( $root_url ) . '">Ver todos los productos de pato →</a></p>';
+        echo '<p><a class="emdo-duck-product-hub" href="' . esc_url( $root_url ) . '">Ver todos los productos de pato →</a>';
+        if ( in_array( $group, array( 'foie', 'prepared' ), true ) ) {
+            $global_url = mdo_duck_commerce_term_url_20261001( 'foie-pates-untables' );
+            if ( '' !== $global_url ) {
+                echo ' <span aria-hidden="true">·</span> <a class="emdo-duck-product-global" href="' . esc_url( $global_url ) . '">Foie, patés y untables →</a>';
+            }
+        }
+        echo '</p>';
     }
     echo '</section>';
 }, 12 );
@@ -328,7 +374,7 @@ add_filter( 'woocommerce_structured_data_product', static function ( $markup, $p
         '@type' => 'Brand',
         'name'  => 'Selectos de Castilla',
     );
-    $group = (string) get_post_meta( $product_id, '_emdo_duck_product_cluster', true );
+    $group = mdo_duck_commerce_product_group_20261001( $product_id );
     $labels = array(
         'fresh'=>'Pato fresco',
         'magret'=>'Magret de pato',
