@@ -2,10 +2,9 @@
 /**
  * Conteo contextual y jerarquia visual de las categorias de la Home.
  *
- * La portada no debe usar el count persistido del termino para visitantes
- * publicos, porque ese valor incluye productos publicados de vendedores WCFM
- * desactivados. Los administradores, en cambio, deben ver exactamente el mismo
- * catalogo completo que ya ven en Tienda y en los archivos de categoria.
+ * La portada no debe usar el count persistido del término porque puede incluir
+ * productos de vendedores WCFM ocultos. Disabled se excluye siempre; Offline
+ * se excluye al público y sigue visible para administradores.
  *
  * @package ElMercadoDeOrigen
  */
@@ -18,9 +17,8 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Cuenta productos publicados visibles para el usuario actual dentro de una
  * categoria, incluyendo sus categorias hijas.
  *
- * Reutiliza deliberadamente la misma capacidad que gobierna Tienda: los
- * administradores con manage_options no excluyen vendedores desactivados; el
- * resto de usuarios si.
+ * Reutiliza deliberadamente la misma política que gobierna Tienda:
+ * Disabled siempre fuera; Offline visible para administradores.
  */
 function elmercado_home_public_category_count_010212( int $term_id ): int {
 	static $counts = array();
@@ -30,18 +28,17 @@ function elmercado_home_public_category_count_010212( int $term_id ): int {
 		return 0;
 	}
 
-	$can_view_disabled = function_exists( 'elmercado_wcfm_disabled_visibility_can_view_010210' )
+	$can_view_offline = function_exists( 'elmercado_wcfm_disabled_visibility_can_view_010210' )
 		&& elmercado_wcfm_disabled_visibility_can_view_010210();
-	$scope_key         = $can_view_disabled ? 'admin' : 'public';
+	$hidden_vendor_ids = function_exists( 'elmercado_wcfm_hidden_vendor_ids_010210' )
+		? array_values( array_filter( array_map( 'absint', elmercado_wcfm_hidden_vendor_ids_010210() ) ) )
+		: array();
+	$scope_key         = ( $can_view_offline ? 'admin:' : 'public:' ) . implode( ',', $hidden_vendor_ids );
 	$cache_key         = $scope_key . ':' . $term_id;
 
 	if ( isset( $counts[ $cache_key ] ) ) {
 		return $counts[ $cache_key ];
 	}
-
-	$disabled_vendor_ids = ! $can_view_disabled && function_exists( 'elmercado_wcfm_disabled_vendor_ids_010210' )
-		? array_values( array_filter( array_map( 'absint', elmercado_wcfm_disabled_vendor_ids_010210() ) ) )
-		: array();
 
 	$args = array(
 		'post_type'              => 'product',
@@ -65,8 +62,8 @@ function elmercado_home_public_category_count_010212( int $term_id ): int {
 		),
 	);
 
-	if ( $disabled_vendor_ids ) {
-		$args['author__not_in'] = $disabled_vendor_ids;
+	if ( $hidden_vendor_ids ) {
+		$args['author__not_in'] = $hidden_vendor_ids;
 	}
 
 	$query                = new WP_Query( $args );
