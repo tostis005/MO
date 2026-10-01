@@ -1,0 +1,319 @@
+name: Deploy global SEO cluster architecture 20261001
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-global-seo-cluster-architecture-20261001.php'
+      - 'mu-plugins/mdo-blog-seo-quickwins-20260908.php'
+      - '.github/scripts/deploy-global-seo-cluster-architecture-20261001.php'
+      - '.github/scripts/publish-wagyu-65-production.php'
+      - '.github/workflows/deploy-global-seo-cluster-architecture-20261001.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-global-seo-cluster-architecture-20261001
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate cluster code
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-global-seo-cluster-architecture-20261001.php >/dev/null
+          php -l mu-plugins/mdo-blog-seo-quickwins-20260908.php >/dev/null
+          php -l .github/scripts/deploy-global-seo-cluster-architecture-20261001.php >/dev/null
+          php -l .github/scripts/publish-wagyu-65-production.php >/dev/null
+          php -l .github/scripts/audit-major-editorial-clusters-20261001.php >/dev/null
+          : "${STAGING_HOST:?}"
+          : "${STAGING_USER:?}"
+          : "${STAGING_PASSWORD:?}"
+
+      - name: Deploy and reconcile production clusters
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq curl >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true)
+            php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;;
+              esac
+            done
+            [ -n "$prod" ] || exit 22
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+          : "${PROD:?production path not found}"
+          echo "PROD_PATH=$PROD" >> "$GITHUB_ENV"
+
+          GLOBAL_NAME='mdo-global-seo-cluster-architecture-20261001.php'
+          QUICK_NAME='mdo-blog-seo-quickwins-20260908.php'
+          GLOBAL_TARGET="$PROD/wp-content/mu-plugins/$GLOBAL_NAME"
+          QUICK_TARGET="$PROD/wp-content/mu-plugins/$QUICK_NAME"
+          R_GLOBAL="/tmp/global-cluster-${GITHUB_RUN_ID}.php"
+          R_QUICK="/tmp/blog-quickwins-${GITHUB_RUN_ID}.php"
+          R_SCRIPT="/tmp/deploy-global-clusters-${GITHUB_RUN_ID}.php"
+          R_AUDIT="/tmp/audit-major-clusters-${GITHUB_RUN_ID}.php"
+
+          sshpass -e scp $SCP mu-plugins/mdo-global-seo-cluster-architecture-20261001.php "$STAGING_USER@$STAGING_HOST:$R_GLOBAL"
+          sshpass -e scp $SCP mu-plugins/mdo-blog-seo-quickwins-20260908.php "$STAGING_USER@$STAGING_HOST:$R_QUICK"
+          sshpass -e scp $SCP .github/scripts/deploy-global-seo-cluster-architecture-20261001.php "$STAGING_USER@$STAGING_HOST:$R_SCRIPT"
+          sshpass -e scp $SCP .github/scripts/audit-major-editorial-clusters-20261001.php "$STAGING_USER@$STAGING_HOST:$R_AUDIT"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e
+            mkdir -p '$PROD/wp-content/mu-plugins'
+            '$PHP' -l '$R_GLOBAL' >/dev/null
+            '$PHP' -l '$R_QUICK' >/dev/null
+            cp -p '$GLOBAL_TARGET' '/tmp/global-cluster-backup-${GITHUB_RUN_ID}.php' 2>/dev/null || true
+            cp -p '$QUICK_TARGET' '/tmp/blog-quickwins-backup-${GITHUB_RUN_ID}.php' 2>/dev/null || true
+            install -m 0644 '$R_GLOBAL' '$GLOBAL_TARGET'
+            install -m 0644 '$R_QUICK' '$QUICK_TARGET'
+            rm -f '$R_GLOBAL' '$R_QUICK'
+          "
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST"             "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$R_SCRIPT' --path='$PROD' --allow-root"             > /tmp/global-cluster-deploy.json
+
+          jq '{
+            batch,paired_clusters,wagyu,foie,pescados,
+            uncategorized_moved,uncategorized_after,
+            boilerplate_posts_changed,expansions_added,boilerplate_hits_after,
+            quality
+          }' /tmp/global-cluster-deploy.json
+
+          jq -e '.batch == "20261001-global-seo-cluster-architecture"' /tmp/global-cluster-deploy.json >/dev/null
+          jq -e '.uncategorized_after == 0' /tmp/global-cluster-deploy.json >/dev/null
+          jq -e '.boilerplate_hits_after == 0' /tmp/global-cluster-deploy.json >/dev/null
+          jq -e '.wagyu.posts == 65 and .wagyu.published_products == 0' /tmp/global-cluster-deploy.json >/dev/null
+          jq -e '.wagyu.blog_parent > 0 and .wagyu.shop_parent > 0' /tmp/global-cluster-deploy.json >/dev/null
+          jq -e '.foie.posts_assigned >= 10 and .foie.shop_products >= 20' /tmp/global-cluster-deploy.json >/dev/null
+          jq -e '(.paired_clusters | index("jamones")) != null' /tmp/global-cluster-deploy.json >/dev/null
+          jq -e '(.paired_clusters | index("aceites")) != null' /tmp/global-cluster-deploy.json >/dev/null
+          jq -e '(.paired_clusters | index("carnes")) != null' /tmp/global-cluster-deploy.json >/dev/null
+          jq -e '(.paired_clusters | index("hortalizas")) != null' /tmp/global-cluster-deploy.json >/dev/null
+          jq -e '(.paired_clusters | index("legumbres")) != null' /tmp/global-cluster-deploy.json >/dev/null
+          jq -e '(.paired_clusters | index("embutidos")) != null' /tmp/global-cluster-deploy.json >/dev/null
+          jq -e '(.paired_clusters | index("conservas")) != null' /tmp/global-cluster-deploy.json >/dev/null
+          jq -e '(.paired_clusters | index("packs")) != null' /tmp/global-cluster-deploy.json >/dev/null
+          jq -e '(.paired_clusters | index("foie")) != null' /tmp/global-cluster-deploy.json >/dev/null
+          jq -e '[.quality[] | select(.count > 0 and .min_words < 650)] | length == 0' /tmp/global-cluster-deploy.json >/dev/null
+
+          cp /tmp/global-cluster-deploy.json /tmp/global-cluster-deploy-preserved.json
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST"             "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$R_AUDIT' --path='$PROD' --allow-root"             > /tmp/global-cluster-editorial-after.json
+
+          jq '{clusters:[.clusters|to_entries[]|{cluster:.key,editorial:.value.editorial,commerce:.value.commerce}],wagyu,uncategorized_products}' /tmp/global-cluster-editorial-after.json
+          jq -e '[.clusters[]?.editorial.thin_under_600[]?] | length == 0' /tmp/global-cluster-editorial-after.json >/dev/null
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST"             "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' eval 'if ( function_exists("wp_cache_flush") ) { wp_cache_flush(); } if ( has_action("litespeed_purge_all") ) { do_action("litespeed_purge_all"); }' --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -f '$R_SCRIPT' '$R_AUDIT'"
+
+      - name: Verify cluster mesh publicly
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet beautifulsoup4
+
+          fetch() {
+            local url="$1" out="$2"
+            local join='?'
+            case "$url" in *\?*) join='&';; esac
+            curl -fsSL --retry 4 --retry-delay 2 --max-time 60               -A 'Mozilla/5.0 EMDO global cluster verifier'               -H 'Cache-Control: no-cache, no-store'               "${url}${join}emdo_global_cluster_verify=${GITHUB_RUN_ID}" -o "$out"
+          }
+
+          for key in aceites jamones legumbres conservas hortalizas; do
+            BLOG="$(jq -r --arg k "$key" '.pair_samples[$k].blog_url' /tmp/global-cluster-deploy-preserved.json)"
+            SHOP="$(jq -r --arg k "$key" '.pair_samples[$k].shop_url' /tmp/global-cluster-deploy-preserved.json)"
+            PRODUCT="$(jq -r --arg k "$key" '.pair_samples[$k].sample_product_url' /tmp/global-cluster-deploy-preserved.json)"
+            POST="$(jq -r --arg k "$key" '.pair_samples[$k].sample_post_url' /tmp/global-cluster-deploy-preserved.json)"
+            test -n "$BLOG"
+            test -n "$SHOP"
+            test -n "$PRODUCT"
+            test -n "$POST"
+            fetch "$BLOG" "/tmp/$key-blog.html"
+            fetch "$SHOP" "/tmp/$key-shop.html"
+            fetch "$PRODUCT" "/tmp/$key-product.html"
+            fetch "$POST" "/tmp/$key-post.html"
+          done
+
+          WAGYU_BLOG="$(jq -r '.wagyu.blog_url' /tmp/global-cluster-deploy-preserved.json)"
+          WAGYU_SHOP="$(jq -r '.wagyu.shop_url' /tmp/global-cluster-deploy-preserved.json)"
+          WAGYU_POST="$(jq -r '.wagyu.sample_post_url' /tmp/global-cluster-deploy-preserved.json)"
+          FOIE_BLOG="$(jq -r '.foie.blog_url' /tmp/global-cluster-deploy-preserved.json)"
+          FOIE_SHOP="$(jq -r '.foie.shop_url' /tmp/global-cluster-deploy-preserved.json)"
+          test -n "$WAGYU_BLOG"
+          test -n "$WAGYU_SHOP"
+          test -n "$WAGYU_POST"
+          test -n "$FOIE_BLOG"
+          test -n "$FOIE_SHOP"
+
+          fetch "$WAGYU_BLOG" /tmp/wagyu-blog.html
+          fetch "$WAGYU_POST" /tmp/wagyu-post.html
+          fetch "$FOIE_BLOG" /tmp/foie-blog.html
+          fetch "$FOIE_SHOP" /tmp/foie-shop.html
+
+          # Empty Wagyu commercial archive may be 200 or 404 depending on Woo/theme.
+          curl -sSL --retry 4 --retry-delay 2 --max-time 60             -A 'Mozilla/5.0 EMDO global cluster verifier'             -H 'Cache-Control: no-cache, no-store'             "$WAGYU_SHOP?emdo_global_cluster_verify=$GITHUB_RUN_ID"             -o /tmp/wagyu-shop.html -w '%{http_code}' > /tmp/wagyu-shop-code.txt
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from urllib.parse import urlsplit
+          from bs4 import BeautifulSoup
+
+          data=json.loads(Path('/tmp/global-cluster-deploy-preserved.json').read_text(encoding='utf-8'))
+
+          def parse(path):
+              raw=Path(path).read_text(encoding='utf-8',errors='ignore')
+              soup=BeautifulSoup(raw,'html.parser')
+              title=soup.title.get_text(' ',strip=True) if soup.title else ''
+              metas=soup.find_all('meta',attrs={'name':'description'})
+              canon=soup.find('link',rel=lambda x:x and 'canonical' in x)
+              robots=' '.join(m.get('content','') for m in soup.find_all('meta',attrs={'name':'robots'})).lower()
+              return {
+                  'raw':raw,'soup':soup,'title':title,
+                  'description':metas[0].get('content','').strip() if metas else '',
+                  'canonical':canon.get('href','') if canon else '',
+                  'noindex':'noindex' in robots,
+                  'hrefs':[a.get('href','') for a in soup.find_all('a',href=True)],
+                  'text':soup.get_text(' ',strip=True),
+              }
+
+          def norm(url):
+              s=urlsplit(url)
+              return (s.scheme,s.netloc,s.path.rstrip('/')+'/')
+
+          result={'pairs':{}}
+          for key in ['aceites','jamones','legumbres','conservas','hortalizas']:
+              cfg=data['pair_samples'][key]
+              blog=parse(f'/tmp/{key}-blog.html')
+              shop=parse(f'/tmp/{key}-shop.html')
+              product=parse(f'/tmp/{key}-product.html')
+              post=parse(f'/tmp/{key}-post.html')
+
+              shop_norm=norm(cfg['shop_url'])
+              blog_norm=norm(cfg['blog_url'])
+
+              assert not blog['noindex'], (key,'blog noindex')
+              assert not shop['noindex'], (key,'shop noindex')
+              assert shop_norm in [norm(h) for h in blog['hrefs'] if h.startswith('http')], (key,'blog->shop missing')
+              assert blog_norm in [norm(h) for h in shop['hrefs'] if h.startswith('http')], (key,'shop->blog missing')
+              assert product['soup'].select_one(f'[data-mdo-global-cluster-guides="{key}"]') is not None, (key,'product guide block missing')
+              assert blog_norm in [norm(h) for h in product['hrefs'] if h.startswith('http')], (key,'product->blog missing')
+              assert shop_norm in [norm(h) for h in post['hrefs'] if h.startswith('http')], (key,'post->shop missing')
+              assert (
+                  post['soup'].select_one(f'[data-mdo-global-cluster="{key}"]') is not None
+                  or post['soup'].select_one('a.mdo-seo-cluster-shop') is not None
+              ), (key,'post commercial bridge missing')
+              result['pairs'][key]=True
+
+          wagyu_blog=parse('/tmp/wagyu-blog.html')
+          wagyu_post=parse('/tmp/wagyu-post.html')
+          assert not wagyu_blog['noindex']
+          assert 'Wagyu' in wagyu_blog['text']
+          assert norm(data['wagyu']['sample_post_url']) in [norm(h) for h in wagyu_blog['hrefs'] if h.startswith('http')]
+          assert 'Carnes relacionadas de nuestra tienda' not in wagyu_post['text']
+          assert 'data-mdo-global-cluster="wagyu"' not in wagyu_post['raw']
+          assert 'mdo-seo-cluster-shop' not in wagyu_post['raw']
+          assert '[products category="carnes"' not in wagyu_post['raw']
+          result['wagyu_editorial_only']=True
+
+          foie_blog=parse('/tmp/foie-blog.html')
+          foie_shop=parse('/tmp/foie-shop.html')
+          assert not foie_blog['noindex']
+          assert not foie_shop['noindex']
+          assert norm(data['foie']['shop_url']) in [norm(h) for h in foie_blog['hrefs'] if h.startswith('http')]
+          assert norm(data['foie']['blog_url']) in [norm(h) for h in foie_shop['hrefs'] if h.startswith('http')]
+          result['foie_transversal_bridge']=True
+
+          wagyu_shop_code=int(Path('/tmp/wagyu-shop-code.txt').read_text().strip())
+          wagyu_shop=parse('/tmp/wagyu-shop.html')
+          if wagyu_shop_code == 200:
+              assert wagyu_shop['noindex'], ('empty Wagyu shop archive should be noindex',wagyu_shop['title'])
+          else:
+              assert wagyu_shop_code in (404,410), wagyu_shop_code
+          result['empty_wagyu_shop_safe']=True
+
+          result['quality']=data['quality']
+          Path('/tmp/global-cluster-public.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(result,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Record verified global cluster architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          jq -n             --arg generated_at "$(date -u +%FT%TZ)"             --arg run_id "$GITHUB_RUN_ID"             --arg source_sha "$GITHUB_SHA"             --slurpfile deployment /tmp/global-cluster-deploy-preserved.json             --slurpfile public /tmp/global-cluster-public.json             --slurpfile editorial /tmp/global-cluster-editorial-after.json             '{
+              generated_at:$generated_at,
+              run_id:($run_id|tonumber),
+              source_sha:$source_sha,
+              verified:true,
+              batch:"20261001-global-seo-cluster-architecture",
+              deployment:$deployment[0],
+              public_verification:$public[0],
+              editorial_after:$editorial[0]
+            }' > .deploy-status/global-seo-cluster-architecture-20261001.json
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/global-seo-cluster-architecture-20261001.json
+          git commit -m 'Record verified global SEO cluster architecture [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Restore MU plugins if deployment step fails
+        if: failure() && env.PROD_PATH != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          GLOBAL="$PROD_PATH/wp-content/mu-plugins/mdo-global-seo-cluster-architecture-20261001.php"
+          QUICK="$PROD_PATH/wp-content/mu-plugins/mdo-blog-seo-quickwins-20260908.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            if [ -f '/tmp/global-cluster-backup-${GITHUB_RUN_ID}.php' ]; then install -m 0644 '/tmp/global-cluster-backup-${GITHUB_RUN_ID}.php' '$GLOBAL'; else rm -f '$GLOBAL'; fi
+            if [ -f '/tmp/blog-quickwins-backup-${GITHUB_RUN_ID}.php' ]; then install -m 0644 '/tmp/blog-quickwins-backup-${GITHUB_RUN_ID}.php' '$QUICK'; fi
+          " || true
+
+      - name: Clean temporary backups
+        if: always() && env.PROD_PATH != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '/tmp/global-cluster-backup-${GITHUB_RUN_ID}.php' '/tmp/blog-quickwins-backup-${GITHUB_RUN_ID}.php' '/tmp/deploy-global-clusters-${GITHUB_RUN_ID}.php' '/tmp/audit-major-clusters-${GITHUB_RUN_ID}.php' || true"
