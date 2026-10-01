@@ -1,5 +1,5 @@
 name: Home six producers sharp hero 20261001
-# retry-after-desktop-grid-fix
+# retry-after-mobile-specificity-fix
 
 on:
   push:
@@ -88,7 +88,7 @@ jobs:
               wp_bin=\$(command -v wp || true)
               php_bin=\$(command -v php || true)
               [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-              [ -n \"\$wp_bin\" ] && \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+              [ -n \"\$wp_bin\" ] && \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
               rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
               rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static'/home-deferred-*.css
             " || true
@@ -117,7 +117,7 @@ jobs:
             wp_bin=\$(command -v wp || true)
             php_bin=\$(command -v php || true)
             [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-            \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
             rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
             rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static'/home-deferred-*.css
           "
