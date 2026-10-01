@@ -128,3 +128,5 @@ if (function_exists('w3tc_flush_all')) w3tc_flush_all();
 do_action('litespeed_purge_all');
 
 echo 'MONTJAM_90G_OK ' . wp_json_encode(['count'=>count($results),'products'=>$results], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n";
+
+// retrigger 2026-10-01
