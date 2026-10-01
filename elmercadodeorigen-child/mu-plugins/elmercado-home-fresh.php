@@ -380,20 +380,25 @@ body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--5 {
 	transform: rotate(.65deg) !important;
 }
 
-body.home .emo-hero__visual--vendors.emo-vendor-count-6 {
-	grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
-	grid-template-rows: repeat(10, 38px) !important;
+html body.home.elmercado-child-theme .emo-home .emo-hero__grid > .emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-6 {
+	display: grid !important;
+	grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+	grid-template-rows: repeat(2, minmax(178px, 1fr)) !important;
+	grid-auto-rows: auto !important;
 	gap: 12px !important;
+	height: auto !important;
+	min-height: 368px !important;
+	max-height: none !important;
 }
-body.home .emo-hero__visual--vendors.emo-vendor-count-6 .emo-hero-card {
+html body.home.elmercado-child-theme .emo-home .emo-hero__grid > .emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-6 > .emo-hero-card {
+	grid-column: auto !important;
+	grid-row: auto !important;
+	width: auto !important;
+	height: auto !important;
+	min-width: 0 !important;
+	min-height: 0 !important;
 	transform: none !important;
 }
-body.home .emo-hero__visual--vendors.emo-vendor-count-6 .emo-hero-card--1 { grid-column: 1 / 5 !important; grid-row: 1 / 6 !important; }
-body.home .emo-hero__visual--vendors.emo-vendor-count-6 .emo-hero-card--2 { grid-column: 5 / 9 !important; grid-row: 1 / 6 !important; }
-body.home .emo-hero__visual--vendors.emo-vendor-count-6 .emo-hero-card--3 { grid-column: 9 / 13 !important; grid-row: 1 / 6 !important; }
-body.home .emo-hero__visual--vendors.emo-vendor-count-6 .emo-hero-card--4 { grid-column: 1 / 5 !important; grid-row: 6 / 11 !important; }
-body.home .emo-hero__visual--vendors.emo-vendor-count-6 .emo-hero-card--5 { grid-column: 5 / 9 !important; grid-row: 6 / 11 !important; }
-body.home .emo-hero__visual--vendors.emo-vendor-count-6 .emo-hero-card--6 { grid-column: 9 / 13 !important; grid-row: 6 / 11 !important; }
 
 body.home .emo-hero-vendor-fallback {
 	display: grid;
