@@ -223,6 +223,7 @@ $duck_ids = array();
 $duck_group_counts = array_fill_keys( array( 'root','fresh','magret','foie','confit','jamon','prepared' ), 0 );
 $taxonomy_changes = 0;
 $stale_meta_cleared = 0;
+$stale_seo_cleared = 0;
 $cluster_meta_repaired = 0;
 $non_duck_removed = array();
 $sample_repaired_url = '';
@@ -306,6 +307,28 @@ foreach ( $rows as $row ) {
         delete_post_meta( $wc_id, '_yoast_wpseo_meta-robots-noindex' );
     } else {
         if ( '1' === $old_cluster || '' !== $old_group ) { $stale_meta_cleared++; }
+
+        /*
+         * A product that leaves Pato must also lose only the SEO copy that this
+         * cluster generated. Compare exact generated values first so manual SEO
+         * written elsewhere is never deleted.
+         */
+        if ( '1' === $old_cluster && function_exists( 'mdo_duck_commerce_product_title_for_id_20261001' ) ) {
+            $generated_title = mdo_duck_commerce_product_title_for_id_20261001( $wc_id );
+            $generated_desc  = mdo_duck_commerce_product_description_for_id_20261001( $wc_id );
+            foreach ( array(
+                '_yoast_wpseo_title'    => $generated_title,
+                '_yoast_wpseo_metadesc' => $generated_desc,
+                'rank_math_title'       => $generated_title,
+                'rank_math_description' => $generated_desc,
+            ) as $meta_key => $generated_value ) {
+                if ( $generated_value === (string) get_post_meta( $wc_id, $meta_key, true ) ) {
+                    delete_post_meta( $wc_id, $meta_key );
+                    $stale_seo_cleared++;
+                }
+            }
+        }
+
         delete_post_meta( $wc_id, '_emdo_duck_commercial_cluster' );
         delete_post_meta( $wc_id, '_emdo_duck_product_cluster' );
         delete_post_meta( $wc_id, '_emdo_duck_commerce_version' );
@@ -529,6 +552,7 @@ echo wp_json_encode( array(
     'taxonomy_changes'=>$taxonomy_changes,
     'cluster_meta_repaired'=>$cluster_meta_repaired,
     'stale_meta_cleared'=>$stale_meta_cleared,
+    'stale_seo_cleared'=>$stale_seo_cleared,
     'removed_non_duck_count'=>count($non_duck_removed),
     'removed_non_duck'=>$non_duck_removed,
     'group_counts'=>$duck_group_counts,
