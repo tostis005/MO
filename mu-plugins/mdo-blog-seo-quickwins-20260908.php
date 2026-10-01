@@ -722,6 +722,15 @@ function mdo_blog_seo_cluster_links_20260929( $content ): string {
     $source_slugs = array_filter( array( $slug ) );
     $post_id      = (int) get_queried_object_id();
 
+    /*
+     * Wagyu is now a first-class child cluster of Carnes. Do not inject the
+     * older generic meat authority block into these 65 articles; a commercial
+     * Wagyu bridge will activate only when the Wagyu category has real stock.
+     */
+    if ( $post_id > 0 && '2026-09-10.wagyu-65.v1' === (string) get_post_meta( $post_id, '_emdo_editorial_wagyu_65', true ) ) {
+        return $content;
+    }
+
     if ( $post_id > 0 ) {
         $native_slug = sanitize_title( (string) get_post_field( 'post_name', $post_id ) );
         if ( '' !== $native_slug ) {
