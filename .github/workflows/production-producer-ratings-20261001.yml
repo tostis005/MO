@@ -169,9 +169,12 @@ jobs:
                 const aoveRating = aoveRow?.querySelector('.mdo-vendor-rating--loop');
                 const aoveVendor = aoveRow?.querySelector('.mdo-vendor-rating__vendor');
                 const aoveStars = aoveRow?.querySelector('.mdo-vendor-rating__stars');
+                const aoveScore = aoveRow?.querySelector('.mdo-vendor-rating__score');
+                const aoveCount = aoveRow?.querySelector('.mdo-vendor-rating__count');
                 const aoveTitle = aove?.querySelector('.woocommerce-loop-product__title, .woostify-loop-product__title, .product-title, h2, h3');
                 const selectos = cards.find(card => /Mollejas de pato frescas/i.test(card.innerText || ''));
                 const selectosRow = selectos?.querySelector('.mdo-vendor-rating-row');
+                const selectosVendor = selectosRow?.querySelector('.mdo-vendor-rating__vendor');
                 const visible = el => {
                   if (!el) return false;
                   const s=getComputedStyle(el), r=el.getBoundingClientRect();
@@ -180,37 +183,55 @@ jobs:
                 const soldBy = [...document.querySelectorAll('ul.products > li.product .wcfmmp_sold_by_container,ul.products > li.product .wcfmmp_sold_by_container_advanced,ul.products > li.product [class*="sold_by"]')];
                 const ratingStyle = aoveRating ? getComputedStyle(aoveRating) : null;
                 const rowRect = aoveRow ? aoveRow.getBoundingClientRect() : null;
+                const vendorRect = aoveVendor ? aoveVendor.getBoundingClientRect() : null;
+                const ratingRect = aoveRating ? aoveRating.getBoundingClientRect() : null;
                 const titleRect = aoveTitle ? aoveTitle.getBoundingClientRect() : null;
+                const starsRect = aoveStars ? aoveStars.getBoundingClientRect() : null;
+                const scoreRect = aoveScore ? aoveScore.getBoundingClientRect() : null;
                 const starsStyle = aoveStars ? getComputedStyle(aoveStars) : null;
                 return {
                   cards: cards.length,
                   rows: rows.filter(visible).length,
                   visibleSoldBy: soldBy.filter(visible).length,
-                  aoveRowText: (aoveRow?.innerText || '').replace(/\s+/g,' ').trim(),
+                  aoveVendorText: (aoveVendor?.innerText || '').trim(),
+                  aoveRatingText: (aoveRating?.innerText || '').replace(/\s+/g,' ').trim(),
+                  aoveCountText: (aoveCount?.innerText || '').replace(/\s+/g,' ').trim(),
                   aoveRatingHref: aoveRating?.href || '',
                   aoveVendorHref: aoveVendor?.href || '',
                   flexWrap: ratingStyle?.flexWrap || '',
                   whiteSpace: ratingStyle?.whiteSpace || '',
+                  twoLines: !!vendorRect && !!ratingRect && ratingRect.top > vendorRect.top + 2,
                   rowHeight: rowRect?.height || 0,
                   alignmentDelta: rowRect && titleRect ? Math.abs(rowRect.left - titleRect.left) : 999,
                   starsFontSize: starsStyle ? parseFloat(starsStyle.fontSize || '0') : 0,
+                  starsScoreGap: starsRect && scoreRect ? Math.max(0, scoreRect.left - starsRect.right) : 999,
                   selectosText: (selectosRow?.innerText || '').replace(/\s+/g,' ').trim(),
-                  selectosHasRating: !!selectosRow?.querySelector('.mdo-vendor-rating--loop')
+                  selectosHasRating: !!selectosRow?.querySelector('.mdo-vendor-rating--loop'),
+                  selectosVendorSelector: !!selectosVendor
                 };
               });
 
               console.log('SHOP_RATINGS', width, JSON.stringify(result));
               if (result.cards < 1 || result.rows < 1) throw new Error('No visible producer rows in global shop');
               if (result.visibleSoldBy !== 0) throw new Error('Sold-by text is still visible in global catalog cards');
-              if (/Productor|Producer|Vendido por|Sold by|reseñ|review/i.test(result.aoveRowText)) throw new Error('Catalog row contains verbose labels');
-              if (!result.aoveRowText.includes('1957') || !result.aoveRowText.includes(expected1957.score) || !result.aoveRowText.includes('(' + expectedCount + ')')) throw new Error('Global shop row does not match producer and EMDO review summary');
+              if (result.aoveVendorText !== '1957') throw new Error('Producer must occupy the first catalog line');
+              if (!result.twoLines) throw new Error('Producer and reviews are not rendered on two distinct lines');
+              if (!result.aoveRatingText.includes(expected1957.score) || !result.aoveRatingText.includes('(' + expectedCount + ' reseñas)')) throw new Error('Second line does not contain score and localized review count');
               if (result.flexWrap !== 'nowrap' || result.whiteSpace !== 'nowrap') throw new Error('Rating subgroup is allowed to wrap');
-              if (result.rowHeight > 24) throw new Error('Short producer row should remain on one line');
+              if (result.rowHeight < 24 || result.rowHeight > 38) throw new Error('Two-line producer block has unexpected height');
               if (result.alignmentDelta > 2) throw new Error('Producer row is not aligned with card content inset');
               if (result.starsFontSize < 13.5) throw new Error('Catalog stars are still too small');
+              if (result.starsScoreGap > 3.5) throw new Error('Score is too far from the stars');
               if (!/\/tienda\/1957\/reviews\/?(?:\?|$)/i.test(result.aoveRatingHref)) throw new Error('1957 reviews link incorrect in shop');
               if (!/\/tienda\/1957\/?(?:\?|$)/i.test(result.aoveVendorHref)) throw new Error('1957 producer link incorrect in shop');
-              if (result.selectosText !== 'Selectos de Castilla' || result.selectosHasRating) throw new Error('Producer without reviews should show only its name');
+              if (result.selectosText !== 'Selectos de Castilla' || result.selectosHasRating || !result.selectosVendorSelector) throw new Error('Producer without reviews should show only its linked name');
+
+              const selectosLink = await page.$('ul.products > li.product .mdo-vendor-rating-row--no-reviews .mdo-vendor-rating__vendor');
+              if (!selectosLink) throw new Error('No linked producer found for no-review card');
+              await selectosLink.hover();
+              await sleep(120);
+              const hoverUnderline = await page.evaluate(el => getComputedStyle(el).boxShadow, selectosLink);
+              if (!hoverUnderline || /rgba\(0, 0, 0, 0\)|none/i.test(hoverUnderline)) throw new Error('No-review producer link has no visible hover underline');
               await page.close();
             }
 
