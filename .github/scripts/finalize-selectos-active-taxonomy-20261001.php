@@ -58,6 +58,7 @@ $classify=static function(string $url,string $title): array{
    return array('pato','magret-de-pato');
  }
  if(str_contains($url,'/foie-gras/')){
+   if(str_contains($t,'oca') && !str_contains($t,'pato')) return array('foie-pates-untables');
    $out=array('foie-pates-untables','pato');
    $out[]=str_contains($t,'mousse') ? 'pate-mousse-rillettes-de-pato' : 'foie-gras-de-pato';
    return $out;
