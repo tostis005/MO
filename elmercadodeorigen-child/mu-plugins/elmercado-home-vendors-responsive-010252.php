@@ -39,6 +39,24 @@ function elmercado_home_vendor_attachment_id_010252( string $src ): int {
 	return (int) attachment_url_to_postid( $src );
 }
 
+
+/**
+ * Very wide producer banners need a larger width candidate than their visible
+ * card width suggests. With object-fit: cover the banner is scaled from its
+ * height, so a 480x200 source can be visibly upscaled on HiDPI screens.
+ */
+function elmercado_home_vendor_is_panorama_010252( int $attachment_id ): bool {
+	$meta = wp_get_attachment_metadata( $attachment_id );
+	if ( ! is_array( $meta ) ) {
+		return false;
+	}
+
+	$width  = isset( $meta['width'] ) ? (int) $meta['width'] : 0;
+	$height = isset( $meta['height'] ) ? (int) $meta['height'] : 0;
+
+	return $width > 0 && $height > 0 && ( $width / $height ) >= 2.0;
+}
+
 /**
  * Rewrite only images inside the active-producer hero visual.
  */
@@ -78,17 +96,42 @@ function elmercado_home_vendor_responsive_output_010252( string $html ): string 
 				$alt = html_entity_decode( (string) $alt_match[2], ENT_QUOTES );
 			}
 
-			$loading = str_contains( $tag, 'loading="eager"' ) || str_contains( $tag, "loading='eager'" ) ? 'eager' : 'lazy';
-			$attrs   = array(
+			$loading     = str_contains( $tag, 'loading="eager"' ) || str_contains( $tag, "loading='eager'" ) ? 'eager' : 'lazy';
+			$is_panorama = elmercado_home_vendor_is_panorama_010252( $id );
+			$image_size  = $is_panorama ? 'large' : 'medium_large';
+			$attrs       = array(
 				'alt'      => $alt,
 				'loading'  => $loading,
 				'decoding' => 'async',
-				'sizes'    => '(max-width: 767px) calc(100vw - 32px), 375px',
-				'class'    => 'emo-home-vendor-responsive-image',
+				'sizes'    => $is_panorama
+					? '(max-width: 599px) 380px, (max-width: 1180px) 480px, 500px'
+					: '(max-width: 767px) calc(100vw - 32px), 375px',
+				'class'    => $is_panorama
+					? 'emo-home-vendor-responsive-image emo-home-vendor-panorama'
+					: 'emo-home-vendor-responsive-image',
 			);
 
-			$image = wp_get_attachment_image( $id, 'medium_large', false, $attrs );
-			return is_string( $image ) && '' !== $image ? $image : $tag;
+			$image = wp_get_attachment_image( $id, $image_size, false, $attrs );
+			if ( ! is_string( $image ) || '' === $image ) {
+				return $tag;
+			}
+
+			/*
+			 * WordPress prepends "auto," to sizes on lazy images. That is normally
+			 * useful, but for a panoramic image cropped with object-fit: cover it
+			 * makes the browser choose by the narrow card width and ignore the much
+			 * larger source width needed to provide enough vertical pixels.
+			 */
+			if ( $is_panorama ) {
+				$image = preg_replace(
+					'~\bsizes=(["\'])auto,\s*~i',
+					'sizes=$1',
+					$image,
+					1
+				) ?: $image;
+			}
+
+			return $image;
 		},
 		$segment
 	);
