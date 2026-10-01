@@ -1,0 +1,68 @@
+name: Audit duck editorial quality final 20261001
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/audit-duck-editorial-final-20261001.php'
+      - '.github/workflows/audit-duck-editorial-final-20261001.yml'
+permissions:
+  contents: write
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run final editorial audit in production
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/audit-duck-editorial-final-20261001.php >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;; esac
+            done
+            [ -n "$prod" ] || exit 22
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
+          REMOTE="/tmp/audit-duck-editorial-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/audit-duck-editorial-final-20261001.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE' --path='$PROD' --allow-root" > /tmp/duck-editorial-final.json
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$REMOTE'"
+          jq '.summary, .exact_duplicate_paragraphs, .repeated_headings, .high_similarity_pairs' /tmp/duck-editorial-final.json
+
+          jq -e '.summary.count == 60' /tmp/duck-editorial-final.json >/dev/null
+          jq -e '.summary.thin_under_650 == 0' /tmp/duck-editorial-final.json >/dev/null
+          jq -e '.summary.h1_in_content == 0' /tmp/duck-editorial-final.json >/dev/null
+          jq -e '.summary.forbidden_template_posts == 0' /tmp/duck-editorial-final.json >/dev/null
+
+      - name: Record audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          cp /tmp/duck-editorial-final.json .deploy-status/duck-editorial-final-audit-20261001.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/duck-editorial-final-audit-20261001.json
+          git commit -m 'Record final duck editorial audit [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
