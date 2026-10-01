@@ -29,7 +29,7 @@ jobs:
           ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
           LOG="/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log"
           DEVLOG="/var/www/vhosts/system/dev.elmercadodeorigen.com/logs/access_ssl_log"
-          PHP="/opt/plesk/php/8.2/bin/php"
+          PHP="/opt/plesk/php/8.2/bin/php"\n          PHP_ARGS="-d memory_limit=768M"
           WP="/usr/local/bin/wp"
 
           echo "=== SYSTEM ==="
@@ -42,11 +42,11 @@ jobs:
           fail2ban-client status emdo-xmlrpc-abuse || true
           fail2ban-client status plesk-permanent-ban || true
 
-          SITE=$("$PHP" "$WP" option get siteurl --path="$ROOT" --allow-root)
-          CART_ID=$("$PHP" "$WP" option get woocommerce_cart_page_id --path="$ROOT" --allow-root)
-          CHECKOUT_ID=$("$PHP" "$WP" option get woocommerce_checkout_page_id --path="$ROOT" --allow-root)
-          CART_SLUG=$("$PHP" "$WP" post get "$CART_ID" --field=post_name --path="$ROOT" --allow-root)
-          CHECKOUT_SLUG=$("$PHP" "$WP" post get "$CHECKOUT_ID" --field=post_name --path="$ROOT" --allow-root)
+          SITE=$("$PHP" $PHP_ARGS "$WP" option get siteurl --path="$ROOT" --allow-root)
+          CART_ID=$("$PHP" $PHP_ARGS "$WP" option get woocommerce_cart_page_id --path="$ROOT" --allow-root)
+          CHECKOUT_ID=$("$PHP" $PHP_ARGS "$WP" option get woocommerce_checkout_page_id --path="$ROOT" --allow-root)
+          CART_SLUG=$("$PHP" $PHP_ARGS "$WP" post get "$CART_ID" --field=post_name --path="$ROOT" --allow-root)
+          CHECKOUT_SLUG=$("$PHP" $PHP_ARGS "$WP" post get "$CHECKOUT_ID" --field=post_name --path="$ROOT" --allow-root)
 
           echo "=== CORE PAGE HEALTH ==="
           for spec in             "home|$SITE/"             "shop|$SITE/tienda/"             "cart|$SITE/$CART_SLUG/"             "checkout|$SITE/$CHECKOUT_SLUG/"             "product|$SITE/producto/sobres-de-lomo-de-bellota-100/"             "hot_montjam|$SITE/en/store/montjam/"             "hot_hidalgo|$SITE/en/store/hidalgo-de-la-jara/"             "hot_hams|$SITE/en/product-category/hams-and-shoulders/"; do
