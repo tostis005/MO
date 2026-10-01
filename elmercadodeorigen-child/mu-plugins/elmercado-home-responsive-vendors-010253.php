@@ -13,6 +13,19 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+
+function elmercado_home_vendor_is_panorama_010253( int $attachment_id ): bool {
+	$meta = wp_get_attachment_metadata( $attachment_id );
+	if ( ! is_array( $meta ) ) {
+		return false;
+	}
+
+	$width  = isset( $meta['width'] ) ? (int) $meta['width'] : 0;
+	$height = isset( $meta['height'] ) ? (int) $meta['height'] : 0;
+
+	return $width > 0 && $height > 0 && ( $width / $height ) >= 2.0;
+}
+
 function elmercado_home_responsive_vendor_images_010253( string $html ): string {
 	if ( '' === $html || false === strpos( $html, 'emo-hero__visual--vendors' ) ) {
 		return $html;
@@ -58,23 +71,38 @@ function elmercado_home_responsive_vendor_images_010253( string $html ): string 
 				$loading = strtolower( $loading_match[2] );
 			}
 
-			$size = 'large';
+			$size        = 'large';
+			$is_panorama = elmercado_home_vendor_is_panorama_010253( $attachment_id );
+			$sizes       = $is_panorama
+				? '(max-width: 599px) 380px, (max-width: 1180px) 480px, 500px'
+				: '(max-width: 599px) calc((100vw - 34px) / 2), (max-width: 1180px) min(342px, calc((100vw - 56px) / 2)), 220px';
 
 			$responsive = wp_get_attachment_image(
 				$attachment_id,
 				$size,
 				false,
 				array(
-					'class'    => 'emo-home-vendor-responsive-image',
+					'class'    => $is_panorama
+						? 'emo-home-vendor-responsive-image emo-home-vendor-panorama'
+						: 'emo-home-vendor-responsive-image',
 					'alt'      => $alt,
 					'loading'  => $loading,
 					'decoding' => 'async',
-					'sizes'    => '(max-width: 599px) calc((100vw - 34px) / 2), (max-width: 1180px) min(342px, calc((100vw - 56px) / 2)), 220px',
+					'sizes'    => $sizes,
 				)
 			);
 
 			if ( ! is_string( $responsive ) || '' === $responsive ) {
 				return $tag;
+			}
+
+			if ( $is_panorama ) {
+				$responsive = preg_replace(
+					'~\bsizes=(["\'])auto,\s*~i',
+					'sizes=$1',
+					$responsive,
+					1
+				) ?: $responsive;
 			}
 
 			/*
