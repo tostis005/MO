@@ -475,7 +475,7 @@ add_action(
 			.mdo-vendor-rating--loop .mdo-vendor-rating__stars {
 				width: 5.22em;
 				flex-basis: 5.22em;
-				font-size: .92rem;
+				font-size: 14px;
 				letter-spacing: .08em;
 			}
 			.mdo-vendor-rating--loop .mdo-vendor-rating__score {
@@ -522,7 +522,7 @@ add_action(
 					font-size: .72rem;
 				}
 				.mdo-vendor-rating--loop .mdo-vendor-rating__stars {
-					font-size: .88rem;
+					font-size: 14px;
 				}
 				.mdo-vendor-rating--single {
 					width: 100%;
