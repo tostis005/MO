@@ -1,0 +1,110 @@
+name: Montjam sliced products 90g 2026-10-01
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/montjam-update-sliced-90g-20261001.yml'
+      - '.github/scripts/montjam-update-sliced-90g-20261001.php'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Validate script
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/montjam-update-sliced-90g-20261001.php >/dev/null
+          : "${STAGING_HOST:?}"
+          : "${STAGING_USER:?}"
+          : "${STAGING_PASSWORD:?}"
+
+      - name: Update production products
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          REMOTE="/tmp/montjam-90g-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/montjam-update-sliced-90g-20261001.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" | tee /tmp/montjam-90g-result.txt
+          grep -q '^MONTJAM_90G_OK ' /tmp/montjam-90g-result.txt
+
+      - name: Verify public routes
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          urls=(
+            'https://www.elmercadodeorigen.com/producto/jamon-bellota-100-iberico-loncheado-montjam-90g/'
+            'https://www.elmercadodeorigen.com/producto/paleta-bellota-100-iberica-loncheada-montjam-90g/'
+            'https://www.elmercadodeorigen.com/producto/lomo-bellota-100-iberico-loncheado-montjam-90g/'
+            'https://www.elmercadodeorigen.com/producto/chorizo-cular-iberico-extra-loncheado-montjam-90g/'
+            'https://www.elmercadodeorigen.com/en/product/montjam-100-iberian-acorn-fed-ham-sliced-90g/'
+            'https://www.elmercadodeorigen.com/en/product/montjam-100-iberian-acorn-fed-shoulder-ham-sliced-90g/'
+            'https://www.elmercadodeorigen.com/en/product/montjam-100-iberian-acorn-fed-cured-loin-sliced-90g/'
+            'https://www.elmercadodeorigen.com/en/product/montjam-extra-iberian-cular-chorizo-sliced-90g/'
+          )
+          : > /tmp/montjam-90g-public.txt
+          for url in "${urls[@]}"; do
+            code="$(curl -L -sS -o /tmp/page90.html -w '%{http_code}' "$url")"
+            echo "$code $url" | tee -a /tmp/montjam-90g-public.txt
+            test "$code" = "200"
+            grep -qi '90 g' /tmp/page90.html
+          done
+
+      - name: Record verification
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "commit=$GITHUB_SHA"
+            echo "deploy_outcome=${{ steps.deploy.outcome }}"
+            echo "verify_outcome=${{ steps.verify.outcome }}"
+            echo "recorded_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            [ -f /tmp/montjam-90g-result.txt ] && cat /tmp/montjam-90g-result.txt || true
+            [ -f /tmp/montjam-90g-public.txt ] && cat /tmp/montjam-90g-public.txt || true
+          } > runtime/montjam-sliced-90g-20261001.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/montjam-sliced-90g-20261001.txt
+          git commit -m 'Record Montjam 90g product update [skip ci]' || exit 0
+          git pull --rebase origin main || true
+          git push origin HEAD:main
