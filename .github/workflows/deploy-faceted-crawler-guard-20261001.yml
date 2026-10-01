@@ -55,7 +55,7 @@ jobs:
           RewriteCond %{REQUEST_METHOD} ^(?:GET|HEAD)$
           RewriteCond %{HTTP:Cookie} ^$
           RewriteCond %{REQUEST_URI} ^/(?:en/store/(?:hidalgo-de-la-jara|montjam)|en/product-category/(?:hams-and-shoulders|cured-meats)|categoria-producto/(?:jamones-paletas|embutidos-y-curados))/? [NC]
-          RewriteCond %{QUERY_STRING} (?:^|&)(?:filter_|query_type_)[^&]*&[^#]*(?:filter_|query_type_)[^&]*&[^#]*(?:filter_|query_type_)= [NC]
+          RewriteCond %{QUERY_STRING} (?:filter_|query_type_)[^&]*&[^#]*(?:filter_|query_type_)[^&]*&[^#]*(?:filter_|query_type_)[^&]*&[^#]*(?:filter_|query_type_) [NC]
           RewriteRule ^ - [R=429,L]
 
           # Multi-select faceting is disproportionately expensive and is the main
