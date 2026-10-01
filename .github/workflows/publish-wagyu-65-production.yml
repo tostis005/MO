@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/workflows/publish-wagyu-65-production.yml'
       - '.github/scripts/publish-wagyu-65-production.php'
       - '.github/data/editorial-wagyu-batch01-20260910/**'
       - '.github/data/editorial-wagyu-batch02-20260910/**'
@@ -129,7 +128,7 @@ jobs:
           grep -q '"count":65' /tmp/wagyu-65-output.txt
           grep -q '"blog_category_slug":"wagyu"' /tmp/wagyu-65-output.txt
           grep -q '"shop_wagyu_category_slug":"wagyu"' /tmp/wagyu-65-output.txt
-          grep -q '"related_product_category":"carnes"' /tmp/wagyu-65-output.txt
+          grep -q '"related_product_category":"wagyu"' /tmp/wagyu-65-output.txt
           grep -q 'EMDO_WAGYU_65_END' /tmp/wagyu-65-output.txt
 
           check_url() {
@@ -151,6 +150,6 @@ jobs:
             check_url "https://www.elmercadodeorigen.com/en/${en_slug}/"
           done < /tmp/wagyu-slugs.tsv
 
-          check_url 'https://www.elmercadodeorigen.com/category/wagyu/'
+          check_url 'https://www.elmercadodeorigen.com/category/carnes/wagyu/'
           health_check post "${CRITICAL_URLS[@]}"
           echo 'Wagyu production verification complete: 65 ES + 65 EN URLs'
