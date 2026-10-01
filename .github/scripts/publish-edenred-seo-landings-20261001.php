@@ -5,6 +5,28 @@
  */
 if ( ! defined( 'ABSPATH' ) ) { fwrite( STDERR, "WordPress is not loaded.\n" ); exit( 1 ); }
 
+/*
+ * The publisher can run with regular plugins/themes skipped. Register the
+ * stored WooCommerce object types for this CLI process so catalogue taxonomy
+ * data remains queryable without booting checkout/payment plugins.
+ */
+if ( ! post_type_exists( 'product' ) ) {
+    register_post_type( 'product', array( 'public' => false, 'show_ui' => false ) );
+}
+if ( ! taxonomy_exists( 'product_cat' ) ) {
+    register_taxonomy( 'product_cat', array( 'product' ), array(
+        'public' => true,
+        'hierarchical' => true,
+        'rewrite' => array( 'slug' => 'categoria-producto' ),
+    ) );
+}
+if ( ! taxonomy_exists( 'product_visibility' ) ) {
+    register_taxonomy( 'product_visibility', array( 'product' ), array(
+        'public' => false,
+        'hierarchical' => false,
+    ) );
+}
+
 function emdo_edenred_norm( $value ) {
     return trim( preg_replace( '/\s+/', ' ', remove_accents( mb_strtolower( wp_strip_all_tags( (string) $value ) ) ) ) );
 }
@@ -12,6 +34,15 @@ function emdo_edenred_norm( $value ) {
 function emdo_edenred_sellable( $id ) {
     $id = (int) $id;
     if ( $id < 1 || 'publish' !== get_post_status( $id ) ) return false;
+
+    $stock = (string) get_post_meta( $id, '_stock_status', true );
+    if ( 'outofstock' === $stock ) return false;
+
+    if ( taxonomy_exists( 'product_visibility' ) ) {
+        $visibility = wp_get_object_terms( $id, 'product_visibility', array( 'fields' => 'slugs' ) );
+        if ( ! is_wp_error( $visibility ) && in_array( 'exclude-from-catalog', (array) $visibility, true ) ) return false;
+    }
+
     if ( function_exists( 'elmercado_wcfm_product_is_from_disabled_vendor_010210' ) && elmercado_wcfm_product_is_from_disabled_vendor_010210( $id ) ) return false;
     if ( function_exists( 'wc_get_product' ) ) {
         $p = wc_get_product( $id );
