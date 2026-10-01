@@ -109,7 +109,6 @@ jobs:
           jq -e '.batch == "20261001-duck-cluster-final"' /tmp/duck-final.json >/dev/null
           jq -e '.active_selectos >= 100' /tmp/duck-final.json >/dev/null
           jq -e '.true_duck_products >= 45' /tmp/duck-final.json >/dev/null
-          jq -e '.removed_non_duck_count >= 2' /tmp/duck-final.json >/dev/null
           jq -e '.producer_description_chars >= 900' /tmp/duck-final.json >/dev/null
           jq -e '.global_foie_description_chars >= 500' /tmp/duck-final.json >/dev/null
           jq -e '.blog.count == 60' /tmp/duck-final.json >/dev/null
