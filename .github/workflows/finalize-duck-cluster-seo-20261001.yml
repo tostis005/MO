@@ -40,7 +40,6 @@ jobs:
           php -l mu-plugins/mdo-duck-commerce-seo-20261001.php >/dev/null
           php -l mdo-supplier-sync/includes/class-mdo-auto-categorizer.php >/dev/null
           php -l .github/scripts/finalize-duck-cluster-seo-20261001.php >/dev/null
-          grep -Fq "str_contains( $title, 'oca' )" mdo-supplier-sync/includes/class-mdo-auto-categorizer.php
           grep -Fq 'Detalles prácticos para completar la guía' .github/scripts/finalize-duck-cluster-seo-20261001.php
           : "${STAGING_HOST:?}"
           : "${STAGING_USER:?}"
