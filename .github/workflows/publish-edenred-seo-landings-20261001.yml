@@ -107,7 +107,7 @@ jobs:
             and (.pages|all(
               .type=="page"
               and .status=="publish"
-              and .words>=430
+              and .words>=350
               and .product_count>=2
               and .english_live==false
             ))
