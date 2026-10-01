@@ -86,6 +86,10 @@ jobs:
           PY
           echo "=== PHP SLOW LOG CANDIDATES ==="
           find /var/www/vhosts/system/elmercadodeorigen.com /var/log -maxdepth 4 -type f \( -iname '*slow*' -o -iname '*php*fpm*log*' \) -printf '%TY-%Tm-%Td %TH:%TM:%TS %p\n' 2>/dev/null | sort -r | head -n 30 || true
+          echo "=== CURRENT PHP-FPM SLOW TRACE ==="
+          if [ -f /var/www/vhosts/system/elmercadodeorigen.com/logs/php-fpm_slow.log ]; then
+            tail -n 500 /var/www/vhosts/system/elmercadodeorigen.com/logs/php-fpm_slow.log || true
+          fi
           echo "=== RECENT FPM/PROXY SIGNALS ==="
           for f in /var/www/vhosts/system/elmercadodeorigen.com/logs/error_log /var/www/vhosts/system/elmercadodeorigen.com/logs/proxy_error_log; do
             [ -f "$f" ] || continue
