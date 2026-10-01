@@ -1,0 +1,115 @@
+name: Finalize category visuals and bilingual copy 20261001
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/assets/category-visuals-20261001/**'
+      - '.github/scripts/finalize-category-visuals-copy-20261001.php'
+      - '.github/workflows/finalize-category-visuals-copy-20261001.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-category-visuals-copy-20261001
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Rebuild and validate category images
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/finalize-category-visuals-copy-20261001.php >/dev/null
+          mkdir -p /tmp/category-visuals-20261001
+          base64 -d .github/assets/category-visuals-20261001/pescados-mariscos.webp.b64 > /tmp/category-visuals-20261001/pescados-mariscos.webp
+          base64 -d .github/assets/category-visuals-20261001/foie-pates-untables.webp.b64 > /tmp/category-visuals-20261001/foie-pates-untables.webp
+          test -s /tmp/category-visuals-20261001/pescados-mariscos.webp
+          test -s /tmp/category-visuals-20261001/foie-pates-untables.webp
+          file /tmp/category-visuals-20261001/*.webp | grep -q 'Web/P image'
+
+      - name: Publish images and category metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break ;;
+              esac
+            done
+            [ -n "$prod" ] || exit 22
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+
+          REMOTE_DIR="/tmp/emdo-category-visuals-20261001-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR'"
+          sshpass -e scp $SCP /tmp/category-visuals-20261001/pescados-mariscos.webp "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/pescados-mariscos.webp"
+          sshpass -e scp $SCP /tmp/category-visuals-20261001/foie-pates-untables.webp "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/foie-pates-untables.webp"
+          sshpass -e scp $SCP .github/scripts/finalize-category-visuals-copy-20261001.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/finalize.php"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; export EMDO_CATEGORY_VISUAL_DIR='$REMOTE_DIR'; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE_DIR/finalize.php' --path='$PROD' --allow-root" > /tmp/category-visuals-copy-result.json
+
+          jq -e '.batch == "20261001-category-visuals-copy"' /tmp/category-visuals-copy-result.json >/dev/null
+          jq -e '.categories["pescados-mariscos"].attachment_id > 0' /tmp/category-visuals-copy-result.json >/dev/null
+          jq -e '.categories["foie-pates-untables"].attachment_id > 0' /tmp/category-visuals-copy-result.json >/dev/null
+          jq -e '.categories["pescados-mariscos"].en_published == "1" and .categories["foie-pates-untables"].en_published == "1"' /tmp/category-visuals-copy-result.json >/dev/null
+          jq -e '.categories["pescados-mariscos"].en_name == "Fish and seafood"' /tmp/category-visuals-copy-result.json >/dev/null
+          jq -e '.categories["foie-pates-untables"].en_name == "Foie gras, pâtés and spreads"' /tmp/category-visuals-copy-result.json >/dev/null
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE_DIR'; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; if '$PHP' '$WP' plugin is-active wp-rocket --path='$PROD' --allow-root >/dev/null 2>&1; then '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true; fi"
+
+          for URL in             'https://www.elmercadodeorigen.com/categorias/'             'https://www.elmercadodeorigen.com/en/categories/'; do
+            CODE="$(curl -k -L -sS --connect-timeout 8 --max-time 35 -o /tmp/category-page.html -w '%{http_code}' "$URL")"
+            test "$CODE" = 200
+            ! grep -Eqi 'Fatal error:|Parse error:|There has been a critical error' /tmp/category-page.html
+          done
+
+          mkdir -p .deploy-status
+          cp /tmp/category-visuals-copy-result.json .deploy-status/category-visuals-copy-20261001.json
+          jq '{batch,categories}' .deploy-status/category-visuals-copy-20261001.json
+
+      - name: Record verified result
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/category-visuals-copy-20261001.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record category visuals and bilingual copy [skip ci]'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
