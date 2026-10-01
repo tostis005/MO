@@ -1,0 +1,63 @@
+name: Dormant development cron 2026-10-01
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/dormant-development-cron-20261001.yml'
+permissions:
+  contents: read
+jobs:
+  dormant:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Disable dev cron only
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          DEVROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/dev.elmercadodeorigen.com"
+          STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+          BACKUP="/root/emdo-dev-cron-$STAMP"
+          mkdir -p "$BACKUP"
+          crontab -l > "$BACKUP/root-crontab.txt"
+
+          TMP=$(mktemp)
+          crontab -l | awk -v devroot="$DEVROOT" '
+            index($0, devroot) && $0 !~ /^[[:space:]]*#/ {
+              print "# EMDO DEV DORMANT 2026-10-01: " $0
+              next
+            }
+            { print }
+          ' > "$TMP"
+          crontab "$TMP"
+          rm -f "$TMP"
+
+          echo "=== DEV CRON ==="
+          crontab -l | grep -F "$DEVROOT" || true
+
+          echo "=== PRODUCTION CRON ==="
+          crontab -l | grep -F '/httpdocs' | grep 'wp cron event run' || true
+
+          echo "=== DEV UNAUTHENTICATED ==="
+          curl -k -sS --max-time 8 -D /tmp/dev-h -o /dev/null             -w 'dev_http=%{http_code} total=%{time_total} start=%{time_starttransfer}\n'             'https://dev.elmercadodeorigen.com/' || true
+          grep -Ei 'HTTP/|WWW-Authenticate|X-Powered-By' /tmp/dev-h || true
+
+          echo "=== SYSTEM LOAD ==="
+          uptime
+          ps -eo pid,user,stat,etimes,%cpu,%mem,rss,args --sort=-%cpu |             grep -E 'php-fpm: pool dev\.elmercadodeorigen\.com' | head -n 10 || true
+
+          grep -q '^# EMDO DEV DORMANT 2026-10-01:' <(crontab -l)
+          grep -q '^HTTP/.* 401' /tmp/dev-h
+          echo "DEV_DORMANT_OK"
+          REMOTE
