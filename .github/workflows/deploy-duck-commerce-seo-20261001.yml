@@ -1,12 +1,8 @@
 name: Deploy duck commerce SEO 20261001
 
+# Superseded by finalize-duck-cluster-seo-20261001.yml, which reconciles the
+# current global taxonomy before validating the editorial/commercial bridge.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'mu-plugins/mdo-duck-commerce-seo-20261001.php'
-      - '.github/scripts/deploy-duck-commerce-seo-20261001.php'
-      - '.github/workflows/deploy-duck-commerce-seo-20261001.yml'
   workflow_dispatch:
 
 permissions:
