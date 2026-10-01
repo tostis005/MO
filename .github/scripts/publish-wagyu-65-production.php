@@ -5,7 +5,7 @@
  * Spanish is the canonical WordPress post and English is stored through the
  * Falang _en_US_* metadata pattern already used by the site. Idempotent by
  * slug + batch marker. Related products temporarily use WooCommerce Carnes;
- * an empty Wagyu product category is created for the future catalogue.
+ * the Wagyu product category is used only when it actually contains published products.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -99,12 +99,9 @@ function emdo_wagyu_ensure_term( string $taxonomy, string $name, string $slug ):
 }
 
 function emdo_wagyu_related_product_term(): WP_Term {
-    $term = get_term_by( 'slug', 'carnes', 'product_cat' );
+    $term = get_term_by( 'slug', 'wagyu', 'product_cat' );
     if ( ! $term instanceof WP_Term ) {
-        $term = get_term_by( 'name', 'Carnes', 'product_cat' );
-    }
-    if ( ! $term instanceof WP_Term ) {
-        throw new RuntimeException( 'WooCommerce product category Carnes was not found.' );
+        throw new RuntimeException( 'WooCommerce product category Wagyu was not found.' );
     }
     return $term;
 }
@@ -146,7 +143,25 @@ function emdo_wagyu_featured_image(): int {
 }
 
 function emdo_wagyu_related_block( string $content, string $product_slug, bool $en ): string {
-    $heading = $en ? 'Related meats from our shop' : 'Carnes relacionadas de nuestra tienda';
+    $ids = get_posts( array(
+        'post_type'      => 'product',
+        'post_status'    => 'publish',
+        'posts_per_page' => 1,
+        'fields'         => 'ids',
+        'tax_query'      => array(
+            array(
+                'taxonomy'         => 'product_cat',
+                'field'            => 'slug',
+                'terms'            => array( $product_slug ),
+                'include_children' => false,
+            ),
+        ),
+    ) );
+    if ( empty( $ids ) ) {
+        return str_replace( '<!-- EMDO_RELATED_PRODUCTS -->', '', $content );
+    }
+
+    $heading = $en ? 'Related Wagyu from our shop' : 'Wagyu relacionado de nuestra tienda';
     $block = "\n<h2>" . esc_html( $heading ) . "</h2>\n";
     $block .= '[products category="' . esc_attr( $product_slug ) . '" limit="4" columns="4" orderby="date" order="DESC"]';
     if ( false !== strpos( $content, '<!-- EMDO_RELATED_PRODUCTS -->' ) ) {
@@ -245,8 +260,18 @@ try {
         if ( trim( (string) get_post_meta( $post_id, '_en_US_post_name', true ) ) !== trim( (string) $article['en_slug'] ) ) {
             throw new RuntimeException( 'English slug mismatch: ' . $slug );
         }
-        if ( false === strpos( (string) get_post_field( 'post_content', $post_id ), '[products category="' . $related_term->slug . '"' ) ) {
-            throw new RuntimeException( 'Related Carnes block missing: ' . $slug );
+        $has_wagyu_products = ! empty( get_posts( array(
+            'post_type'=>'product','post_status'=>'publish','posts_per_page'=>1,'fields'=>'ids',
+            'tax_query'=>array(array(
+                'taxonomy'=>'product_cat','field'=>'slug','terms'=>array($related_term->slug),'include_children'=>false
+            ))
+        ) ) );
+        $stored_content = (string) get_post_field( 'post_content', $post_id );
+        if ( $has_wagyu_products && false === strpos( $stored_content, '[products category="' . $related_term->slug . '"' ) ) {
+            throw new RuntimeException( 'Related Wagyu block missing: ' . $slug );
+        }
+        if ( ! $has_wagyu_products && false !== strpos( $stored_content, '[products category="' . $related_term->slug . '"' ) ) {
+            throw new RuntimeException( 'Empty Wagyu category should not render product block: ' . $slug );
         }
 
         $rows[] = array(
