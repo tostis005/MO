@@ -79,6 +79,11 @@ final class MDO_Auto_Categorizer {
 	}
 
 	private static function infer( array $payload, array $source_row ): array {
+		$selectos = self::infer_selectos( $payload, $source_row );
+		if ( null !== $selectos ) {
+			return $selectos;
+		}
+
 		$terms = get_terms(
 			array(
 				'taxonomy'   => 'product_cat',
@@ -142,6 +147,99 @@ final class MDO_Auto_Categorizer {
 			'score'        => $best_score,
 			'reason'       => 'matched',
 			'category'     => (string) $best['term']->name,
+		);
+	}
+
+	/**
+	 * Stable supplier-specific taxonomy for Selectos de Castilla.
+	 *
+	 * These rules only run for new/imported products without meaningful manual
+	 * categories. Excluded source products never reach the importer, so they do
+	 * not create or influence the public taxonomy.
+	 */
+	private static function infer_selectos( array $payload, array $source_row ): ?array {
+		$url_raw = rawurldecode( (string) ( $source_row['source_url'] ?? ( $payload['source_url'] ?? '' ) ) );
+		if ( ! str_contains( strtolower( $url_raw ), 'tienda.selectosdecastilla.com/' ) ) {
+			return null;
+		}
+
+		$title = self::normalize( (string) ( $payload['title'] ?? '' ) );
+		$url   = strtolower( $url_raw );
+		$is_pack = str_starts_with( $title, 'lote ' )
+			|| str_starts_with( $title, 'cesta ' )
+			|| str_starts_with( $title, 'estuche ' )
+			|| str_contains( $title, 'pie de pates' );
+		$slugs = array();
+
+		if ( str_contains( $url, '/detalles-bodas-bautizos-y-comuniones/' ) || str_contains( $url, '/estuches-y-regalos-de-empresa/' ) || $is_pack ) {
+			$slugs = array( 'packs-y-lotes' );
+		} elseif ( str_contains( $url, '/jamon-de-pato/' ) ) {
+			$slugs = array( 'embutidos-y-curados', 'pato', 'jamon-de-pato' );
+		} elseif ( str_contains( $url, '/trucha/' ) ) {
+			$slugs = array( 'pescados-mariscos' );
+		} elseif ( str_contains( $url, '/pato-fresco/' ) ) {
+			$slugs = array( 'pato', 'pato-fresco' );
+		} elseif ( str_contains( $url, '/magret/' ) ) {
+			$slugs = array( 'pato', 'magret-de-pato' );
+		} elseif ( str_contains( $url, '/foie-gras/' ) ) {
+			$slugs = array( 'foie-pates-untables', 'pato', str_contains( $title, 'mousse' ) ? 'pate-mousse-rillettes-de-pato' : 'foie-gras-de-pato' );
+		} elseif ( str_contains( $url, '/pates/' ) ) {
+			if ( str_contains( $title, 'trucha' ) ) {
+				$slugs = array( 'pescados-mariscos', 'foie-pates-untables' );
+			} else {
+				$slugs = array( 'foie-pates-untables' );
+				$other_species = str_contains( $title, 'avestruz' ) || str_contains( $title, 'cochinillo' ) || str_contains( $title, 'oca' )
+					|| ( str_contains( $title, 'lechazo' ) && ! str_contains( $title, 'pato' ) );
+				if ( ! $other_species ) {
+					$slugs[] = 'pato';
+					$slugs[] = str_contains( $title, 'bloc de foie gras' ) ? 'foie-gras-de-pato' : 'pate-mousse-rillettes-de-pato';
+				}
+			}
+		} elseif ( str_contains( $url, '/confit/' ) ) {
+			if ( str_contains( $title, 'cochinillo' ) || str_contains( $title, 'codorniz' ) ) {
+				$slugs = array( 'carnes' );
+			} elseif ( str_contains( $title, 'rillettes' ) ) {
+				$slugs = str_contains( $title, 'lechazo' ) && ! str_contains( $title, 'pato' )
+					? array( 'foie-pates-untables' )
+					: array( 'foie-pates-untables', 'pato', 'pate-mousse-rillettes-de-pato' );
+			} elseif ( str_contains( $title, 'grasa refinada' ) ) {
+				$slugs = array( 'pato' );
+			} else {
+				$slugs = array( 'pato', 'confit-de-pato' );
+			}
+		} elseif ( str_contains( $url, '/los-manjares-de-la-tierra/' ) && str_contains( $title, 'cochinillo' ) ) {
+			$slugs = array( 'carnes' );
+		} elseif ( str_contains( $url, '/complementos/' ) ) {
+			// The only currently active Selectos complement is a jarred date cream.
+			// Keep the rule deliberately broad-category and conservative.
+			$slugs = array( 'conservas' );
+		} elseif ( str_contains( $url, '/productos/' ) ) {
+			if ( str_contains( $title, 'grasa refinada de pato' ) ) {
+				$slugs = array( 'pato' );
+			} elseif ( str_contains( $title, 'manchon' ) && str_contains( $title, 'confit' ) ) {
+				$slugs = array( 'pato', 'confit-de-pato' );
+			} elseif ( str_starts_with( $title, 'cesta ' ) || str_starts_with( $title, 'estuche ' ) ) {
+				$slugs = array( 'packs-y-lotes' );
+			}
+		}
+
+		if ( ! $slugs ) {
+			return null;
+		}
+
+		$ids = array();
+		foreach ( array_values( array_unique( $slugs ) ) as $slug ) {
+			$term = get_term_by( 'slug', $slug, 'product_cat' );
+			if ( ! $term instanceof WP_Term ) {
+				return array( 'category_ids' => array(), 'score' => 0.0, 'reason' => 'selectos_category_missing' );
+			}
+			$ids[] = (int) $term->term_id;
+		}
+
+		return array(
+			'category_ids' => $ids,
+			'score'        => 100.0,
+			'reason'       => 'selectos_rules',
 		);
 	}
 
