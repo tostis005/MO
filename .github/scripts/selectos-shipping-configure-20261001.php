@@ -320,7 +320,7 @@ $rows = $wpdb->get_results($wpdb->prepare(
 foreach ($rows as &$row) $row['settings_decoded'] = maybe_unserialize($row['settings']);
 unset($row);
 
-expected_method_count = 4 + count($international_zones);
+$expected_method_count = 4 + count($international_zones);
 if (count($rows) !== $expected_method_count) {
     throw new RuntimeException('Unexpected Selectos shipping method count: ' . count($rows) . ' expected ' . $expected_method_count);
 }
