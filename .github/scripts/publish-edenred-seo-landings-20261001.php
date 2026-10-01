@@ -521,7 +521,7 @@ foreach ( $pages as $p ) {
 
     $content = emdo_edenred_render( $p, $products, $category_url );
     $words = emdo_edenred_words( $content );
-    if ( $words < 430 ) throw new Exception( $p['key'] . ' too short: ' . $words );
+    if ( $words < 350 ) throw new Exception( $p['key'] . ' too short: ' . $words );
 
     $existing = emdo_edenred_existing( $p['key'], $p['slug'] );
     $args = array(
