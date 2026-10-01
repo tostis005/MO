@@ -507,3 +507,91 @@ add_action(
 	-999
 );
 
+/**
+ * Defensa de Home: si el hero de productores fue construido por una capa
+ * personalizada que no pasa por el listado nativo de WCFM, eliminamos las
+ * tarjetas de vendedores Disabled por su URL de tienda y corregimos el contador
+ * de tarjetas usado por el layout.
+ */
+function elmercado_wcfm_strip_hard_disabled_home_vendors_010210( string $html ): string {
+	if ( '' === $html || false === strpos( $html, 'emo-hero__visual--vendors' ) ) {
+		return $html;
+	}
+
+	foreach ( elmercado_wcfm_hard_disabled_vendor_ids_010210() as $vendor_id ) {
+		$store_url = function_exists( 'wcfmmp_get_store_url' )
+			? (string) wcfmmp_get_store_url( (int) $vendor_id )
+			: '';
+		if ( '' === $store_url ) {
+			continue;
+		}
+
+		$quoted = preg_quote( untrailingslashit( $store_url ), '~' );
+		$html = (string) preg_replace(
+			'~<a\\b(?=[^>]*\\bclass=(["\\\'])[^"\\\']*\\bemo-hero-card\\b[^"\\\']*\\1)(?=[^>]*\\bhref=(["\\\'])' . $quoted . '/?\\2)[^>]*>.*?</a>~is',
+			'',
+			$html
+		);
+	}
+
+	if ( preg_match( '~<div\\b[^>]*\\bclass=(["\\\'])[^"\\\']*\\bemo-hero__visual--vendors\\b[^"\\\']*\\1[^>]*>(.*?)</div>~is', $html, $match ) ) {
+		$count = preg_match_all( '~\\bemo-hero-card\\b~', (string) $match[2] );
+		if ( is_int( $count ) && $count >= 0 ) {
+			$visual = (string) preg_replace( '~\\bemo-vendor-count-\\d+\\b~', 'emo-vendor-count-' . $count, (string) $match[0], 1 );
+			$html   = substr_replace( $html, $visual, (int) strpos( $html, $match[0] ), strlen( $match[0] ) );
+		}
+	}
+
+	return $html;
+}
+
+add_action(
+	'template_redirect',
+	static function (): void {
+		if ( is_admin() || ! is_front_page() || is_feed() || is_trackback() || wp_doing_ajax() ) {
+			return;
+		}
+		ob_start( 'elmercado_wcfm_strip_hard_disabled_home_vendors_010210' );
+	},
+	-10000
+);
+
+/**
+ * Los productos de vendedores Disabled tampoco deben formar parte de sitemaps.
+ * Offline conserva su semántica temporal y no se fuerza aquí.
+ */
+add_filter(
+	'wp_sitemaps_posts_query_args',
+	static function ( array $args, string $post_type ): array {
+		if ( 'product' !== $post_type ) {
+			return $args;
+		}
+		$current = isset( $args['author__not_in'] ) ? array_map( 'absint', (array) $args['author__not_in'] ) : array();
+		$args['author__not_in'] = array_values(
+			array_unique(
+				array_merge( $current, elmercado_wcfm_hard_disabled_vendor_ids_010210() )
+			)
+		);
+		return $args;
+	},
+	999,
+	2
+);
+
+add_filter(
+	'wpseo_sitemap_entry',
+	static function ( $url, string $type, $object ) {
+		if (
+			'post' === $type
+			&& $object instanceof WP_Post
+			&& 'product' === $object->post_type
+			&& elmercado_wcfm_vendor_is_hard_disabled_010210( (int) $object->post_author )
+		) {
+			return false;
+		}
+		return $url;
+	},
+	999,
+	3
+);
+
