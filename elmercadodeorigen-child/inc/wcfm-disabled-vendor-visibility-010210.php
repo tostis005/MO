@@ -535,9 +535,18 @@ function elmercado_wcfm_strip_hard_disabled_home_vendors_010210( string $html ):
 	}
 
 	if ( preg_match( '~<div\\b[^>]*\\bclass=(["\\\'])[^"\\\']*\\bemo-hero__visual--vendors\\b[^"\\\']*\\1[^>]*>(.*?)</div>~is', $html, $match ) ) {
-		$count = preg_match_all( '~\\bemo-hero-card\\b~', (string) $match[2] );
+		/*
+		 * Cuenta tarjetas reales, no ocurrencias de la cadena "emo-hero-card".
+		 * Cada tarjeta también tiene una clase como emo-hero-card--1, por lo que
+		 * contar la cadena duplicaba el total (6 => 12) y rompía el grid.
+		 */
+		$count = preg_match_all(
+			'~<a\\b[^>]*\\bclass=(["\\\'])[^"\\\']*\\bemo-hero-card\\b[^"\\\']*\\1[^>]*>~is',
+			(string) $match[2]
+		);
 		if ( is_int( $count ) && $count >= 0 ) {
 			$visual = (string) preg_replace( '~\\bemo-vendor-count-\\d+\\b~', 'emo-vendor-count-' . $count, (string) $match[0], 1 );
+			$visual = (string) preg_replace( '~\\bdata-emo-vendor-count=(["\\\'])\\d+\\1~', 'data-emo-vendor-count="' . $count . '"', $visual, 1 );
 			$html   = substr_replace( $html, $visual, (int) strpos( $html, $match[0] ), strlen( $match[0] ) );
 		}
 	}
