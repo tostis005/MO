@@ -1,0 +1,81 @@
+name: Profile Selectos admin navigation 20261002
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/profile-selectos-admin-navigation-20261002.yml'
+permissions:
+  contents: read
+jobs:
+  profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          PHP="/opt/plesk/php/8.2/bin/php"; WP="/usr/local/bin/wp"
+          cat > /tmp/profile-admin-nav.php <<'PHP'
+          <?php
+          global $wpdb,$post;
+          $slugs=array(
+            'foie-gras-de-pato-extra-desvenado',
+            'foie-gras-de-pato-extra',
+            'foie-gras-mi-cuit-entero-mini-estuche',
+            'magret-de-pato-fresco',
+            'pie-de-pates-6-uds',
+            'jamon-de-pato-ahumado-pieza'
+          );
+
+          $admins=get_users(array('role'=>'administrator','number'=>1,'fields'=>'ID'));
+          $admin_id=$admins? (int)$admins[0] : 0;
+
+          function emo_profile_nav_set($label,$uid,$slugs){
+            global $wpdb,$post;
+            wp_set_current_user($uid);
+            $can_view=function_exists('elmercado_wcfm_disabled_visibility_can_view_010210')
+              ? (bool)elmercado_wcfm_disabled_visibility_can_view_010210()
+              : null;
+            echo "MODE\t{$label}\tuid={$uid}\tcan_view_disabled=".var_export($can_view,true)."\n";
+            foreach($slugs as $slug){
+              $p=get_page_by_path($slug,OBJECT,'product');
+              if(!$p){echo "MISSING\t$slug\n"; continue;}
+              $post=$p; setup_postdata($post); $pid=(int)$p->ID;
+
+              $q0=$wpdb->num_queries;$t=microtime(true);
+              $prev=woostify_get_prev_product();
+              $pms=(microtime(true)-$t)*1000;$pq=$wpdb->num_queries-$q0;
+
+              $q0=$wpdb->num_queries;$t=microtime(true);
+              $next=woostify_get_next_product();
+              $nms=(microtime(true)-$t)*1000;$nq=$wpdb->num_queries-$q0;
+
+              echo wp_json_encode(array(
+                'mode'=>$label,'pid'=>$pid,'slug'=>$slug,
+                'prev'=>$prev?$prev->get_id():0,'prev_slug'=>$prev?get_post_field('post_name',$prev->get_id()):'',
+                'prev_ms'=>round($pms,1),'prev_q'=>$pq,
+                'next'=>$next?$next->get_id():0,'next_slug'=>$next?get_post_field('post_name',$next->get_id()):'',
+                'next_ms'=>round($nms,1),'next_q'=>$nq
+              ),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+              wp_reset_postdata();
+            }
+          }
+
+          emo_profile_nav_set('anonymous',0,$slugs);
+          if($admin_id) emo_profile_nav_set('administrator',$admin_id,$slugs);
+          PHP
+          "$PHP" -d memory_limit=1024M "$WP" eval-file /tmp/profile-admin-nav.php --path="$ROOT" --allow-root
+          REMOTE
