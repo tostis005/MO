@@ -78,10 +78,13 @@ jobs:
               $wpdb->prepare(
                   "SELECT id,title,source_url,source_payload,wc_product_id,status,last_seen_at
                    FROM {$products}
-                   WHERE supplier_id=%d AND title LIKE %s
-                   ORDER BY id DESC LIMIT 1",
+                   WHERE supplier_id=%d
+                     AND (source_url LIKE %s OR title = %s)
+                   ORDER BY CASE WHEN source_url LIKE %s THEN 0 ELSE 1 END, id DESC LIMIT 1",
                   $supplier_id,
-                  '%Jamón de Pato Ahumado%'
+                  '%jamon-de-pato-ahumado-318.html%',
+                  'Jamón de Pato Ahumado pieza',
+                  '%jamon-de-pato-ahumado-318.html%'
               ),
               ARRAY_A
           );
