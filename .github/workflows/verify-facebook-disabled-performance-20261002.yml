@@ -1,0 +1,94 @@
+name: Verify Facebook disabled performance 20261002
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-facebook-disabled-performance-20261002.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Verify disabled state and dynamic performance
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p $PORT"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          SITE="https://www.elmercadodeorigen.com"
+          PHP="/opt/plesk/php/8.2/bin/php"
+          SLOW="/var/www/vhosts/system/elmercadodeorigen.com/logs/php-fpm_slow.log"
+          COOKIE="/tmp/mdo-meta-verify-cookie.txt"
+          HTML="/tmp/mdo-meta-verify-shop.html"
+
+          cat >/tmp/mdo-meta-state.php <<'PHP'
+          <?php
+          define('SHORTINIT', true);
+          require $argv[1] . '/wp-load.php';
+          $target='facebook-for-woocommerce/facebook-for-woocommerce.php';
+          $active=(array)get_option('active_plugins',array());
+          $is=in_array($target,$active,true);
+          echo 'FACEBOOK_PLUGIN_STATE=' . ($is?'active':'inactive') . PHP_EOL;
+          exit($is?9:0);
+          PHP
+          "$PHP" -d memory_limit=256M /tmp/mdo-meta-state.php "$ROOT"
+
+          echo "=== LOAD NOW ==="
+          uptime
+          ps -eo pid,stat,etimes,%cpu,%mem,rss,args --sort=-%cpu | grep -E 'php-fpm: pool elmercadodeorigen.com|mysqld' | head -n 20 || true
+
+          echo "=== DYNAMIC 12 AFTER META DISABLED ==="
+          curl -k -sS -L --max-time 35 -c "$COOKIE" -b "$COOKIE" -A 'MDO-Meta-Dynamic-After/1.0' -o "$HTML" "$SITE/tienda/?mdo_meta_dynamic_after=$(date +%s%N)"
+          "$PHP" -r '
+            $h=file_get_contents($argv[1]);
+            preg_match("/const nonce = ([^;]+);/",$h,$m);
+            preg_match("/const orderedIds = (\\[[^\\]]+\\])/",$h,$i);
+            $nonce=json_decode(trim($m[1]??""),true);
+            $ids=json_decode(trim($i[1]??""),true);
+            if(!$nonce||!is_array($ids)||count($ids)<12) exit(8);
+            file_put_contents("/tmp/mdo-meta-verify-nonce",$nonce);
+            file_put_contents("/tmp/mdo-meta-verify-ids",implode("\n",array_slice($ids,0,12)));
+          ' "$HTML"
+          nonce="$(cat /tmp/mdo-meta-verify-nonce)"
+          mapfile -t ids < /tmp/mdo-meta-verify-ids
+
+          for pass in 1 2 3 4 5; do
+            data="action=elmercado_catalog_batch_010234&nonce=$nonce&scope=catalog"
+            for id in "${ids[@]}"; do data="$data&ids%5B%5D=$id"; done
+            curl -k -sS --max-time 35 -c "$COOKIE" -b "$COOKIE" -A 'MDO-Meta-Dynamic-After/1.0'               -o /dev/null               -w "dynamic12_after pass=$pass http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n"               -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' --data "$data"               "$SITE/wp-admin/admin-ajax.php" || true
+          done
+
+          echo "=== RECENT FACEBOOK SLOWLOG ENTRIES AFTER DISABLE ==="
+          "$PHP" -r '
+            $p=$argv[1];
+            if(!is_file($p)){echo "slowlog_missing\n";exit;}
+            $lines=file($p,FILE_IGNORE_NEW_LINES);
+            $start=max(0,count($lines)-6000);
+            $hits=0;
+            for($i=$start;$i<count($lines);$i++){
+              if(stripos($lines[$i],"facebook-for-woocommerce")!==false){$hits++;}
+            }
+            echo "facebook_lines_in_last_6000=".$hits."\n";
+          ' "$SLOW"
+
+          rm -f "$COOKIE" "$HTML" /tmp/mdo-meta-state.php /tmp/mdo-meta-verify-nonce /tmp/mdo-meta-verify-ids
+          echo "FACEBOOK_DISABLED_PERFORMANCE_VERIFIED"
+          REMOTE
