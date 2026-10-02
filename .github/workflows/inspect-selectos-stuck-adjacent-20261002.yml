@@ -1,0 +1,62 @@
+name: Inspect Selectos stuck adjacent 20261002
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-selectos-stuck-adjacent-20261002.yml'
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          PHP="/opt/plesk/php/8.2/bin/php"; WP="/usr/local/bin/wp"
+          cat >/tmp/stuck.php <<'PHP'
+          <?php
+          global $wpdb,$post;
+          $p=get_page_by_path('foie-gras-de-pato-extra-desvenado',OBJECT,'product');
+          $post=$p; setup_postdata($post);
+          $admins=get_users(array('role'=>'administrator','number'=>1,'fields'=>'ids'));
+          wp_set_current_user((int)($admins[0]??0));
+          $adj=get_adjacent_post(true,'',false,'product_cat');
+          $out=array(
+            'current_id'=>(int)$p->ID,
+            'current_date'=>$p->post_date,
+            'current_author'=>(int)$p->post_author,
+            'adj_id'=>$adj?(int)$adj->ID:0,
+            'adj_date'=>$adj?$adj->post_date:'',
+            'adj_author'=>$adj?(int)$adj->post_author:0,
+            'adj_slug'=>$adj?$adj->post_name:'',
+          );
+          if($adj){
+            $prod=wc_get_product($adj->ID);
+            $out['adj_visible']=$prod?$prod->is_visible():null;
+            $out['adj_hard_disabled']=function_exists('elmercado_wcfm_vendor_is_hard_disabled_010210')?elmercado_wcfm_vendor_is_hard_disabled_010210((int)$adj->post_author):null;
+            $out['adj_offline']=function_exists('elmercado_wcfm_vendor_is_offline_010210')?elmercado_wcfm_vendor_is_offline_010210((int)$adj->post_author):null;
+          }
+          echo wp_json_encode($out,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)."\n";
+          $same=$wpdb->get_results($wpdb->prepare(
+            "SELECT ID,post_author,post_status,post_name,post_date FROM {$wpdb->posts}
+             WHERE post_type='product' AND post_date BETWEEN DATE_SUB(%s,INTERVAL 1 SECOND) AND DATE_ADD(%s,INTERVAL 1 SECOND)
+             ORDER BY post_date,ID",$p->post_date,$p->post_date),ARRAY_A);
+          echo wp_json_encode($same,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)."\n";
+          PHP
+          "$PHP" -d memory_limit=768M "$WP" eval-file /tmp/stuck.php --path="$ROOT" --allow-root --skip-plugins=facebook-for-woocommerce,translatepress-multilingual
+          REMOTE
