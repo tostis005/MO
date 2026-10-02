@@ -1,0 +1,89 @@
+name: Inspect Selectos timeout internals 20261002
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-selectos-timeout-internals-20261002.yml'
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          LOG="/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log"
+          PHP="/opt/plesk/php/8.2/bin/php"
+          WP="/usr/local/bin/wp"
+
+          echo "=== WOOSTIFY ADJACENT CODE ==="
+          sed -n '1,150p' "$ROOT/wp-content/themes/woostify/inc/woocommerce/class-woostify-adjacent-products.php" || true
+          sed -n '1,90p' "$ROOT/wp-content/themes/woostify/inc/woocommerce/woostify-woocommerce-single-product-functions.php" || true
+
+          echo "=== PRODUCT 5XX LAST 3H ==="
+          python3 - "$LOG" <<'PY'
+          import sys,re,os
+          from datetime import datetime,timezone,timedelta
+          from collections import Counter
+          from urllib.parse import urlsplit
+          cut=datetime.now(timezone.utc)-timedelta(hours=3)
+          rx=re.compile(r'^\S+\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"\S+\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+')
+          c=Counter()
+          for line in open(sys.argv[1],encoding='utf-8',errors='ignore'):
+              m=rx.match(line)
+              if not m: continue
+              ds,target,code=m.groups()
+              if code not in {'500','502','503','504'}: continue
+              try: dt=datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(timezone.utc)
+              except: continue
+              if dt<cut: continue
+              try: path=urlsplit(target).path or '/'
+              except: path=target.split('?',1)[0] or '/'
+              if '/producto/' in path or '/product/' in path:
+                  c[(code,path)] += 1
+          for (code,path),n in c.most_common(100):
+              print(n,code,path)
+          PY
+
+          echo "=== SELECTOS PRODUCTS WITH HEAVY PAYLOADS ==="
+          cat > /tmp/selectos-heavy.php <<'PHP'
+          <?php
+          global $wpdb;
+          $sup=MDO_Database::table('suppliers');
+          $src=MDO_Database::table('source_products');
+          $sid=(int)$wpdb->get_var("SELECT id FROM {$sup} WHERE connector='selectos-de-castilla' AND active=1 ORDER BY id LIMIT 1");
+          $rows=$wpdb->get_results($wpdb->prepare(
+            "SELECT id,title,source_payload,wc_product_id,status FROM {$src}
+             WHERE supplier_id=%d AND wc_product_id>0 ORDER BY LENGTH(source_payload) DESC",$sid
+          ),ARRAY_A);
+          foreach(array_slice($rows,0,40) as $r){
+            $pid=(int)$r['wc_product_id'];
+            $p=json_decode((string)$r['source_payload'],true);
+            $vars=is_array($p)&&isset($p['variations'])&&is_array($p['variations'])?count($p['variations']):0;
+            echo implode("\t",array(
+              $pid,
+              strlen((string)$r['source_payload']),
+              $vars,
+              get_post_status($pid),
+              get_post_field('post_name',$pid),
+              str_replace(array("\t","\n","\r"),' ',(string)$r['title'])
+            ))."\n";
+          }
+          PHP
+          "$PHP" -d memory_limit=768M "$WP" eval-file /tmp/selectos-heavy.php --path="$ROOT" --allow-root
+          REMOTE
