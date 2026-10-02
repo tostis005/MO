@@ -1,0 +1,245 @@
+name: Catalog runtime root cause v3 20261002
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-runtime-root-cause-v3-20261002.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Attribute catalog runtime cost
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p $PORT"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          SITE="https://www.elmercadodeorigen.com"
+          ACCESS="/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log"
+          SLOW="/var/www/vhosts/system/elmercadodeorigen.com/logs/php-fpm_slow.log"
+          MU="$ROOT/wp-content/mu-plugins/mdo-catalog-perf-probe-v3-20261002.php"
+          LOG="/tmp/mdo-catalog-perf-probe-v3-20261002.log"
+          HTML="/tmp/mdo-catalog-perf-shop-v3-20261002.html"
+          COOKIE="/tmp/mdo-catalog-perf-cookie-v3-20261002.txt"
+          PHP="/opt/plesk/php/8.2/bin/php"
+
+          cleanup() {
+            rm -f "$MU" "$HTML" "$COOKIE" /tmp/mdo-catalog-perf-v3-* || true
+            wp cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          rm -f "$LOG"
+          touch "$LOG"
+          chmod 666 "$LOG"
+
+          cat > "$MU" <<'PHP'
+          <?php
+          if ( empty( $_REQUEST['mdo_perf_probe_v3'] ) ) {
+              return;
+          }
+          $GLOBALS['mdo_perf_v3_start'] = microtime( true );
+          $GLOBALS['mdo_perf_v3_hooks'] = array();
+          $GLOBALS['mdo_perf_v3_starts'] = array();
+          $GLOBALS['mdo_perf_v3_http'] = array();
+          $GLOBALS['mdo_perf_v3_http_starts'] = array();
+          global $wpdb;
+          $wpdb->save_queries = true;
+
+          foreach ( array(
+              'woocommerce_before_shop_loop',
+              'woocommerce_before_shop_loop_item',
+              'woocommerce_before_shop_loop_item_title',
+              'woocommerce_shop_loop_item_title',
+              'woocommerce_after_shop_loop_item_title',
+              'woocommerce_after_shop_loop_item',
+          ) as $hook ) {
+              add_action( $hook, static function() use ($hook) {
+                  $GLOBALS['mdo_perf_v3_starts'][$hook][] = microtime(true);
+              }, -999999 );
+              add_action( $hook, static function() use ($hook) {
+                  $stack =& $GLOBALS['mdo_perf_v3_starts'][$hook];
+                  $start = is_array($stack) ? array_pop($stack) : null;
+                  if (!is_float($start)) return;
+                  if (!isset($GLOBALS['mdo_perf_v3_hooks'][$hook])) $GLOBALS['mdo_perf_v3_hooks'][$hook]=array('sec'=>0.0,'count'=>0);
+                  $GLOBALS['mdo_perf_v3_hooks'][$hook]['sec'] += microtime(true)-$start;
+                  $GLOBALS['mdo_perf_v3_hooks'][$hook]['count']++;
+              }, 999999 );
+          }
+
+          add_filter('pre_http_request', static function($pre,$args,$url){
+              $k=md5((string)$url);
+              $GLOBALS['mdo_perf_v3_http_starts'][$k][]=microtime(true);
+              return $pre;
+          }, -999999, 3);
+
+          add_action('http_api_debug', static function($response,$context,$class,$args,$url){
+              if ('response'!==$context) return;
+              $k=md5((string)$url);
+              $stack =& $GLOBALS['mdo_perf_v3_http_starts'][$k];
+              $start=is_array($stack)?array_pop($stack):null;
+              if(!is_float($start)) return;
+              $GLOBALS['mdo_perf_v3_http'][]=array(
+                'sec'=>microtime(true)-$start,
+                'host'=>(string)wp_parse_url((string)$url,PHP_URL_HOST),
+                'path'=>(string)wp_parse_url((string)$url,PHP_URL_PATH),
+              );
+          }, 999999, 5);
+
+          register_shutdown_function(static function(){
+              global $wpdb;
+              $qs=array();$db=0.0;
+              foreach((array)$wpdb->queries as $q){
+                  $sec=(float)($q[1]??0);$db+=$sec;
+                  $qs[]=array('sec'=>$sec,'sql'=>preg_replace('/\s+/',' ',substr((string)($q[0]??''),0,550)),'caller'=>substr((string)($q[2]??''),0,300));
+              }
+              usort($qs,static fn($a,$b)=>$b['sec']<=>$a['sec']);
+              $http=(array)($GLOBALS['mdo_perf_v3_http']??array());
+              usort($http,static fn($a,$b)=>$b['sec']<=>$a['sec']);
+              $hooks=(array)($GLOBALS['mdo_perf_v3_hooks']??array());
+              foreach($hooks as &$h)$h['sec']=round((float)$h['sec'],6);unset($h);
+              $row=array(
+                'uri'=>(string)($_SERVER['REQUEST_URI']??''),
+                'action'=>sanitize_key((string)($_REQUEST['action']??'')),
+                'scope'=>sanitize_key((string)($_REQUEST['scope']??'')),
+                'ids'=>isset($_REQUEST['ids'])?count((array)$_REQUEST['ids']):0,
+                'total'=>round(microtime(true)-(float)$GLOBALS['mdo_perf_v3_start'],6),
+                'db'=>round($db,6),
+                'queries'=>count($qs),
+                'peak_mb'=>round(memory_get_peak_usage(true)/1048576,1),
+                'hooks'=>$hooks,
+                'http'=>array_slice($http,0,10),
+                'topq'=>array_slice($qs,0,8),
+              );
+              file_put_contents('/tmp/mdo-catalog-perf-probe-v3-20261002.log',wp_json_encode($row,JSON_UNESCAPED_SLASHES)."\n",FILE_APPEND|LOCK_EX);
+          });
+          PHP
+          "$PHP" -l "$MU" >/dev/null
+          wp cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+
+          echo "=== ACTIVE PERFORMANCE-RELEVANT PLUGINS ==="
+          wp plugin list --status=active --fields=name,version --format=csv --path="$ROOT" --allow-root | grep -Ei 'facebook|woocommerce|wcfm|ajax-search|elementor|seo|cache|redis|coupon|chat|fluent|google|pixel' || true
+
+          echo "=== LIVE LOAD ==="
+          date -Is; uptime; free -m
+          ps -eo pid,stat,etimes,%cpu,%mem,rss,args --sort=-%cpu | grep -E 'php-fpm: pool elmercadodeorigen.com|mysqld' | head -n 25 || true
+
+          echo "=== RECENT ACCESS 5M ==="
+          python3 - "$ACCESS" <<'PY'
+          import sys,re,os
+          from collections import Counter,defaultdict
+          from datetime import datetime,timezone,timedelta
+          from urllib.parse import urlsplit
+          p=sys.argv[1]; cut=datetime.now(timezone.utc)-timedelta(minutes=5)
+          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+(\S+)(?:\s+"([^"]*)"\s+"([^"]*)")?')
+          paths=Counter();uas=Counter();ips=Counter();codes=Counter();pairs=Counter();total=0
+          if os.path.isfile(p):
+            for line in open(p,encoding='utf-8',errors='ignore'):
+              m=rx.match(line)
+              if not m: continue
+              ip,ds,method,target,code,size,ref,ua=m.groups()
+              try: dt=datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(timezone.utc)
+              except: continue
+              if dt<cut: continue
+              try:path=urlsplit(target).path or '/'
+              except:path=target.split('?',1)[0] or '/'
+              total+=1; paths[path]+=1; uas[ua or '']+=1; ips[ip]+=1; codes[code]+=1; pairs[(path,ua or '')]+=1
+          print('total',total,'codes',dict(codes))
+          print('top_paths')
+          for x,n in paths.most_common(20): print(n,x)
+          print('top_uas')
+          for x,n in uas.most_common(15): print(n,x[:220])
+          print('top_ips')
+          for x,n in ips.most_common(15): print(n,x)
+          print('top_path_ua')
+          for (path,ua),n in pairs.most_common(20): print(n,path,ua[:160])
+          PY
+
+          echo "=== SLOWLOG SIGNATURES (LAST 12000 LINES) ==="
+          python3 - "$SLOW" <<'PY'
+          import sys,re,os
+          from collections import Counter
+          p=sys.argv[1]
+          if not os.path.isfile(p):
+            print('missing');raise SystemExit
+          lines=open(p,encoding='utf-8',errors='ignore').read().splitlines()[-12000:]
+          entries=[];cur=[]
+          start=re.compile(r'^\[\d{2}-[A-Za-z]{3}-\d{4} ')
+          for line in lines:
+            if start.match(line) and cur:
+              entries.append(cur);cur=[line]
+            else: cur.append(line)
+          if cur:entries.append(cur)
+          plugins=Counter();functions=Counter();signatures=Counter()
+          for e in entries:
+            text='\n'.join(e)
+            found=re.findall(r'/wp-content/plugins/([^/]+)/',text)
+            for x in set(found):plugins[x]+=1
+            funcs=[]
+            for line in e:
+              m=re.search(r'\]\s+([^\s(]+)\(',line)
+              if m: funcs.append(m.group(1))
+            if funcs: signatures[' > '.join(funcs[:5])]+=1
+            for f in funcs[:8]:functions[f]+=1
+          print('entries',len(entries))
+          print('plugins')
+          for x,n in plugins.most_common(20):print(n,x)
+          print('functions')
+          for x,n in functions.most_common(25):print(n,x)
+          print('signatures')
+          for x,n in signatures.most_common(20):print(n,x[:500])
+          PY
+
+          echo "=== SHOP + AJAX PROBE ==="
+          curl -k -sS -L --max-time 45 -c "$COOKIE" -b "$COOKIE"             -A 'MDO-Catalog-RootCause-v3/1.0' -o "$HTML"             -w 'shop http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n'             "$SITE/tienda/?mdo_perf_probe_v3=shop-$(date +%s)"
+
+          "$PHP" -r '
+            $h=file_get_contents($argv[1]);
+            preg_match("/const nonce = ([^;]+);/",$h,$m);
+            preg_match("/const orderedIds = (\\[[^\\]]+\\])/",$h,$i);
+            $nonce=json_decode(trim($m[1]??""),true);$ids=json_decode(trim($i[1]??""),true);
+            if(!$nonce||!is_array($ids)||!$ids) exit(7);
+            file_put_contents("/tmp/mdo-catalog-perf-v3-nonce",$nonce);
+            file_put_contents("/tmp/mdo-catalog-perf-v3-ids",implode("\n",array_slice($ids,0,12)));
+          ' "$HTML"
+          NONCE="$(cat /tmp/mdo-catalog-perf-v3-nonce)"
+          mapfile -t IDS < /tmp/mdo-catalog-perf-v3-ids
+          data="action=elmercado_catalog_batch_010234&nonce=$NONCE&scope=catalog&mdo_perf_probe_v3=batch12"
+          for id in "${IDS[@]}"; do data="$data&ids%5B%5D=$id"; done
+
+          curl -k -sS --max-time 45 -c "$COOKIE" -b "$COOKIE"             -A 'MDO-Catalog-RootCause-v3/1.0' -o /tmp/mdo-catalog-perf-v3-batch.json             -w 'batch12 http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n'             -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' --data "$data"             "$SITE/wp-admin/admin-ajax.php"
+
+          curl -k -sS --max-time 45 -c "$COOKIE" -b "$COOKIE"             -A 'MDO-Catalog-RootCause-v3/1.0' -o /tmp/mdo-catalog-perf-v3-baseline.txt             -w 'baseline http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n'             -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8'             --data 'action=mdo_nonexistent_perf_action&mdo_perf_probe_v3=baseline'             "$SITE/wp-admin/admin-ajax.php" || true
+
+          echo "=== DETAILED PROBE ==="
+          cat "$LOG"
+          echo "=== HUMAN SUMMARY ==="
+          "$PHP" -r '
+            foreach(file($argv[1],FILE_IGNORE_NEW_LINES|FILE_SKIP_EMPTY_LINES) as $line){
+              $r=json_decode($line,true);if(!$r)continue;
+              $label=$r["action"]?:((strpos($r["uri"],"/tienda/")!==false)?"shop":"other");
+              printf("%s total=%.3fs db=%.3fs queries=%d peak=%.1fMB ids=%d\n",$label,$r["total"],$r["db"],$r["queries"],$r["peak_mb"],$r["ids"]);
+              foreach($r["hooks"] as $k=>$v)printf(" HOOK %.3fs %dx %s\n",$v["sec"],$v["count"],$k);
+              foreach($r["http"] as $h)printf(" HTTP %.3fs %s%s\n",$h["sec"],$h["host"],$h["path"]);
+              foreach(array_slice($r["topq"],0,4) as $q)printf(" SQL %.3fs %s\n",$q["sec"],substr($q["sql"],0,220));
+            }
+          ' "$LOG"
+          REMOTE
