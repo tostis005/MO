@@ -7,6 +7,10 @@
  * mantenemos el DOM y los hooks nativos, pero permitimos que cross-sells y
  * totales participen directamente en la rejilla principal del carrito.
  *
+ * 0.10.315: en escritorio las tarjetas recomendadas usan tres columnas en
+ * lugar de dos, reduciendo cada producto a aproximadamente dos tercios del
+ * ancho anterior sin estrechar el bloque completo de recomendaciones.
+ *
  * @package ElMercadoDeOrigen
  */
 
@@ -69,7 +73,7 @@ add_action(
 
 			html body.elmercado-child-theme.woocommerce-cart .emo-cart-layout > .cart-collaterals > .cross-sells > ul.products {
 				display: grid !important;
-				grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+				grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
 				gap: clamp(.85rem, 1.8vw, 1.25rem) !important;
 				box-sizing: border-box !important;
 				width: 100% !important;
@@ -109,6 +113,10 @@ add_action(
 
 				html body.elmercado-child-theme.woocommerce-cart .emo-cart-layout > .cart-collaterals > .cross-sells {
 					margin-top: .4rem !important;
+				}
+
+				html body.elmercado-child-theme.woocommerce-cart .emo-cart-layout > .cart-collaterals > .cross-sells > ul.products {
+					grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
 				}
 			}
 
