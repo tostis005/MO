@@ -1,0 +1,103 @@
+name: Selectos timeout audit 20261002
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/selectos-timeout-audit-20261002.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Audit Selectos product URLs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          PHP="/opt/plesk/php/8.2/bin/php"
+          WP="/usr/local/bin/wp"
+
+          cat > /tmp/selectos-urls.php <<'PHP'
+          <?php
+          global $wpdb;
+          $suppliers=MDO_Database::table('suppliers');
+          $products=MDO_Database::table('source_products');
+          $sid=(int)$wpdb->get_var("SELECT id FROM {$suppliers} WHERE connector='selectos-de-castilla' AND active=1 ORDER BY id ASC LIMIT 1");
+          $rows=$wpdb->get_results($wpdb->prepare(
+            "SELECT id,title,source_payload,wc_product_id,status
+             FROM {$products}
+             WHERE supplier_id=%d AND wc_product_id>0
+             ORDER BY wc_product_id ASC",$sid
+          ),ARRAY_A);
+          foreach($rows as $r){
+            $pid=(int)$r['wc_product_id'];
+            if('publish'!==get_post_status($pid)) continue;
+            $p=json_decode((string)$r['source_payload'],true);
+            $vars=is_array($p)&&!empty($p['variations'])&&is_array($p['variations'])?count($p['variations']):0;
+            $types=wp_get_object_terms($pid,'product_type',array('fields'=>'slugs'));
+            $type=is_wp_error($types)?'':implode(',',(array)$types);
+            echo implode("\t",array(
+              $pid,
+              str_replace(array("\t","\n","\r"),' ',(string)$r['title']),
+              get_post_field('post_name',$pid),
+              get_permalink($pid),
+              $type,
+              $vars,
+              strlen((string)$r['source_payload']),
+              (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE post_id=%d",$pid)),
+              (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->term_relationships} WHERE object_id=%d",$pid))
+            ))."\n";
+          }
+          PHP
+
+          "$PHP" -d memory_limit=1024M "$WP" eval-file /tmp/selectos-urls.php --path="$ROOT" --allow-root > /tmp/selectos-products.tsv
+          echo "PRODUCTS=$(wc -l < /tmp/selectos-products.tsv)"
+
+          mkdir -p /tmp/selectos-http
+          cut -f1,4 /tmp/selectos-products.tsv |           xargs -P3 -n2 bash -c '
+            pid="$1"; url="$2";
+            result=$(curl -k -sS -L --max-time 15 --connect-timeout 5 -A "MDO-Selectos-Audit/1.0"               -o /dev/null -w "%{http_code}\t%{time_starttransfer}\t%{time_total}\t%{size_download}" "$url" 2>/dev/null || true)
+            [ -n "$result" ] || result="000\t15\t15\t0"
+            printf "%s\t%s\n" "$pid" "$result" > "/tmp/selectos-http/$pid.tsv"
+          ' _
+
+          python3 - <<'PY'
+          import csv,glob
+          meta={}
+          with open('/tmp/selectos-products.tsv',encoding='utf-8',errors='replace') as f:
+              for r in csv.reader(f,delimiter='\t'):
+                  if len(r)>=9: meta[r[0]]=r
+          rows=[]
+          for p in glob.glob('/tmp/selectos-http/*.tsv'):
+              with open(p,encoding='utf-8',errors='replace') as f:
+                  r=next(csv.reader(f,delimiter='\t'))
+              if len(r)<5: continue
+              pid,code,ttfb,total,size=r[:5]
+              rows.append((float(total or 0),float(ttfb or 0),code,pid,size,meta.get(pid,[])))
+          rows.sort(reverse=True)
+          print('SLOWEST')
+          for total,ttfb,code,pid,size,m in rows[:35]:
+              print(f"{total:.3f}\t{ttfb:.3f}\t{code}\t{pid}\t{m[4] if m else ''}\t{m[5] if m else ''}\t{m[6] if m else ''}\t{m[7] if m else ''}\t{m[8] if m else ''}\t{m[2] if m else ''}\t{m[1] if m else ''}")
+          print('FAILURES')
+          for total,ttfb,code,pid,size,m in rows:
+              if code!='200' or total>=10:
+                  print(f"{total:.3f}\t{ttfb:.3f}\t{code}\t{pid}\t{m[2] if m else ''}\t{m[1] if m else ''}")
+          PY
+          REMOTE
