@@ -1,9 +1,11 @@
-name: Production cart recommendations layout 0.10.314
+name: Production cart recommendations layout 0.10.315
 
 on:
   push:
     branches: [main]
     paths:
+      - 'elmercadodeorigen-child/functions.php'
+      - 'elmercadodeorigen-child/inc/cart-cross-sells-layout-010314.php'
       - '.github/workflows/production-cart-cross-sells-layout-010314.yml'
 
 permissions:
@@ -34,11 +36,12 @@ jobs:
           set -euo pipefail
           php -l elmercadodeorigen-child/functions.php >/dev/null
           php -l elmercadodeorigen-child/inc/cart-cross-sells-layout-010314.php >/dev/null
-          grep -q "ELMERCADO_THEME_VERSION', '0.10.314'" elmercadodeorigen-child/functions.php
+          grep -q "ELMERCADO_THEME_VERSION', '0.10.315'" elmercadodeorigen-child/functions.php
           grep -q "cart-cross-sells-layout-010314.php" elmercadodeorigen-child/functions.php
           grep -q 'grid-template-areas' elmercadodeorigen-child/inc/cart-cross-sells-layout-010314.php
           grep -q '"cart totals"' elmercadodeorigen-child/inc/cart-cross-sells-layout-010314.php
           grep -q '"cross totals"' elmercadodeorigen-child/inc/cart-cross-sells-layout-010314.php
+          grep -q 'repeat(3, minmax(0, 1fr))' elmercadodeorigen-child/inc/cart-cross-sells-layout-010314.php
 
       - name: Install deployment tools
         shell: bash
@@ -112,7 +115,7 @@ jobs:
           [ -x "$php_bin" ] && [ -n "$wp_bin" ]
           "$php_bin" -l "$functions" >/dev/null
           "$php_bin" -l "$module" >/dev/null
-          grep -q "ELMERCADO_THEME_VERSION', '0.10.314'" "$functions"
+          grep -q "ELMERCADO_THEME_VERSION', '0.10.315'" "$functions"
           grep -q 'cart-cross-sells-layout-010314.php' "$functions"
           active="$("$php_bin" "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root)"
           [ "$active" = 'elmercadodeorigen-child' ]
@@ -148,7 +151,7 @@ jobs:
           "$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo defined("ELMERCADO_THEME_VERSION") ? ELMERCADO_THEME_VERSION : "missing";' --path="$prod" --skip-plugins --allow-root
           REMOTE
           )"
-          [ "$runtime" = "0.10.314" ]
+          [ "$runtime" = "0.10.315" ]
 
           for attempt in $(seq 1 8); do
             code="$(curl -ksSL -o /tmp/cart-layout.html -w '%{http_code}' --max-time 40 -H 'Cache-Control: no-store' -H 'Pragma: no-cache' "$BASE_URL/carrito/?cart-layout-010314=$GITHUB_RUN_ID-$attempt" || true)"
@@ -164,7 +167,8 @@ jobs:
           grep -q '"cross totals"' /tmp/cart-layout.html
           grep -q 'grid-area: totals' /tmp/cart-layout.html
           grep -q 'grid-area: cross' /tmp/cart-layout.html
-          echo PRODUCTION_CART_LAYOUT_010314_OK
+          grep -q 'repeat(3, minmax(0, 1fr))' /tmp/cart-layout.html
+          echo PRODUCTION_CART_LAYOUT_010315_OK
 
       - name: Cleanup backup
         if: success()
@@ -174,7 +178,7 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$BACKUP'"
-          echo PRODUCTION_CART_LAYOUT_010314_CLEAN
+          echo PRODUCTION_CART_LAYOUT_010315_CLEAN
 
       - name: Roll back production on failure
         if: failure()
@@ -200,4 +204,4 @@ jobs:
             rm -rf "$backup"
             REMOTE
           fi
-          echo PRODUCTION_CART_LAYOUT_010314_ROLLED_BACK
+          echo PRODUCTION_CART_LAYOUT_010315_ROLLED_BACK
