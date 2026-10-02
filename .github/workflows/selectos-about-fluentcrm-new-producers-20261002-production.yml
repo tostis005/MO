@@ -16,10 +16,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      STAGING_HOST: ${${ secrets.STAGING_HOST }}
-      STAGING_PORT: ${${ secrets.STAGING_PORT }}
-      STAGING_USER: ${${ secrets.STAGING_USER }}
-      STAGING_PASSWORD: ${${ secrets.STAGING_PASSWORD }}
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
 
     steps:
       - uses: actions/checkout@v4
@@ -43,7 +43,7 @@ jobs:
       - name: Update Selectos About and create FluentCRM draft in production
         shell: bash
         env:
-          SSHPASS: ${${ secrets.STAGING_PASSWORD }}
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
           sudo apt-get update -qq
@@ -87,7 +87,7 @@ jobs:
       - name: Flush WordPress object cache
         shell: bash
         env:
-          SSHPASS: ${${ secrets.STAGING_PASSWORD }}
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
           PORT="${STAGING_PORT:-22}"
