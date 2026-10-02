@@ -1,0 +1,77 @@
+name: Compare Selectos admin navigation 20261002
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/compare-selectos-admin-navigation-20261002.yml'
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          PHP="/opt/plesk/php/8.2/bin/php"
+          WP="/usr/local/bin/wp"
+
+          cat >/tmp/selectos-admin-nav.php <<'PHP'
+          <?php
+          global $wpdb,$post;
+          $admins=get_users(array('role'=>'administrator','fields'=>'ids','number'=>1));
+          $admin_id=(int)($admins[0]??0);
+          $sup=MDO_Database::table('suppliers');
+          $src=MDO_Database::table('source_products');
+          $sid=(int)$wpdb->get_var("SELECT id FROM {$sup} WHERE connector='selectos-de-castilla' AND active=1 ORDER BY id LIMIT 1");
+          $ids=array_map('intval',$wpdb->get_col($wpdb->prepare(
+            "SELECT wc_product_id FROM {$src} WHERE supplier_id=%d AND wc_product_id>0 ORDER BY wc_product_id ASC",$sid
+          )));
+          $ids=array_values(array_filter($ids,fn($id)=>'publish'===get_post_status($id)));
+
+          foreach(array('guest'=>0,'admin'=>$admin_id) as $mode=>$uid){
+            wp_set_current_user($uid);
+            echo "MODE\t{$mode}\thidden_vendors=";
+            echo function_exists('elmercado_wcfm_hidden_vendor_ids_010210') ? count(elmercado_wcfm_hidden_vendor_ids_010210()) : -1;
+            echo "\n";
+            $rows=array();
+            foreach($ids as $pid){
+              $p=get_post($pid); if(!$p) continue;
+              $post=$p; setup_postdata($post);
+              $q0=$wpdb->num_queries; $t=microtime(true);
+              $prev=function_exists('woostify_get_prev_product')?woostify_get_prev_product():false;
+              $prev_ms=(microtime(true)-$t)*1000; $prev_q=$wpdb->num_queries-$q0;
+              $q0=$wpdb->num_queries; $t=microtime(true);
+              $next=function_exists('woostify_get_next_product')?woostify_get_next_product():false;
+              $next_ms=(microtime(true)-$t)*1000; $next_q=$wpdb->num_queries-$q0;
+              $rows[]=array(
+                'pid'=>$pid,'slug'=>$p->post_name,'title'=>$p->post_title,
+                'ms'=>$prev_ms+$next_ms,'queries'=>$prev_q+$next_q,
+                'prev'=>$prev?$prev->get_id():0,'next'=>$next?$next->get_id():0
+              );
+              wp_reset_postdata();
+            }
+            usort($rows,fn($a,$b)=>($b['queries']<=>$a['queries']) ?: ($b['ms']<=>$a['ms']));
+            foreach(array_slice($rows,0,20) as $r){
+              echo implode("\t",array(
+                $mode,$r['queries'],round($r['ms'],2),$r['pid'],$r['slug'],$r['prev'],$r['next'],$r['title']
+              ))."\n";
+            }
+          }
+          PHP
+          "$PHP" -d memory_limit=1024M "$WP" eval-file /tmp/selectos-admin-nav.php --path="$ROOT" --allow-root
+          REMOTE
