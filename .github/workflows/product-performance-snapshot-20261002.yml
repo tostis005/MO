@@ -1,0 +1,112 @@
+name: Product performance snapshot 20261002
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/product-performance-snapshot-20261002.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Snapshot production performance
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          LOG="/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log"
+          ERR="/var/www/vhosts/system/elmercadodeorigen.com/logs/error_log"
+          SLOW="/var/www/vhosts/system/elmercadodeorigen.com/logs/php-fpm_slow.log"
+
+          echo "=== SYSTEM ==="
+          date -Is
+          uptime
+          free -m
+          ps -eo pid,user,stat,etimes,%cpu,%mem,rss,args --sort=-%cpu | grep -E 'php-fpm: pool elmercadodeorigen.com|mysqld' | head -n 25 || true
+
+          echo "=== PUBLIC TIMINGS ==="
+          while IFS='|' read -r label url; do
+            [ -n "$label" ] || continue
+            echo "--- $label $url"
+            for pass in 1 2 3; do
+              H="/tmp/perf-${label}-${pass}.h"
+              curl -k -sS -L --max-time 35 -A 'MDO-Perf-Snapshot/1.0'                 -D "$H" -o /dev/null                 -w "pass=$pass http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download} redirects=%{num_redirects}\n"                 "$url" || true
+              grep -Ei '^(HTTP/|cache-control:|age:|x-cache|x-el-mercado|server-timing:|x-rocket|cf-cache-status:)' "$H" 2>/dev/null | tr '\n' ' '; echo
+            done
+          done <<'URLS'
+          home|https://www.elmercadodeorigen.com/
+          shop|https://www.elmercadodeorigen.com/tienda/
+          selectos_piece|https://www.elmercadodeorigen.com/producto/jamon-de-pato-ahumado-pieza/
+          selectos_pack|https://www.elmercadodeorigen.com/producto/jamon-de-pato-ahumado-estuche-100g/
+          recent_product|https://www.elmercadodeorigen.com/producto/lote-3-mousses-95-g/
+          category|https://www.elmercadodeorigen.com/categoria-producto/pates-foie-untables/
+          URLS
+
+          echo "=== ORIGIN TIMINGS ==="
+          while IFS='|' read -r label path; do
+            [ -n "$label" ] || continue
+            echo "--- $label $path"
+            for pass in 1 2; do
+              curl -k -sS --max-time 35                 -H 'Host: www.elmercadodeorigen.com'                 -A 'MDO-Origin-Snapshot/1.0'                 -o /dev/null                 -w "pass=$pass http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n"                 "https://127.0.0.1$path" || true
+            done
+          done <<'PATHS'
+          home|/
+          shop|/tienda/
+          selectos_piece|/producto/jamon-de-pato-ahumado-pieza/
+          selectos_pack|/producto/jamon-de-pato-ahumado-estuche-100g/
+          recent_product|/producto/lote-3-mousses-95-g/
+          category|/categoria-producto/pates-foie-untables/
+          PATHS
+
+          echo "=== TRAFFIC 10M ==="
+          python3 - "$LOG" <<'PY'
+          import sys,re,os
+          from datetime import datetime,timezone,timedelta
+          from collections import Counter
+          from urllib.parse import urlsplit
+          p=sys.argv[1]; cut=datetime.now(timezone.utc)-timedelta(minutes=10)
+          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"\S+\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+')
+          total=0; status=Counter(); paths=Counter(); ips=Counter(); product=ajax=xmlrpc=0
+          if os.path.isfile(p):
+            for line in open(p,encoding='utf-8',errors='ignore'):
+              m=rx.match(line)
+              if not m: continue
+              ip,ds,target,code=m.groups()
+              try: dt=datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(timezone.utc)
+              except: continue
+              if dt<cut: continue
+              try: path=urlsplit(target).path or '/'
+              except: path=target.split('?',1)[0] or '/'
+              total+=1; status[code]+=1; paths[path]+=1; ips[ip]+=1
+              product += ('/producto/' in path or '/product/' in path)
+              ajax += path=='/wp-admin/admin-ajax.php'
+              xmlrpc += path=='/xmlrpc.php'
+          print('total',total,'status',dict(status),'product',product,'ajax',ajax,'xmlrpc',xmlrpc)
+          print('top_paths',paths.most_common(15))
+          print('top_ips',ips.most_common(10))
+          PY
+
+          echo "=== SLOWLOG LAST 120 ==="
+          tail -n 120 "$SLOW" 2>/dev/null | sed -E 's#^(.{0,420}).*#\1#' || true
+
+          echo "=== SEVERE ERRORS LAST 1500 ==="
+          tail -n 1500 "$ERR" 2>/dev/null | grep -Ei 'PHP Fatal|Allowed memory|upstream timed out|max children|504|503|502|timeout' | tail -n 80 || true
+          REMOTE
