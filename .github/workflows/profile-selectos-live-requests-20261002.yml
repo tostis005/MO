@@ -100,6 +100,8 @@ jobs:
           }, PHP_INT_MAX);
           PHP
 
+          ORIGIN_IP=$(hostname -I | awk '{print $1}')
+          echo "ORIGIN_IP=$ORIGIN_IP"
           urls=(
             "https://www.elmercadodeorigen.com/producto/carcasa-de-pato/"
             "https://www.elmercadodeorigen.com/producto/pie-de-pates-6-uds/"
@@ -109,7 +111,7 @@ jobs:
           )
           for url in "${urls[@]}"; do
             sep='?'
-            curl -k -sS -L --resolve "www.elmercadodeorigen.com:443:127.0.0.1" --max-time 35 --connect-timeout 5               -H "Cache-Control: no-cache" -A "MDO-Selectos-Trace/1.0" -o /dev/null               -w "HTTP %{http_code} ttfb=%{time_starttransfer} total=%{time_total} url=%{url_effective}\n"               "${url}${sep}mdo_selectos_trace=20261002-origin" || true
+            curl -k -sS -L --resolve "www.elmercadodeorigen.com:443:$ORIGIN_IP" --max-time 35 --connect-timeout 5               -H "Cache-Control: no-cache" -A "MDO-Selectos-Trace/1.0" -o /dev/null               -w "HTTP %{http_code} ttfb=%{time_starttransfer} total=%{time_total} url=%{url_effective}\n"               "${url}${sep}mdo_selectos_trace=20261002-origin2" || true
             sleep 1
           done
 
