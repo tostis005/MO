@@ -70,7 +70,7 @@ final class MDO_Connector_Iberico_Family {
 			$price = self::price_from_visible_text( $xpath );
 		}
 
-		$description = self::description( $xpath, $json );
+		$description = self::description( $xpath, $json, $config );
 		$images      = self::images( $xpath, $json, $url );
 		$stock       = self::stock_status( $xpath, $json );
 		$product_id  = self::first_non_empty(
@@ -383,9 +383,25 @@ final class MDO_Connector_Iberico_Family {
 		return $count;
 	}
 
-	private static function description( DOMXPath $xpath, array $json ): string {
+	private static function description( DOMXPath $xpath, array $json, array $config = array() ): string {
+		/*
+		 * Selectos de Castilla publica la información alimentaria y logística
+		 * (ingredientes, conservación, caducidad, presentación, alérgenos, etc.)
+		 * en el bloque visible de descripción corta de PrestaShop. Su JSON-LD puede
+		 * contener una versión recortada o distinta. Para este conector, el bloque
+		 * visible es la fuente de verdad y debe conservarse completo.
+		 */
+		if ( 'selectos-de-castilla' === (string) ( $config['key'] ?? '' ) ) {
+			$visible = self::selectos_description( $xpath );
+			if ( '' !== $visible ) {
+				return $visible;
+			}
+		}
+
 		if ( ! empty( $json['description'] ) ) {
-			return wp_kses_post( (string) $json['description'] );
+			return class_exists( 'MDO_Text' )
+				? MDO_Text::normalize_description( (string) $json['description'] )
+				: wp_kses_post( (string) $json['description'] );
 		}
 		foreach ( array(
 			"//*[@id='descripcion']", "//*[@id='description']",
@@ -394,8 +410,35 @@ final class MDO_Connector_Iberico_Family {
 		) as $query ) {
 			$html = self::xpath_html( $xpath, $query );
 			if ( $html ) {
-				return $html;
+				return class_exists( 'MDO_Text' ) ? MDO_Text::normalize_description( $html ) : $html;
 			}
+		}
+		return '';
+	}
+
+	private static function selectos_description( DOMXPath $xpath ): string {
+		$queries = array(
+			"//*[starts-with(@id,'product-description-short-')][1]",
+			"//*[@id='product-description-short'][1]",
+			"//*[contains(concat(' ', normalize-space(@class), ' '), ' product-description-short ')][1]",
+			"//*[contains(concat(' ', normalize-space(@class), ' '), ' product-description ')][1]",
+			"//*[@id='description'][1]",
+		);
+
+		foreach ( $queries as $query ) {
+			$html = self::xpath_html( $xpath, $query );
+			if ( '' === trim( $html ) ) {
+				continue;
+			}
+
+			$text = html_entity_decode( wp_strip_all_tags( $html ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+			$text = str_replace( array( "\xC2\xA0", "\u{00A0}" ), ' ', $text );
+			$text = trim( preg_replace( '/\s+/u', ' ', $text ) );
+			if ( mb_strlen( $text, 'UTF-8' ) < 10 ) {
+				continue;
+			}
+
+			return class_exists( 'MDO_Text' ) ? MDO_Text::normalize_description( $html ) : wp_kses_post( $html );
 		}
 		return '';
 	}

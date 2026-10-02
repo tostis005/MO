@@ -57,7 +57,7 @@ final class MDO_Rich_Description_Source {
 		 * parte de los bloques auxiliares. La descripción visible es la fuente de
 		 * verdad y no debe descartarse por una comparación de texto plano.
 		 */
-		$force_visible = in_array( $host, array( 'elcatedratico.com', 'puenterobles.com' ), true );
+		$force_visible = in_array( $host, array( 'elcatedratico.com', 'puenterobles.com', 'tienda.selectosdecastilla.com', 'selectosdecastilla.com' ), true );
 
 		$changed = false;
 		$scripts = $xpath->query( "//script[contains(translate(@type,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'ld+json')]" );
@@ -107,6 +107,28 @@ final class MDO_Rich_Description_Source {
 			$nodes = $xpath->query( "//*[contains(concat(' ', normalize-space(@class), ' '), ' adicional ')][1]" );
 			if ( $nodes && $nodes->length ) {
 				return trim( self::inner_html( $nodes->item( 0 ) ) );
+			}
+		}
+
+
+		if ( in_array( $host, array( 'tienda.selectosdecastilla.com', 'selectosdecastilla.com' ), true ) ) {
+			/*
+			 * PrestaShop expone aquí la ficha técnica completa de Selectos:
+			 * ingredientes, conservación, caducidad, presentación, alérgenos y
+			 * cualquier indicación adicional que el productor añada en el futuro.
+			 */
+			foreach ( array(
+				"//*[starts-with(@id,'product-description-short-')][1]",
+				"//*[@id='product-description-short'][1]",
+				"//*[contains(concat(' ', normalize-space(@class), ' '), ' product-description-short ')][1]",
+			) as $query ) {
+				$nodes = $xpath->query( $query );
+				if ( $nodes && $nodes->length ) {
+					$html = trim( self::inner_html( $nodes->item( 0 ) ) );
+					if ( '' !== trim( wp_strip_all_tags( $html ) ) ) {
+						return $html;
+					}
+				}
 			}
 		}
 
