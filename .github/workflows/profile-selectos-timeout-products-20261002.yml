@@ -1,0 +1,104 @@
+name: Profile Selectos timeout products 20261002
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/profile-selectos-timeout-products-20261002.yml'
+permissions:
+  contents: read
+jobs:
+  profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          PHP="/opt/plesk/php/8.2/bin/php"
+          WP="/usr/local/bin/wp"
+
+          cat > /tmp/profile-selectos-products.php <<'PHP'
+          <?php
+          global $wpdb, $post;
+          $slugs=array(
+            'foie-gras-de-pato-extra-desvenado',
+            'foie-gras-de-pato-extra',
+            'foie-gras-mi-cuit-entero-mini-estuche',
+            'magret-de-pato-fresco',
+            'jamon-de-pato-ahumado-pieza',
+            'jamon-de-pato-ahumado-estuche-100g'
+          );
+          $src_table=MDO_Database::table('source_products');
+
+          foreach($slugs as $slug){
+            $p=get_page_by_path($slug,OBJECT,'product');
+            if(!$p){echo "MISSING\t{$slug}\n"; continue;}
+            $pid=(int)$p->ID;
+            $post=$p;
+            setup_postdata($post);
+
+            $src_id=(int)get_post_meta($pid,'_emdo_source_product_id',true);
+            $payload=$src_id ? (string)$wpdb->get_var($wpdb->prepare("SELECT source_payload FROM {$src_table} WHERE id=%d",$src_id)) : '';
+            $parsed=json_decode($payload,true);
+            $vars=is_array($parsed)&&isset($parsed['variations'])&&is_array($parsed['variations'])?count($parsed['variations']):0;
+            $cats=wp_get_post_terms($pid,'product_cat',array('fields'=>'all'));
+            $cat_out=array();
+            foreach($cats as $c){$cat_out[]=$c->slug.'#'.$c->term_id;}
+
+            $q0=$wpdb->num_queries; $t=microtime(true);
+            $product=wc_get_product($pid);
+            $wc_ms=(microtime(true)-$t)*1000; $wc_q=$wpdb->num_queries-$q0;
+
+            $visible=false; $vis_ms=0; $vis_q=0;
+            if($product){
+              $q0=$wpdb->num_queries; $t=microtime(true);
+              $visible=$product->is_visible();
+              $vis_ms=(microtime(true)-$t)*1000; $vis_q=$wpdb->num_queries-$q0;
+            }
+
+            $prev_id=0;$next_id=0;$prev_ms=0;$next_ms=0;$prev_q=0;$next_q=0;
+            if(function_exists('woostify_get_prev_product')){
+              $q0=$wpdb->num_queries; $t=microtime(true);
+              $prev=woostify_get_prev_product();
+              $prev_ms=(microtime(true)-$t)*1000; $prev_q=$wpdb->num_queries-$q0;
+              $prev_id=$prev?$prev->get_id():0;
+            }
+            if(function_exists('woostify_get_next_product')){
+              $q0=$wpdb->num_queries; $t=microtime(true);
+              $next=woostify_get_next_product();
+              $next_ms=(microtime(true)-$t)*1000; $next_q=$wpdb->num_queries-$q0;
+              $next_id=$next?$next->get_id():0;
+            }
+
+            $meta_count=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE post_id=%d",$pid));
+            $term_count=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->term_relationships} WHERE object_id=%d",$pid));
+            $children=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_parent=%d AND post_type='product_variation'",$pid));
+
+            echo wp_json_encode(array(
+              'slug'=>$slug,'pid'=>$pid,'post_date'=>$p->post_date,'author'=>(int)$p->post_author,
+              'categories'=>$cat_out,'source_id'=>$src_id,'payload_bytes'=>strlen($payload),'source_variations'=>$vars,
+              'wc_class'=>$product?get_class($product):'','wc_get_ms'=>round($wc_ms,1),'wc_get_queries'=>$wc_q,
+              'visible'=>$visible,'visible_ms'=>round($vis_ms,1),'visible_queries'=>$vis_q,
+              'prev_id'=>$prev_id,'prev_slug'=>$prev_id?get_post_field('post_name',$prev_id):'','prev_ms'=>round($prev_ms,1),'prev_queries'=>$prev_q,
+              'next_id'=>$next_id,'next_slug'=>$next_id?get_post_field('post_name',$next_id):'','next_ms'=>round($next_ms,1),'next_queries'=>$next_q,
+              'meta_count'=>$meta_count,'term_count'=>$term_count,'variation_children'=>$children
+            ),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+            wp_reset_postdata();
+          }
+          PHP
+
+          "$PHP" -d memory_limit=1024M "$WP" eval-file /tmp/profile-selectos-products.php --path="$ROOT" --allow-root
+          REMOTE
