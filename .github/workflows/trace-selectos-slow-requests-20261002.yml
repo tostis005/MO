@@ -1,0 +1,49 @@
+name: Trace Selectos slow requests 20261002
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/trace-selectos-slow-requests-20261002.yml'
+permissions:
+  contents: read
+jobs:
+  trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          SLOW="/var/www/vhosts/system/elmercadodeorigen.com/logs/php-fpm_slow.log"
+          probe () {
+            label="$1"; url="$2"
+            before=$(wc -l < "$SLOW" 2>/dev/null || echo 0)
+            echo "=== PROBE $label ==="
+            date -Is
+            curl -k -sS -L --max-time 25 --connect-timeout 5 -A "MDO-Selectos-Trace-$label/1.0"               -o /dev/null -w 'http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n' "$url" || true
+            sleep 1
+            after=$(wc -l < "$SLOW" 2>/dev/null || echo 0)
+            echo "slowlog_before=$before after=$after delta=$((after-before))"
+            if [ "$after" -gt "$before" ]; then
+              sed -n "$((before+1)),${after}p" "$SLOW" | tail -n 80
+            fi
+          }
+          probe foie_desvenado https://www.elmercadodeorigen.com/producto/foie-gras-de-pato-extra-desvenado/
+          probe foie_extra https://www.elmercadodeorigen.com/producto/foie-gras-de-pato-extra/
+          probe micuit_mini https://www.elmercadodeorigen.com/producto/foie-gras-mi-cuit-entero-mini-estuche/
+          probe magret_fresco https://www.elmercadodeorigen.com/producto/magret-de-pato-fresco/
+          probe jamon_pieza https://www.elmercadodeorigen.com/producto/jamon-de-pato-ahumado-pieza/
+          probe jamon_estuche https://www.elmercadodeorigen.com/producto/jamon-de-pato-ahumado-estuche-100g/
+          REMOTE
