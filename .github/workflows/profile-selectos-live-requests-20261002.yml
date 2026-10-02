@@ -1,0 +1,137 @@
+name: Profile Selectos live requests 20261002
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/profile-selectos-live-requests-20261002.yml'
+permissions:
+  contents: read
+jobs:
+  profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          PROF="$ROOT/wp-content/mu-plugins/000-mdo-selectos-request-profiler-temp.php"
+          OUT="/tmp/mdo-selectos-request-profile.jsonl"
+          rm -f "$OUT"
+          cleanup(){ rm -f "$PROF"; }
+          trap cleanup EXIT
+
+          cat > "$PROF" <<'PHP'
+          <?php
+          if ( ! defined( 'ABSPATH' ) ) { exit; }
+          $ua = isset($_SERVER['HTTP_USER_AGENT']) ? (string) $_SERVER['HTTP_USER_AGENT'] : '';
+          if ( 0 !== strpos($ua, 'MDO-Selectos-Trace/1.0') ) { return; }
+
+          $GLOBALS['mdo_selectos_profile_started'] = microtime(true);
+          global $wpdb;
+          if ( isset($wpdb) && is_object($wpdb) ) { $wpdb->save_queries = true; }
+
+          add_action('shutdown', static function(): void {
+              global $wpdb, $wp_filter;
+              $started=(float)($GLOBALS['mdo_selectos_profile_started'] ?? microtime(true));
+              $queries=(isset($wpdb->queries) && is_array($wpdb->queries)) ? $wpdb->queries : array();
+              $tops=array();
+              $caller_sums=array();
+              $query_sum=0.0;
+              foreach($queries as $q){
+                  $sql=(string)($q[0] ?? '');
+                  $secs=(float)($q[1] ?? 0);
+                  $caller=(string)($q[2] ?? '');
+                  $query_sum += $secs;
+                  $caller_sums[$caller]=($caller_sums[$caller] ?? 0)+$secs;
+                  $tops[]=array('ms'=>round($secs*1000,2),'sql'=>substr(preg_replace('/\s+/', ' ', $sql),0,900),'caller'=>substr($caller,0,500));
+              }
+              usort($tops,static fn($a,$b)=>$b['ms']<=>$a['ms']);
+              arsort($caller_sums);
+              $callers=array();
+              foreach(array_slice($caller_sums,0,15,true) as $caller=>$secs){
+                  $callers[]=array('ms'=>round($secs*1000,2),'caller'=>substr($caller,0,700));
+              }
+
+              $interesting=array();
+              foreach(array('init','wp','template_redirect','wp_head','woocommerce_before_single_product','woocommerce_single_product_summary','woocommerce_after_single_product_summary','wp_footer','shutdown') as $hook){
+                  if(empty($wp_filter[$hook]) || !isset($wp_filter[$hook]->callbacks)) continue;
+                  foreach($wp_filter[$hook]->callbacks as $priority=>$list){
+                      foreach($list as $entry){
+                          $f=$entry['function'] ?? null; $label='';
+                          if(is_string($f)) $label=$f;
+                          elseif(is_array($f)){
+                              $left=is_object($f[0])?get_class($f[0]):(string)$f[0];
+                              $label=$left.'::'.($f[1] ?? '');
+                          } elseif($f instanceof Closure){
+                              try{$r=new ReflectionFunction($f);$label='Closure@'.$r->getFileName().':'.$r->getStartLine();}catch(Throwable $e){$label='Closure';}
+                          }
+                          if(stripos($label,'flush')!==false || stripos($label,'rewrite')!==false || stripos($label,'yith')!==false || stripos($label,'facebook')!==false){
+                              $interesting[]=array('hook'=>$hook,'priority'=>$priority,'callback'=>$label);
+                          }
+                      }
+                  }
+              }
+
+              $row=array(
+                  'path'=>(string)($_SERVER['REQUEST_URI'] ?? ''),
+                  'pid'=>getmypid(),
+                  'status'=>http_response_code(),
+                  'total_ms'=>round((microtime(true)-$started)*1000,2),
+                  'query_count'=>count($queries),
+                  'query_ms'=>round($query_sum*1000,2),
+                  'top_queries'=>array_slice($tops,0,20),
+                  'top_callers'=>$callers,
+                  'interesting_callbacks'=>$interesting,
+              );
+              file_put_contents('/tmp/mdo-selectos-request-profile.jsonl',wp_json_encode($row,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n",FILE_APPEND|LOCK_EX);
+          }, PHP_INT_MAX);
+          PHP
+
+          urls=(
+            "https://www.elmercadodeorigen.com/producto/carcasa-de-pato/"
+            "https://www.elmercadodeorigen.com/producto/pie-de-pates-6-uds/"
+            "https://www.elmercadodeorigen.com/producto/foie-gras-de-pato-extra-desvenado/"
+            "https://www.elmercadodeorigen.com/producto/jamon-de-pato-ahumado-pieza/"
+            "https://www.elmercadodeorigen.com/producto/jamon-de-pato-ahumado-estuche-100g/"
+          )
+          for url in "${urls[@]}"; do
+            sep='?'
+            curl -k -sS -L --max-time 35 --connect-timeout 5               -A "MDO-Selectos-Trace/1.0" -o /dev/null               -w "HTTP %{http_code} ttfb=%{time_starttransfer} total=%{time_total} url=%{url_effective}\n"               "${url}${sep}mdo_selectos_trace=20261002" || true
+            sleep 1
+          done
+
+          echo "=== PROFILES ==="
+          python3 - <<'PY'
+          import json,os
+          p='/tmp/mdo-selectos-request-profile.jsonl'
+          if not os.path.exists(p):
+              print('NO_PROFILE_OUTPUT')
+              raise SystemExit
+          for line in open(p,encoding='utf-8',errors='replace'):
+              try:r=json.loads(line)
+              except:continue
+              print('\nPROFILE',r['path'],'status',r['status'],'total_ms',r['total_ms'],'query_count',r['query_count'],'query_ms',r['query_ms'])
+              print('TOP QUERIES')
+              for q in r['top_queries'][:12]:
+                  print(q['ms'],'ms |',q['caller'],'|',q['sql'])
+              print('TOP CALLERS')
+              for q in r['top_callers'][:10]:
+                  print(q['ms'],'ms |',q['caller'])
+              print('INTERESTING CALLBACKS')
+              for x in r['interesting_callbacks']:
+                  print(x)
+          PY
+          REMOTE
