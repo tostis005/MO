@@ -109,7 +109,7 @@ jobs:
           )
           for url in "${urls[@]}"; do
             sep='?'
-            curl -k -sS -L --max-time 35 --connect-timeout 5               -A "MDO-Selectos-Trace/1.0" -o /dev/null               -w "HTTP %{http_code} ttfb=%{time_starttransfer} total=%{time_total} url=%{url_effective}\n"               "${url}${sep}mdo_selectos_trace=20261002" || true
+            curl -k -sS -L --resolve "www.elmercadodeorigen.com:443:127.0.0.1" --max-time 35 --connect-timeout 5               -H "Cache-Control: no-cache" -A "MDO-Selectos-Trace/1.0" -o /dev/null               -w "HTTP %{http_code} ttfb=%{time_starttransfer} total=%{time_total} url=%{url_effective}\n"               "${url}${sep}mdo_selectos_trace=20261002-origin" || true
             sleep 1
           done
 
