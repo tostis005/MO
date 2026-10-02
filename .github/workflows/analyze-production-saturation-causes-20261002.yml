@@ -1,0 +1,77 @@
+name: Analyze production saturation causes 20261002
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/analyze-production-saturation-causes-20261002.yml'
+permissions:
+  contents: read
+jobs:
+  analyze:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'python3 -' <<'PY'
+          import re,os
+          from collections import Counter
+          from datetime import datetime,timezone,timedelta
+          from urllib.parse import urlsplit
+
+          slow="/var/www/vhosts/system/elmercadodeorigen.com/logs/php-fpm_slow.log"
+          access="/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log"
+
+          print("=== SLOWLOG COMPONENT COUNTS ===")
+          data=open(slow,encoding="utf-8",errors="ignore").read() if os.path.isfile(slow) else ""
+          blocks=re.split(r'(?=\[\d{2}-[A-Za-z]{3}-\d{4} )',data)
+          counts=Counter()
+          recent=[]
+          for b in blocks:
+              if not b.strip(): continue
+              label="core/other"
+              m=re.search(r'/wp-content/plugins/([^/]+)/',b)
+              if m: label="plugin:"+m.group(1)
+              else:
+                  m=re.search(r'/wp-content/themes/([^/]+)/',b)
+                  if m: label="theme:"+m.group(1)
+              counts[label]+=1
+              recent.append((label,b[:1800]))
+          for k,v in counts.most_common(20):
+              print(v,k)
+
+          print("=== TRAFFIC 30M ===")
+          cut=datetime.now(timezone.utc)-timedelta(minutes=30)
+          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+\S+\s+"[^"]*"\s+"([^"]*)"')
+          total=0
+          by_ip=Counter(); by_ua=Counter(); by_path=Counter(); product_by_ip=Counter(); product_by_ua=Counter(); codes=Counter()
+          for line in open(access,encoding="utf-8",errors="ignore"):
+              m=rx.match(line)
+              if not m: continue
+              ip,ds,method,target,code,ua=m.groups()
+              try: dt=datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(timezone.utc)
+              except: continue
+              if dt<cut: continue
+              try: path=urlsplit(target).path or '/'
+              except: path=target.split('?',1)[0] or '/'
+              total+=1; by_ip[ip]+=1; by_ua[ua]+=1; by_path[path]+=1; codes[code]+=1
+              if '/producto/' in path or '/product/' in path:
+                  product_by_ip[ip]+=1; product_by_ua[ua]+=1
+          print("total",total,"codes",dict(codes))
+          print("top_ips",by_ip.most_common(12))
+          print("top_uas",by_ua.most_common(12))
+          print("product_top_ips",product_by_ip.most_common(12))
+          print("product_top_uas",product_by_ua.most_common(12))
+          print("top_paths",by_path.most_common(20))
+          PY
