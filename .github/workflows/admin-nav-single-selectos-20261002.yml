@@ -31,24 +31,26 @@ jobs:
           cat > /tmp/admin-one.php <<'PHP'
           <?php
           global $wpdb,$post;
-          echo "BOOTED\n"; if(defined('STDOUT')) fflush(STDOUT);
+          $progress='/tmp/admin-nav-progress.txt';
+          @file_put_contents($progress,"BOOTED\n",FILE_APPEND|LOCK_EX);
           $p=get_page_by_path('foie-gras-de-pato-extra-desvenado',OBJECT,'product');
           $post=$p; setup_postdata($post);
 
           wp_set_current_user(0);
-          echo "ANON_START\n"; if(defined('STDOUT')) fflush(STDOUT);
+          @file_put_contents($progress,"ANON_START\n",FILE_APPEND|LOCK_EX);
           $q=$wpdb->num_queries;$t=microtime(true);$x=woostify_get_prev_product();
-          echo 'ANON_PREV id=',($x?$x->get_id():0),' sec=',round(microtime(true)-$t,3),' queries=',($wpdb->num_queries-$q),"\n"; if(defined('STDOUT')) fflush(STDOUT);
+          @file_put_contents($progress,'ANON_PREV id='.($x?$x->get_id():0).' sec='.round(microtime(true)-$t,3).' queries='.($wpdb->num_queries-$q)."\n",FILE_APPEND|LOCK_EX);
           $q=$wpdb->num_queries;$t=microtime(true);$x=woostify_get_next_product();
-          echo 'ANON_NEXT id=',($x?$x->get_id():0),' sec=',round(microtime(true)-$t,3),' queries=',($wpdb->num_queries-$q),"\n"; if(defined('STDOUT')) fflush(STDOUT);
+          @file_put_contents($progress,'ANON_NEXT id='.($x?$x->get_id():0).' sec='.round(microtime(true)-$t,3).' queries='.($wpdb->num_queries-$q)."\n",FILE_APPEND|LOCK_EX);
 
           $admins=get_users(array('role'=>'administrator','number'=>1,'fields'=>'ID'));
           wp_set_current_user((int)$admins[0]);
-          echo 'ADMIN_START can_view_disabled='.(function_exists('elmercado_wcfm_disabled_visibility_can_view_010210')&&elmercado_wcfm_disabled_visibility_can_view_010210()?'1':'0')."\n"; if(defined('STDOUT')) fflush(STDOUT);
+          $can=function_exists('elmercado_wcfm_disabled_visibility_can_view_010210')&&elmercado_wcfm_disabled_visibility_can_view_010210()?1:0;
+          @file_put_contents($progress,'ADMIN_START can_view_disabled='.$can."\n",FILE_APPEND|LOCK_EX);
           $q=$wpdb->num_queries;$t=microtime(true);$x=woostify_get_prev_product();
-          echo 'ADMIN_PREV id=',($x?$x->get_id():0),' sec=',round(microtime(true)-$t,3),' queries=',($wpdb->num_queries-$q),"\n"; if(defined('STDOUT')) fflush(STDOUT);
+          @file_put_contents($progress,'ADMIN_PREV id='.($x?$x->get_id():0).' sec='.round(microtime(true)-$t,3).' queries='.($wpdb->num_queries-$q)."\n",FILE_APPEND|LOCK_EX);
           $q=$wpdb->num_queries;$t=microtime(true);$x=woostify_get_next_product();
-          echo 'ADMIN_NEXT id=',($x?$x->get_id():0),' sec=',round(microtime(true)-$t,3),' queries=',($wpdb->num_queries-$q),"\n"; if(defined('STDOUT')) fflush(STDOUT);
+          @file_put_contents($progress,'ADMIN_NEXT id='.($x?$x->get_id():0).' sec='.round(microtime(true)-$t,3).' queries='.($wpdb->num_queries-$q)."\n",FILE_APPEND|LOCK_EX);
           PHP
-          timeout 60s "$PHP" -d memory_limit=1024M "$WP" eval-file /tmp/admin-one.php --path="$ROOT" --allow-root --skip-plugins=facebook-for-woocommerce,translatepress-multilingual,ajax-search-for-woocommerce,click-to-chat-for-whatsapp,woocommerce-checkout-manager,woocommerce-checkout-manager-pro,elementor,advanced-coupons-for-woocommerce-free,advanced-product-labels-for-woocommerce,webappick-product-feed-for-woocommerce,all-in-one-seo-pack,yith-woocommerce-product-add-ons,yith-woocommerce-product-bundles-premium || echo ADMIN_PROFILE_TIMED_OUT
+          rm -f /tmp/admin-nav-progress.txt\n          timeout 60s "$PHP" -d memory_limit=1024M "$WP" eval-file /tmp/admin-one.php --path="$ROOT" --allow-root --skip-plugins=facebook-for-woocommerce,translatepress-multilingual,ajax-search-for-woocommerce,click-to-chat-for-whatsapp,woocommerce-checkout-manager,woocommerce-checkout-manager-pro,elementor,advanced-coupons-for-woocommerce-free,advanced-product-labels-for-woocommerce,webappick-product-feed-for-woocommerce,all-in-one-seo-pack,yith-woocommerce-product-add-ons,yith-woocommerce-product-bundles-premium || echo ADMIN_PROFILE_TIMED_OUT\n          echo "=== PROGRESS ==="\n          cat /tmp/admin-nav-progress.txt 2>/dev/null || true
           REMOTE
