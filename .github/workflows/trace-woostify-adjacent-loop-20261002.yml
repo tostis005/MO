@@ -1,0 +1,62 @@
+name: Trace Woostify adjacent loop 20261002
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/trace-woostify-adjacent-loop-20261002.yml'
+permissions:
+  contents: read
+jobs:
+  trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          PHP="/opt/plesk/php/8.2/bin/php"; WP="/usr/local/bin/wp"
+          cat >/tmp/loop.php <<'PHP'
+          <?php
+          global $post;
+          $p=get_page_by_path('foie-gras-de-pato-extra-desvenado',OBJECT,'product');
+          $post=$p; setup_postdata($post);
+          $admins=get_users(array('role'=>'administrator','number'=>1,'fields'=>'ids'));
+          wp_set_current_user((int)($admins[0]??0));
+
+          $obj=new Woostify_Adjacent_Products(true,'','product_cat',false);
+          $rc=new ReflectionClass($obj);
+          $cur=$rc->getProperty('current_product'); $cur->setAccessible(true);
+          $get=$rc->getMethod('get_adjacent'); $get->setAccessible(true);
+          $cur->setValue($obj,(int)$p->ID);
+          $seen=array();
+
+          for($i=1;$i<=12;$i++){
+            $t=microtime(true);
+            $adj=$get->invoke($obj);
+            $ms=round((microtime(true)-$t)*1000,2);
+            if(!$adj){echo "$i\tNONE\t$ms\n";break;}
+            $id=(int)$adj->ID;
+            $wc=wc_get_product($id);
+            $vis=$wc?$wc->is_visible():false;
+            echo implode("\t",array($i,$id,$adj->post_date,$adj->post_name,$vis?'VISIBLE':'HIDDEN',$wc?$wc->get_stock_status():'',$ms))."\n";
+            if(isset($seen[$id])){echo "REPEAT\t$id\n";break;}
+            $seen[$id]=1;
+            if($vis) break;
+            $cur->setValue($obj,$id);
+          }
+          PHP
+          "$PHP" -d memory_limit=768M "$WP" eval-file /tmp/loop.php --path="$ROOT" --allow-root --skip-plugins=facebook-for-woocommerce,translatepress-multilingual
+          REMOTE
