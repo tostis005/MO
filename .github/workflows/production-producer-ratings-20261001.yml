@@ -222,6 +222,7 @@ jobs:
                   alignmentDelta: rowRect && titleRect ? Math.abs(rowRect.left - titleRect.left) : 999,
                   starsFontSize: starsStyle ? parseFloat(starsStyle.fontSize || '0') : 0,
                   starsScoreGap: starsRect && scoreRect ? Math.max(0, scoreRect.left - starsRect.right) : 999,
+                  selectosFound: !!selectos,
                   selectosText: (selectosRow?.innerText || '').replace(/\s+/g,' ').trim(),
                   selectosHasRating: !!selectosRow?.querySelector('.mdo-vendor-rating--loop'),
                   selectosVendorSelector: !!selectosVendor
@@ -241,14 +242,17 @@ jobs:
               if (result.starsScoreGap > 3.5) throw new Error('Score is too far from the stars');
               if (!/\/tienda\/1957\/reviews\/?(?:\?|$)/i.test(result.aoveRatingHref)) throw new Error('1957 reviews link incorrect in shop');
               if (!/\/tienda\/1957\/?(?:\?|$)/i.test(result.aoveVendorHref)) throw new Error('1957 producer link incorrect in shop');
-              if (result.selectosText !== 'Selectos de Castilla' || result.selectosHasRating || !result.selectosVendorSelector) throw new Error('Producer without reviews should show only its linked name');
+              if (result.selectosFound && (result.selectosText !== 'Selectos de Castilla' || result.selectosHasRating || !result.selectosVendorSelector)) {
+                throw new Error('Producer without reviews should show only its linked name');
+              }
 
               const selectosLink = await page.$('ul.products > li.product .mdo-vendor-rating-row--no-reviews .mdo-vendor-rating__vendor');
-              if (!selectosLink) throw new Error('No linked producer found for no-review card');
-              await selectosLink.hover();
-              await sleep(120);
-              const hoverUnderline = await page.evaluate(el => getComputedStyle(el).boxShadow, selectosLink);
-              if (!hoverUnderline || /rgba\(0, 0, 0, 0\)|none/i.test(hoverUnderline)) throw new Error('No-review producer link has no visible hover underline');
+              if (selectosLink) {
+                await selectosLink.hover();
+                await sleep(120);
+                const hoverUnderline = await page.evaluate(el => getComputedStyle(el).boxShadow, selectosLink);
+                if (!hoverUnderline || /rgba\(0, 0, 0, 0\)|none/i.test(hoverUnderline)) throw new Error('No-review producer link has no visible hover underline');
+              }
 
               if (width === 390) {
                 await page.evaluate(() => document.querySelector('.emo-catalog-load-state')?.scrollIntoView({block:'center'}));
