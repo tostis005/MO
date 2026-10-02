@@ -39,6 +39,24 @@ function mdo_vendor_rating_is_vendor_store_20261001(): bool {
 }
 
 /**
+ * Detecta únicamente los lotes AJAX del catálogo global. El mismo endpoint
+ * sirve también a tiendas de productor, por lo que exigimos el scope explícito
+ * que envía el cargador antes de permitir el render en admin-ajax.php.
+ */
+function mdo_vendor_rating_is_catalog_batch_20261002(): bool {
+	if ( ! function_exists( 'wp_doing_ajax' ) || ! wp_doing_ajax() ) {
+		return false;
+	}
+
+	$action = isset( $_REQUEST['action'] ) ? sanitize_key( wp_unslash( $_REQUEST['action'] ) ) : '';
+	if ( 'elmercado_catalog_batch_010234' !== $action ) {
+		return false;
+	}
+
+	return 'catalog' === (string) ( $GLOBALS['elmercado_catalog_batch_scope_010234'] ?? '' );
+}
+
+/**
  * Contextos donde el usuario ha pedido la valoración:
  * - catálogo global y taxonomías de producto;
  * - producto individual principal.
@@ -47,8 +65,19 @@ function mdo_vendor_rating_is_vendor_store_20261001(): bool {
  * de la ficha individual.
  */
 function mdo_vendor_rating_context_20261001( bool $single = false ): bool {
-	if ( is_admin() || mdo_vendor_rating_is_vendor_store_20261001() ) {
+	$catalog_batch = mdo_vendor_rating_is_catalog_batch_20261002();
+
+	if ( ( is_admin() && ! $catalog_batch ) || mdo_vendor_rating_is_vendor_store_20261001() ) {
 		return false;
+	}
+
+	/*
+	 * admin-ajax.php no dispone del contexto condicional is_shop() de la página
+	 * que inició la petición. El scope firmado por nuestro propio endpoint es
+	 * suficiente para restaurar el mismo render del loop normal.
+	 */
+	if ( $catalog_batch ) {
+		return ! $single;
 	}
 
 	if ( $single ) {
