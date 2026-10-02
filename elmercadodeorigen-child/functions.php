@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.315' );
-/* 0.10.315 reduce el tamaño de las recomendaciones del carrito en escritorio. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.316' );
+/* 0.10.316 evita bloqueos de Woostify al navegar entre productos agotados/ocultos. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
 	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsense' ); // Adsterra queda conservado pero inactivo.
 }

@@ -17,6 +17,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * Añade exclusiones baratas a la consulta de posts adyacentes de productos.
+ *
+ * Es importante aplicarlas también a administradores: WooCommerce sigue
+ * considerando invisibles los productos agotados cuando la tienda los oculta.
+ * Si Woostify recibe uno de esos productos como adyacente puede repetirlo sin
+ * avanzar y mantener PHP ocupado hasta que Apache devuelve 504.
  */
 function elmercado_product_navigation_adjacent_where_010237( string $where ): string {
 	global $wpdb;
@@ -26,28 +31,36 @@ function elmercado_product_navigation_adjacent_where_010237( string $where ): st
 		return $where;
 	}
 
-	if (
-		function_exists( 'elmercado_wcfm_disabled_visibility_can_view_010210' )
-		&& elmercado_wcfm_disabled_visibility_can_view_010210()
-	) {
-		return $where;
-	}
-
 	$clauses = array();
 
-	/* Evita que Woostify cargue productos de vendedores que igualmente serán invisibles. */
-	if ( function_exists( 'elmercado_wcfm_disabled_vendor_ids_010210' ) ) {
-		$disabled_vendors = array_values(
-			array_unique(
-				array_filter(
-					array_map( 'absint', elmercado_wcfm_disabled_vendor_ids_010210() )
-				)
-			)
-		);
+	/*
+	 * Woostify 2.0.6 entra en un bucle si el primer producto adyacente no es
+	 * visible: vuelve a pedir el mismo candidato una y otra vez. Esto ocurría
+	 * especialmente al navegar como administrador por Selectos de Castilla,
+	 * porque esta optimización se desactivaba para admins y el primer candidato
+	 * podía estar agotado.
+	 *
+	 * No debemos desactivar la optimización para administradores. La política
+	 * del marketplace ya expone exactamente qué vendedores son invisibles para
+	 * el usuario actual: Disabled siempre y Offline solo para público.
+	 */
+	$hidden_vendors = array();
+	if ( function_exists( 'elmercado_wcfm_hidden_vendor_ids_010210' ) ) {
+		$hidden_vendors = elmercado_wcfm_hidden_vendor_ids_010210();
+	} elseif ( function_exists( 'elmercado_wcfm_disabled_vendor_ids_010210' ) ) {
+		$hidden_vendors = elmercado_wcfm_disabled_vendor_ids_010210();
+	}
 
-		if ( ! empty( $disabled_vendors ) ) {
-			$clauses[] = 'p.post_author NOT IN (' . implode( ',', $disabled_vendors ) . ')';
-		}
+	$hidden_vendors = array_values(
+		array_unique(
+			array_filter(
+				array_map( 'absint', (array) $hidden_vendors )
+			)
+		)
+	);
+
+	if ( ! empty( $hidden_vendors ) ) {
+		$clauses[] = 'p.post_author NOT IN (' . implode( ',', $hidden_vendors ) . ')';
 	}
 
 	/*
