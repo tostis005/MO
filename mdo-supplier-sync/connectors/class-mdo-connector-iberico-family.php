@@ -385,23 +385,46 @@ final class MDO_Connector_Iberico_Family {
 
 	private static function description( DOMXPath $xpath, array $json, array $config = array() ): string {
 		/*
-		 * Selectos de Castilla publica la información alimentaria y logística
-		 * (ingredientes, conservación, caducidad, presentación, alérgenos, etc.)
-		 * en el bloque visible de descripción corta de PrestaShop. Su JSON-LD puede
-		 * contener una versión recortada o distinta. Para este conector, el bloque
-		 * visible es la fuente de verdad y debe conservarse completo.
+		 * En Selectos la ficha se reparte entre la descripción corta técnica
+		 * (ingredientes, conservación, caducidad, presentación, alérgenos, etc.),
+		 * la descripción editorial de Product/JSON-LD y, en algunos productos, la
+		 * ficha de características. Conservamos las tres capas sin duplicarlas.
 		 */
 		if ( 'selectos-de-castilla' === (string) ( $config['key'] ?? '' ) ) {
-			$visible = self::selectos_description( $xpath );
-			if ( '' !== $visible ) {
-				return $visible;
+			$parts = array(
+				self::selectos_description( $xpath ),
+				! empty( $json['description'] ) ? self::normalize_description_value( (string) $json['description'] ) : '',
+				self::selectos_features( $xpath ),
+			);
+			$merged = array();
+
+			foreach ( $parts as $candidate ) {
+				if ( '' === trim( $candidate ) ) {
+					continue;
+				}
+				$duplicate = false;
+				foreach ( $merged as $index => $part ) {
+					if ( ! self::same_or_contained_description( $part, $candidate ) ) {
+						continue;
+					}
+					$duplicate = true;
+					if ( mb_strlen( self::description_text( $candidate ), 'UTF-8' ) > mb_strlen( self::description_text( $part ), 'UTF-8' ) ) {
+						$merged[ $index ] = $candidate;
+					}
+					break;
+				}
+				if ( ! $duplicate ) {
+					$merged[] = $candidate;
+				}
+			}
+
+			if ( $merged ) {
+				return wp_kses_post( implode( "\n", $merged ) );
 			}
 		}
 
 		if ( ! empty( $json['description'] ) ) {
-			return class_exists( 'MDO_Text' )
-				? MDO_Text::normalize_description( (string) $json['description'] )
-				: wp_kses_post( (string) $json['description'] );
+			return self::normalize_description_value( (string) $json['description'] );
 		}
 		foreach ( array(
 			"//*[@id='descripcion']", "//*[@id='description']",
@@ -410,7 +433,7 @@ final class MDO_Connector_Iberico_Family {
 		) as $query ) {
 			$html = self::xpath_html( $xpath, $query );
 			if ( $html ) {
-				return class_exists( 'MDO_Text' ) ? MDO_Text::normalize_description( $html ) : $html;
+				return self::normalize_description_value( $html );
 			}
 		}
 		return '';
@@ -421,26 +444,78 @@ final class MDO_Connector_Iberico_Family {
 			"//*[starts-with(@id,'product-description-short-')][1]",
 			"//*[@id='product-description-short'][1]",
 			"//*[contains(concat(' ', normalize-space(@class), ' '), ' product-description-short ')][1]",
-			"//*[contains(concat(' ', normalize-space(@class), ' '), ' product-description ')][1]",
-			"//*[@id='description'][1]",
 		);
 
 		foreach ( $queries as $query ) {
 			$html = self::xpath_html( $xpath, $query );
-			if ( '' === trim( $html ) ) {
+			if ( '' === trim( $html ) || mb_strlen( self::description_text( $html ), 'UTF-8' ) < 10 ) {
 				continue;
 			}
-
-			$text = html_entity_decode( wp_strip_all_tags( $html ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
-			$text = str_replace( array( "\xC2\xA0", "\u{00A0}" ), ' ', $text );
-			$text = trim( preg_replace( '/\s+/u', ' ', $text ) );
-			if ( mb_strlen( $text, 'UTF-8' ) < 10 ) {
-				continue;
-			}
-
-			return class_exists( 'MDO_Text' ) ? MDO_Text::normalize_description( $html ) : wp_kses_post( $html );
+			return self::normalize_description_value( $html );
 		}
 		return '';
+	}
+
+	private static function selectos_features( DOMXPath $xpath ): string {
+		$section = $xpath->query( "//*[contains(concat(' ', normalize-space(@class), ' '), ' product-features ')][1]" );
+		if ( ! $section || ! $section->length ) {
+			return '';
+		}
+		$root  = $section->item( 0 );
+		$items = array();
+
+		foreach ( $xpath->query( './/dt', $root ) ?: array() as $name_node ) {
+			$name = trim( preg_replace( '/\s+/u', ' ', (string) $name_node->textContent ) );
+			$value_node = $name_node->nextSibling;
+			while ( $value_node && XML_TEXT_NODE === $value_node->nodeType && '' === trim( (string) $value_node->textContent ) ) {
+				$value_node = $value_node->nextSibling;
+			}
+			if ( ! $value_node || 'dd' !== strtolower( (string) $value_node->nodeName ) ) {
+				continue;
+			}
+			$value = trim( preg_replace( '/\s+/u', ' ', (string) $value_node->textContent ) );
+			if ( '' !== $name && '' !== $value ) {
+				$items[] = '<li><strong>' . esc_html( $name ) . ':</strong> ' . esc_html( $value ) . '</li>';
+			}
+		}
+
+		if ( ! $items ) {
+			$names  = $xpath->query( ".//*[contains(concat(' ', normalize-space(@class), ' '), ' name ')]", $root );
+			$values = $xpath->query( ".//*[contains(concat(' ', normalize-space(@class), ' '), ' value ')]", $root );
+			$count  = min( $names ? $names->length : 0, $values ? $values->length : 0 );
+			for ( $i = 0; $i < $count; $i++ ) {
+				$name  = trim( preg_replace( '/\s+/u', ' ', (string) $names->item( $i )->textContent ) );
+				$value = trim( preg_replace( '/\s+/u', ' ', (string) $values->item( $i )->textContent ) );
+				if ( '' !== $name && '' !== $value ) {
+					$items[] = '<li><strong>' . esc_html( $name ) . ':</strong> ' . esc_html( $value ) . '</li>';
+				}
+			}
+		}
+
+		return $items ? '<p><strong>Características</strong></p><ul>' . implode( '', $items ) . '</ul>' : '';
+	}
+
+	private static function normalize_description_value( string $value ): string {
+		return class_exists( 'MDO_Text' )
+			? MDO_Text::normalize_description( $value )
+			: wp_kses_post( $value );
+	}
+
+	private static function description_text( string $value ): string {
+		$value = html_entity_decode( wp_strip_all_tags( $value ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+		$value = str_replace( array( "\xC2\xA0", "\u{00A0}" ), ' ', $value );
+		return trim( preg_replace( '/\s+/u', ' ', $value ) );
+	}
+
+	private static function same_or_contained_description( string $a, string $b ): bool {
+		$left  = self::description_text( $a );
+		$right = self::description_text( $b );
+		if ( '' === $left || '' === $right ) {
+			return false;
+		}
+		$left  = function_exists( 'mb_strtolower' ) ? mb_strtolower( $left, 'UTF-8' ) : strtolower( $left );
+		$right = function_exists( 'mb_strtolower' ) ? mb_strtolower( $right, 'UTF-8' ) : strtolower( $right );
+		return $left === $right || str_contains( $left, $right ) || str_contains( $right, $left );
 	}
 
 	private static function images( DOMXPath $xpath, array $json, string $base_url ): array {

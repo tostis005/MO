@@ -57,7 +57,7 @@ final class MDO_Rich_Description_Source {
 		 * parte de los bloques auxiliares. La descripción visible es la fuente de
 		 * verdad y no debe descartarse por una comparación de texto plano.
 		 */
-		$force_visible = in_array( $host, array( 'elcatedratico.com', 'puenterobles.com', 'tienda.selectosdecastilla.com', 'selectosdecastilla.com' ), true );
+		$force_visible = in_array( $host, array( 'elcatedratico.com', 'puenterobles.com' ), true );
 
 		$changed = false;
 		$scripts = $xpath->query( "//script[contains(translate(@type,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'ld+json')]" );

@@ -65,8 +65,13 @@ jobs:
           test -n "$PHP_BIN"
           test -n "$WP_BIN"
 
-          deployed_version="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -d memory_limit=768M '$WP_BIN' plugin get mdo-supplier-sync --field=version --path='$PROD_PATH' --allow-root")"
-          test "$deployed_version" = "1.0.52"
+          deployed_version=""
+          for i in $(seq 1 90); do
+            deployed_version="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -d memory_limit=768M '$WP_BIN' plugin get mdo-supplier-sync --field=version --path='$PROD_PATH' --allow-root" 2>/dev/null || true)"
+            [ "$deployed_version" = "1.0.53" ] && break
+            sleep 10
+          done
+          test "$deployed_version" = "1.0.53"
           echo "EMDO_VERSION=$deployed_version"
 
           cat > /tmp/selectos-resync.php <<'PHP'
