@@ -1,0 +1,153 @@
+name: Disable Facebook WooCommerce and benchmark 20261002
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/disable-facebook-woocommerce-and-benchmark-20261002.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  change:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Disable Meta plugin and benchmark production
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p $PORT"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          SITE="https://www.elmercadodeorigen.com"
+          PHP="/opt/plesk/php/8.2/bin/php"
+          WP="/usr/local/bin/wp"
+          PLUGIN="facebook-for-woocommerce"
+          COOKIE="/tmp/mdo-meta-bench-cookie.txt"
+          SHOP_HTML="/tmp/mdo-meta-bench-shop.html"
+          BEFORE="/tmp/mdo-meta-before.txt"
+          AFTER="/tmp/mdo-meta-after.txt"
+          : > "$BEFORE"
+          : > "$AFTER"
+
+          wp() { "$PHP" "$WP" --path="$ROOT" --allow-root "$@"; }
+
+          echo "=== INITIAL PLUGIN STATUS ==="
+          if wp plugin is-active "$PLUGIN"; then
+            echo "FACEBOOK_PLUGIN_INITIAL=active"
+          else
+            echo "FACEBOOK_PLUGIN_INITIAL=inactive"
+          fi
+          wp plugin get "$PLUGIN" --fields=name,status,version --format=json || true
+
+          simple_probe() {
+            phase="$1"
+            out="$2"
+            stamp="$(date +%s%N)"
+            for target in               "shop|$SITE/tienda/?mdo_meta_bench=$stamp"               "category|$SITE/categoria-producto/jamones-paletas/?mdo_meta_bench=$stamp"               "product|$SITE/producto/jamon-de-pato-ahumado-pieza/?mdo_meta_bench=$stamp"
+            do
+              label="${target%%|*}"
+              url="${target#*|}"
+              for pass in 1 2 3; do
+                curl -k -sS -L --max-time 35                   -A "MDO-Meta-Benchmark/$phase"                   -o /dev/null                   -w "$phase $label pass=$pass http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n"                   "$url&pass=$pass" | tee -a "$out" || true
+              done
+            done
+
+            for pass in 1 2 3; do
+              curl -k -sS --max-time 35                 -A "MDO-Meta-Benchmark/$phase"                 -o /dev/null                 -w "$phase ajax_baseline pass=$pass http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n"                 -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8'                 --data "action=mdo_nonexistent_meta_bench_$pass"                 "$SITE/wp-admin/admin-ajax.php" | tee -a "$out" || true
+            done
+          }
+
+          dynamic_probe() {
+            phase="$1"
+            out="$2"
+            stamp="$(date +%s%N)"
+            rm -f "$COOKIE" "$SHOP_HTML"
+            curl -k -sS -L --max-time 35 -c "$COOKIE" -b "$COOKIE"               -A "MDO-Meta-Dynamic/$phase"               -o "$SHOP_HTML"               "$SITE/tienda/?mdo_meta_dynamic=$stamp"
+            "$PHP" -r '
+              $h=file_get_contents($argv[1]);
+              preg_match("/const nonce = ([^;]+);/",$h,$m);
+              preg_match("/const orderedIds = (\\[[^\\]]+\\])/",$h,$i);
+              $nonce=json_decode(trim($m[1]??""),true);
+              $ids=json_decode(trim($i[1]??""),true);
+              if(!$nonce||!is_array($ids)||count($ids)<12){fwrite(STDERR,"dynamic parse failed\n");exit(8);}
+              file_put_contents("/tmp/mdo-meta-bench-nonce",$nonce);
+              file_put_contents("/tmp/mdo-meta-bench-ids",implode("\n",array_slice($ids,0,12)));
+            ' "$SHOP_HTML"
+            nonce="$(cat /tmp/mdo-meta-bench-nonce)"
+            mapfile -t ids < /tmp/mdo-meta-bench-ids
+            for pass in 1 2 3; do
+              data="action=elmercado_catalog_batch_010234&nonce=$nonce&scope=catalog"
+              for id in "${ids[@]}"; do data="$data&ids%5B%5D=$id"; done
+              curl -k -sS --max-time 35 -c "$COOKIE" -b "$COOKIE"                 -A "MDO-Meta-Dynamic/$phase"                 -o /dev/null                 -w "$phase dynamic12 pass=$pass http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n"                 -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8'                 --data "$data"                 "$SITE/wp-admin/admin-ajax.php" | tee -a "$out" || true
+            done
+          }
+
+          echo "=== BEFORE ==="
+          simple_probe before "$BEFORE"
+          dynamic_probe before "$BEFORE"
+
+          echo "=== DISABLING FACEBOOK FOR WOOCOMMERCE ==="
+          wp plugin deactivate "$PLUGIN"
+          wp cache flush || true
+          if wp plugin is-active "$PLUGIN"; then
+            echo "ERROR: Facebook plugin still active"
+            exit 20
+          fi
+          echo "FACEBOOK_PLUGIN_AFTER=inactive"
+          wp plugin get "$PLUGIN" --fields=name,status,version --format=json || true
+
+          sleep 3
+
+          echo "=== AFTER ==="
+          simple_probe after "$AFTER"
+          dynamic_probe after "$AFTER"
+
+          echo "=== MEDIAN COMPARISON ==="
+          python3 - "$BEFORE" "$AFTER" <<'PY'
+          import re,sys,statistics
+          def read(path):
+              out={}
+              rx=re.compile(r'^(before|after) (\S+) pass=\d+ http=(\d+) ttfb=([0-9.]+) total=([0-9.]+)')
+              for line in open(path,encoding='utf-8',errors='ignore'):
+                  m=rx.search(line)
+                  if not m: continue
+                  _,label,http,ttfb,total=m.groups()
+                  if http not in ('200','400'): continue
+                  out.setdefault(label,[]).append((float(ttfb),float(total)))
+              return out
+          b=read(sys.argv[1]); a=read(sys.argv[2])
+          for label in sorted(set(b)|set(a)):
+              bv=b.get(label,[]); av=a.get(label,[])
+              if not bv or not av: continue
+              btt=statistics.median(x[0] for x in bv); att=statistics.median(x[0] for x in av)
+              btot=statistics.median(x[1] for x in bv); atot=statistics.median(x[1] for x in av)
+              pct=((atot-btot)/btot*100) if btot else 0
+              print(f"{label}: before_total={btot:.3f}s after_total={atot:.3f}s delta={atot-btot:+.3f}s ({pct:+.1f}%) before_ttfb={btt:.3f}s after_ttfb={att:.3f}s")
+          PY
+
+          echo "=== BASIC QA WITH PLUGIN DISABLED ==="
+          for url in             "$SITE/"             "$SITE/tienda/"             "$SITE/producto/jamon-de-pato-ahumado-pieza/"             "$SITE/carrito/"             "$SITE/finalizar-compra/"
+          do
+            code="$(curl -k -sS -L --max-time 30 -o /dev/null -w '%{http_code}' -A 'MDO-Meta-QA/1.0' "$url" || true)"
+            echo "$code $url"
+            case "$code" in 200|301|302) ;; *) echo "QA_FAILED $url"; exit 30;; esac
+          done
+
+          echo "META_PLUGIN_DISABLED_AND_QA_OK"
+          rm -f "$COOKIE" "$SHOP_HTML" /tmp/mdo-meta-bench-nonce /tmp/mdo-meta-bench-ids
+          REMOTE
