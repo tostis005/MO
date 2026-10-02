@@ -1,0 +1,140 @@
+name: Diagnose product page slowness v2 20261002
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-product-page-slowness-v2-20261002.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Diagnose live production
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p $PORT"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          LOG="/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log"
+          ERR="/var/www/vhosts/system/elmercadodeorigen.com/logs/error_log"
+          SLOW="/var/www/vhosts/system/elmercadodeorigen.com/logs/php-fpm_slow.log"
+          PHP="/opt/plesk/php/8.2/bin/php"
+          WP="/usr/local/bin/wp"
+          PHP_ARGS="-d memory_limit=768M"
+          SITE=$("$PHP" $PHP_ARGS "$WP" option get siteurl --path="$ROOT" --allow-root)
+
+          echo "=== SYSTEM ==="
+          date -Is
+          uptime
+          free -m
+          echo "--- top cpu"
+          ps -eo pid,user,stat,etimes,%cpu,%mem,rss,args --sort=-%cpu | head -n 25 || true
+
+          echo "=== PHP-FPM POOL ==="
+          grep -RHE '^(pm|max_execution_time|request_slowlog_timeout|slowlog|pm\.max_children|pm\.start_servers|pm\.min_spare_servers|pm\.max_spare_servers)'             /opt/plesk/php/8.2/etc/php-fpm.d /var/www/vhosts/system/elmercadodeorigen.com/conf 2>/dev/null | head -n 80 || true
+          echo "--- workers"
+          ps -eo pid,user,stat,etimes,%cpu,%mem,rss,args --sort=-%cpu | grep -E 'php-fpm: pool elmercadodeorigen.com' | head -n 30 || true
+
+          echo "=== CACHE / PLUGINS ==="
+          "$PHP" $PHP_ARGS "$WP" option get active_plugins --format=json --path="$ROOT" --allow-root |             "$PHP" -r '$a=json_decode(stream_get_contents(STDIN),true); foreach((array)$a as $p){if(preg_match("/(cache|rocket|redis|object|woocommerce|wcfm|elementor|yith|query|seo)/i",$p)) echo $p,"\n";}' || true
+          ls -lh "$ROOT/wp-content/advanced-cache.php" "$ROOT/wp-content/object-cache.php" 2>/dev/null || true
+          grep -nE 'WP_CACHE|DISABLE_WP_CRON|WP_MEMORY_LIMIT|WP_MAX_MEMORY_LIMIT' "$ROOT/wp-config.php" 2>/dev/null || true
+
+          echo "=== SAMPLE URLS ==="
+          PRODUCT_IDS=$("$PHP" $PHP_ARGS "$WP" post list --post_type=product --post_status=publish --posts_per_page=8 --orderby=modified --order=DESC --format=ids --path="$ROOT" --allow-root | tr ' ' '\n' | head -n 8)
+          SELECTOS_ID=$("$PHP" $PHP_ARGS "$WP" post list --post_type=product --post_status=publish --s='jamón de pato ahumado pieza' --posts_per_page=1 --format=ids --path="$ROOT" --allow-root | awk '{print $1}')
+          URLS="/|$SITE/
+          shop|$SITE/tienda/"
+          if [ -n "$SELECTOS_ID" ]; then
+            U=$("$PHP" $PHP_ARGS "$WP" post url "$SELECTOS_ID" --path="$ROOT" --allow-root)
+            URLS="$URLS
+          selectos|$U"
+          fi
+          i=0
+          for id in $PRODUCT_IDS; do
+            i=$((i+1))
+            U=$("$PHP" $PHP_ARGS "$WP" post url "$id" --path="$ROOT" --allow-root)
+            URLS="$URLS
+          product$i|$U"
+          done
+          printf '%s\n' "$URLS"
+
+          echo "=== TIMINGS 3 PASSES ==="
+          printf '%s\n' "$URLS" | while IFS='|' read -r label url; do
+            [ -n "$label" ] || continue
+            [ -n "$url" ] || continue
+            echo "--- $label $url"
+            for pass in 1 2 3; do
+              curl -k -sS -L --max-time 45 -A 'MDO-Product-Perf-Diag/1.0'                 -D "/tmp/mdo-perf-h-$label-$pass" -o /dev/null                 -w "pass=$pass http=%{http_code} dns=%{time_namelookup} connect=%{time_connect} tls=%{time_appconnect} ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download} redirects=%{num_redirects}\n"                 "$url" || true
+              grep -Ei '^(HTTP/|cache-control:|age:|x-cache|x-el-mercado|server-timing:|x-rocket|cf-cache-status:)' "/tmp/mdo-perf-h-$label-$pass" | tr '\n' ' '; echo
+            done
+          done
+
+          echo "=== DIRECT ORIGIN TIMINGS ==="
+          printf '%s\n' "$URLS" | while IFS='|' read -r label url; do
+            [ -n "$label" ] || continue
+            [ -n "$url" ] || continue
+            path=$("$PHP" -r '$u=parse_url($argv[1]); echo ($u["path"] ?? "/").(isset($u["query"])?"?".$u["query"]:"");' "$url")
+            echo "--- origin $label $path"
+            for pass in 1 2; do
+              curl -k -sS --max-time 45                 -H 'Host: www.elmercadodeorigen.com'                 -A 'MDO-Product-Origin-Diag/1.0'                 -o /dev/null                 -w "pass=$pass http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n"                 "https://127.0.0.1$path" || true
+            done
+          done
+
+          echo "=== RECENT REQUEST DISTRIBUTION 10M ==="
+          python3 - "$LOG" <<'PY'
+          import sys,re,os
+          from datetime import datetime,timezone,timedelta
+          from collections import Counter
+          from urllib.parse import urlsplit
+          p=sys.argv[1]; cut=datetime.now(timezone.utc)-timedelta(minutes=10)
+          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+')
+          total=0; status=Counter(); paths=Counter(); ips=Counter(); product=0; wpcron=0; ajax=0; xmlrpc=0
+          if os.path.isfile(p):
+            for line in open(p,encoding='utf-8',errors='ignore'):
+              m=rx.match(line)
+              if not m: continue
+              ip,ds,method,target,code=m.groups()
+              try: dt=datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(timezone.utc)
+              except: continue
+              if dt<cut: continue
+              try: path=urlsplit(target).path or '/'
+              except: path=target.split('?',1)[0] or '/'
+              total+=1; status[code]+=1; paths[path]+=1; ips[ip]+=1
+              if '/producto/' in path or '/product/' in path: product+=1
+              if path=='/wp-cron.php': wpcron+=1
+              if path=='/wp-admin/admin-ajax.php': ajax+=1
+              if path=='/xmlrpc.php': xmlrpc+=1
+          print('total',total,'status',dict(status),'product_requests',product,'wpcron',wpcron,'ajax',ajax,'xmlrpc',xmlrpc)
+          print('top_paths',paths.most_common(20))
+          print('top_ips',ips.most_common(12))
+          PY
+
+          echo "=== RECENT SLOWLOG ==="
+          if [ -s "$SLOW" ]; then
+            tail -n 220 "$SLOW" | sed -E 's#^(.{0,360}).*#\1#'
+          else
+            echo "slowlog_empty_or_missing"
+          fi
+
+          echo "=== RECENT SEVERE ERRORS ==="
+          tail -n 1500 "$ERR" 2>/dev/null | grep -Ei 'PHP Fatal|Allowed memory|upstream timed out|max children|504|503|502|slow|timeout' | tail -n 100 || true
+          REMOTE
