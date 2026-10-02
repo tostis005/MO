@@ -1,0 +1,45 @@
+name: Admin nav single Selectos 20261002
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/admin-nav-single-selectos-20261002.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          PHP="/opt/plesk/php/8.2/bin/php"; WP="/usr/local/bin/wp"
+          cat > /tmp/admin-one.php <<'PHP'
+          <?php
+          global $wpdb,$post;
+          $admins=get_users(array('role'=>'administrator','number'=>1,'fields'=>'ID'));
+          wp_set_current_user((int)$admins[0]);
+          echo 'can_view_disabled='.(function_exists('elmercado_wcfm_disabled_visibility_can_view_010210')&&elmercado_wcfm_disabled_visibility_can_view_010210()?'1':'0')."\n";
+          $p=get_page_by_path('foie-gras-de-pato-extra-desvenado',OBJECT,'product');
+          $post=$p; setup_postdata($post);
+          foreach(array('prev'=>'woostify_get_prev_product','next'=>'woostify_get_next_product') as $label=>$fn){
+            $q=$wpdb->num_queries;$t=microtime(true);$x=$fn();$dt=microtime(true)-$t;
+            echo $label,' id=',($x?$x->get_id():0),' sec=',round($dt,3),' queries=',($wpdb->num_queries-$q),"\n";
+          }
+          PHP
+          timeout 35s "$PHP" -d memory_limit=1024M "$WP" eval-file /tmp/admin-one.php --path="$ROOT" --allow-root || echo ADMIN_PROFILE_TIMED_OUT
+          REMOTE
