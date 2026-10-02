@@ -106,7 +106,7 @@ jobs:
               -D "$h" -o /dev/null \
               -w "%{http_code}\\t%{time_starttransfer}\\t%{time_total}" "$url" 2>/dev/null || true)
             [ -n "$out" ] || out="000\\t8\\t8"
-            cache=$(awk -F": " "tolower(\\$1)==\\\"x-el-mercado-product-early-cache\\\"{gsub(/\\\\r/,\\\"\\\",\\$2); print \\$2}" "$h" | tail -n1)
+            cache=$(grep -i '^x-el-mercado-product-early-cache:' "$h" | tail -n1 | cut -d ':' -f2- | tr -d '\r' | xargs)
             printf "%s\\t%s\\t%s\\n" "$pid" "$out" "$cache" > "/tmp/selectos-cache-hit/$pid.tsv"
           ' _
 
@@ -115,7 +115,7 @@ jobs:
           rows=[]
           for p in glob.glob('/tmp/selectos-cache-hit/*.tsv'):
               with open(p,encoding='utf-8',errors='replace') as f:
-                  r=next(csv.reader(f,delimiter='\\t'))
+                  r=next(csv.reader(f,delimiter='\t'))
               if len(r)<5: continue
               pid,code,ttfb,total,cache=r[:5]
               rows.append((float(total),float(ttfb),code,pid,cache))
@@ -137,7 +137,7 @@ jobs:
           key=$(printf '%s' "$path" | sha256sum | awk '{print $1}')
           file="$CACHE_DIR/$key.html"
           test -s "$file"
-          touch -d '4 minutes ago' "$file"
+          touch -d '30 minutes ago' "$file"
           rm -f /tmp/herd-*.h /tmp/herd-*.txt
           seq 1 6 | xargs -P6 -I{} bash -c '
             curl -k -sS -L --max-time 20 -A "MDO-Product-Herd-Verify/1.0"               -D "/tmp/herd-{}.h" -o /dev/null               -w "{}\t%{http_code}\t%{time_starttransfer}\t%{time_total}\n"               "https://www.elmercadodeorigen.com/producto/foie-gras-de-pato-extra-desvenado/"               > "/tmp/herd-{}.txt" || true
