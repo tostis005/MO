@@ -1,0 +1,175 @@
+name: Resync Selectos full product information 20261002
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/resync-selectos-full-product-info-20261002.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: resync-selectos-full-product-info-20261002
+  cancel-in-progress: false
+
+jobs:
+  resync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resync Selectos and verify product information
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] && [ -n "$php_bin" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s|%s|%s" "$p" "$php_bin" "$wp_bin"
+                  break
+                  ;;
+              esac
+            done
+          ')"
+          PROD_PATH="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP_BIN="${REST%%|*}"
+          WP_BIN="${REST#*|}"
+          test -n "$PROD_PATH"
+          test -n "$PHP_BIN"
+          test -n "$WP_BIN"
+
+          deployed_version="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' '$WP_BIN' plugin get mdo-supplier-sync --field=version --path='$PROD_PATH' --allow-root")"
+          test "$deployed_version" = "1.0.52"
+          echo "EMDO_VERSION=$deployed_version"
+
+          cat > /tmp/selectos-resync.php <<'PHP'
+          <?php
+          global $wpdb;
+          $table = MDO_Database::table( 'suppliers' );
+          $supplier_id = (int) $wpdb->get_var(
+              "SELECT id FROM {$table} WHERE connector = 'selectos-de-castilla' AND active = 1 ORDER BY id ASC LIMIT 1"
+          );
+          if ( $supplier_id <= 0 ) {
+              throw new RuntimeException( 'No se encontró proveedor activo Selectos de Castilla.' );
+          }
+          MDO_Scheduler::queue_manual( $supplier_id );
+          echo "SUPPLIER_ID={$supplier_id}\n";
+          PHP
+
+          REMOTE_RESYNC="/tmp/selectos-resync-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP /tmp/selectos-resync.php "$STAGING_USER@$STAGING_HOST:$REMOTE_RESYNC"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -d memory_limit=768M '$WP_BIN' eval-file '$REMOTE_RESYNC' --path='$PROD_PATH' --allow-root"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            '$PHP_BIN' -d memory_limit=1536M '$WP_BIN' action-scheduler run \
+              --group=mdo-supplier-sync \
+              --batch-size=20 \
+              --batches=0 \
+              --force \
+              --path='$PROD_PATH' \
+              --allow-root
+          "
+
+          cat > /tmp/selectos-verify.php <<'PHP'
+          <?php
+          global $wpdb;
+          $suppliers = MDO_Database::table( 'suppliers' );
+          $products  = MDO_Database::table( 'source_products' );
+          $supplier_id = (int) $wpdb->get_var(
+              "SELECT id FROM {$suppliers} WHERE connector = 'selectos-de-castilla' AND active = 1 ORDER BY id ASC LIMIT 1"
+          );
+          if ( $supplier_id <= 0 ) {
+              throw new RuntimeException( 'No se encontró proveedor activo Selectos de Castilla.' );
+          }
+
+          $row = $wpdb->get_row(
+              $wpdb->prepare(
+                  "SELECT id,title,source_url,source_payload,wc_product_id,status,last_seen_at FROM {$products}
+                   WHERE supplier_id = %d AND title LIKE %s
+                   ORDER BY id DESC LIMIT 1",
+                  $supplier_id,
+                  '%Jamón de Pato Ahumado%'
+              ),
+              ARRAY_A
+          );
+          if ( ! $row ) {
+              throw new RuntimeException( 'No se encontró Jamón de Pato Ahumado en productos origen.' );
+          }
+
+          $payload = json_decode( (string) $row['source_payload'], true );
+          $source_description = is_array( $payload ) ? (string) ( $payload['description'] ?? '' ) : '';
+          $woo_description = ! empty( $row['wc_product_id'] )
+              ? (string) get_post_field( 'post_content', (int) $row['wc_product_id'], 'raw' )
+              : '';
+
+          $normalize = static function ( string $value ): string {
+              $value = wp_strip_all_tags( html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+              $value = remove_accents( $value );
+              $value = function_exists( 'mb_strtolower' ) ? mb_strtolower( $value, 'UTF-8' ) : strtolower( $value );
+              return trim( preg_replace( '/\s+/u', ' ', $value ) );
+          };
+          $source_text = $normalize( $source_description );
+          $woo_text    = $normalize( $woo_description );
+          $needles = array( 'ingredientes', 'conservacion', 'caducidad', 'presentacion' );
+
+          $source_ok = true;
+          $woo_ok = true;
+          foreach ( $needles as $needle ) {
+              $source_ok = $source_ok && false !== strpos( $source_text, $needle );
+              $woo_ok = $woo_ok && false !== strpos( $woo_text, $needle );
+          }
+
+          $result = array(
+              'supplier_id' => $supplier_id,
+              'source_product_id' => (int) $row['id'],
+              'wc_product_id' => (int) $row['wc_product_id'],
+              'title' => (string) $row['title'],
+              'status' => (string) $row['status'],
+              'source_url' => (string) $row['source_url'],
+              'last_seen_at' => (string) $row['last_seen_at'],
+              'source_has_complete_info' => $source_ok,
+              'woo_has_complete_info' => $woo_ok,
+              'source_description' => $source_text,
+              'woo_description' => $woo_text,
+          );
+          echo wp_json_encode( $result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT ) . "\n";
+
+          if ( ! $source_ok || ! $woo_ok || 'active' !== (string) $row['status'] || empty( $row['wc_product_id'] ) ) {
+              throw new RuntimeException( 'La ficha de prueba aún no contiene toda la información en origen y WooCommerce.' );
+          }
+          PHP
+
+          REMOTE_VERIFY="/tmp/selectos-verify-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP /tmp/selectos-verify.php "$STAGING_USER@$STAGING_HOST:$REMOTE_VERIFY"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -d memory_limit=768M '$WP_BIN' eval-file '$REMOTE_VERIFY' --path='$PROD_PATH' --allow-root"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$REMOTE_RESYNC' '$REMOTE_VERIFY'"
+          echo SELECTOS_FULL_PRODUCT_INFO_OK
