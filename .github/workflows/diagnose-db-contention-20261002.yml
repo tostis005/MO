@@ -1,0 +1,54 @@
+name: Diagnose DB contention 20261002
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-db-contention-20261002.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          PHP="/opt/plesk/php/8.2/bin/php"; WP="/usr/local/bin/wp"
+          echo "=== LOAD ==="; uptime; free -m
+          echo "=== PHP WORKERS ==="
+          ps -eo pid,user,stat,etimes,%cpu,%mem,rss,args --sort=-%cpu | grep -E 'php-fpm: pool elmercadodeorigen.com|mysqld' | head -n 30 || true
+          echo "=== DB PROCESSLIST AGG ==="
+          "$PHP" "$WP" db query "
+            SELECT COMMAND,COALESCE(STATE,'') state,COUNT(*) n,MAX(TIME) max_s
+            FROM information_schema.PROCESSLIST
+            WHERE DB=DATABASE()
+            GROUP BY COMMAND,STATE
+            ORDER BY max_s DESC,n DESC;
+          " --path="$ROOT" --skip-plugins --skip-themes --allow-root || true
+          echo "=== LONG DB QUERIES ==="
+          "$PHP" "$WP" db query "
+            SELECT ID,COMMAND,TIME,COALESCE(STATE,'') state,
+                   LEFT(REPLACE(REPLACE(COALESCE(INFO,''),CHAR(10),' '),CHAR(13),' '),240) info
+            FROM information_schema.PROCESSLIST
+            WHERE DB=DATABASE() AND COMMAND<>'Sleep'
+            ORDER BY TIME DESC LIMIT 25;
+          " --path="$ROOT" --skip-plugins --skip-themes --allow-root || true
+          echo "=== TABLE STATUS PROBLEM TABLES ==="
+          "$PHP" "$WP" db query "
+            SHOW TABLE STATUS LIKE 'wp_trp_original_strings';
+          " --path="$ROOT" --skip-plugins --skip-themes --allow-root || true
+          REMOTE
