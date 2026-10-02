@@ -65,7 +65,7 @@ jobs:
           test -n "$PHP_BIN"
           test -n "$WP_BIN"
 
-          deployed_version="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' '$WP_BIN' plugin get mdo-supplier-sync --field=version --path='$PROD_PATH' --allow-root")"
+          deployed_version="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -d memory_limit=768M '$WP_BIN' plugin get mdo-supplier-sync --field=version --path='$PROD_PATH' --allow-root")"
           test "$deployed_version" = "1.0.52"
           echo "EMDO_VERSION=$deployed_version"
 
