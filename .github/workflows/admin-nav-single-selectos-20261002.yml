@@ -31,15 +31,24 @@ jobs:
           cat > /tmp/admin-one.php <<'PHP'
           <?php
           global $wpdb,$post;
-          $admins=get_users(array('role'=>'administrator','number'=>1,'fields'=>'ID'));
-          wp_set_current_user((int)$admins[0]);
-          echo 'can_view_disabled='.(function_exists('elmercado_wcfm_disabled_visibility_can_view_010210')&&elmercado_wcfm_disabled_visibility_can_view_010210()?'1':'0')."\n";
+          echo "BOOTED\n"; if(defined('STDOUT')) fflush(STDOUT);
           $p=get_page_by_path('foie-gras-de-pato-extra-desvenado',OBJECT,'product');
           $post=$p; setup_postdata($post);
-          foreach(array('prev'=>'woostify_get_prev_product','next'=>'woostify_get_next_product') as $label=>$fn){
-            $q=$wpdb->num_queries;$t=microtime(true);$x=$fn();$dt=microtime(true)-$t;
-            echo $label,' id=',($x?$x->get_id():0),' sec=',round($dt,3),' queries=',($wpdb->num_queries-$q),"\n";
-          }
+
+          wp_set_current_user(0);
+          echo "ANON_START\n"; if(defined('STDOUT')) fflush(STDOUT);
+          $q=$wpdb->num_queries;$t=microtime(true);$x=woostify_get_prev_product();
+          echo 'ANON_PREV id=',($x?$x->get_id():0),' sec=',round(microtime(true)-$t,3),' queries=',($wpdb->num_queries-$q),"\n"; if(defined('STDOUT')) fflush(STDOUT);
+          $q=$wpdb->num_queries;$t=microtime(true);$x=woostify_get_next_product();
+          echo 'ANON_NEXT id=',($x?$x->get_id():0),' sec=',round(microtime(true)-$t,3),' queries=',($wpdb->num_queries-$q),"\n"; if(defined('STDOUT')) fflush(STDOUT);
+
+          $admins=get_users(array('role'=>'administrator','number'=>1,'fields'=>'ID'));
+          wp_set_current_user((int)$admins[0]);
+          echo 'ADMIN_START can_view_disabled='.(function_exists('elmercado_wcfm_disabled_visibility_can_view_010210')&&elmercado_wcfm_disabled_visibility_can_view_010210()?'1':'0')."\n"; if(defined('STDOUT')) fflush(STDOUT);
+          $q=$wpdb->num_queries;$t=microtime(true);$x=woostify_get_prev_product();
+          echo 'ADMIN_PREV id=',($x?$x->get_id():0),' sec=',round(microtime(true)-$t,3),' queries=',($wpdb->num_queries-$q),"\n"; if(defined('STDOUT')) fflush(STDOUT);
+          $q=$wpdb->num_queries;$t=microtime(true);$x=woostify_get_next_product();
+          echo 'ADMIN_NEXT id=',($x?$x->get_id():0),' sec=',round(microtime(true)-$t,3),' queries=',($wpdb->num_queries-$q),"\n"; if(defined('STDOUT')) fflush(STDOUT);
           PHP
-          timeout 35s "$PHP" -d memory_limit=1024M "$WP" eval-file /tmp/admin-one.php --path="$ROOT" --allow-root || echo ADMIN_PROFILE_TIMED_OUT
+          timeout 50s "$PHP" -d memory_limit=1024M "$WP" eval-file /tmp/admin-one.php --path="$ROOT" --allow-root || echo ADMIN_PROFILE_TIMED_OUT
           REMOTE
