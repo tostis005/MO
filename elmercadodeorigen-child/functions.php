@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.314' );
-/* 0.10.314 recoloca las recomendaciones del carrito bajo los productos. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.315' );
+/* 0.10.315 reduce el tamaño de las recomendaciones del carrito en escritorio. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
 	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsense' ); // Adsterra queda conservado pero inactivo.
 }
