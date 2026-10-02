@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'elmercadodeorigen-child/dropins/advanced-cache.php'
+      - 'mu-plugins/mdo-product-cache-invalidator-20261002.php'
       - '.github/workflows/deploy-product-page-cache-20261002.yml'
   workflow_dispatch:
 
@@ -28,8 +29,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate cache drop-in
-        run: php -l elmercadodeorigen-child/dropins/advanced-cache.php
+      - name: Validate cache files
+        run: |
+          php -l elmercadodeorigen-child/dropins/advanced-cache.php
+          php -l mu-plugins/mdo-product-cache-invalidator-20261002.php
 
       - name: Install sshpass
         run: |
@@ -41,7 +44,12 @@ jobs:
           set -Eeuo pipefail
           PORT="${STAGING_PORT:-22}"
           scp_opts="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
-          sshpass -e scp $scp_opts             elmercadodeorigen-child/dropins/advanced-cache.php             "$STAGING_USER@$STAGING_HOST:/tmp/emdo-product-cache-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $scp_opts \
+            elmercadodeorigen-child/dropins/advanced-cache.php \
+            "$STAGING_USER@$STAGING_HOST:/tmp/emdo-product-cache-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $scp_opts \
+            mu-plugins/mdo-product-cache-invalidator-20261002.php \
+            "$STAGING_USER@$STAGING_HOST:/tmp/emdo-product-cache-invalidator-${GITHUB_RUN_ID}.php"
 
       - name: Install, warm and verify
         run: |
@@ -56,18 +64,25 @@ jobs:
           WP="/usr/local/bin/wp"
           DROPIN="$ROOT/wp-content/advanced-cache.php"
           UPLOAD="/tmp/emdo-product-cache-$RUN_ID.php"
+          INVALIDATOR_UPLOAD="/tmp/emdo-product-cache-invalidator-$RUN_ID.php"
+          INVALIDATOR="$ROOT/wp-content/mu-plugins/mdo-product-cache-invalidator-20261002.php"
           CACHE_DIR="$ROOT/wp-content/uploads/elmercado-product-static-v1"
           STAMP=$(date -u +%Y%m%dT%H%M%SZ)
           BACKUP="/root/emdo-product-cache-$STAMP.php"
 
           echo "=== INSTALL ==="
           test -f "$UPLOAD"
+          test -f "$INVALIDATOR_UPLOAD"
           "$PHP" -l "$UPLOAD"
+          "$PHP" -l "$INVALIDATOR_UPLOAD"
           cp -a "$DROPIN" "$BACKUP"
           install -m 0644 -o root -g root "$UPLOAD" "$DROPIN"
-          rm -f "$UPLOAD"
+          install -m 0644 -o root -g root "$INVALIDATOR_UPLOAD" "$INVALIDATOR"
+          rm -f "$UPLOAD" "$INVALIDATOR_UPLOAD"
           "$PHP" -l "$DROPIN"
+          "$PHP" -l "$INVALIDATOR"
           grep -n "X-El-Mercado-Product-Early-Cache" "$DROPIN"
+          grep -n "purge_product_20261002" "$INVALIDATOR"
           echo "backup=$BACKUP"
 
           mkdir -p "$CACHE_DIR"
