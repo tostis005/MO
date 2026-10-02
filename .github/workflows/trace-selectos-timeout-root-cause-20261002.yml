@@ -1,0 +1,83 @@
+name: Trace Selectos timeout root cause 20261002
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/trace-selectos-timeout-root-cause-20261002.yml'
+permissions:
+  contents: read
+jobs:
+  trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          PHP="/opt/plesk/php/8.2/bin/php"
+          WP="/usr/local/bin/wp"
+          SLOW="/var/www/vhosts/system/elmercadodeorigen.com/logs/php-fpm_slow.log"
+
+          echo "=== MDO ACTION SCHEDULER ==="
+          "$PHP" -d memory_limit=768M "$WP" action-scheduler list --hook=mdo_supplier_sync_scrape_product --status=pending --format=count --path="$ROOT" --allow-root 2>/dev/null || true
+          "$PHP" -d memory_limit=768M "$WP" action-scheduler list --hook=mdo_supplier_sync_scrape_product --status=in-progress --format=count --path="$ROOT" --allow-root 2>/dev/null || true
+          "$PHP" -d memory_limit=768M "$WP" action-scheduler list --hook=mdo_supplier_sync_scrape_product --status=failed --format=count --path="$ROOT" --allow-root 2>/dev/null || true
+
+          echo "=== SOURCE TABLE ENGINE / INDEX ==="
+          cat > /tmp/mdo-db-info.php <<'PHP'
+          <?php
+          global $wpdb;
+          $t=MDO_Database::table('source_products');
+          $st=$wpdb->get_row($wpdb->prepare("SHOW TABLE STATUS LIKE %s",$t),ARRAY_A);
+          echo wp_json_encode(array_intersect_key((array)$st,array_flip(array('Name','Engine','Rows','Data_length','Index_length','Data_free'))))."\n";
+          foreach((array)$wpdb->get_results("SHOW INDEX FROM {$t}",ARRAY_A) as $r){
+            echo wp_json_encode(array_intersect_key($r,array_flip(array('Key_name','Column_name','Seq_in_index','Non_unique','Cardinality'))))."\n";
+          }
+          $ids=array(334,350,383,399,403,404);
+          foreach($ids as $id){
+            $n=30;$sum=0;$max=0;
+            for($i=0;$i<$n;$i++){
+              $s=microtime(true);
+              $wpdb->get_var($wpdb->prepare("SELECT source_payload FROM {$t} WHERE id=%d LIMIT 1",$id));
+              $ms=(microtime(true)-$s)*1000;$sum+=$ms;$max=max($max,$ms);
+            }
+            echo "lookup\t{$id}\tavg_ms=".round($sum/$n,3)."\tmax_ms=".round($max,3)."\n";
+          }
+          PHP
+          "$PHP" -d memory_limit=768M "$WP" eval-file /tmp/mdo-db-info.php --path="$ROOT" --allow-root
+
+          echo "=== SERIAL REQUESTS + SLOWLOG DELTAS ==="
+          urls=(
+            "https://www.elmercadodeorigen.com/producto/foie-gras-de-pato-extra-desvenado/"
+            "https://www.elmercadodeorigen.com/producto/pie-de-pates-6-uds/"
+            "https://www.elmercadodeorigen.com/producto/carcasa-de-pato/"
+            "https://www.elmercadodeorigen.com/producto/jamon-de-pato-ahumado-pieza/"
+          )
+          for url in "${urls[@]}"; do
+            slug=$(basename "${url%/}")
+            before=$(wc -l < "$SLOW" 2>/dev/null || echo 0)
+            echo "--- REQUEST $slug before_lines=$before"
+            ( sleep 3; echo "PROCESSLIST_DURING $slug"; "$PHP" -d memory_limit=256M "$WP" db query "SHOW FULL PROCESSLIST" --path="$ROOT" --allow-root 2>/dev/null | head -n 30 || true ) &
+            bg=$!
+            curl -k -sS -L --max-time 35 -A "MDO-Selectos-RootTrace-$slug" -o /dev/null               -w "RESULT slug=$slug http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n" "$url" || true
+            wait $bg || true
+            after=$(wc -l < "$SLOW" 2>/dev/null || echo 0)
+            echo "SLOWLOG_DELTA $slug lines=$((after-before))"
+            if [ "$after" -gt "$before" ]; then
+              sed -n "$((before+1)),${after}p" "$SLOW" | tail -n 120 | sed -E 's#^(.{0,420}).*#\1#'
+            fi
+          done
+          REMOTE
