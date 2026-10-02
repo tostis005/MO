@@ -8,9 +8,9 @@
  * - only files previously generated and validated by the blog theme runtime;
  * - five minute TTL.
  *
- * Shop, product, cart, checkout, account, REST, admin and untranslated routes
- * are never inferred here. If no validated static file exists, WordPress runs
- * normally.
+ * Product routes have a dedicated anonymous cache with strict state gates.
+ * Cart, checkout, account, REST and admin requests are never inferred here. If
+ * no validated static file exists, WordPress runs normally.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -190,6 +190,122 @@ if ( isset( $hot_cache_paths[ $path ] ) ) {
 	);
 
 	// The lock holder refreshes the cache. Concurrent requests receive stale HTML.
+	return;
+}
+
+
+/**
+ * Anonymous product-page cache.
+ *
+ * Product pages are one of the most expensive uncached WooCommerce requests on
+ * this site. A burst across many products can exhaust the 20 PHP-FPM workers,
+ * which makes an otherwise healthy product intermittently take 10-60 seconds or
+ * return 504. Cache only canonical public product routes and keep every stateful
+ * request on the normal WordPress/WooCommerce path.
+ *
+ * Safety gates already applied above:
+ * - GET only;
+ * - no query string;
+ * - no unknown cookies (therefore no login, cart or WooCommerce session);
+ * - production hosts only.
+ *
+ * Fresh HTML lives for 3 minutes. A complete stale copy may be served for at
+ * most 10 minutes while one request refreshes it, preventing cache stampedes.
+ */
+$is_product_path = 1 === preg_match( '#^/(?:producto|en/product)/[^/]+/$#i', $path );
+
+if ( $is_product_path ) {
+	$product_cache_dir   = __DIR__ . '/uploads/elmercado-product-static-v1';
+	$product_cache_file  = $product_cache_dir . '/' . hash( 'sha256', $path ) . '.html';
+	$product_lock_file   = $product_cache_file . '.lock';
+	$product_ttl         = 180;
+	$product_stale_ttl   = 600;
+	$product_age         = null;
+	$product_valid       = false;
+
+	if (
+		is_readable( $product_cache_file ) &&
+		(int) @filesize( $product_cache_file ) > 50000
+	) {
+		$product_mtime = @filemtime( $product_cache_file );
+		if ( false !== $product_mtime ) {
+			$product_age   = max( 0, time() - (int) $product_mtime );
+			$product_valid = true;
+		}
+	}
+
+	$serve_product_cache = static function ( string $status ) use ( $product_cache_file ): void {
+		if ( ! headers_sent() ) {
+			header( 'Content-Type: text/html; charset=UTF-8' );
+			header( 'Cache-Control: private, no-store, max-age=0' );
+			header( 'Vary: Cookie', false );
+			header( 'X-El-Mercado-Product-Early-Cache: ' . $status );
+		}
+		readfile( $product_cache_file );
+		exit;
+	};
+
+	if ( $product_valid && null !== $product_age && $product_age < $product_ttl ) {
+		$serve_product_cache( 'HIT' );
+	}
+
+	if ( ! is_dir( $product_cache_dir ) ) {
+		@mkdir( $product_cache_dir, 0755, true );
+	}
+
+	$product_lock_handle = is_dir( $product_cache_dir ) ? @fopen( $product_lock_file, 'c' ) : false;
+	$product_have_lock   = $product_lock_handle && @flock( $product_lock_handle, LOCK_EX | LOCK_NB );
+
+	if ( ! $product_have_lock && $product_valid && null !== $product_age && $product_age < $product_stale_ttl ) {
+		if ( is_resource( $product_lock_handle ) ) {
+			@fclose( $product_lock_handle );
+		}
+		$serve_product_cache( 'STALE' );
+	}
+
+	if ( ! headers_sent() ) {
+		header( 'X-El-Mercado-Product-Early-Cache: ' . ( $product_have_lock ? 'REVALIDATE' : 'MISS' ) );
+	}
+
+	ob_start(
+		static function ( $html ) use ( $product_cache_dir, $product_cache_file, $product_lock_handle, $product_have_lock ) {
+			$status = http_response_code();
+			$status = false === $status ? 200 : (int) $status;
+
+			$looks_like_product = is_string( $html ) && 1 === preg_match(
+				'/<body\\b[^>]*class=(["\\\'])[^"\\\']*\\bsingle-product\\b/i',
+				$html
+			);
+
+			$can_store =
+				$product_have_lock &&
+				200 === $status &&
+				is_string( $html ) &&
+				strlen( $html ) >= 50000 &&
+				$looks_like_product &&
+				false !== stripos( $html, '</html>' ) &&
+				false === stripos( $html, 'WordPress database error' ) &&
+				false === stripos( $html, 'There has been a critical error' ) &&
+				false === stripos( $html, 'Gateway Timeout' );
+
+			if ( $can_store && is_dir( $product_cache_dir ) && is_writable( $product_cache_dir ) ) {
+				$tmp = $product_cache_file . '.tmp-' . getmypid();
+				if ( false !== @file_put_contents( $tmp, $html, LOCK_EX ) ) {
+					@rename( $tmp, $product_cache_file );
+				} else {
+					@unlink( $tmp );
+				}
+			}
+
+			if ( $product_have_lock && is_resource( $product_lock_handle ) ) {
+				@flock( $product_lock_handle, LOCK_UN );
+				@fclose( $product_lock_handle );
+			}
+
+			return $html;
+		}
+	);
+
 	return;
 }
 
