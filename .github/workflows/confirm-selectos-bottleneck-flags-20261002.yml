@@ -1,0 +1,91 @@
+name: Confirm Selectos bottleneck flags 20261002
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/confirm-selectos-bottleneck-flags-20261002.yml'
+permissions:
+  contents: read
+jobs:
+  confirm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          PHP="/opt/plesk/php/8.2/bin/php"
+          WP="/usr/local/bin/wp"
+
+          echo "=== REWRITE FLAGS ==="
+          cat > /tmp/rewrite-flags.php <<'PHP'
+          <?php
+          $keys=array(
+            'mdo_promotions_rewrite_version',
+            'mdo_specials_rewrite_version',
+            'aioseo_flush_rewrite_rules_flag',
+            'woocommerce_queue_flush_rewrite_rules',
+            'rewrite_rules'
+          );
+          foreach($keys as $k){
+            $v=get_option($k,'__MISSING__');
+            if('rewrite_rules'===$k){
+              echo $k,"\t",is_array($v)?count($v):gettype($v),"\tbytes=",strlen(maybe_serialize($v)),"\n";
+            }else{
+              echo $k,"\t",wp_json_encode($v,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),"\n";
+            }
+          }
+          global $wp_filter;
+          foreach(array('init','shutdown') as $hook){
+            if(empty($wp_filter[$hook])||!isset($wp_filter[$hook]->callbacks)) continue;
+            foreach($wp_filter[$hook]->callbacks as $priority=>$list){
+              foreach($list as $entry){
+                $f=$entry['function']??null;$label='';
+                if(is_string($f))$label=$f;
+                elseif(is_array($f)){
+                  $left=is_object($f[0])?get_class($f[0]):(string)$f[0];
+                  $label=$left.'::'.($f[1]??'');
+                }
+                if(stripos($label,'flush')!==false||stripos($label,'rewrite')!==false){
+                  echo "HOOK\t{$hook}\t{$priority}\t{$label}\n";
+                }
+              }
+            }
+          }
+          PHP
+          "$PHP" -d memory_limit=768M "$WP" eval-file /tmp/rewrite-flags.php --path="$ROOT" --allow-root
+
+          echo "=== YITH ASSOC INDEXES / COUNTS ==="
+          "$PHP" "$WP" db query "SELECT COUNT(*) AS blocks FROM wp_yith_wapo_blocks; SELECT COUNT(*) AS assoc FROM wp_yith_wapo_blocks_assoc; SELECT COUNT(*) AS addons FROM wp_yith_wapo_addons; SHOW INDEX FROM wp_yith_wapo_blocks_assoc;" --path="$ROOT" --allow-root || true
+
+          echo "=== YITH LOOKUP TIMINGS ==="
+          cat > /tmp/yith-timing.php <<'PHP'
+          <?php
+          $ids=array(16372,16384,16426,16218,16311);
+          foreach($ids as $id){
+            $p=wc_get_product($id);
+            if(!$p){continue;}
+            $times=array();
+            for($i=0;$i<5;$i++){
+              $s=microtime(true);
+              $r=function_exists('yith_wapo_get_blocks_by_product') ? yith_wapo_get_blocks_by_product($p,false,'yes') : array();
+              $times[]=round((microtime(true)-$s)*1000,2);
+            }
+            echo $id,"\t",get_post_field('post_name',$id),"\t",implode(',',$times),"\tblocks=",is_array($r)?count($r):0,"\n";
+          }
+          PHP
+          "$PHP" -d memory_limit=768M "$WP" eval-file /tmp/yith-timing.php --path="$ROOT" --allow-root || true
+          REMOTE
