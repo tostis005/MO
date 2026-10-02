@@ -1,0 +1,59 @@
+name: Profile Selectos slowest cluster 20261002
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/profile-selectos-slowest-cluster-20261002.yml'
+permissions:
+  contents: read
+jobs:
+  profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          PHP="/opt/plesk/php/8.2/bin/php"; WP="/usr/local/bin/wp"
+          cat > /tmp/profile-cluster.php <<'PHP'
+          <?php
+          global $wpdb,$post;
+          $slugs=array(
+            'pie-de-pates-6-uds','carcasa-de-pato','confit-de-manchon-de-pato',
+            'bombon-relleno-de-foie-estuche-de-2-uds','confit-de-manchons-de-pato-6-uds',
+            'foie-gras-de-pato-extra-desvenado','jamon-de-pato-ahumado-pieza'
+          );
+          foreach($slugs as $slug){
+            $p=get_page_by_path($slug,OBJECT,'product');
+            if(!$p){echo "MISSING\t$slug\n";continue;}
+            $post=$p; setup_postdata($post); $pid=(int)$p->ID;
+            $cats=wp_get_post_terms($pid,'product_cat',array('fields'=>'all'));
+            $cat=array_map(fn($c)=>$c->slug.'#'.$c->term_id,$cats);
+            $q0=$wpdb->num_queries;$t=microtime(true);$prev=woostify_get_prev_product();$pms=(microtime(true)-$t)*1000;$pq=$wpdb->num_queries-$q0;
+            $q0=$wpdb->num_queries;$t=microtime(true);$next=woostify_get_next_product();$nms=(microtime(true)-$t)*1000;$nq=$wpdb->num_queries-$q0;
+            $prod=wc_get_product($pid);
+            echo wp_json_encode(array(
+              'pid'=>$pid,'slug'=>$slug,'visible'=>$prod?$prod->is_visible():null,'cats'=>$cat,
+              'prev'=>$prev?$prev->get_id():0,'prev_slug'=>$prev?get_post_field('post_name',$prev->get_id()):'',
+              'prev_ms'=>round($pms,1),'prev_q'=>$pq,
+              'next'=>$next?$next->get_id():0,'next_slug'=>$next?get_post_field('post_name',$next->get_id()):'',
+              'next_ms'=>round($nms,1),'next_q'=>$nq
+            ),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+            wp_reset_postdata();
+          }
+          PHP
+          "$PHP" -d memory_limit=768M "$WP" eval-file /tmp/profile-cluster.php --path="$ROOT" --allow-root
+          REMOTE
