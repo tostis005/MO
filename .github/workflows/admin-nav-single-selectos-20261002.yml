@@ -50,5 +50,5 @@ jobs:
           $q=$wpdb->num_queries;$t=microtime(true);$x=woostify_get_next_product();
           echo 'ADMIN_NEXT id=',($x?$x->get_id():0),' sec=',round(microtime(true)-$t,3),' queries=',($wpdb->num_queries-$q),"\n"; if(defined('STDOUT')) fflush(STDOUT);
           PHP
-          timeout 50s "$PHP" -d memory_limit=1024M "$WP" eval-file /tmp/admin-one.php --path="$ROOT" --allow-root || echo ADMIN_PROFILE_TIMED_OUT
+          timeout 60s "$PHP" -d memory_limit=1024M "$WP" eval-file /tmp/admin-one.php --path="$ROOT" --allow-root --skip-plugins=facebook-for-woocommerce,translatepress-multilingual,ajax-search-for-woocommerce,click-to-chat-for-whatsapp,woocommerce-checkout-manager,woocommerce-checkout-manager-pro,elementor,advanced-coupons-for-woocommerce-free,advanced-product-labels-for-woocommerce,webappick-product-feed-for-woocommerce,all-in-one-seo-pack,yith-woocommerce-product-add-ons,yith-woocommerce-product-bundles-premium || echo ADMIN_PROFILE_TIMED_OUT
           REMOTE
