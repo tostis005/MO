@@ -209,8 +209,9 @@ if ( isset( $hot_cache_paths[ $path ] ) ) {
  * - no unknown cookies (therefore no login, cart or WooCommerce session);
  * - production hosts only.
  *
- * Fresh HTML lives for 3 minutes. A complete stale copy may be served for at
- * most 10 minutes while one request refreshes it, preventing cache stampedes.
+ * Fresh HTML lives for 10-20 minutes using deterministic per-path jitter, so
+ * a bulk warm cannot make the whole catalogue expire at once. A complete stale
+ * copy may be served for at most one hour while one request refreshes it.
  */
 $is_product_path = 1 === preg_match( '#^/(?:producto|en/product)/[^/]+/$#i', $path );
 
@@ -218,8 +219,10 @@ if ( $is_product_path ) {
 	$product_cache_dir   = __DIR__ . '/uploads/elmercado-product-static-v1';
 	$product_cache_file  = $product_cache_dir . '/' . hash( 'sha256', $path ) . '.html';
 	$product_lock_file   = $product_cache_file . '.lock';
-	$product_ttl         = 180;
-	$product_stale_ttl   = 600;
+	// Spread refreshes across a ten-minute window. Without jitter, warming a
+	// catalogue in bulk synchronizes expirations and recreates PHP-FPM spikes.
+	$product_ttl         = 600 + ( (int) sprintf( '%u', crc32( $path ) ) % 601 );
+	$product_stale_ttl   = 3600;
 	$product_age         = null;
 	$product_valid       = false;
 
