@@ -12,8 +12,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: elmercado-production-theme
-  cancel-in-progress: false
+  group: elmercado-selectos-nav-fix-010316
+  cancel-in-progress: true
 
 jobs:
   deploy-verify:
