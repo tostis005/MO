@@ -52,5 +52,8 @@ jobs:
           $q=$wpdb->num_queries;$t=microtime(true);$x=woostify_get_next_product();
           @file_put_contents($progress,'ADMIN_NEXT id='.($x?$x->get_id():0).' sec='.round(microtime(true)-$t,3).' queries='.($wpdb->num_queries-$q)."\n",FILE_APPEND|LOCK_EX);
           PHP
-          rm -f /tmp/admin-nav-progress.txt\n          timeout 60s "$PHP" -d memory_limit=1024M "$WP" eval-file /tmp/admin-one.php --path="$ROOT" --allow-root --skip-plugins=facebook-for-woocommerce,translatepress-multilingual,ajax-search-for-woocommerce,click-to-chat-for-whatsapp,woocommerce-checkout-manager,woocommerce-checkout-manager-pro,elementor,advanced-coupons-for-woocommerce-free,advanced-product-labels-for-woocommerce,webappick-product-feed-for-woocommerce,all-in-one-seo-pack,yith-woocommerce-product-add-ons,yith-woocommerce-product-bundles-premium || echo ADMIN_PROFILE_TIMED_OUT\n          echo "=== PROGRESS ==="\n          cat /tmp/admin-nav-progress.txt 2>/dev/null || true
+          rm -f /tmp/admin-nav-progress.txt
+          timeout 60s "$PHP" -d memory_limit=1024M "$WP" eval-file /tmp/admin-one.php --path="$ROOT" --allow-root --skip-plugins=facebook-for-woocommerce,translatepress-multilingual,ajax-search-for-woocommerce,click-to-chat-for-whatsapp,woocommerce-checkout-manager,woocommerce-checkout-manager-pro,elementor,advanced-coupons-for-woocommerce-free,advanced-product-labels-for-woocommerce,webappick-product-feed-for-woocommerce,all-in-one-seo-pack,yith-woocommerce-product-add-ons,yith-woocommerce-product-bundles-premium || echo ADMIN_PROFILE_TIMED_OUT
+          echo "=== PROGRESS ==="
+          cat /tmp/admin-nav-progress.txt 2>/dev/null || true
           REMOTE
