@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'mu-plugins/mdo-product-vendor-ratings-20261001.php'
+      - 'elmercadodeorigen-child/inc/catalog-filter-scroll-final-010234.php'
       - '.github/workflows/production-producer-ratings-20261001.yml'
 
 permissions:
@@ -34,7 +35,10 @@ jobs:
         run: |
           set -euo pipefail
           php -l mu-plugins/mdo-product-vendor-ratings-20261001.php >/dev/null
+          php -l elmercadodeorigen-child/inc/catalog-filter-scroll-final-010234.php >/dev/null
           grep -q 'mdo_vendor_rating_stats_20261001' mu-plugins/mdo-product-vendor-ratings-20261001.php
+          grep -q 'mdo_vendor_rating_is_catalog_batch_20261002' mu-plugins/mdo-product-vendor-ratings-20261001.php
+          grep -Fq "scope:isVendor?'vendor':'catalog'" elmercadodeorigen-child/inc/catalog-filter-scroll-final-010234.php
           grep -q 'woocommerce_after_shop_loop_item' mu-plugins/mdo-product-vendor-ratings-20261001.php
           grep -q 'woocommerce_single_product_summary' mu-plugins/mdo-product-vendor-ratings-20261001.php
           grep -q 'wcfm_is_store_page' mu-plugins/mdo-product-vendor-ratings-20261001.php
@@ -85,7 +89,9 @@ jobs:
           test -n "$PROD_PATH"
 
           TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-product-vendor-ratings-20261001.php"
+          LOADER_TARGET="$PROD_PATH/wp-content/themes/elmercadodeorigen-child/inc/catalog-filter-scroll-final-010234.php"
           BACKUP="/tmp/mdo-product-vendor-ratings-${GITHUB_RUN_ID}.bak"
+          LOADER_BACKUP="/tmp/mdo-catalog-filter-scroll-${GITHUB_RUN_ID}.bak"
           PROBE="elmercado-opcache-vendor-ratings-${GITHUB_RUN_ID}.php"
 
           if sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "[ -f '$TARGET' ]"; then
@@ -95,16 +101,27 @@ jobs:
             echo "TARGET_EXISTED=0" >> "$GITHUB_ENV"
           fi
 
+          if sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "[ -f '$LOADER_TARGET' ]"; then
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp -p '$LOADER_TARGET' '$LOADER_BACKUP'"
+            echo "LOADER_TARGET_EXISTED=1" >> "$GITHUB_ENV"
+          else
+            echo "LOADER_TARGET_EXISTED=0" >> "$GITHUB_ENV"
+          fi
+
           echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
           echo "TARGET=$TARGET" >> "$GITHUB_ENV"
+          echo "LOADER_TARGET=$LOADER_TARGET" >> "$GITHUB_ENV"
           echo "BACKUP=$BACKUP" >> "$GITHUB_ENV"
+          echo "LOADER_BACKUP=$LOADER_BACKUP" >> "$GITHUB_ENV"
           echo "PROBE=$PROBE" >> "$GITHUB_ENV"
 
           sshpass -e scp $SCP mu-plugins/mdo-product-vendor-ratings-20261001.php "$STAGING_USER@$STAGING_HOST:$TARGET"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/catalog-filter-scroll-final-010234.php "$STAGING_USER@$STAGING_HOST:$LOADER_TARGET"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
             php_bin=\$(command -v php || true)
             [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
             \"\$php_bin\" -l '$TARGET' >/dev/null
+            \"\$php_bin\" -l '$LOADER_TARGET' >/dev/null
             wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
           "
 
@@ -232,6 +249,27 @@ jobs:
               await sleep(120);
               const hoverUnderline = await page.evaluate(el => getComputedStyle(el).boxShadow, selectosLink);
               if (!hoverUnderline || /rgba\(0, 0, 0, 0\)|none/i.test(hoverUnderline)) throw new Error('No-review producer link has no visible hover underline');
+
+              if (width === 390) {
+                await page.evaluate(() => document.querySelector('.emo-catalog-load-state')?.scrollIntoView({block:'center'}));
+                await page.waitForFunction(
+                  () => window.__emoCatalogLoaderState && window.__emoCatalogLoaderState.highestPage >= 2 && !window.__emoCatalogLoaderState.loading,
+                  {timeout: 25000}
+                );
+                const dynamic = await page.evaluate(() => {
+                  const cards = [...document.querySelectorAll('ul.products > li.product')];
+                  const missing = cards.filter(card => !card.querySelector('.mdo-vendor-rating-row'));
+                  return {
+                    cards: cards.length,
+                    rows: cards.length - missing.length,
+                    highestPage: window.__emoCatalogLoaderState?.highestPage || 0,
+                    missing: missing.slice(0, 5).map(card => (card.innerText || '').replace(/\s+/g,' ').trim().slice(0, 180))
+                  };
+                });
+                console.log('DYNAMIC_SHOP_RATINGS', JSON.stringify(dynamic));
+                if (dynamic.cards <= 15 || dynamic.highestPage < 2) throw new Error('Dynamic catalog batch did not load during QA');
+                if (dynamic.rows !== dynamic.cards) throw new Error('Dynamically appended product cards are missing producer/review rows: ' + JSON.stringify(dynamic));
+              }
               await page.close();
             }
 
@@ -263,7 +301,7 @@ jobs:
               await page.setViewport({width: 390, height: 1200});
               await page.goto(`${process.env.BASE_URL}/tienda/1957/?vendorRatingQA=${Date.now()}`, {waitUntil:'networkidle2', timeout:60000});
               await sleep(600);
-              const count = await page.evaluate(() => document.querySelectorAll('#wcfmmp-store ul.products .mdo-vendor-rating').length);
+              const count = await page.evaluate(() => document.querySelectorAll('#wcfmmp-store ul.products .mdo-vendor-rating-row, #wcfmmp-store ul.products .mdo-vendor-rating').length);
               console.log('PRODUCER_STORE_RATING_COUNT', count);
               if (count !== 0) throw new Error('Producer rating was added to producer-store product cards');
               await page.close();
@@ -284,7 +322,7 @@ jobs:
           set -euo pipefail
           PORT="${STAGING_PORT:-22}"
           SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP'"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP' '$LOADER_BACKUP'"
           echo PRODUCTION_PRODUCER_RATINGS_20261001_OK
 
       - name: Roll back production on failure
@@ -300,6 +338,13 @@ jobs:
             else
               sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$TARGET'"
             fi
-            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; rm -f '$BACKUP' '$PROD_PATH/${PROBE:-}'"
+            if [ -n "${LOADER_TARGET:-}" ]; then
+              if [ "${LOADER_TARGET_EXISTED:-0}" = "1" ] && [ -n "${LOADER_BACKUP:-}" ]; then
+                sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp -p '$LOADER_BACKUP' '$LOADER_TARGET'"
+              else
+                sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$LOADER_TARGET'"
+              fi
+            fi
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; rm -f '$BACKUP' '${LOADER_BACKUP:-}' '$PROD_PATH/${PROBE:-}'"
           fi
           echo PRODUCTION_PRODUCER_RATINGS_ROLLED_BACK
