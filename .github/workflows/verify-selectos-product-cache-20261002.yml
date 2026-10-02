@@ -1,0 +1,121 @@
+name: Verify Selectos product cache 20261002
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-selectos-product-cache-20261002.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Verify live product cache
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          PHP="/opt/plesk/php/8.2/bin/php"
+          WP="/usr/local/bin/wp"
+          CACHE_DIR="$ROOT/wp-content/uploads/elmercado-product-static-v1"
+
+          cat > /tmp/selectos-cache-verify-urls.php <<'PHP'
+          <?php
+          global $wpdb;
+          $suppliers=MDO_Database::table('suppliers');
+          $products=MDO_Database::table('source_products');
+          $sid=(int)$wpdb->get_var("SELECT id FROM {$suppliers} WHERE connector='selectos-de-castilla' AND active=1 ORDER BY id ASC LIMIT 1");
+          if(!$sid){ exit(2); }
+          $ids=$wpdb->get_col($wpdb->prepare(
+            "SELECT wc_product_id FROM {$products} WHERE supplier_id=%d AND wc_product_id>0 ORDER BY wc_product_id ASC",
+            $sid
+          ));
+          foreach($ids as $id){
+            $id=(int)$id;
+            if('publish'!==get_post_status($id)) continue;
+            $url=get_permalink($id);
+            if(is_string($url)&&$url!=='') echo $id,"\t",$url,"\n";
+          }
+          PHP
+          "$PHP" -d memory_limit=768M "$WP" eval-file /tmp/selectos-cache-verify-urls.php --path="$ROOT" --allow-root             2>/tmp/selectos-cache-verify-warnings.log > /tmp/selectos-cache-verify-urls.tsv
+
+          rm -rf /tmp/selectos-cache-verify
+          mkdir -p /tmp/selectos-cache-verify
+          cat /tmp/selectos-cache-verify-urls.tsv |           xargs -P8 -n2 bash -c '
+            pid="$1"; url="$2"
+            h="/tmp/selectos-cache-verify/$pid.h"
+            out=$(curl -k -sS -L --max-time 12 -A "MDO-Selectos-Cache-Verify/1.0"               -D "$h" -o /dev/null               -w "%{http_code}\t%{time_starttransfer}\t%{time_total}" "$url" 2>/dev/null || true)
+            [ -n "$out" ] || out="000\t12\t12"
+            cache=$(awk -F": " "tolower(\$1)==\"x-el-mercado-product-early-cache\"{gsub(/\\r/,\"\",\$2); print \$2}" "$h" | tail -n1)
+            printf "%s\t%s\t%s\t%s\n" "$pid" "$out" "$cache" > "/tmp/selectos-cache-verify/$pid.tsv"
+          ' _
+
+          python3 - <<'PY'
+          import csv,glob,statistics
+          rows=[]
+          for p in glob.glob('/tmp/selectos-cache-verify/*.tsv'):
+              with open(p,encoding='utf-8',errors='replace') as f:
+                  r=next(csv.reader(f,delimiter='\t'))
+              if len(r)<5: continue
+              pid,code,ttfb,total,cache=r[:5]
+              rows.append((float(total),float(ttfb),code,pid,cache))
+          rows.sort(reverse=True)
+          good=[r for r in rows if r[2]=='200']
+          hits=[r for r in rows if r[4]=='HIT']
+          bad=[r for r in rows if r[2]!='200' or r[4]!='HIT' or r[0]>=1.0]
+          print('count',len(rows),'http200',len(good),'hits',len(hits),'bad',len(bad))
+          if rows:
+              totals=[r[0] for r in rows]
+              ttfbs=[r[1] for r in rows]
+              print('total_max',round(max(totals),4),'total_median',round(statistics.median(totals),4))
+              print('ttfb_max',round(max(ttfbs),4),'ttfb_median',round(statistics.median(ttfbs),4))
+          print('SLOWEST')
+          for r in rows[:15]: print(r)
+          print('BAD')
+          for r in bad[:30]: print(r)
+          if len(rows)<100 or bad:
+              raise SystemExit(1)
+          PY
+
+          echo "=== STALE ANTI-STAMPEDE ==="
+          path="/producto/foie-gras-de-pato-extra-desvenado/"
+          key=$(printf '%s' "$path" | sha256sum | awk '{print $1}')
+          file="$CACHE_DIR/$key.html"
+          test -s "$file"
+          touch -d '4 minutes ago' "$file"
+          rm -f /tmp/herd-*.h /tmp/herd-*.txt
+          seq 1 6 | xargs -P6 -I{} bash -c '
+            curl -k -sS -L --max-time 20 -A "MDO-Product-Herd-Verify/1.0"               -D "/tmp/herd-{}.h" -o /dev/null               -w "{}\t%{http_code}\t%{time_starttransfer}\t%{time_total}\n"               "https://www.elmercadodeorigen.com/producto/foie-gras-de-pato-extra-desvenado/"               > "/tmp/herd-{}.txt" || true
+          '
+          cat /tmp/herd-*.txt
+          for h in /tmp/herd-*.h; do
+            printf '%s ' "$(basename "$h")"
+            grep -Ei 'X-El-Mercado-Product-Early-Cache' "$h" | tr -d '\r' || true
+          done
+          stale=$(grep -lEi 'X-El-Mercado-Product-Early-Cache: STALE' /tmp/herd-*.h | wc -l)
+          revalidate=$(grep -lEi 'X-El-Mercado-Product-Early-Cache: REVALIDATE' /tmp/herd-*.h | wc -l)
+          hit=$(grep -lEi 'X-El-Mercado-Product-Early-Cache: HIT' /tmp/herd-*.h | wc -l)
+          echo "stale=$stale revalidate=$revalidate hit=$hit"
+          test "$revalidate" -ge 1
+          test "$stale" -ge 1
+
+          echo "=== FINAL HEALTH ==="
+          uptime
+          REMOTE
