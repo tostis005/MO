@@ -1,0 +1,149 @@
+name: Deploy product page cache 2026-10-02
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/dropins/advanced-cache.php'
+      - '.github/workflows/deploy-product-page-cache-20261002.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-product-page-cache-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate cache drop-in
+        run: php -l elmercadodeorigen-child/dropins/advanced-cache.php
+
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Upload cache drop-in
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          scp_opts="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          sshpass -e scp $scp_opts             elmercadodeorigen-child/dropins/advanced-cache.php             "$STAGING_USER@$STAGING_HOST:/tmp/emdo-product-cache-${GITHUB_RUN_ID}.php"
+
+      - name: Install, warm and verify
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          ssh_opts="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $ssh_opts "$STAGING_USER@$STAGING_HOST" "bash -s -- '${GITHUB_RUN_ID}'" <<'REMOTE'
+          set -Eeuo pipefail
+          RUN_ID="$1"
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          PHP="/opt/plesk/php/8.2/bin/php"
+          WP="/usr/local/bin/wp"
+          DROPIN="$ROOT/wp-content/advanced-cache.php"
+          UPLOAD="/tmp/emdo-product-cache-$RUN_ID.php"
+          CACHE_DIR="$ROOT/wp-content/uploads/elmercado-product-static-v1"
+          STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+          BACKUP="/root/emdo-product-cache-$STAMP.php"
+
+          echo "=== INSTALL ==="
+          test -f "$UPLOAD"
+          "$PHP" -l "$UPLOAD"
+          cp -a "$DROPIN" "$BACKUP"
+          install -m 0644 -o root -g root "$UPLOAD" "$DROPIN"
+          rm -f "$UPLOAD"
+          "$PHP" -l "$DROPIN"
+          grep -n "X-El-Mercado-Product-Early-Cache" "$DROPIN"
+          echo "backup=$BACKUP"
+
+          mkdir -p "$CACHE_DIR"
+          find "$CACHE_DIR" -maxdepth 1 -type f \( -name '*.html' -o -name '*.tmp-*' \) -delete
+
+          # Drop higher-level page caches so the first warm request reaches the
+          # new advanced-cache layer and can create the validated product copy.
+          "$PHP" -d memory_limit=512M "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          if "$PHP" -d memory_limit=512M "$WP" plugin is-active wp-rocket --path="$ROOT" --allow-root >/dev/null 2>&1; then
+            "$PHP" -d memory_limit=512M "$WP" rocket clean --confirm --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          fi
+
+          echo "=== KNOWN SLOW SELECTOS: COLD THEN HIT ==="
+          urls=(
+            "https://www.elmercadodeorigen.com/producto/carcasa-de-pato/"
+            "https://www.elmercadodeorigen.com/producto/pie-de-pates-6-uds/"
+            "https://www.elmercadodeorigen.com/producto/foie-gras-de-pato-extra-desvenado/"
+            "https://www.elmercadodeorigen.com/producto/jamon-de-pato-ahumado-pieza/"
+            "https://www.elmercadodeorigen.com/producto/jamon-de-pato-ahumado-estuche-100g/"
+          )
+
+          for url in "${urls[@]}"; do
+            slug=$(basename "${url%/}")
+            echo "--- cold $slug"
+            curl -k -sS -L --max-time 35 -A 'MDO-Product-Cache-Warm/1.0'               -D "/tmp/$slug-cold.h" -o /dev/null               -w 'http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total}\n' "$url" || true
+            grep -Ei 'HTTP/|X-El-Mercado-Product-Early-Cache|X-El-Mercado-Cache' "/tmp/$slug-cold.h" || true
+
+            echo "--- hit $slug"
+            curl -k -sS -L --max-time 20 -A 'MDO-Product-Cache-Verify/1.0'               -D "/tmp/$slug-hit.h" -o /dev/null               -w 'http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total}\n' "$url"
+            grep -Ei 'HTTP/|X-El-Mercado-Product-Early-Cache|X-El-Mercado-Cache' "/tmp/$slug-hit.h" || true
+            grep -qi 'X-El-Mercado-Product-Early-Cache: HIT' "/tmp/$slug-hit.h"
+          done
+
+          echo "=== STATEFUL BYPASS ==="
+          test_url="https://www.elmercadodeorigen.com/producto/jamon-de-pato-ahumado-pieza/"
+          curl -k -sS -L --max-time 35             -H 'Cookie: wordpress_logged_in_mdo_probe=1'             -A 'MDO-Product-Cache-Stateful-Probe/1.0'             -D /tmp/product-stateful.h -o /dev/null             -w 'http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total}\n' "$test_url" || true
+          grep -Ei 'HTTP/|X-El-Mercado-Product-Early-Cache' /tmp/product-stateful.h || true
+          if grep -qi 'X-El-Mercado-Product-Early-Cache: HIT' /tmp/product-stateful.h; then
+            echo "Stateful request incorrectly hit product early cache" >&2
+            exit 1
+          fi
+
+          echo "=== PREWARM ALL ACTIVE SELECTOS ==="
+          cat > /tmp/selectos-product-urls.php <<'PHP'
+          <?php
+          global $wpdb;
+          $suppliers=MDO_Database::table('suppliers');
+          $products=MDO_Database::table('source_products');
+          $sid=(int)$wpdb->get_var("SELECT id FROM {$suppliers} WHERE connector='selectos-de-castilla' AND active=1 ORDER BY id ASC LIMIT 1");
+          if(!$sid){ exit; }
+          $ids=$wpdb->get_col($wpdb->prepare(
+            "SELECT wc_product_id FROM {$products} WHERE supplier_id=%d AND wc_product_id>0 ORDER BY wc_product_id ASC",
+            $sid
+          ));
+          foreach($ids as $id){
+            $id=(int)$id;
+            if('publish'!==get_post_status($id)) continue;
+            $url=get_permalink($id);
+            if(is_string($url)&&$url!=='') echo $url,"\n";
+          }
+          PHP
+          "$PHP" -d memory_limit=768M "$WP" eval-file /tmp/selectos-product-urls.php --path="$ROOT" --allow-root             2>/tmp/selectos-warm-errors.log > /tmp/selectos-product-urls.txt
+          echo "selectos_urls=$(wc -l < /tmp/selectos-product-urls.txt)"
+          cat /tmp/selectos-product-urls.txt | xargs -P2 -n1 bash -c '
+            url="$1"
+            curl -k -sS -L --max-time 30 -A "MDO-Selectos-Prewarm/1.0" -o /dev/null "$url" || true
+          ' _
+          echo "cached_html=$(find "$CACHE_DIR" -maxdepth 1 -type f -name '*.html' | wc -l)"
+
+          echo "=== FINAL HIT SAMPLE ==="
+          for url in "${urls[@]}"; do
+            curl -k -sS -L --max-time 15 -A 'MDO-Product-Cache-Final/1.0'               -D /tmp/product-final.h -o /dev/null               -w 'http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total}\n' "$url"
+            grep -Ei 'X-El-Mercado-Product-Early-Cache' /tmp/product-final.h || true
+          done
+
+          echo "=== LOAD / WORKERS ==="
+          uptime
+          ps -eo pid,user,stat,etimes,%cpu,%mem,rss,args --sort=-%cpu |             grep -E 'php-fpm: pool elmercadodeorigen.com' | head -n 25 || true
+          REMOTE
