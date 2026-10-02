@@ -111,7 +111,7 @@ jobs:
           )
           for url in "${urls[@]}"; do
             sep='?'
-            curl -k -sS -L --resolve "www.elmercadodeorigen.com:443:$ORIGIN_IP" --max-time 35 --connect-timeout 5               -H "Cache-Control: no-cache" -A "MDO-Selectos-Trace/1.0" -o /dev/null               -w "HTTP %{http_code} ttfb=%{time_starttransfer} total=%{time_total} url=%{url_effective}\n"               "${url}${sep}mdo_selectos_trace=20261002-origin2" || true
+            curl -k -sS -L --resolve "www.elmercadodeorigen.com:443:$ORIGIN_IP" --max-time 35 --connect-timeout 5               -H "Cache-Control: no-cache" -H "Cookie: wordpress_logged_in_mdo_probe=invalid" -A "MDO-Selectos-Trace/1.0" -o /dev/null               -w "HTTP %{http_code} ttfb=%{time_starttransfer} total=%{time_total} url=%{url_effective}\n"               "${url}${sep}mdo_selectos_trace=20261002-origin3" || true
             sleep 1
           done
 
