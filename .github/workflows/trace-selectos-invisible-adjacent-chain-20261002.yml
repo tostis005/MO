@@ -1,0 +1,85 @@
+name: Trace Selectos invisible adjacent chain 20261002
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/trace-selectos-invisible-adjacent-chain-20261002.yml'
+permissions:
+  contents: read
+jobs:
+  trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          PHP="/opt/plesk/php/8.2/bin/php"; WP="/usr/local/bin/wp"
+          cat >/tmp/chain.php <<'PHP'
+          <?php
+          global $wpdb;
+          $admins=get_users(array('role'=>'administrator','number'=>1,'fields'=>'ids'));
+          wp_set_current_user((int)($admins[0]??0));
+          $slugs=array(
+            'foie-gras-de-pato-extra-desvenado',
+            'foie-gras-de-pato-extra',
+            'foie-gras-mi-cuit-entero-mini-estuche',
+            'magret-de-pato-fresco',
+            'trucha-ahumada-lomo',
+            'jamon-de-pato-ahumado-pieza'
+          );
+          foreach($slugs as $slug){
+            $p=get_page_by_path($slug,OBJECT,'product');
+            if(!$p){echo "MISSING\t$slug\n";continue;}
+            $term_tax_ids=$wpdb->get_col($wpdb->prepare(
+              "SELECT tr.term_taxonomy_id FROM {$wpdb->term_relationships} tr
+               JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id=tr.term_taxonomy_id
+               WHERE tr.object_id=%d AND tt.taxonomy='product_cat'",$p->ID
+            ));
+            $term_tax_ids=array_map('intval',$term_tax_ids);
+            if(!$term_tax_ids){continue;}
+            $in=implode(',',$term_tax_ids);
+            $ids=$wpdb->get_col($wpdb->prepare(
+              "SELECT DISTINCT p.ID FROM {$wpdb->posts} p
+               JOIN {$wpdb->term_relationships} tr ON tr.object_id=p.ID
+               WHERE p.post_type='product' AND p.post_status='publish'
+                 AND p.post_date > %s
+                 AND tr.term_taxonomy_id IN ($in)
+               ORDER BY p.post_date ASC LIMIT 250",$p->post_date
+            ));
+            $checked=0;$first_visible=0;$first_visible_slug='';
+            echo "START\t{$p->ID}\t{$slug}\t{$p->post_date}\tcandidates=".count($ids)."\n";
+            foreach($ids as $id){
+              $id=(int)$id; $checked++;
+              $wc=wc_get_product($id);
+              $vis=$wc?$wc->is_visible():false;
+              $cv=$wc?$wc->get_catalog_visibility():'';
+              $stock=$wc?$wc->get_stock_status():'';
+              $author=(int)get_post_field('post_author',$id);
+              $hidden=function_exists('elmercado_wcfm_vendor_is_hidden_010210')?elmercado_wcfm_vendor_is_hidden_010210($author):false;
+              if($checked<=25 || $vis){
+                echo implode("\t",array(
+                  $checked,$id,$vis?'VISIBLE':'HIDDEN',get_post_field('post_date',$id),get_post_field('post_name',$id),
+                  $cv,$stock,$author,$hidden?'vendor_hidden':'vendor_ok'
+                ))."\n";
+              }
+              if($vis){$first_visible=$id;$first_visible_slug=get_post_field('post_name',$id);break;}
+            }
+            echo "RESULT\t{$slug}\tchecked={$checked}\tfirst_visible={$first_visible}\t{$first_visible_slug}\n";
+          }
+          PHP
+          "$PHP" -d memory_limit=1024M "$WP" eval-file /tmp/chain.php --path="$ROOT" --allow-root --skip-plugins=facebook-for-woocommerce,translatepress-multilingual
+          REMOTE
