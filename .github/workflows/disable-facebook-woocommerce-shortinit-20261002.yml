@@ -1,0 +1,95 @@
+name: Disable Facebook WooCommerce via shortinit 20261002
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/disable-facebook-woocommerce-shortinit-20261002.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  change:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Disable plugin safely and benchmark
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p $PORT"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          SITE="https://www.elmercadodeorigen.com"
+          PHP="/opt/plesk/php/8.2/bin/php"
+          TARGET="facebook-for-woocommerce/facebook-for-woocommerce.php"
+
+          cat > /tmp/mdo-meta-toggle.php <<'PHP'
+          <?php
+          define('SHORTINIT', true);
+          require $argv[1] . '/wp-load.php';
+
+          $target = 'facebook-for-woocommerce/facebook-for-woocommerce.php';
+          $active = (array) get_option('active_plugins', array());
+          $was = in_array($target, $active, true);
+          echo 'FACEBOOK_PLUGIN_WAS=' . ($was ? 'active' : 'inactive') . PHP_EOL;
+          echo 'ACTIVE_COUNT_BEFORE=' . count($active) . PHP_EOL;
+
+          if ($was) {
+              $active = array_values(array_filter($active, static fn($p) => $p !== $target));
+              $ok = update_option('active_plugins', $active);
+              echo 'UPDATE_OPTION_RESULT=' . ($ok ? 'changed' : 'unchanged') . PHP_EOL;
+          }
+
+          $after = (array) get_option('active_plugins', array());
+          $is = in_array($target, $after, true);
+          echo 'FACEBOOK_PLUGIN_NOW=' . ($is ? 'active' : 'inactive') . PHP_EOL;
+          echo 'ACTIVE_COUNT_AFTER=' . count($after) . PHP_EOL;
+          if ($is) exit(12);
+          PHP
+
+          echo "=== EXACT ACTIVE STATE + CHANGE ==="
+          "$PHP" -d memory_limit=256M /tmp/mdo-meta-toggle.php "$ROOT"
+
+          echo "=== DIRECTORY EXISTS ==="
+          ls -ld "$ROOT/wp-content/plugins/facebook-for-woocommerce" || true
+          grep -RHi -m1 '^Plugin Name:' "$ROOT/wp-content/plugins/facebook-for-woocommerce"/*.php 2>/dev/null || true
+
+          echo "=== AFTER-DEACTIVATION PERFORMANCE ==="
+          for target in             "shop|$SITE/tienda/?mdo_meta_after=$(date +%s%N)"             "category|$SITE/categoria-producto/jamones-paletas/?mdo_meta_after=$(date +%s%N)"             "product|$SITE/producto/jamon-de-pato-ahumado-pieza/?mdo_meta_after=$(date +%s%N)"
+          do
+            label="${target%%|*}"; url="${target#*|}"
+            for pass in 1 2 3 4 5; do
+              curl -k -sS -L --max-time 35 -A 'MDO-Meta-After/1.0' -o /dev/null                 -w "$label pass=$pass http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n"                 "$url&pass=$pass" || true
+            done
+          done
+
+          echo "=== AJAX BASELINE AFTER ==="
+          for pass in 1 2 3 4 5; do
+            curl -k -sS --max-time 35 -A 'MDO-Meta-After/1.0' -o /dev/null               -w "ajax pass=$pass http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total}\n"               -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8'               --data "action=mdo_nonexistent_after_meta_$pass"               "$SITE/wp-admin/admin-ajax.php" || true
+          done
+
+          echo "=== BASIC QA ==="
+          for url in             "$SITE/"             "$SITE/tienda/"             "$SITE/producto/jamon-de-pato-ahumado-pieza/"             "$SITE/carrito/"             "$SITE/finalizar-compra/"
+          do
+            code="$(curl -k -sS -L --max-time 35 -o /dev/null -w '%{http_code}' -A 'MDO-Meta-QA/1.0' "$url" || true)"
+            echo "$code $url"
+            case "$code" in 200|301|302) ;; *) echo "QA_FAILED $url"; exit 30;; esac
+          done
+
+          echo "META_PLUGIN_CONFIRMED_DISABLED"
+          rm -f /tmp/mdo-meta-toggle.php
+          REMOTE
