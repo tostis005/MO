@@ -144,6 +144,11 @@ elmercado_catalog_filter_scroll_remove_legacy_loader_010234();
  */
 function elmercado_catalog_filter_scroll_batch_010234(): void {
 	check_ajax_referer( 'elmercado_catalog_batch_010234', 'nonce' );
+
+	$scope = isset( $_POST['scope'] ) ? sanitize_key( wp_unslash( $_POST['scope'] ) ) : '';
+	$scope = in_array( $scope, array( 'catalog', 'vendor' ), true ) ? $scope : '';
+	$GLOBALS['elmercado_catalog_batch_scope_010234'] = $scope;
+
 	$raw = isset( $_POST['ids'] ) ? (array) wp_unslash( $_POST['ids'] ) : array();
 	$ids = array_slice( array_values( array_unique( array_filter( array_map( 'absint', $raw ) ) ) ), 0, 24 );
 	if ( ! $ids ) {
@@ -295,7 +300,7 @@ add_action(
 				if(exactTotal&&productItems().length>=exactTotal){finish();return;}
 				loading=true; setState('loading','Cargando más productos…');
 				const batch=remaining.slice(0,12);
-				const body=new URLSearchParams({action:'elmercado_catalog_batch_010234',nonce});
+				const body=new URLSearchParams({action:'elmercado_catalog_batch_010234',nonce,scope:isVendor?'vendor':'catalog'});
 				batch.forEach(id=>body.append('ids[]',id));
 				try{
 					const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),10000);
