@@ -79,7 +79,8 @@ jobs:
           rows.sort(reverse=True)
           good=[r for r in rows if r[2]=='200']
           hits=[r for r in rows if r[4]=='HIT']
-          bad=[r for r in rows if r[2]!='200' or r[4]!='HIT' or r[0]>=1.0]
+          allowed={'HIT','REVALIDATE','STALE'}
+          bad=[r for r in rows if r[2]!='200' or r[4] not in allowed or r[0]>=8.0]
           print('count',len(rows),'http200',len(good),'hits',len(hits),'bad',len(bad))
           if rows:
               totals=[r[0] for r in rows]
@@ -91,6 +92,43 @@ jobs:
           print('BAD')
           for r in bad[:30]: print(r)
           if len(rows)<100 or bad:
+              raise SystemExit(1)
+          PY
+
+          echo "=== SECOND PASS: EVERY SELECTOS MUST HIT ==="
+          rm -rf /tmp/selectos-cache-hit
+          mkdir -p /tmp/selectos-cache-hit
+          cat /tmp/selectos-cache-verify-urls.tsv | \
+          xargs -P8 -n2 bash -c '
+            pid="$1"; url="$2"
+            h="/tmp/selectos-cache-hit/$pid.h"
+            out=$(curl -k -sS -L --max-time 8 -A "MDO-Selectos-Cache-Hit/1.0" \
+              -D "$h" -o /dev/null \
+              -w "%{http_code}\\t%{time_starttransfer}\\t%{time_total}" "$url" 2>/dev/null || true)
+            [ -n "$out" ] || out="000\\t8\\t8"
+            cache=$(awk -F": " "tolower(\\$1)==\\\"x-el-mercado-product-early-cache\\\"{gsub(/\\\\r/,\\\"\\\",\\$2); print \\$2}" "$h" | tail -n1)
+            printf "%s\\t%s\\t%s\\n" "$pid" "$out" "$cache" > "/tmp/selectos-cache-hit/$pid.tsv"
+          ' _
+
+          python3 - <<'PY'
+          import csv,glob,statistics
+          rows=[]
+          for p in glob.glob('/tmp/selectos-cache-hit/*.tsv'):
+              with open(p,encoding='utf-8',errors='replace') as f:
+                  r=next(csv.reader(f,delimiter='\\t'))
+              if len(r)<5: continue
+              pid,code,ttfb,total,cache=r[:5]
+              rows.append((float(total),float(ttfb),code,pid,cache))
+          rows.sort(reverse=True)
+          bad=[r for r in rows if r[2]!='200' or r[4]!='HIT' or r[0]>=1.0]
+          print('count',len(rows),'hits',sum(1 for r in rows if r[4]=='HIT'),'bad',len(bad))
+          if rows:
+              print('total_max',round(max(r[0] for r in rows),4),'total_median',round(statistics.median(r[0] for r in rows),4))
+              print('ttfb_max',round(max(r[1] for r in rows),4),'ttfb_median',round(statistics.median(r[1] for r in rows),4))
+          for r in rows[:15]: print(r)
+          if len(rows)<100 or bad:
+              print('BAD')
+              for r in bad[:30]: print(r)
               raise SystemExit(1)
           PY
 
