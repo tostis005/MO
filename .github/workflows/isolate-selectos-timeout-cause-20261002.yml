@@ -1,0 +1,110 @@
+name: Isolate Selectos timeout cause 20261002
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/isolate-selectos-timeout-cause-20261002.yml'
+permissions:
+  contents: read
+jobs:
+  isolate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          PHP="/opt/plesk/php/8.2/bin/php"
+          WP="/usr/local/bin/wp"
+          MU="$ROOT/wp-content/mu-plugins"
+          mkdir -p "$MU"
+
+          echo "=== PLUGINS / TABLES / HOOKS ==="
+          "$PHP" -d memory_limit=768M "$WP" plugin list --status=active --field=name --path="$ROOT" --allow-root | grep -Ei 'translate|facebook|mdo|sidebars|chat|woocommerce' || true
+          "$PHP" -d memory_limit=768M "$WP" db query "SHOW TABLES LIKE '%trp%'; SHOW INDEX FROM wp_mdo_source_products;" --path="$ROOT" --allow-root || true
+          "$PHP" -d memory_limit=768M "$WP" eval 'echo "nav_priority="; var_export(has_action("woostify_content_top","woostify_product_navigation")); echo PHP_EOL;' --path="$ROOT" --allow-root || true
+
+          cat > "$MU/mdo-isolate-selectos.php" <<'PHP'
+          <?php
+          if ( PHP_SAPI !== 'cli' ) {
+              $ua = isset($_SERVER['HTTP_USER_AGENT']) ? (string) $_SERVER['HTTP_USER_AGENT'] : '';
+              if ( str_starts_with($ua, 'MDO-Isolate/') ) {
+                  $mode = substr($ua, strlen('MDO-Isolate/'));
+                  add_filter('option_active_plugins', static function($plugins) use ($mode) {
+                      $drop = array();
+                      if ($mode === 'no-trp') {
+                          $drop[] = 'translatepress-multilingual/index.php';
+                      } elseif ($mode === 'no-facebook') {
+                          $drop[] = 'facebook-for-woocommerce/facebook-for-woocommerce.php';
+                      } elseif ($mode === 'no-mdo') {
+                          $drop[] = 'mdo-supplier-sync/mdo-supplier-sync.php';
+                      } elseif ($mode === 'no-woosidebars') {
+                          $drop[] = 'woosidebars/woosidebars.php';
+                      } elseif ($mode === 'no-chat') {
+                          $drop[] = 'click-to-chat-for-whatsapp/click-to-chat.php';
+                      } elseif ($mode === 'lean') {
+                          $drop = array(
+                              'translatepress-multilingual/index.php',
+                              'facebook-for-woocommerce/facebook-for-woocommerce.php',
+                              'mdo-supplier-sync/mdo-supplier-sync.php',
+                              'woosidebars/woosidebars.php',
+                              'click-to-chat-for-whatsapp/click-to-chat.php',
+                          );
+                      }
+                      if (!$drop) return $plugins;
+                      return array_values(array_filter((array)$plugins, static fn($p) => !in_array($p,$drop,true)));
+                  }, -9999);
+
+                  if ($mode === 'no-nav') {
+                      add_action('wp', static function() {
+                          for ($p=1; $p<=100; $p++) {
+                              remove_action('woostify_content_top','woostify_product_navigation',$p);
+                          }
+                      }, -9999);
+                  }
+
+                  if ($mode === 'no-http') {
+                      add_filter('pre_http_request', static function($pre,$args,$url) {
+                          $host = (string) parse_url($url, PHP_URL_HOST);
+                          if ($host && !str_contains($host,'elmercadodeorigen.com')) {
+                              return new WP_Error('mdo_isolate_http','blocked for diagnostic request');
+                          }
+                          return $pre;
+                      }, -9999, 3);
+                  }
+              }
+          }
+          PHP
+
+          cleanup(){ rm -f "$MU/mdo-isolate-selectos.php"; }
+          trap cleanup EXIT
+
+          echo "=== VARIANT BENCHMARK ==="
+          URL="https://www.elmercadodeorigen.com/producto/foie-gras-de-pato-extra-desvenado/"
+          for mode in baseline no-trp no-facebook no-mdo no-woosidebars no-chat no-nav no-http lean; do
+            ua="MDO-Isolate/$mode"
+            echo "--- $mode"
+            curl -k -sS -L --max-time 25 --connect-timeout 5 -A "$ua" -o /dev/null               -w "http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n" "$URL" || true
+          done
+
+          echo "=== RECHECK BEST CANDIDATES ON SECOND PRODUCT ==="
+          URL2="https://www.elmercadodeorigen.com/producto/carcasa-de-pato/"
+          for mode in baseline no-trp no-facebook no-mdo no-nav no-http lean; do
+            ua="MDO-Isolate/$mode"
+            echo "--- $mode"
+            curl -k -sS -L --max-time 25 --connect-timeout 5 -A "$ua" -o /dev/null               -w "http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n" "$URL2" || true
+          done
+          REMOTE
