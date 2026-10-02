@@ -1,0 +1,80 @@
+name: Inspect rewrite and Selectos hot paths 20261002
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-rewrite-selectos-hotpaths-20261002.yml'
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          PHP="/opt/plesk/php/8.2/bin/php"
+          WP="/usr/local/bin/wp"
+
+          echo "=== GREP FLUSH RULES ==="
+          grep -RIn --include='*.php' -E "flush_rewrite_rules|->flush_rules|flush_rules[[:space:]]*\("             "$ROOT/wp-content/mu-plugins" "$ROOT/wp-content/plugins" "$ROOT/wp-content/themes" 2>/dev/null | head -n 160 || true
+
+          echo "=== REGISTERED FLUSH CALLBACKS ==="
+          cat > /tmp/find-flush-callbacks.php <<'PHP'
+          <?php
+          global $wp_filter;
+          foreach ($wp_filter as $hook => $obj) {
+            $callbacks = isset($obj->callbacks) ? $obj->callbacks : array();
+            foreach ($callbacks as $priority => $list) {
+              foreach ($list as $entry) {
+                $f=$entry['function'] ?? null;
+                $label='';
+                if (is_string($f)) $label=$f;
+                elseif (is_array($f)) {
+                  $left=is_object($f[0])?get_class($f[0]):(string)$f[0];
+                  $label=$left.'::'.($f[1]??'');
+                } elseif ($f instanceof Closure) {
+                  $r=new ReflectionFunction($f);
+                  $label='Closure@'.$r->getFileName().':'.$r->getStartLine();
+                }
+                if (stripos($label,'flush')!==false || stripos($label,'rewrite')!==false) {
+                  echo $hook,"\t",$priority,"\t",$label,"\n";
+                }
+              }
+            }
+          }
+          PHP
+          "$PHP" -d memory_limit=768M "$WP" eval-file /tmp/find-flush-callbacks.php --path="$ROOT" --allow-root || true
+
+          echo "=== ENGLISH ROUTE FILES ==="
+          for f in             "$ROOT/wp-content/mu-plugins/mdo-production-english-seo-routes.php"             "$ROOT/wp-content/mu-plugins/mdo-zzzz-english-shop-public-uri-guard-20260831.php"             "$ROOT/wp-content/mu-plugins/mdo-english-slug-router.php"; do
+            if [ -f "$f" ]; then
+              echo "--- $f"
+              sed -n '1,220p' "$f"
+            fi
+          done
+
+          echo "=== YITH WAPO QUERY CODE ==="
+          f="$ROOT/wp-content/plugins/yith-woocommerce-product-add-ons/includes/class-yith-wapo-db.php"
+          if [ -f "$f" ]; then sed -n '330,420p' "$f"; fi
+
+          echo "=== YITH WAPO TABLES ==="
+          "$PHP" -d memory_limit=512M "$WP" db query "SHOW TABLES LIKE 'wp_yith_wapo%';" --path="$ROOT" --allow-root || true
+          for t in wp_yith_wapo_blocks wp_yith_wapo_addons; do
+            "$PHP" -d memory_limit=512M "$WP" db query "SHOW INDEX FROM $t;" --path="$ROOT" --allow-root 2>/dev/null || true
+          done
+          REMOTE
