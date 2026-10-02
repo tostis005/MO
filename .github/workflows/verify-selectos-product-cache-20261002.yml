@@ -147,9 +147,9 @@ jobs:
             printf '%s ' "$(basename "$h")"
             grep -Ei 'X-El-Mercado-Product-Early-Cache' "$h" | tr -d '\r' || true
           done
-          stale=$(grep -lEi 'X-El-Mercado-Product-Early-Cache: STALE' /tmp/herd-*.h | wc -l)
-          revalidate=$(grep -lEi 'X-El-Mercado-Product-Early-Cache: REVALIDATE' /tmp/herd-*.h | wc -l)
-          hit=$(grep -lEi 'X-El-Mercado-Product-Early-Cache: HIT' /tmp/herd-*.h | wc -l)
+          stale=$(grep -lEi 'X-El-Mercado-Product-Early-Cache: STALE' /tmp/herd-*.h 2>/dev/null | wc -l || true)
+          revalidate=$(grep -lEi 'X-El-Mercado-Product-Early-Cache: REVALIDATE' /tmp/herd-*.h 2>/dev/null | wc -l || true)
+          hit=$(grep -lEi 'X-El-Mercado-Product-Early-Cache: HIT' /tmp/herd-*.h 2>/dev/null | wc -l || true)
           echo "stale=$stale revalidate=$revalidate hit=$hit"
           test "$revalidate" -ge 1
           test "$stale" -ge 1
