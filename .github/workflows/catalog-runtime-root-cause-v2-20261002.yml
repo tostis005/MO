@@ -1,0 +1,252 @@
+name: Catalog runtime root cause v2 20261002
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-runtime-root-cause-v2-20261002.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Profile live catalog and AJAX batches
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p $PORT"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          SITE="https://www.elmercadodeorigen.com"
+          MU="$ROOT/wp-content/mu-plugins/mdo-catalog-perf-probe-20261002.php"
+          LOG="/tmp/mdo-catalog-perf-probe-20261002.log"
+          HTML="/tmp/mdo-catalog-perf-shop-20261002.html"
+          COOKIE="/tmp/mdo-catalog-perf-cookie-20261002.txt"
+          PHP="/opt/plesk/php/8.2/bin/php"
+          WP="/usr/local/bin/wp"
+
+          cleanup() {
+            rm -f "$MU" "$HTML" "$COOKIE"
+            wp cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          : > "$LOG"
+
+          cat > "$MU" <<'PHP'
+          <?php
+          if ( empty( $_REQUEST['mdo_perf_probe'] ) ) {
+              return;
+          }
+
+          $GLOBALS['mdo_perf_probe_start_20261002'] = microtime( true );
+          $GLOBALS['mdo_perf_probe_hooks_20261002'] = array();
+          $GLOBALS['mdo_perf_probe_hook_starts_20261002'] = array();
+          $GLOBALS['mdo_perf_probe_http_20261002'] = array();
+          $GLOBALS['mdo_perf_probe_http_starts_20261002'] = array();
+
+          global $wpdb;
+          if ( isset( $wpdb ) ) {
+              $wpdb->save_queries = true;
+          }
+
+          $mdo_probe_hooks = array(
+              'woocommerce_before_shop_loop_item',
+              'woocommerce_before_shop_loop_item_title',
+              'woocommerce_shop_loop_item_title',
+              'woocommerce_after_shop_loop_item_title',
+              'woocommerce_after_shop_loop_item',
+          );
+
+          foreach ( $mdo_probe_hooks as $mdo_probe_hook ) {
+              add_action(
+                  $mdo_probe_hook,
+                  static function () use ( $mdo_probe_hook ): void {
+                      $GLOBALS['mdo_perf_probe_hook_starts_20261002'][ $mdo_probe_hook ][] = microtime( true );
+                  },
+                  -999999
+              );
+              add_action(
+                  $mdo_probe_hook,
+                  static function () use ( $mdo_probe_hook ): void {
+                      $stack = &$GLOBALS['mdo_perf_probe_hook_starts_20261002'][ $mdo_probe_hook ];
+                      $started = is_array( $stack ) ? array_pop( $stack ) : null;
+                      if ( ! is_float( $started ) ) {
+                          return;
+                      }
+                      if ( ! isset( $GLOBALS['mdo_perf_probe_hooks_20261002'][ $mdo_probe_hook ] ) ) {
+                          $GLOBALS['mdo_perf_probe_hooks_20261002'][ $mdo_probe_hook ] = array( 'seconds' => 0.0, 'count' => 0 );
+                      }
+                      $GLOBALS['mdo_perf_probe_hooks_20261002'][ $mdo_probe_hook ]['seconds'] += microtime( true ) - $started;
+                      $GLOBALS['mdo_perf_probe_hooks_20261002'][ $mdo_probe_hook ]['count']++;
+                  },
+                  999999
+              );
+          }
+
+          add_filter(
+              'pre_http_request',
+              static function ( $pre, $args, $url ) {
+                  $key = md5( (string) $url );
+                  $GLOBALS['mdo_perf_probe_http_starts_20261002'][ $key ][] = microtime( true );
+                  return $pre;
+              },
+              -999999,
+              3
+          );
+
+          add_action(
+              'http_api_debug',
+              static function ( $response, $context, $class, $args, $url ): void {
+                  if ( 'response' !== $context ) {
+                      return;
+                  }
+                  $key = md5( (string) $url );
+                  $stack = &$GLOBALS['mdo_perf_probe_http_starts_20261002'][ $key ];
+                  $started = is_array( $stack ) ? array_pop( $stack ) : null;
+                  if ( ! is_float( $started ) ) {
+                      return;
+                  }
+                  $GLOBALS['mdo_perf_probe_http_20261002'][] = array(
+                      'url'     => preg_replace( '#([?&](?:access_token|token|key|nonce)=)[^&]+#i', '$1[redacted]', (string) $url ),
+                      'seconds' => microtime( true ) - $started,
+                  );
+              },
+              999999,
+              5
+          );
+
+          register_shutdown_function(
+              static function (): void {
+                  global $wpdb;
+                  $queries = array();
+                  $db_total = 0.0;
+                  if ( isset( $wpdb->queries ) && is_array( $wpdb->queries ) ) {
+                      foreach ( $wpdb->queries as $entry ) {
+                          $seconds = isset( $entry[1] ) ? (float) $entry[1] : 0.0;
+                          $db_total += $seconds;
+                          $queries[] = array(
+                              'seconds' => $seconds,
+                              'sql'     => isset( $entry[0] ) ? preg_replace( '/\\s+/', ' ', substr( (string) $entry[0], 0, 700 ) ) : '',
+                              'caller'  => isset( $entry[2] ) ? substr( (string) $entry[2], 0, 500 ) : '',
+                          );
+                      }
+                  }
+                  usort( $queries, static fn( $a, $b ) => $b['seconds'] <=> $a['seconds'] );
+                  $hooks = $GLOBALS['mdo_perf_probe_hooks_20261002'] ?? array();
+                  foreach ( $hooks as &$hook ) {
+                      $hook['seconds'] = round( (float) $hook['seconds'], 6 );
+                  }
+                  unset( $hook );
+                  $http = $GLOBALS['mdo_perf_probe_http_20261002'] ?? array();
+                  usort( $http, static fn( $a, $b ) => $b['seconds'] <=> $a['seconds'] );
+                  $row = array(
+                      'time'        => gmdate( 'c' ),
+                      'uri'         => (string) ( $_SERVER['REQUEST_URI'] ?? '' ),
+                      'method'      => (string) ( $_SERVER['REQUEST_METHOD'] ?? '' ),
+                      'action'      => sanitize_key( (string) ( $_REQUEST['action'] ?? '' ) ),
+                      'scope'       => sanitize_key( (string) ( $_REQUEST['scope'] ?? '' ) ),
+                      'ids'         => isset( $_REQUEST['ids'] ) ? count( (array) $_REQUEST['ids'] ) : 0,
+                      'total_sec'   => round( microtime( true ) - (float) $GLOBALS['mdo_perf_probe_start_20261002'], 6 ),
+                      'db_sec'      => round( $db_total, 6 ),
+                      'query_count' => count( $queries ),
+                      'hooks'       => $hooks,
+                      'http'        => array_slice( $http, 0, 12 ),
+                      'top_queries' => array_slice( $queries, 0, 12 ),
+                      'peak_mb'     => round( memory_get_peak_usage( true ) / 1048576, 1 ),
+                  );
+                  file_put_contents( '/tmp/mdo-catalog-perf-probe-20261002.log', wp_json_encode( $row, JSON_UNESCAPED_SLASHES ) . "\n", FILE_APPEND | LOCK_EX );
+              }
+          );
+          PHP
+
+          "$PHP" -l "$MU" >/dev/null
+          wp cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+
+          echo "=== SYSTEM BEFORE ==="
+          date -Is
+          uptime
+          free -m
+          ps -eo pid,stat,etimes,%cpu,%mem,rss,args --sort=-%cpu | grep -E 'php-fpm: pool elmercadodeorigen.com|mysqld' | head -n 28 || true
+
+          echo "=== INITIAL SHOP PROBE ==="
+          curl -k -sS -L --max-time 40 -c "$COOKIE" -b "$COOKIE"             -A 'MDO-Catalog-RootCause/1.0'             -o "$HTML"             -w 'shop http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n'             "$SITE/tienda/?mdo_perf_probe=shop-$(date +%s)"
+
+          "$PHP" -r '
+            $h=file_get_contents($argv[1]);
+            if(!preg_match("/const nonce = ([^;]+);/",$h,$m)){fwrite(STDERR,"nonce not found\n");exit(2);}
+            $nonce=json_decode(trim($m[1]),true);
+            if(!preg_match("/const orderedIds = (\\[[^\\]]+\\])/",$h,$i)){fwrite(STDERR,"ids not found\n");exit(3);}
+            $ids=json_decode(trim($i[1]),true);
+            if(!is_array($ids)||!$ids){fwrite(STDERR,"ids invalid\n");exit(4);}
+            file_put_contents("/tmp/mdo-catalog-perf-nonce", $nonce);
+            file_put_contents("/tmp/mdo-catalog-perf-ids", implode("\n",array_slice($ids,0,12)));
+            echo "nonce_ok ids=".count($ids)." first12=".implode(",",array_slice($ids,0,12))."\n";
+          ' "$HTML"
+
+          NONCE="$(cat /tmp/mdo-catalog-perf-nonce)"
+          mapfile -t IDS < /tmp/mdo-catalog-perf-ids
+
+          post_batch() {
+            label="$1"; scope="$2"; count="$3"
+            args=( -k -sS --max-time 40 -c "$COOKIE" -b "$COOKIE" -A 'MDO-Catalog-RootCause/1.0' -o "/tmp/mdo-$label.json" -w "$label http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n" )
+            data="action=elmercado_catalog_batch_010234&nonce=$NONCE&scope=$scope&mdo_perf_probe=$label"
+            i=0
+            for id in "${IDS[@]}"; do
+              i=$((i+1)); [ "$i" -le "$count" ] || break
+              data="$data&ids%5B%5D=$id"
+            done
+            curl "${args[@]}" -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' --data "$data" "$SITE/wp-admin/admin-ajax.php"
+          }
+
+          echo "=== AJAX STARTUP BASELINE ==="
+          curl -k -sS --max-time 40 -c "$COOKIE" -b "$COOKIE" -A 'MDO-Catalog-RootCause/1.0'             -o /tmp/mdo-baseline.txt             -w 'ajax_baseline http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n'             -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8'             --data 'action=mdo_nonexistent_perf_action&mdo_perf_probe=ajax-baseline'             "$SITE/wp-admin/admin-ajax.php" || true
+
+          echo "=== AJAX BATCH SCALING ==="
+          post_batch batch1 catalog 1
+          post_batch batch6 catalog 6
+          post_batch batch12 catalog 12
+          echo "=== AJAX BATCH WITHOUT PRODUCER RATING PATH ==="
+          post_batch batch12_vendor vendor 12
+
+          echo "=== PROBE JSON ==="
+          cat "$LOG"
+
+          echo "=== AGGREGATED SUMMARY ==="
+          "$PHP" -r '
+            $rows=array_values(array_filter(array_map(fn($l)=>json_decode($l,true),file($argv[1],FILE_IGNORE_NEW_LINES|FILE_SKIP_EMPTY_LINES))));
+            foreach($rows as $r){
+              printf("%-16s total=%7.3fs db=%7.3fs q=%4d peak=%5.1fMB ids=%2d scope=%s\n",
+                $r["action"] ?: (str_contains($r["uri"],"/tienda/")?"shop":"other"),
+                $r["total_sec"],$r["db_sec"],$r["query_count"],$r["peak_mb"],$r["ids"],$r["scope"]);
+              if(!empty($r["hooks"])){
+                foreach($r["hooks"] as $k=>$v) printf("  hook %-42s %7.3fs / %d\n",$k,$v["seconds"],$v["count"]);
+              }
+              if(!empty($r["http"])){
+                foreach(array_slice($r["http"],0,5) as $h) printf("  HTTP %7.3fs %s\n",$h["seconds"],$h["url"]);
+              }
+              foreach(array_slice($r["top_queries"],0,3) as $q) printf("  SQL  %7.3fs %s\n",$q["seconds"],substr($q["sql"],0,240));
+            }
+          ' "$LOG"
+
+          echo "=== SYSTEM AFTER ==="
+          uptime
+          ps -eo pid,stat,etimes,%cpu,%mem,rss,args --sort=-%cpu | grep -E 'php-fpm: pool elmercadodeorigen.com|mysqld' | head -n 28 || true
+
+          rm -f /tmp/mdo-catalog-perf-nonce /tmp/mdo-catalog-perf-ids /tmp/mdo-batch*.json /tmp/mdo-baseline.txt
+          REMOTE
