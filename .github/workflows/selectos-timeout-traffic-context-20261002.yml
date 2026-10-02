@@ -1,0 +1,58 @@
+name: Selectos timeout traffic context 20261002
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/selectos-timeout-traffic-context-20261002.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          LOG="/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log"
+          python3 - "$LOG" <<'PY'
+          import sys,re
+          from datetime import datetime,timezone,timedelta
+          from collections import Counter,defaultdict
+          from urllib.parse import urlsplit
+          cut=datetime.now(timezone.utc)-timedelta(hours=3)
+          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+\S+\s+"([^"]*)"\s+"([^"]*)"')
+          uas=Counter(); status=Counter(); product_5xx=[]; minute=Counter()
+          for line in open(sys.argv[1],encoding='utf-8',errors='ignore'):
+              m=rx.match(line)
+              if not m: continue
+              ip,ds,method,target,code,ref,ua=m.groups()
+              try: dt=datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(timezone.utc)
+              except: continue
+              if dt<cut: continue
+              try:path=urlsplit(target).path or '/'
+              except:path=target.split('?',1)[0] or '/'
+              uas[ua]+=1; status[code]+=1; minute[dt.strftime('%H:%M')]+=1
+              if code in {'502','503','504'} and ('/producto/' in path or '/product/' in path):
+                  product_5xx.append((dt.strftime('%H:%M:%S'),code,path,ua[:120],ref[:160]))
+          print('STATUS',dict(status))
+          print('TOP_UA')
+          for ua,n in uas.most_common(15): print(n,ua[:180])
+          print('BUSIEST_MINUTES')
+          for k,n in minute.most_common(15): print(k,n)
+          print('PRODUCT_5XX')
+          for row in product_5xx[-50:]: print('\t'.join(row))
+          PY
+          REMOTE
