@@ -1,0 +1,20 @@
+name: Lint Montjam Mentta option2
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/emdo-mentta-exclusive-products.php'
+      - '.github/scripts/montjam-mentta-option2-20261008.php'
+      - '.github/workflows/lint-montjam-mentta-option2-20261008.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check PHP syntax
+        run: |
+          php -l mu-plugins/emdo-mentta-exclusive-products.php
+          php -l .github/scripts/montjam-mentta-option2-20261008.php
