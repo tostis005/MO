@@ -103,7 +103,6 @@ try {
   $term_result=wp_set_object_terms($pid,array((int)$mentta->term_id),'product_cat',true);
   if (is_wp_error($term_result)) {throw new RuntimeException('Mentta category assignment failed #'.$pid);}
   update_post_meta($pid,'_emdo_montjam_mentta_margin_20261008','25_percent_cost_markup');
-  $updated[]=$pid;
  }
  $result=array();
  foreach ($planned as $pid=>$plan) {
