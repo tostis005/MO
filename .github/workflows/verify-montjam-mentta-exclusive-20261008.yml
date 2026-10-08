@@ -1,0 +1,30 @@
+name: Verify Montjam Mentta exclusive storefront
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-montjam-mentta-exclusive-20261008.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Check public product URL returns 404
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://www.elmercadodeorigen.com/producto/jamon-de-bellota-100-iberico-montjam-mentta/'
+          for attempt in 1 2 3; do
+            status=$(curl -sSL -o /dev/null --connect-timeout 10 --max-time 60 -w '%{http_code}' "$URL" || true)
+            echo "Attempt $attempt / Mentta-only public URL: HTTP $status"
+            if [ "$status" = '404' ]; then
+              echo 'PASS: Direct public access is blocked.'
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'FAIL: URL is not returning 404'
+          exit 1
