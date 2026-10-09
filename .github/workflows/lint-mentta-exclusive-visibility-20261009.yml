@@ -1,0 +1,22 @@
+name: Validate Mentta-only Montjam protection and visibility
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lint-mentta-exclusive-visibility-20261009.yml'
+      - '.github/scripts/enable-mentta-only-montjam-visibility-20261009.php'
+      - 'mu-plugins/emdo-mentta-storefront-reinforcement.php'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  php-lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint guarded code
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/enable-mentta-only-montjam-visibility-20261009.php
+          php -l mu-plugins/emdo-mentta-storefront-reinforcement.php
+          php -l mu-plugins/emdo-mentta-exclusive-products.php
