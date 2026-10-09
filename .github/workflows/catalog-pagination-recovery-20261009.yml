@@ -90,11 +90,21 @@ jobs:
           "$PHP" -d memory_limit=512M "$WP_BIN" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
           rm -f "$CACHE/es-cat-jamones-paletas.html" "$CACHE/en-cat-hams-and-shoulders.html" "$CACHE/en-cat-hams-and-shoulders-p2.html"
           echo '=== HTML SMOKE ==='
+          echo '=== DEPLOYED THEME MODULE REGISTRATION ==='
+          grep -nF 'catalog-continuous-loading-010176.php' "$ROOT/wp-content/themes/elmercadodeorigen-child/functions.php" || true
+          grep -nF 'ELMERCADO_THEME_VERSION' "$ROOT/wp-content/themes/elmercadodeorigen-child/functions.php" | head -n 2 || true
           URL="https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/"
           ok=0
           for a in 1 2 3; do
             if curl -fsSL --connect-timeout 6 --max-time 55 "$URL?catalog_patch=$RUN-$a" -o /tmp/emdo-catalog-check.html; then
               echo "smoke attempt=$a bytes=$(wc -c </tmp/emdo-catalog-check.html) loader=$(grep -c 'elmercado-continuous-catalog-loader' /tmp/emdo-catalog-check.html || true) fixed=$(grep -c 'restoreNativePagination' /tmp/emdo-catalog-check.html || true)"
+              python3 - /tmp/emdo-catalog-check.html <<'PY'
+          import sys,re
+          s=open(sys.argv[1],encoding='utf-8',errors='replace').read()
+          print('HTML_DEBUG_MARKERS', {x:s.count(x) for x in ['emo-continuous-catalog','elmercado-child-theme','elmercado-continuous-catalog-loader','restoreNativePagination','woocommerce-pagination','infinite-scroll-active','catalog-continuous-loading']})
+          print('HTML_DEBUG_SCRIPTS', re.findall(r'<script[^>]*id=["\\'][^"\\']*(?:catalog|filter|woocommerce)[^"\\']*["\\'][^>]*>',s,re.I)[:10])
+          print('HTML_DEBUG_BODY', (re.search(r'<body[^>]{0,800}>',s,re.I).group(0) if re.search(r'<body[^>]{0,800}>',s,re.I) else '<none>')[:800])
+          PY
               if grep -Fq 'restoreNativePagination' /tmp/emdo-catalog-check.html && grep -Fq 'emo-catalog-fallback-link' /tmp/emdo-catalog-check.html; then ok=1; break; fi
             fi
             sleep 3
