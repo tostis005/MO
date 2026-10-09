@@ -143,6 +143,21 @@ add_action(
 				display: none !important;
 			}
 
+			body.emo-continuous-catalog .emo-catalog-fallback-link {
+				display: inline-flex;
+				align-items: center;
+				min-height: 38px;
+				padding: 0 12px;
+				border: 1px solid rgba(23,63,50,.24);
+				border-radius: 999px;
+				color: #173f32;
+				font-weight: 750;
+				text-decoration: underline;
+			}
+			body.emo-continuous-catalog .emo-catalog-fallback-link[hidden] {
+				display: none !important;
+			}
+
 			@keyframes emo-catalog-spin-010181 {
 				to { transform: rotate(360deg); }
 			}
