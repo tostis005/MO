@@ -1,0 +1,93 @@
+name: Restore visible catalogue pagination 2026-10-09
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-catalog-manual-pager-20261009.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      USER: ${{ secrets.STAGING_USER }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate code
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-catalog-manual-pagination-20261009.php
+          php -l .github/scripts/elmercado-opcache-reset.php
+      - name: Deploy isolated MU plugin with rollback and live checks
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          P="$PORT"
+          test -n "$P" || P=22
+          sshpass -e scp -o StrictHostKeyChecking=no -o PubkeyAuthentication=no -P "$P" mu-plugins/mdo-catalog-manual-pagination-20261009.php "$USER@$HOST:/tmp/emdo-manual-pager-$GITHUB_RUN_ID.php"
+          sshpass -e scp -o StrictHostKeyChecking=no -o PubkeyAuthentication=no -P "$P" .github/scripts/elmercado-opcache-reset.php "$USER@$HOST:/tmp/emdo-pager-opcache-$GITHUB_RUN_ID.php"
+          sshpass -e ssh -o StrictHostKeyChecking=no -o PubkeyAuthentication=no -p "$P" "$USER@$HOST" "bash -s -- '$GITHUB_RUN_ID'" <<'REMOTE'
+          set -euo pipefail
+          RUN="$1"
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          TARGET="$ROOT/wp-content/mu-plugins/mdo-catalog-manual-pagination-20261009.php"
+          SOURCE="/tmp/emdo-manual-pager-$RUN.php"
+          BACKUP="/tmp/emdo-manual-pager-before-$RUN.php"
+          PHP="$(command -v php || true)"
+          if [ -z "$PHP" ]; then PHP="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"; fi
+          WP_BIN="$(command -v wp)"
+          test -f "$ROOT/wp-config.php" && test -x "$PHP" && test -f "$SOURCE"
+          SITE="$("$PHP" -d memory_limit=512M "$WP_BIN" option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)"
+          case "$SITE" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) ;;
+            *) echo "Invalid production site $SITE"; exit 11 ;;
+          esac
+          "$PHP" -l "$SOURCE"
+          before=0
+          if [ -e "$TARGET" ]; then cp -a "$TARGET" "$BACKUP"; before=1; fi
+          completed=0
+          rollback() {
+            if [ "$completed" -ne 1 ]; then
+              if [ "$before" -eq 1 ]; then cp -a "$BACKUP" "$TARGET"; else rm -f "$TARGET"; fi
+              "$PHP" -d memory_limit=512M "$WP_BIN" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+              echo MANUAL_PAGER_ROLLBACK
+            fi
+          }
+          trap rollback EXIT
+          cp -f "$SOURCE" "$TARGET"
+          "$PHP" -l "$TARGET"
+          "$PHP" -d memory_limit=512M "$WP_BIN" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          CACHE="$ROOT/wp-content/uploads/elmercado-hot-static-v1"
+          rm -f "$CACHE/es-cat-jamones-paletas.html" "$CACHE/en-cat-hams-and-shoulders.html" "$CACHE/en-cat-hams-and-shoulders-p2.html"
+          cp -f "/tmp/emdo-pager-opcache-$RUN.php" "$ROOT/emdo-pager-opcache-$RUN.php"
+          curl -fsSL --connect-timeout 5 --max-time 20 "https://www.elmercadodeorigen.com/emdo-pager-opcache-$RUN.php" || true
+          rm -f "$ROOT/emdo-pager-opcache-$RUN.php"
+          URL="https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/"
+          ok=0
+          for i in 1 2 3; do
+            if curl -fsSL --connect-timeout 7 --max-time 65 "$URL?emdo_manual_pager=$RUN-$i" -o "/tmp/emdo-pager-html-$RUN"; then
+              echo "smoke attempt=$i style=$(grep -c 'mdo-catalog-manual-pagination-20261009' /tmp/emdo-pager-html-$RUN || true) nav=$(grep -c 'nav class=\"mdo-catalog-manual-pagination\"' /tmp/emdo-pager-html-$RUN || true)"
+              if grep -Fq 'mdo-catalog-manual-pagination-20261009' "/tmp/emdo-pager-html-$RUN" &&
+                grep -Fq 'nav class="mdo-catalog-manual-pagination"' "/tmp/emdo-pager-html-$RUN" &&
+                grep -Fq 'Ver más productos' "/tmp/emdo-pager-html-$RUN"; then ok=1; break; fi
+            fi
+            sleep 3
+          done
+          test "$ok" = 1
+          curl -fsSL --connect-timeout 7 --max-time 65 "$URL/page/2/?emdo_manual_pager=$RUN" -o "/tmp/emdo-pager-p2-$RUN"
+          grep -Fq 'Productos anteriores' "/tmp/emdo-pager-p2-$RUN"
+          completed=1
+          trap - EXIT
+          echo 'CATALOG_MANUAL_PAGINATION_LIVE_VERIFIED'
+          REMOTE
