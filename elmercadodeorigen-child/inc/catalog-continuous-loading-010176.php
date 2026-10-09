@@ -266,8 +266,11 @@ add_action(
 					const url = new URL(value, currentUrl.href);
 					url.pathname = url.pathname.replace(/\/page\/\d+\/?$/i, '/').replace(/\/+$/, '/');
 					paginationKeys.forEach((key) => url.searchParams.delete(key));
+					// Páginas con distintos atributos/precio/orden no pertenecen
+					// al mismo catálogo. No mezclar productos al cargar más.
+					url.searchParams.sort();
 					url.hash = '';
-					return `${url.origin}${url.pathname}`;
+					return `${url.origin}${url.pathname}?${url.searchParams.toString()}`;
 				} catch (_) {
 					return '';
 				}
@@ -398,6 +401,14 @@ add_action(
 				});
 			};
 
+			// El paginador HTML siempre debe poder recuperarse ante fallos de red,
+			// JavaScript, contenido duplicado o enlaces de páginas inconsistentes.
+			const restoreNativePagination = () => {
+				document.querySelectorAll('.emo-catalog-native-pagination').forEach((node) => {
+					node.classList.remove('emo-catalog-native-pagination');
+				});
+			};
+
 			const initialPagination = paginationSnapshot(document, currentUrl.href);
 			const initialPage = initialPagination.current || 1;
 			let highestPage = initialPage;
@@ -425,6 +436,11 @@ add_action(
 
 			const message = state.querySelector('.emo-catalog-load-message');
 			const button = state.querySelector('.emo-catalog-load-button');
+			const fallbackLink = document.createElement('a');
+			fallbackLink.className = 'emo-catalog-fallback-link';
+			fallbackLink.textContent = 'Ver siguiente página de productos';
+			fallbackLink.hidden = true;
+			state.append(fallbackLink);
 			const countNode = surface.querySelector('.woocommerce-result-count');
 			const countText = countNode?.textContent?.replace(/\s+/g, ' ').trim() || '';
 			const totalMatch = countText.match(/(?:de|of)\s+([\d.,]+)\s+(?:resultados?|results?)/i) || countText.match(/([\d.,]+)\s+(?:resultados?|results?)/i);
@@ -451,6 +467,9 @@ add_action(
 				state.classList.toggle('is-failure', failure);
 				message.textContent = active || failure ? text : '';
 				button.hidden = !failure || !nextUrl;
+				fallbackLink.hidden = !failure || !nextUrl;
+				if (nextUrl) fallbackLink.href = nextUrl;
+				if (failure) restoreNativePagination();
 			};
 
 			const showIdle = () => setState('idle');
