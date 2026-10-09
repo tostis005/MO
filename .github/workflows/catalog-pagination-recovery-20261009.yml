@@ -48,29 +48,33 @@ jobs:
           BACKUP="/tmp/emdo-catalog-loader-before-$RUN.php"
           AUDIT="/tmp/emdo-catalog-audit-$RUN.php"
           test -f "$ROOT/wp-config.php" && test -f "$TARGET" && test -f "$INCOMING"
-          SITE="$(wp option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)"
+          PHP="$(command -v php || true)"
+          if [ -z "$PHP" ]; then PHP="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1)"; fi
+          WP_BIN="$(command -v wp || true)"
+          test -x "$PHP" && test -n "$WP_BIN"
+          SITE="$("$PHP" -d memory_limit=512M "$WP_BIN" option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)"
           case "$SITE" in
             https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) ;;
             *) echo "Refusing unknown production site: $SITE"; exit 10 ;;
           esac
-          php -l "$INCOMING"
+          "$PHP" -l "$INCOMING"
           cp -a "$TARGET" "$BACKUP"
           finished=0
           rollback() {
             if [ "$finished" -ne 1 ]; then
               cp -a "$BACKUP" "$TARGET"
-              wp cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+              "$PHP" -d memory_limit=512M "$WP_BIN" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
               echo CATALOG_PATCH_ROLLED_BACK
             fi
           }
           trap rollback EXIT
           cp -f "$INCOMING" "$TARGET"
-          php -l "$TARGET"
-          wp cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          "$PHP" -l "$TARGET"
+          "$PHP" -d memory_limit=512M "$WP_BIN" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
           CACHE="$ROOT/wp-content/uploads/elmercado-hot-static-v1"
           rm -f "$CACHE/es-cat-jamones-paletas.html" "$CACHE/en-cat-hams-and-shoulders.html" "$CACHE/en-cat-hams-and-shoulders-p2.html"
           echo '=== ACTUAL PRODUCT AND ATTRIBUTE AUDIT (READ ONLY) ==='
-          wp eval-file "$AUDIT" --path="$ROOT" --allow-root
+          "$PHP" -d memory_limit=512M "$WP_BIN" eval-file "$AUDIT" --path="$ROOT" --allow-root
           echo '=== HTML SMOKE ==='
           URL="https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/"
           ok=0
