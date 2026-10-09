@@ -69,7 +69,7 @@ add_filter( 'rest_post_dispatch', static function ( $response, $server, $request
     $filter = static function ( $item ) {
         return ! ( is_array( $item ) && isset( $item['id'] ) && emdo_mj_exclusive_or_variation( (int) $item['id'] ) );
     };
-    if ( array_is_list( $data ) ) {
+    if ( ! $data || array_keys( $data ) === range( 0, count( $data ) - 1 ) ) {
         $response->set_data( array_values( array_filter( $data, $filter ) ) );
     } elseif ( isset( $data['products'] ) && is_array( $data['products'] ) ) {
         $data['products'] = array_values( array_filter( $data['products'], $filter ) );
