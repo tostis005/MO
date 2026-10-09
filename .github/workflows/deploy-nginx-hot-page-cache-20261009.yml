@@ -1,0 +1,159 @@
+name: Deploy Nginx hot-page static cache 2026-10-09
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/deploy-nginx-hot-page-cache-20261009.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install SSH prerequisite
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Safely deploy exact-route Nginx static cache with rollback
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          CONF="/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf"
+          GENERATED="/var/www/vhosts/system/elmercadodeorigen.com/conf/nginx.conf"
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          CACHE="$ROOT/wp-content/uploads/elmercado-hot-static-v1"
+          STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+          BACKUP="$CONF.emdo-pre-nginx-hot-$STAMP"
+          WATCHDOG="/usr/local/sbin/emdo-nginx-hot-cache-watchdog"
+          BACKUP_CRON="/root/emdo-crontab-pre-nginx-hot-$STAMP"
+          test "$(id -u)" -eq 0
+          test -s "$CONF" && test -s "$GENERATED"
+          for f in en-store-hidalgo-de-la-jara en-store-montjam en-cat-hams-and-shoulders en-cat-hams-and-shoulders-p2 en-cat-cured-meats es-cat-jamones-paletas es-cat-embutidos-curados; do
+            test -s "$CACHE/$f.html" || { echo "Missing hot static file: $f"; exit 1; }
+          done
+          test -x /usr/local/sbin/emdo-hot-cache-refresh
+          crontab -l > "$BACKUP_CRON" 2>/dev/null || true
+          grep -q '^\*/5 .*emdo-hot-cache-refresh' "$BACKUP_CRON" || { echo "Hot cache cron not present"; exit 1; }
+          cp -a "$CONF" "$BACKUP"
+          # Copy upstream URL from Plesk generated configuration, never hard-code an IP.
+          export EMDO_NGINX_CONF="$CONF" EMDO_NGINX_GENERATED="$GENERATED" EMDO_NGINX_ROOT="$ROOT"
+          python3 - <<'PY'
+          import os,re,pathlib
+          conf=pathlib.Path(os.environ["EMDO_NGINX_CONF"])
+          current=conf.read_text()
+          generated=pathlib.Path(os.environ["EMDO_NGINX_GENERATED"]).read_text()
+          upstream=re.search(r'proxy_pass\s+"(https://[^"]+:7081)";',generated)
+          if not upstream: raise RuntimeError("Cannot identify Plesk Apache HTTPS upstream")
+          begin="# BEGIN EMDO NGINX HOT STATIC 20261009"
+          end="# END EMDO NGINX HOT STATIC 20261009"
+          if begin in current:
+              current=re.sub(re.escape(begin)+r'.*?'+re.escape(end)+r'\s*','',current,flags=re.S)
+          root=os.environ["EMDO_NGINX_ROOT"]
+          paths={
+            "/en/store/hidalgo-de-la-jara/":"en-store-hidalgo-de-la-jara",
+            "/en/store/montjam/":"en-store-montjam",
+            "/en/product-category/hams-and-shoulders/":"en-cat-hams-and-shoulders",
+            "/en/product-category/hams-and-shoulders/page/2/":"en-cat-hams-and-shoulders-p2",
+            "/en/product-category/cured-meats/":"en-cat-cured-meats",
+            "/categoria-producto/jamones-paletas/":"es-cat-jamones-paletas",
+            "/categoria-producto/embutidos-y-curados/":"es-cat-embutidos-curados"
+          }
+          lines=[begin, "# Only anonymous GET without cookies or query parameters is served statically."]
+          for url,slug in paths.items():
+              lines += [
+                "location = "+url+" {",
+                "    error_page 418 = @emdo_hot_static_origin;",
+                '    if ($request_method != GET) { return 418; }',
+                '    if ($args != "") { return 418; }',
+                '    if ($http_cookie != "") { return 418; }',
+                '    root "'+root+'";',
+                '    try_files /wp-content/uploads/elmercado-hot-static-v1/'+slug+'.html @emdo_hot_static_origin;',
+                '    add_header X-EMDO-Nginx-Hot-Cache "HIT" always;',
+                '    add_header Cache-Control "private, no-store, max-age=0" always;',
+                "}"
+              ]
+          lines += [
+            "location @emdo_hot_static_origin {",
+            "    proxy_read_timeout 120;",
+            '    proxy_pass "'+upstream.group(1)+'";',
+            "    proxy_hide_header upgrade;",
+            "    proxy_ssl_server_name on;",
+            "    proxy_ssl_name $host;",
+            "    proxy_ssl_session_reuse off;",
+            "    proxy_set_header Host $host;",
+            "    proxy_set_header X-Real-IP $remote_addr;",
+            "    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;",
+            "    proxy_set_header X-Accel-Internal /internal-nginx-static-location;",
+            "    access_log off;",
+            "}",
+            end
+          ]
+          conf.write_text(current.rstrip()+"\n\n"+"\n".join(lines)+"\n")
+          print("Configured exact routes:",len(paths))
+          PY
+          success=no
+          rollback() {
+            if [ "$success" != yes ]; then
+              echo "ROLLBACK: restoring original Nginx config"
+              cp -a "$BACKUP" "$CONF"
+              nginx -t && (nginx -s reload || systemctl reload nginx) || true
+            fi
+          }
+          trap rollback EXIT
+          nginx -t
+          nginx -s reload || systemctl reload nginx
+          sleep 2
+          for url in \
+            "https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/" \
+            "https://www.elmercadodeorigen.com/en/store/montjam/" \
+            "https://www.elmercadodeorigen.com/en/product-category/hams-and-shoulders/" \
+            "https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/"; do
+            h="$(mktemp)"
+            status="$(curl -k -sS --connect-timeout 4 --max-time 18 -A 'MDO-Nginx-Cache-Verify/1.0' -D "$h" -o /dev/null -w '%{http_code}' "$url")"
+            echo "STATIC VERIFY $url: HTTP=$status header=$(grep -i '^x-emdo-nginx-hot-cache:' "$h" | tr -d '\r' || true)"
+            test "$status" = 200 && grep -qi '^X-EMDO-Nginx-Hot-Cache: HIT' "$h" || exit 30
+            rm -f "$h"
+          done
+          for mode in 'cookie=wordpress_logged_in_test' 'query=emdo_cache_bypass_test=1'; do
+            args=(-k -sS --connect-timeout 4 --max-time 18 -D /tmp/emdo-bypass-header -o /dev/null -w '%{http_code}')
+            url="https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/"
+            if [[ "$mode" == cookie=* ]]; then args+=(-H "Cookie: ${mode#cookie=}"); else url+="?${mode#query=}"; fi
+            status="$(curl "${args[@]}" "$url")"
+            echo "BYPASS VERIFY ${mode%%=*}: HTTP=$status static_header=$(grep -ic '^x-emdo-nginx-hot-cache:' /tmp/emdo-bypass-header || true)"
+            test "$status" = 200 && ! grep -qi '^X-EMDO-Nginx-Hot-Cache:' /tmp/emdo-bypass-header || exit 31
+          done
+          success=yes
+          echo "NGINX STATIC CACHE ACTIVE: four routes validated; seven routes configured."
+          # Watchdog prevents stale files being served indefinitely if the existing 5-min warm cron stops.
+          cat > "$WATCHDOG" <<'SH'
+          #!/bin/bash
+          set -euo pipefail
+          cache="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/uploads/elmercado-hot-static-v1"
+          cutoff="$(($(date +%s)-2100))"
+          for name in en-store-hidalgo-de-la-jara en-store-montjam en-cat-hams-and-shoulders en-cat-hams-and-shoulders-p2 en-cat-cured-meats es-cat-jamones-paletas es-cat-embutidos-curados; do
+            file="$cache/$name.html"
+            if [ -f "$file" ] && [ "$(stat -c '%Y' "$file")" -lt "$cutoff" ]; then rm -f "$file"; fi
+          done
+          SH
+          chmod 0755 "$WATCHDOG"
+          TMP=$(mktemp)
+          crontab -l | sed '/# BEGIN EMDO NGINX HOT CACHE WATCH/,/# END EMDO NGINX HOT CACHE WATCH/d' > "$TMP"
+          {
+            echo '# BEGIN EMDO NGINX HOT CACHE WATCH'
+            echo '*/5 * * * * flock -n /tmp/emdo-nginx-hot-cache-watchdog.lock /usr/local/sbin/emdo-nginx-hot-cache-watchdog >/dev/null 2>&1'
+            echo '# END EMDO NGINX HOT CACHE WATCH'
+          } >> "$TMP"
+          crontab "$TMP"
+          rm -f "$TMP"
+          echo "CACHE_REFRESH every 5 min, stale watchdog 35 min, rollback backup: $BACKUP"
+          REMOTE
