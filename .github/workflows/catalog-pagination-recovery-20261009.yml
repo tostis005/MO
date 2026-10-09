@@ -26,6 +26,8 @@ jobs:
           set -euo pipefail
           php -l elmercadodeorigen-child/inc/catalog-continuous-loading-010176.php
           php -l .github/scripts/audit-hams-catalog-integrity-20261009.php
+          php -l .github/scripts/repair-montjam-ham-attributes-20261009.php
+          php -l .github/scripts/elmercado-opcache-reset.php
           grep -Fq restoreNativePagination elmercadodeorigen-child/inc/catalog-continuous-loading-010176.php
           grep -Fq 'url.searchParams.sort()' elmercadodeorigen-child/inc/catalog-continuous-loading-010176.php
       - name: Backup, deploy isolated fix, audit, and verify production
@@ -39,6 +41,8 @@ jobs:
           test -n "$PORT" || PORT=22
           sshpass -e scp -o StrictHostKeyChecking=no -o PubkeyAuthentication=no -P "$PORT" elmercadodeorigen-child/inc/catalog-continuous-loading-010176.php "$STAGING_USER@$STAGING_HOST:/tmp/emdo-catalog-loader-$GITHUB_RUN_ID.php"
           sshpass -e scp -o StrictHostKeyChecking=no -o PubkeyAuthentication=no -P "$PORT" .github/scripts/audit-hams-catalog-integrity-20261009.php "$STAGING_USER@$STAGING_HOST:/tmp/emdo-catalog-audit-$GITHUB_RUN_ID.php"
+          sshpass -e scp -o StrictHostKeyChecking=no -o PubkeyAuthentication=no -P "$PORT" .github/scripts/repair-montjam-ham-attributes-20261009.php "$STAGING_USER@$STAGING_HOST:/tmp/emdo-catalog-attributes-$GITHUB_RUN_ID.php"
+          sshpass -e scp -o StrictHostKeyChecking=no -o PubkeyAuthentication=no -P "$PORT" .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:/tmp/emdo-catalog-opcache-$GITHUB_RUN_ID.php"
           sshpass -e ssh -o StrictHostKeyChecking=no -o PubkeyAuthentication=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" "bash -s -- '$GITHUB_RUN_ID'" <<'REMOTE'
           set -euo pipefail
           RUN="$1"
@@ -47,6 +51,8 @@ jobs:
           INCOMING="/tmp/emdo-catalog-loader-$RUN.php"
           BACKUP="/tmp/emdo-catalog-loader-before-$RUN.php"
           AUDIT="/tmp/emdo-catalog-audit-$RUN.php"
+          REPAIR="/tmp/emdo-catalog-attributes-$RUN.php"
+          OPCACHE="/tmp/emdo-catalog-opcache-$RUN.php"
           test -f "$ROOT/wp-config.php" && test -f "$TARGET" && test -f "$INCOMING"
           PHP="$(command -v php || true)"
           if [ -z "$PHP" ]; then PHP="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1)"; fi
@@ -73,13 +79,22 @@ jobs:
           "$PHP" -d memory_limit=512M "$WP_BIN" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
           CACHE="$ROOT/wp-content/uploads/elmercado-hot-static-v1"
           rm -f "$CACHE/es-cat-jamones-paletas.html" "$CACHE/en-cat-hams-and-shoulders.html" "$CACHE/en-cat-hams-and-shoulders-p2.html"
+          cp -f "$OPCACHE" "$ROOT/emdo-opcache-$RUN.php"
+          reset_output="$(curl -fsSL --connect-timeout 6 --max-time 25 "https://www.elmercadodeorigen.com/emdo-opcache-$RUN.php" || true)"
+          echo "FPM_OPCACHE_RESET=$reset_output"
+          rm -f "$ROOT/emdo-opcache-$RUN.php"
           echo '=== ACTUAL PRODUCT AND ATTRIBUTE AUDIT (READ ONLY) ==='
           "$PHP" -d memory_limit=512M "$WP_BIN" eval-file "$AUDIT" --path="$ROOT" --allow-root
+          echo '=== GUARDED MONTJAM ATTRIBUTE REPAIR ==='
+          "$PHP" -d memory_limit=512M "$WP_BIN" eval-file "$REPAIR" --path="$ROOT" --allow-root
+          "$PHP" -d memory_limit=512M "$WP_BIN" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          rm -f "$CACHE/es-cat-jamones-paletas.html" "$CACHE/en-cat-hams-and-shoulders.html" "$CACHE/en-cat-hams-and-shoulders-p2.html"
           echo '=== HTML SMOKE ==='
           URL="https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/"
           ok=0
           for a in 1 2 3; do
             if curl -fsSL --connect-timeout 6 --max-time 55 "$URL?catalog_patch=$RUN-$a" -o /tmp/emdo-catalog-check.html; then
+              echo "smoke attempt=$a bytes=$(wc -c </tmp/emdo-catalog-check.html) loader=$(grep -c 'elmercado-continuous-catalog-loader' /tmp/emdo-catalog-check.html || true) fixed=$(grep -c 'restoreNativePagination' /tmp/emdo-catalog-check.html || true)"
               if grep -Fq 'restoreNativePagination' /tmp/emdo-catalog-check.html && grep -Fq 'emo-catalog-fallback-link' /tmp/emdo-catalog-check.html; then ok=1; break; fi
             fi
             sleep 3
