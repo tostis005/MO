@@ -1,0 +1,134 @@
+name: Audit Singapore traffic 2026-10-09
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-singapore-traffic-20261009.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  singapore-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install SSH helper and country database
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          curl -fsSL --retry 2 --max-time 80 'https://dbip.mirror.framasoft.org/files/dbip-country-lite-2026-10.csv.gz' -o /tmp/dbip-country.csv.gz
+          gzip -t /tmp/dbip-country.csv.gz
+      - name: Read only production access logs for last 24h
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="$STAGING_PORT"
+          if [ -z "$PORT" ]; then PORT=22; fi
+          sshpass -e ssh -o ConnectTimeout=18 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" 'python3 -' > /tmp/emdo-ip-traffic.jsonl <<'PYREMOTE'
+          import os,sys,re,gzip,json
+          from collections import Counter,defaultdict
+          from datetime import datetime,timezone,timedelta
+          from urllib.parse import urlsplit
+          root="/var/www/vhosts/system/elmercadodeorigen.com/logs"
+          now=datetime.now(timezone.utc)
+          cutoff=now-timedelta(hours=24)
+          hour=now-timedelta(hours=1)
+          files=[]
+          for name in os.listdir(root):
+              if name.startswith("access_ssl_log"):
+                  p=os.path.join(root,name)
+                  if os.path.isfile(p): files.append(p)
+          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+(\S+)(?:\s+"([^"]*)"\s+"([^"]*)")?')
+          asset=re.compile(r'\.(?:css|js|mjs|map|png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|eot|mp4|webm|pdf|zip)$',re.I)
+          data=defaultdict(lambda:{"n":0,"dyn":0,"n60":0,"status":Counter(),"paths":Counter(),"ua":Counter(),"method":Counter(),"minutes":Counter(),"first":None,"last":None})
+          lines=parsed=0
+          for p in sorted(files):
+              try: fh=gzip.open(p,"rt",encoding="utf8",errors="replace") if p.endswith(".gz") else open(p,"rt",encoding="utf8",errors="replace")
+              except OSError: continue
+              with fh:
+                  for s in fh:
+                      lines+=1
+                      m=rx.match(s)
+                      if not m: continue
+                      ip,ds,method,url,status,size,ref,ua=m.groups()
+                      try: t=datetime.strptime(ds,"%d/%b/%Y:%H:%M:%S %z").astimezone(timezone.utc)
+                      except ValueError: continue
+                      if t<cutoff or t>now+timedelta(minutes=3):continue
+                      parsed+=1
+                      try: path=urlsplit(url).path or "/"
+                      except ValueError: path=url.split("?",1)[0]
+                      path=path[:160]
+                      row=data[ip]
+                      row["n"]+=1
+                      row["dyn"]+=int(not asset.search(path))
+                      row["n60"]+=int(t>=hour)
+                      row["status"][status]+=1
+                      row["paths"][path]+=1
+                      row["ua"][(ua or "")[:210]]+=1
+                      row["method"][method]+=1
+                      minute=t.strftime("%Y-%m-%dT%H:%M")
+                      row["minutes"][minute]+=1
+                      row["first"]=min(row["first"],minute) if row["first"] else minute
+                      row["last"]=max(row["last"],minute) if row["last"] else minute
+          print(json.dumps({"meta":{"generated":now.isoformat(),"files":len(files),"lines":lines,"parsed_24h":parsed,"unique_ips":len(data)}}))
+          for ip,row in data.items():
+              print(json.dumps({"ip":ip,"n":row["n"],"dyn":row["dyn"],"n60":row["n60"],"status":row["status"],"paths":row["paths"],"ua":row["ua"],"method":row["method"],"peak_per_min":max(row["minutes"].values()),"first":row["first"],"last":row["last"]},ensure_ascii=False))
+          PYREMOTE
+          test -s /tmp/emdo-ip-traffic.jsonl
+      - name: Aggregate Singapore source IP behavior without logging full IPs
+        run: |
+          python3 - <<'PY'
+          import json,gzip,csv,ipaddress,bisect,re
+          from collections import Counter,defaultdict
+          v4=[];v6=[]
+          with gzip.open("/tmp/dbip-country.csv.gz","rt",encoding="utf8") as f:
+              for first,last,cc in csv.reader(f):
+                  try: a=ipaddress.ip_address(first); b=ipaddress.ip_address(last)
+                  except ValueError: continue
+                  (v4 if a.version==4 else v6).append((int(a),int(b),cc))
+          v4.sort();v6.sort()
+          starts4=[x[0] for x in v4]; starts6=[x[0] for x in v6]
+          def country(ip):
+              try: a=ipaddress.ip_address(ip)
+              except ValueError: return "??"
+              data,starts=(v4,starts4) if a.version==4 else (v6,starts6)
+              n=int(a); i=bisect.bisect_right(starts,n)-1
+              if i>=0 and n<=data[i][1]:return data[i][2]
+              return "??"
+          with open("/tmp/emdo-ip-traffic.jsonl",encoding="utf8") as f:
+              meta=json.loads(next(f))["meta"]
+              rows=(json.loads(s) for s in f if s.strip())
+              totals=Counter(); dyn=Counter(); ips=Counter(); last60=Counter()
+              sgpath=Counter(); sgua=Counter(); sgstatus=Counter(); sgmethod=Counter(); sgprefix=Counter()
+              suspicious=0; suspiciousreq=0; sgrows=[]; sg60=0
+              for row in rows:
+                  cc=country(row["ip"]);n=row["n"]
+                  totals[cc]+=n;dyn[cc]+=row["dyn"];ips[cc]+=1;last60[cc]+=row["n60"]
+                  if cc!="SG":continue
+                  sg60+=row["n60"]
+                  sgpath.update(row["paths"]);sgua.update(row["ua"]);sgstatus.update(row["status"]);sgmethod.update(row["method"])
+                  ip=ipaddress.ip_address(row["ip"])
+                  prefix=str(ipaddress.ip_network(row["ip"]+("/24" if ip.version==4 else "/48"),strict=False))
+                  sgprefix[prefix]+=n
+                  topn=max(row["paths"].values()) if row["paths"] else 0
+                  sus=(n>=10 and (topn/n>=0.85 or row["peak_per_min"]>=10)) or (n>=5 and any(re.search(r"bot|crawler|httpclient|python-requests|curl/",x,re.I) for x in row["ua"]))
+                  if sus:suspicious+=1;suspiciousreq+=n
+                  sgrows.append((n,{"masked_ip":row["ip"].rsplit(".",1)[0]+".*" if ip.version==4 else prefix,
+                      "n":n,"dyn":row["dyn"],"n60":row["n60"],"peak":row["peak_per_min"],
+                      "top_paths":Counter(row["paths"]).most_common(3),
+                      "top_ua":Counter(row["ua"]).most_common(2),"statuses":row["status"],"heuristic_automation":sus}))
+          print("SOURCE: Production Apache SSL access logs; geo-IP DB-IP Country Lite 2026-10 (CC BY 4.0; https://db-ip.com)")
+          print("META",json.dumps(meta))
+          print("BY_COUNTRY",json.dumps([{"country":cc,"requests24h":n,"dynamic24h":dyn[cc],"ips24h":ips[cc],"requests60m":last60[cc]} for cc,n in totals.most_common(20)]))
+          print("SG_TOTAL",json.dumps({"requests24h":totals["SG"],"dynamic24h":dyn["SG"],"unique_ips24h":ips["SG"],"requests60m":last60["SG"],"heuristic_suspicious_ips":suspicious,"requests_from_heuristic_suspicious_ips":suspiciousreq,"status":sgstatus,"method":sgmethod}))
+          print("SG_TOP_PATHS",json.dumps(sgpath.most_common(25),ensure_ascii=False))
+          print("SG_TOP_UA",json.dumps(sgua.most_common(18),ensure_ascii=False))
+          print("SG_TOP_PREFIXES",json.dumps(sgprefix.most_common(15)))
+          print("SG_TOP_SOURCES_MASKED",json.dumps([x[1] for x in sorted(sgrows,reverse=True)[:18]],ensure_ascii=False))
+          PY
