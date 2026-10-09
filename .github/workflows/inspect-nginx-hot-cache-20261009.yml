@@ -1,0 +1,48 @@
+name: Inspect Nginx hot-page caching options 2026-10-09
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/inspect-nginx-hot-cache-20261009.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Read production Nginx and cache configuration (no changes)
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo "USER: $(id)"
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          echo "DOCROOT: $ROOT"
+          echo "=== NGINX FILES ==="
+          ls -la /var/www/vhosts/system/elmercadodeorigen.com/conf/*nginx* || true
+          for f in /var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf /var/www/vhosts/system/elmercadodeorigen.com/conf/last_nginx.conf; do
+            [ -f "$f" ] || continue
+            echo "=== $f ==="
+            grep -nE 'server_name|listen |location |proxy_pass|proxy_cache|fastcgi_pass|root |alias |include |if \(|try_files|limit_req|ssl_certificate|rewrite|return |error_page|add_header|gzip|expires' "$f" | grep -vE 'ssl_certificate.*(/|key)' | head -230 || true
+          done
+          echo "=== VHOST FULL ==="
+          sed -n '1,220p' /var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf || true
+          echo "=== FRONT FILES ==="
+          ls -lah "$ROOT/wp-content/uploads/elmercado-hot-static-v1" || true
+          echo "=== NGINX STATIC RESPONSE ==="
+          curl -k -sS --max-time 12 -I 'https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/' | grep -Ei 'http/|cache|server:|set-cookie|vary|content-type|x-' || true
+          echo "=== NGINX VALIDATION ==="
+          nginx -t 2>&1 | tail -8 || true
+          REMOTE
