@@ -1,0 +1,89 @@
+name: Catalogue pagination recovery and integrity audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-pagination-recovery-20261009.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 16
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax and regression guard
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/catalog-continuous-loading-010176.php
+          php -l .github/scripts/audit-hams-catalog-integrity-20261009.php
+          grep -Fq restoreNativePagination elmercadodeorigen-child/inc/catalog-continuous-loading-010176.php
+          grep -Fq 'url.searchParams.sort()' elmercadodeorigen-child/inc/catalog-continuous-loading-010176.php
+      - name: Backup, deploy isolated fix, audit, and verify production
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="$STAGING_PORT"
+          test -n "$PORT" || PORT=22
+          sshpass -e scp -o StrictHostKeyChecking=no -o PubkeyAuthentication=no -P "$PORT" elmercadodeorigen-child/inc/catalog-continuous-loading-010176.php "$STAGING_USER@$STAGING_HOST:/tmp/emdo-catalog-loader-$GITHUB_RUN_ID.php"
+          sshpass -e scp -o StrictHostKeyChecking=no -o PubkeyAuthentication=no -P "$PORT" .github/scripts/audit-hams-catalog-integrity-20261009.php "$STAGING_USER@$STAGING_HOST:/tmp/emdo-catalog-audit-$GITHUB_RUN_ID.php"
+          sshpass -e ssh -o StrictHostKeyChecking=no -o PubkeyAuthentication=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" "bash -s -- '$GITHUB_RUN_ID'" <<'REMOTE'
+          set -euo pipefail
+          RUN="$1"
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          TARGET="$ROOT/wp-content/themes/elmercadodeorigen-child/inc/catalog-continuous-loading-010176.php"
+          INCOMING="/tmp/emdo-catalog-loader-$RUN.php"
+          BACKUP="/tmp/emdo-catalog-loader-before-$RUN.php"
+          AUDIT="/tmp/emdo-catalog-audit-$RUN.php"
+          test -f "$ROOT/wp-config.php" && test -f "$TARGET" && test -f "$INCOMING"
+          SITE="$(wp option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)"
+          case "$SITE" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) ;;
+            *) echo "Refusing unknown production site: $SITE"; exit 10 ;;
+          esac
+          php -l "$INCOMING"
+          cp -a "$TARGET" "$BACKUP"
+          finished=0
+          rollback() {
+            if [ "$finished" -ne 1 ]; then
+              cp -a "$BACKUP" "$TARGET"
+              wp cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+              echo CATALOG_PATCH_ROLLED_BACK
+            fi
+          }
+          trap rollback EXIT
+          cp -f "$INCOMING" "$TARGET"
+          php -l "$TARGET"
+          wp cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          CACHE="$ROOT/wp-content/uploads/elmercado-hot-static-v1"
+          rm -f "$CACHE/es-cat-jamones-paletas.html" "$CACHE/en-cat-hams-and-shoulders.html" "$CACHE/en-cat-hams-and-shoulders-p2.html"
+          echo '=== ACTUAL PRODUCT AND ATTRIBUTE AUDIT (READ ONLY) ==='
+          wp eval-file "$AUDIT" --path="$ROOT" --allow-root
+          echo '=== HTML SMOKE ==='
+          URL="https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/"
+          ok=0
+          for a in 1 2 3; do
+            if curl -fsSL --connect-timeout 6 --max-time 55 "$URL?catalog_patch=$RUN-$a" -o /tmp/emdo-catalog-check.html; then
+              if grep -Fq 'restoreNativePagination' /tmp/emdo-catalog-check.html && grep -Fq 'emo-catalog-fallback-link' /tmp/emdo-catalog-check.html; then ok=1; break; fi
+            fi
+            sleep 3
+          done
+          test "$ok" = 1
+          curl -fsSL --connect-timeout 6 --max-time 55 "$URL/page/2/?catalog_patch=$RUN" -o /tmp/emdo-catalog-check-p2.html
+          grep -Fq 'class="product' /tmp/emdo-catalog-check-p2.html || grep -Fq 'class="products' /tmp/emdo-catalog-check-p2.html
+          finished=1
+          trap - EXIT
+          echo 'CATALOG_PRODUCTION_PAGINATION_FIX_VERIFIED'
+          REMOTE
