@@ -1,0 +1,117 @@
+name: Producer page traffic attribution 2026-10-09
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/producer-page-traffic-attribution-20261009.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  attribute:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          curl -fsSL --retry 2 --max-time 80 'https://dbip.mirror.framasoft.org/files/dbip-country-lite-2026-10.csv.gz' -o /tmp/dbip-country.csv.gz
+      - name: Inspect production requests read only
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -o ConnectTimeout=18 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" 'python3 -' > /tmp/producer-traffic.jsonl <<'PYREMOTE'
+          import os,gzip,re,json
+          from collections import Counter
+          from datetime import datetime,timedelta,timezone
+          from urllib.parse import urlsplit
+          root="/var/www/vhosts/system/elmercadodeorigen.com/logs"
+          now=datetime.now(timezone.utc);cut=now-timedelta(hours=24)
+          files=[os.path.join(root,n) for n in os.listdir(root) if n.startswith("access_ssl_log") and os.path.isfile(os.path.join(root,n))]
+          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+\S+(?:\s+"([^"]*)"\s+"([^"]*)")?')
+          groups=("hidalgo","montjam","mentta-api")
+          counter=Counter();total=0;hit=0
+          for p in files:
+              op=gzip.open if p.endswith(".gz") else open
+              try: f=op(p,"rt",encoding="utf-8",errors="replace")
+              except OSError:continue
+              with f:
+                  for s in f:
+                      total+=1
+                      low=s.lower()
+                      if "hidalgo-de-la-jara" not in low and "montjam" not in low and "mentta_marketplace" not in low:continue
+                      m=rx.match(s)
+                      if not m:continue
+                      ip,when,method,target,status,ref,ua=m.groups()
+                      try:dt=datetime.strptime(when,"%d/%b/%Y:%H:%M:%S %z").astimezone(timezone.utc)
+                      except ValueError:continue
+                      if dt<cut or dt>now+timedelta(minutes=3):continue
+                      try:pname=urlsplit(target).path.lower()
+                      except ValueError:pname=target.split("?",1)[0].lower()
+                      if "/mentta_marketplace" in pname or "rest_route=%2fmentta_marketplace" in target.lower():group="mentta-api"
+                      elif "hidalgo-de-la-jara" in pname and ("/store/" in pname or "/tienda/" in pname):group="hidalgo"
+                      elif "montjam" in pname and ("/store/" in pname or "/tienda/" in pname):group="montjam"
+                      else:continue
+                      if group != "mentta-api" and (pname.endswith(".css") or pname.endswith(".js")):continue
+                      try:rhost=urlsplit(ref or "").netloc.lower()[:80]
+                      except ValueError:rhost=""
+                      if not rhost:rhost="direct/none"
+                      u=(ua or "")[:170]
+                      counter[(ip,group,method,status,u,rhost)]+=1
+                      hit+=1
+          print(json.dumps({"meta":{"generated":now.isoformat(),"lines":total,"matched":hit,"files":len(files)}}))
+          for key,n in counter.items():
+              ip,group,method,status,ua,ref=key
+              print(json.dumps([ip,group,method,status,ua,ref,n],ensure_ascii=False))
+          PYREMOTE
+          test -s /tmp/producer-traffic.jsonl
+      - name: Attribute producer page traffic and referrers
+        run: |
+          python3 - <<'PY'
+          import json,gzip,csv,ipaddress,bisect
+          from collections import Counter,defaultdict
+          country4=[];country6=[]
+          with gzip.open("/tmp/dbip-country.csv.gz","rt",encoding="utf8") as f:
+              for first,last,cc in csv.reader(f):
+                  try:a=ipaddress.ip_address(first);b=ipaddress.ip_address(last)
+                  except ValueError:continue
+                  (country4 if a.version==4 else country6).append((int(a),int(b),cc))
+          country4.sort();country6.sort()
+          keys4=[x[0] for x in country4];keys6=[x[0] for x in country6]
+          def cc(ip):
+              try:a=ipaddress.ip_address(ip)
+              except ValueError:return "??"
+              seq,starts=(country4,keys4) if a.version==4 else (country6,keys6)
+              i=bisect.bisect_right(starts,int(a))-1
+              return seq[i][2] if i>=0 and int(a)<=seq[i][1] else "??"
+          country_page=Counter();uap=defaultdict(Counter); refp=defaultdict(Counter);methodp=defaultdict(Counter);statusp=defaultdict(Counter);prefix=defaultdict(Counter); ips=defaultdict(set)
+          with open("/tmp/producer-traffic.jsonl",encoding="utf8") as f:
+              meta=json.loads(next(f))["meta"]
+              for ln in f:
+                  ip,g,method,status,ua,ref,n=json.loads(ln)
+                  c=cc(ip);key=(g,c);country_page[key]+=n;uap[key][ua]+=n;refp[key][ref]+=n;methodp[key][method]+=n;statusp[key][status]+=n;ips[key].add(ip)
+                  try:addr=ipaddress.ip_address(ip);network=ipaddress.ip_network(ip+("/24" if addr.version==4 else "/48"),strict=False)
+                  except ValueError:continue
+                  prefix[key][str(network)]+=n
+          print("META",json.dumps(meta))
+          for group in ("hidalgo","montjam","mentta-api"):
+              print("GROUP",group,"total",sum(n for (g,c),n in country_page.items() if g==group))
+              print("COUNTRIES",json.dumps(country_page_by_group := [(c,n,len(ips[(group,c)])) for (g,c),n in country_page.most_common() if g==group][:14]))
+              for c in ["SG","ES","US","NL","CN"]:
+                  key=(group,c)
+                  if not country_page[key]:continue
+                  print("DETAIL",group,c,"requests",country_page[key],
+                    "top_ua",json.dumps(uap[key].most_common(5),ensure_ascii=False),
+                    "top_refhost",json.dumps(refp[key].most_common(8),ensure_ascii=False),
+                    "top_prefix",json.dumps(prefix[key].most_common(5)),
+                    "methods",json.dumps(methodp[key]),
+                    "status",json.dumps(statusp[key]))
+          PY
