@@ -130,5 +130,5 @@ jobs:
           print("SG_TOP_PATHS",json.dumps(sgpath.most_common(25),ensure_ascii=False))
           print("SG_TOP_UA",json.dumps(sgua.most_common(18),ensure_ascii=False))
           print("SG_TOP_PREFIXES",json.dumps(sgprefix.most_common(15)))
-          print("SG_TOP_SOURCES_MASKED",json.dumps([x[1] for x in sorted(sgrows,reverse=True)[:18]],ensure_ascii=False))
+          print("SG_TOP_SOURCES_MASKED",json.dumps([x[1] for x in sorted(sgrows,key=lambda x:x[0],reverse=True)[:18]],ensure_ascii=False))
           PY
