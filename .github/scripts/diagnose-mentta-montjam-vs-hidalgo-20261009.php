@@ -53,7 +53,7 @@ $root_wpq=new WP_Query(array('post_type'=>'product','post_status'=>'publish','po
  'tax_query'=>array(array('taxonomy'=>'product_cat','terms'=>array($term_id),'field'=>'term_id','include_children'=>false)), 'suppress_filters'=>true));
 $full_wpq=new WP_Query(array('post_type'=>'product','post_status'=>'publish','posts_per_page'=>200,'fields'=>'ids',
  'tax_query'=>array(array('taxonomy'=>'product_cat','terms'=>array($term_id),'field'=>'term_id','include_children'=>true)), 'suppress_filters'=>true));
-$wcq=new WC_Product_Query(array('category'=>array('mentta'),'status'=>'publish','limit'=>150,'return'=>'ids'));
+$wcq=(new WC_Product_Query(array('category'=>array('mentta'),'status'=>'publish','limit'=>150,'return'=>'ids')))->get_products();
 $plugins=array();
 if (!function_exists('get_plugins')) require_once ABSPATH.'wp-admin/includes/plugin.php';
 foreach ((array)get_option('active_plugins',array()) as $plugin) {
