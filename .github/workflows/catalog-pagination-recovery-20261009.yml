@@ -102,7 +102,7 @@ jobs:
           import sys,re
           s=open(sys.argv[1],encoding='utf-8',errors='replace').read()
           print('HTML_DEBUG_MARKERS', {x:s.count(x) for x in ['emo-continuous-catalog','elmercado-child-theme','elmercado-continuous-catalog-loader','restoreNativePagination','woocommerce-pagination','infinite-scroll-active','catalog-continuous-loading']})
-          print('HTML_DEBUG_SCRIPTS', re.findall(r'<script[^>]*id=["\\'][^"\\']*(?:catalog|filter|woocommerce)[^"\\']*["\\'][^>]*>',s,re.I)[:10])
+          print('HTML_DEBUG_SCRIPTS', [tag[:150] for tag in re.findall(r'<script[^>]*>',s,re.I) if any(word in tag.lower() for word in ['catalog','filter','woocommerce'])][:10])
           print('HTML_DEBUG_BODY', (re.search(r'<body[^>]{0,800}>',s,re.I).group(0) if re.search(r'<body[^>]{0,800}>',s,re.I) else '<none>')[:800])
           PY
               if grep -Fq 'restoreNativePagination' /tmp/emdo-catalog-check.html && grep -Fq 'emo-catalog-fallback-link' /tmp/emdo-catalog-check.html; then ok=1; break; fi
