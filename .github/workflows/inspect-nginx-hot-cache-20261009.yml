@@ -43,6 +43,12 @@ jobs:
           ls -lah "$ROOT/wp-content/uploads/elmercado-hot-static-v1" || true
           echo "=== NGINX STATIC RESPONSE ==="
           curl -k -sS --max-time 12 -I 'https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/' | grep -Ei 'http/|cache|server:|set-cookie|vary|content-type|x-' || true
-          echo "=== NGINX VALIDATION ==="
+          echo "=== NGINX ORIGINAL PROXY LOCATION ==="
+          sed -n '135,155p' /var/www/vhosts/system/elmercadodeorigen.com/conf/nginx.conf | sed -E 's@https://[^/"]+:7081@https://[backend]:7081@g'
+          echo "=== CACHE REFRESH CRON ==="
+          crontab -l 2>/dev/null | grep -E 'MDO|emdo|cache|warm|refresh|cron' | head -45 || true
+          echo "=== LIVE GET HEADERS ==="
+          curl -ksS --max-time 15 -D - -o /dev/null 'https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/' | grep -Ei 'http/|cache|server:|set-cookie|vary|content-type|x-' || true
+                    echo "=== NGINX VALIDATION ==="
           nginx -t 2>&1 | tail -8 || true
           REMOTE
