@@ -1,0 +1,60 @@
+name: Temporary read-only store review audit 2026-10-10
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - '.github/workflows/diagnose-store-review-assignment-20261010.yml'
+permissions:
+  contents: read
+jobs:
+  review-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect latest Google review assignments without writes
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$STAGING_HOST" && test -n "$STAGING_USER" && test -n "$STAGING_PASSWORD"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -o StrictHostKeyChecking=no -o PubkeyAuthentication=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          test -n "$wp_bin" && test -n "$php_bin"
+          PROD_PATH=''
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) PROD_PATH="$p"; break ;;
+            esac
+          done
+          test -n "$PROD_PATH"
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            global $wpdb;
+            $table = MDO_Database::table( "reviews" );
+            $patterns = array( "%montjam%", "%monjam%", "%monham%", "%mont ham%", "%mont jam%" );
+            $sql = "SELECT id,source_review_id,author_name,review_date,review_text,status,vendor_user_id,suggested_vendor_user_id,validation_method,assignment_type FROM {$table} WHERE source=%s AND (review_text LIKE %s OR review_text LIKE %s OR review_text LIKE %s OR review_text LIKE %s OR review_text LIKE %s OR review_date >= %s) ORDER BY (review_date IS NULL), review_date DESC,id DESC LIMIT 80";
+            $rows = $wpdb->get_results( $wpdb->prepare( $sql, "google", ...array_merge( $patterns, array( "2026-09-01" ) ) ), ARRAY_A );
+            echo "REVIEW_DIAGNOSTIC_ROWS=" . count( (array) $rows ) . PHP_EOL;
+            foreach ( (array) $rows as $row ) {
+              $row["review_text"] = wp_trim_words( (string) $row["review_text"], 90, "..." );
+              echo "REVIEW_ROW=" . wp_json_encode( $row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
+            }
+            $u = $wpdb->users;
+            $users = $wpdb->get_results( $wpdb->prepare( "SELECT ID,user_nicename,display_name FROM {$u} WHERE user_nicename LIKE %s OR display_name LIKE %s LIMIT 15", "%montjam%", "%montjam%" ), ARRAY_A );
+            echo "MONTJAM_VENDOR_USERS=" . wp_json_encode( $users, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
+          ' --path="$PROD_PATH" --allow-root
+          REMOTE
