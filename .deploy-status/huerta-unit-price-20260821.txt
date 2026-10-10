@@ -1,45 +1,5 @@
-PHP Warning:  require_once(/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-reviews-product.php): Failed to open stream: No such file or directory in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php on line 82
-Warning: require_once(/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-reviews-product.php): Failed to open stream: No such file or directory in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php on line 82
-PHP Fatal error:  Uncaught Error: Failed opening required '/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-reviews-product.php' (include_path='.:/opt/plesk/php/8.3/share/pear') in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php:82
-Stack trace:
-#0 /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-settings.php(597): include_once()
-#1 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/WP_CLI/Runner.php(1394): require('...')
-#2 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/eval-command/src/EvalFile_Command.php(77): WP_CLI\Runner->load_wordpress()
-#3 [internal function]: EvalFile_Command->__invoke()
-#4 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/WP_CLI/Dispatcher/CommandFactory.php(100): call_user_func()
-#5 [internal function]: WP_CLI\Dispatcher\CommandFactory::WP_CLI\Dispatcher\{closure}()
-#6 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/WP_CLI/Dispatcher/Subcommand.php(497): call_user_func()
-#7 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/WP_CLI/Runner.php(470): WP_CLI\Dispatcher\Subcommand->invoke()
-#8 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/WP_CLI/Runner.php(493): WP_CLI\Runner->run_command()
-#9 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/WP_CLI/Runner.php(136): WP_CLI\Runner->run_command_and_exit()
-#10 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/WP_CLI/Runner.php(1248): WP_CLI\Runner->do_early_invoke()
-#11 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/WP_CLI/Bootstrap/LaunchRunner.php(28): WP_CLI\Runner->start()
-#12 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/bootstrap.php(84): WP_CLI\Bootstrap\LaunchRunner->process()
-#13 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/wp-cli.php(35): WP_CLI\bootstrap()
-#14 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/boot-fs.php(17): require_once('...')
-#15 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/wpt-wp-cli.php(49): require_once('...')
-#16 /usr/local/bin/wp(4): require_once('...')
-#17 {main}
-  thrown in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php on line 82
-Fatal error: Uncaught Error: Failed opening required '/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-reviews-product.php' (include_path='.:/opt/plesk/php/8.3/share/pear') in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php:82
-Stack trace:
-#0 /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-settings.php(597): include_once()
-#1 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/WP_CLI/Runner.php(1394): require('...')
-#2 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/eval-command/src/EvalFile_Command.php(77): WP_CLI\Runner->load_wordpress()
-#3 [internal function]: EvalFile_Command->__invoke()
-#4 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/WP_CLI/Dispatcher/CommandFactory.php(100): call_user_func()
-#5 [internal function]: WP_CLI\Dispatcher\CommandFactory::WP_CLI\Dispatcher\{closure}()
-#6 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/WP_CLI/Dispatcher/Subcommand.php(497): call_user_func()
-#7 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/WP_CLI/Runner.php(470): WP_CLI\Dispatcher\Subcommand->invoke()
-#8 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/WP_CLI/Runner.php(493): WP_CLI\Runner->run_command()
-#9 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/WP_CLI/Runner.php(136): WP_CLI\Runner->run_command_and_exit()
-#10 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/WP_CLI/Runner.php(1248): WP_CLI\Runner->do_early_invoke()
-#11 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/WP_CLI/Bootstrap/LaunchRunner.php(28): WP_CLI\Runner->start()
-#12 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/bootstrap.php(84): WP_CLI\Bootstrap\LaunchRunner->process()
-#13 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/wp-cli.php(35): WP_CLI\bootstrap()
-#14 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/boot-fs.php(17): require_once('...')
-#15 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/wpt-wp-cli.php(49): require_once('...')
-#16 /usr/local/bin/wp(4): require_once('...')
-#17 {main}
-  thrown in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php on line 82
-Error: Ha habido un error crítico en esta web.Aprende más sobre el diagnóstico de WordPress. Ha habido un error crítico en esta web.
+PHP Warning:  Constant WOOCCM_PLUGIN_NAME already defined in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/woocommerce-checkout-manager/woocommerce-checkout-manager.php on line 27
+Warning: Constant WOOCCM_PLUGIN_NAME already defined in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/woocommerce-checkout-manager/woocommerce-checkout-manager.php on line 27
+huerta_unit_price_ok {"scanned":57,"per_kg":14,"not_per_kg":43,"changed":14,"errors":0,"per_kg_items":[{"product_id":12699,"title":"Patatas blancas","source_url":"https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-2/patatas-3/patatas-blancas-32.html"},{"product_id":12706,"title":"Brócoli","source_url":"https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-2/coles-1/brocoli-1.html"},{"product_id":12715,"title":"Pimiento italiano","source_url":"https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-2/pimientos-8/pimiento-italiano-35.html"},{"product_id":12721,"title":"Pimientos lamuyos verdes","source_url":"https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-2/pimientos-8/pimientos-lamuyos-verdes-27.html"},{"product_id":12754,"title":"Patatas rojas rudolph","source_url":"https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-2/patatas-3/patatas-rojas-rudolph-33.html"},{"product_id":12757,"title":"Pimientos picantes","source_url":"https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-2/pimientos-8/pimientos-picantes-28.html"},{"product_id":12799,"title":"Kg pimientos de Padrón","source_url":"https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-2/pimientos-8/kg-pimientos-de-padron-114.html"},{"product_id":12832,"title":"Alubia canela","source_url":"https://www.lahuertadeanamary.com/hortalizas-y-conservas/legumbres-10/alubia-canela-196.html"},{"product_id":12837,"title":"Alubia blanca de riñón","source_url":"https://www.lahuertadeanamary.com/hortalizas-y-conservas/legumbres-10/alubia-blanca-de-ri-n-200.html"},{"product_id":12841,"title":"Alubias pintas","source_url":"https://www.lahuertadeanamary.com/hortalizas-y-conservas/legumbres-10/alubias-pintas-198.html"},{"product_id":12845,"title":"Garbanzo pedrosillano","source_url":"https://www.lahuertadeanamary.com/hortalizas-y-conservas/legumbres-10/garbanzo-pedrosillano-194.html"},{"product_id":12849,"title":"Lenteja pardina","source_url":"https://www.lahuertadeanamary.com/hortalizas-y-conservas/legumbres-10/lenteja-pardina-195.html"},{"product_id":13569,"title":"Pimiento lamuyo rojo","source_url":"https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-2/pimientos-8/pimiento-lamuyo-rojo-43.html"},{"product_id":16905,"title":"Calabaza","source_url":"https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-2/calabaza-101.html"}],"error_items":[]}
+PHP Warning:  Constant WOOCCM_PLUGIN_NAME already defined in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/woocommerce-checkout-manager/woocommerce-checkout-manager.php on line 27
+Warning: Constant WOOCCM_PLUGIN_NAME already defined in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/woocommerce-checkout-manager/woocommerce-checkout-manager.php on line 27
