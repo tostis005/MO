@@ -56,5 +56,13 @@ jobs:
             $u = $wpdb->users;
             $users = $wpdb->get_results( $wpdb->prepare( "SELECT ID,user_nicename,display_name FROM {$u} WHERE user_nicename LIKE %s OR display_name LIKE %s LIMIT 15", "%montjam%", "%montjam%" ), ARRAY_A );
             echo "MONTJAM_VENDOR_USERS=" . wp_json_encode( $users, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
+            $vendor_sql = MDO_Reviews_Vendors::review_matches_vendor_sql( "r" );
+            $count = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} r WHERE r.status=%s AND r.rating>0 AND {$vendor_sql}", "validated", 4723, 4723, 4723 ) );
+            echo "MONTJAM_VALIDATED_COUNT=" . (int) $count . PHP_EOL;
           ' --path="$PROD_PATH" --allow-root
+          url="https://www.elmercadodeorigen.com/tienda/montjam/reviews/?review_audit_20261010=$(date +%s)"
+          http=$(curl -k -L -sS -o /tmp/emdo-montjam-review-20261010.html -w '%{http_code}' -H 'Cache-Control: no-cache, no-store' "$url")
+          echo "MONTJAM_PUBLIC_HTTP=$http"
+          echo "MONTJAM_REVIEW_VISIBLE=$(grep -c -i 'ruben gonzalez caparro' /tmp/emdo-montjam-review-20261010.html || true)"
+          echo "MONTJAM_EMPTY_MESSAGE=$(grep -c -i 'Todavía no hay reseñas publicadas' /tmp/emdo-montjam-review-20261010.html || true)"
           REMOTE
