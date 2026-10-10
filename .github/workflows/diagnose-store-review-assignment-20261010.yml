@@ -17,7 +17,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect latest Google review assignments without writes
+      - name: Verify Montjam review and refresh stale site cache
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -65,4 +65,16 @@ jobs:
           echo "MONTJAM_PUBLIC_HTTP=$http"
           echo "MONTJAM_REVIEW_VISIBLE=$(grep -c -i 'ruben gonzalez caparro' /tmp/emdo-montjam-review-20261010.html || true)"
           echo "MONTJAM_EMPTY_MESSAGE=$(grep -c -i 'Todavía no hay reseñas publicadas' /tmp/emdo-montjam-review-20261010.html || true)"
+          echo "CLEANING_SITE_CACHE_ONLY=true"
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$PROD_PATH" --allow-root || true
+          if "$php_bin" -d memory_limit=512M "$wp_bin" plugin is-active wp-rocket --path="$PROD_PATH" --allow-root >/dev/null 2>&1; then
+            "$php_bin" -d memory_limit=512M "$wp_bin" rocket clean --confirm --path="$PROD_PATH" --allow-root
+          fi
+          status=$(curl -k -L -sS --connect-timeout 8 --max-time 35 -o /tmp/emdo-montjam-review-after-purge.html -w '%{http_code}' 'https://www.elmercadodeorigen.com/tienda/montjam/reviews/')
+          echo "MONTJAM_AFTER_PURGE_HTTP=$status"
+          echo "MONTJAM_AFTER_PURGE_VISIBLE=$(grep -c -i 'ruben gonzalez caparro' /tmp/emdo-montjam-review-after-purge.html || true)"
+          echo "MONTJAM_AFTER_PURGE_EMPTY=$(grep -c -i 'Todavía no hay reseñas publicadas' /tmp/emdo-montjam-review-after-purge.html || true)"
+          test "$status" = '200'
+          grep -qi 'ruben gonzalez caparro' /tmp/emdo-montjam-review-after-purge.html
+
           REMOTE
