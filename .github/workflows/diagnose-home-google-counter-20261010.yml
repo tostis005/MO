@@ -58,6 +58,16 @@ jobs:
             }
             echo "GOOGLE_COUNTER_DIAGNOSTIC=" . wp_json_encode($s) . PHP_EOL;
           ' --path="$PROD_PATH" --allow-root
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            $base = "https://www.trustindex.io/reviews/www.elmercadodeorigen.com";
+            $urls = array($base, add_query_arg("mdo_review_count_refresh", time(), $base), add_query_arg("nocache", time(), $base));
+            foreach ($urls as $url) {
+              $response = wp_remote_get($url, array("timeout"=>24,"headers"=>array("Cache-Control"=>"no-cache, no-store","Pragma"=>"no-cache"),"user-agent"=>"Mozilla/5.0 (compatible; ElMercadoDeOrigenReviewSync/1.0; +https://www.elmercadodeorigen.com/)"));
+              $html = is_wp_error($response) ? "" : wp_remote_retrieve_body($response);
+              $count = function_exists("mdo_review_counts_parse_google_010281") ? mdo_review_counts_parse_google_010281((string)$html) : 0;
+              echo "TRUSTINDEX_VARIANT=" . wp_json_encode(array("url"=>$url,"http"=>is_wp_error($response)?$response->get_error_message():wp_remote_retrieve_response_code($response),"count"=>$count,"bytes"=>strlen($html))) . PHP_EOL;
+            }
+          ' --path="$PROD_PATH" --allow-root
           for url in 'https://www.elmercadodeorigen.com/' 'https://www.elmercadodeorigen.com/?home_count_check_20261010=1'; do
             body=$(curl -L -k -sS --max-time 35 "$url" || true)
             echo "PUBLIC_HOME_GOOGLE_COUNTS=$(printf '%s' "$body" | grep -oE '([0-9]{3}) reseñas' | sort -u | tr '\n' ',') url=$url"
