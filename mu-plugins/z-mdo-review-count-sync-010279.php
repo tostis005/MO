@@ -243,6 +243,23 @@ function mdo_review_counts_refresh_google_010281( bool $force = false ): array {
 		return $result;
 	}
 
+	/*
+	 * La lectura HTTP de Trustindex puede devolver una copia obsoleta (304)
+	 * aunque el importador Playwright ya haya incorporado las 305 reseñas.
+	 * No degradar un recuento verificado por el importador con esa copia vieja.
+	 * Una importación completa posterior sigue pudiendo corregir el total.
+	 */
+	if ( (int) $fetched < $current && 'google_playwright_scraper' === (string) get_option( 'mdo_google_review_source', '' ) ) {
+		global $wpdb;
+		$table = $wpdb->prefix . 'mdo_reviews';
+		$verified_count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE source = %s", 'google' ) );
+		if ( $verified_count >= $current ) {
+			$result['google_ok'] = true;
+			$result['stale_provider_count'] = (int) $fetched;
+			return $result;
+		}
+	}
+
 	$result['google']    = (int) $fetched;
 	$result['google_ok'] = mdo_review_counts_store_google_010281( (int) $fetched );
 	$result['changed']   = $current !== (int) $fetched;
