@@ -68,6 +68,16 @@ jobs:
               echo "TRUSTINDEX_VARIANT=" . wp_json_encode(array("url"=>$url,"http"=>is_wp_error($response)?$response->get_error_message():wp_remote_retrieve_response_code($response),"count"=>$count,"bytes"=>strlen($html))) . PHP_EOL;
             }
           ' --path="$PROD_PATH" --allow-root
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            $path = WP_CONTENT_DIR . "/mu-plugins/z-mdo-review-count-sync-010279.php";
+            $live = file_exists($path) && false !== strpos((string)file_get_contents($path), "stale_provider_count");
+            echo "GOOGLE_GUARD_DEPLOYED=" . ($live ? "yes" : "no") . PHP_EOL;
+            if (!$live) { exit(2); }
+            $result = mdo_review_counts_refresh_google_010281(true);
+            $saved = (int) get_option("mdo_google_review_count");
+            echo "GOOGLE_GUARD_TEST=" . wp_json_encode(array("result"=>$result,"persisted"=>$saved)) . PHP_EOL;
+            if ($saved !== 305 || empty($result["google_ok"])) { exit(3); }
+          ' --path="$PROD_PATH" --allow-root
           for url in 'https://www.elmercadodeorigen.com/' 'https://www.elmercadodeorigen.com/?home_count_check_20261010=1'; do
             body=$(curl -L -k -sS --max-time 35 "$url" || true)
             echo "PUBLIC_HOME_GOOGLE_COUNTS=$(printf '%s' "$body" | grep -oE '([0-9]{3}) reseñas' | sort -u | tr '\n' ',') url=$url"
