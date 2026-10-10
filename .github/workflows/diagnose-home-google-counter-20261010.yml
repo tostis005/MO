@@ -45,7 +45,7 @@ jobs:
               "google_option" => get_option("mdo_google_review_count"),
               "google_updated_at" => get_option("mdo_google_review_count_updated_at"),
               "google_updated_human" => get_option("mdo_google_review_count_updated_at") ? wp_date("c", (int) get_option("mdo_google_review_count_updated_at")) : "",
-              "google_db_count" => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$t} WHERE source = \'google\'"),
+              "google_db_count" => (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$t} WHERE source = %s", "google")),
               "trustpilot_option" => get_option("mdo_trustpilot_review_count"),
               "cron_next" => wp_next_scheduled("mdo_review_counts_daily_fallback_010279"),
               "supplier_checker" => wp_next_scheduled("mdo_review_counts_after_supplier_cycle_010279"),
