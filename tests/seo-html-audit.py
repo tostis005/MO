@@ -113,7 +113,7 @@ def inspect(page, expected, html_source):
     elif not d.canonicals:
         warnings.append("canonical no encontrada; investigar plugin SEO")
     elif page != (urlparse(d.canonicals[0]).path.rstrip("/") + "/"):
-        warnings.append("canonical remite a otra ruta: " + d.canonicals[0])
+        errs.append("canonical apunta a otra ruta (riesgo de desindexación EN): " + d.canonicals[0])
     if not d.hreflang:
         warnings.append("sin alternates hreflang; revisar Falang")
     else:
@@ -145,7 +145,12 @@ def main():
             errs, _ = inspect(page, expected[page], fake)
             if errs:
                 raise SystemExit(f"ERROR: auditoría no pasa fixture {page}: {errs}")
-        print("OK: manifiesto y parser HTML, 20 entradas / 5 páginas de muestra")
+            # A translation pointing at the Spanish canonical must fail, not warn.
+            invalid = fake.replace(f'https://example.com{page}', 'https://example.com/canonical-equivocada/')
+            bad, _ = inspect(page, expected[page], invalid)
+            if not any("canonical" in e for e in bad):
+                raise SystemExit(f"ERROR: no se detecta canonical incorrecta: {page}")
+        print("OK: manifiesto, canonical EN y parser HTML, 20 entradas / 5 páginas de muestra")
         return
 
     failed = 0
