@@ -124,6 +124,14 @@ function elmercado_seo_generated_description() {
 		}
 	}
 
+	// Separate EN cohort: honour URL-specific descriptions without an SEO plugin.
+	if ( 'post' === $post->post_type && function_exists( 'elmercado_gsc_en_second_fallback_description_20261012' ) ) {
+		$target_description = elmercado_gsc_en_second_fallback_description_20261012();
+		if ( '' !== $target_description ) {
+			return elmercado_seo_trim_description( $target_description );
+		}
+	}
+
 	$title   = elmercado_seo_plain_text( get_the_title( $post ) );
 	$english = elmercado_seo_is_english();
 
