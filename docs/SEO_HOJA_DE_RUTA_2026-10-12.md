@@ -1,0 +1,109 @@
+# Hoja de ruta SEO y monetización — El Mercado de Origen
+
+**Fecha de partida:** 12-10-2026. **Fuente base:** exportación de Google Search Console (12-08-2026 a 10-10-2026, **60 días**; no son tres meses completos). **Repositorio oficial:** `tostis005/MO` (`main`). **PR inicial:** [#237](https://github.com/tostis005/MO/pull/237).
+
+## Objetivos y reglas innegociables
+
+1. Aumentar **clics orgánicos cualificados** en artículos existentes, con especial prioridad al **inglés** y su monetización publicitaria; en español, priorizar también consultas comerciales y venta real.
+2. Cambios incrementales: **no alterar URLs, canónicas, hreflang, traducciones Falang, indexación ni estructura sin diagnóstico demostrado y plan de reversión**.
+3. No sobreoptimizar artículos que ya captan bien tráfico: comparar **consulta × página × país × dispositivo** siempre que haya datos.
+4. Priorizar precisión editorial y seguridad alimentaria; no crear consejos absolutos ni datos inventados. Revisión de hechos para artículos de salud/seguridad.
+5. Publicidad: mantener el control actual por **país comprador/no comprador**, consentimiento y cumplimiento AdSense; nunca sortearlo para incrementar ingresos.
+6. Cualquier cambio de código pasa por **rama, PR, CI, comprobación en staging y validación en producción**. No confundir PR abierta con despliegue.
+
+## Línea base (exportación indicada)
+
+| Segmento | URLs/entradas | Impresiones | Clics | Observación |
+| --- | ---: | ---: | ---: | --- |
+| Sitio completo | resumen Search Console | 1.87 M aprox. | 9.877 | Periodo 60 días; no representa exactamente 3 meses |
+| URL inglesas dentro de primeras 1.000 páginas exportadas | 441 | 726.254 | 3.463 | Segmentación por prefijo `/en/`; conjunto parcial de URLs |
+| Primera tanda seleccionada | **20** (16 EN / 4 ES) | **189.684** | **782** | 139.112 impresiones y 482 clics EN; 50.572 y 300 ES |
+
+**Limitación crítica:** las tablas de consultas y páginas de la exportación son independientes; sin cruce por página no sabemos **qué consulta concreta** coloca una URL en una posición determinada. No atribuir impresiones de consulta a URL sin GSC `page+query`.
+
+## Estado por fases y criterio de completitud
+
+### F0 — Inventario y protección del tráfico [EN CURSO]
+
+- [x] Interpretar el periodo real de la exportación y registrar línea base global y del inglés.
+- [x] Localizar **repositorio correcto `tostis005/MO`** y la capa existente `seo-search-console-010313.php`, que ya optimiza 15 URLs.
+- [x] Seleccionar 20 páginas reales que aparecen en Search Console y calcular su base agregada.
+- [x] Comprobar que las **31 rutas usadas para enlazado de la PR** aparecen en las primeras 1.000 URLs de la exportación.
+- [x] Confirmar que existen las páginas de producto `/producto/lenteja-pardina/` y `/producto/garbanzo-pedrosillano/`.
+- [ ] Exportar (o consultar mediante acceso autorizado) **consultas filtradas por URL**, dispositivo y país de las 20 candidatas.
+- [ ] Capturar rendimiento de cada URL y diagnóstico de indexación/canonical cuando exista acceso a GSC.
+
+**Salida:** un inventario de consultas reales y riesgos antes de modificar más copy.
+
+### F1 — Primera tanda: 20 artículos / 16 EN [EN REVISIÓN, PR #237]
+
+- [x] Implementar 20 title/meta descriptions sin reescribir post_content ni tocar URLs.
+- [x] Añadir relaciones entre guías sin repetir el mismo href si ya existe en el artículo.
+- [x] Incluir enlaces contextuales a lenteja pardina y garbanzo pedrosillano, solo cuando estén visibles y disponibles.
+- [x] Adaptar etiqueta «min de lectura» a «min read» en páginas inglesas.
+- [x] Superar `Validate child theme` de GitHub Actions (ejecución 38295470801).
+- [ ] Revisión final del diff para detectar colisiones con plugins SEO/Falang y bloque de anuncios.
+- [ ] Verificación de HTML en **staging**: 3 URL EN + 2 ES, H1, meta description única, hreflang, canonical, idioma y enlaces.
+- [ ] Aprobar y desplegar cuando las comprobaciones sean satisfactorias; verificar producción y monitorizar errores 404, 5xx y CWV.
+
+**Salida:** PR #237 fusionada/desplegada **solo después** de los controles anteriores.
+
+### F2 — Mejoras editoriales profundas en esas mismas 20 URLs [PENDIENTE]
+
+- [ ] Revisar para cada URL intención principal y 3–5 consultas reales (cruce page+query).
+- [ ] Revisar exactitud, primer bloque de respuesta, subtítulos, tablas comparativas útiles y preguntas frecuentes **solo si mejoran realmente la lectura**.
+- [ ] Mejorar imágenes descriptivas/alt cuando estén incorrectos, sin sustituir media que ya esté funcionando por capricho.
+- [ ] Revisar la versión inglesa **como artículo natural en inglés**, no traducción literal; verificar datos y unidades (US/UK cuando corresponda).
+- [ ] Evitar contenido duplicado y fragmentación entre guías similares. Añadir enlaces solo donde aporten.
+- [ ] Editar en el **CMS de WordPress** mediante acceso autorizado: el repositorio del tema **no almacena el cuerpo de cada artículo**; no prometer que GitHub lo publica.
+- [ ] Controlar una muestra móvil y de escritorio y comparar 7/28 días tras el cambio.
+
+**Salida:** 20 contenidos enriquecidos, con auditoría de lo realmente publicado.
+
+### F3 — Segundo lote de alto potencial, énfasis inglés [PENDIENTE]
+
+- [ ] Priorizar otras ~20 URLs por impresiones, posición 4–10, CTR bajo y señales de intención, excluyendo las 15 anteriores y las 20 de F1.
+- [ ] Hacer hipótesis específicas por consulta de mayor volumen y probar mejoras parciales.
+- [ ] Validar primero aquellas con bajo CTR; **no tocar a ciegas** la guía inglesa de oxidación de frutas y verduras, que ya tiene un CTR ~3,2 % y 838 clics.
+- [ ] Ejecutar F3 con PR nueva y la misma validación; si el tráfico mejora, repetir en lotes adicionales de 20.
+
+**Salida:** segunda cohorte con control independiente y aprendizaje de F1/F2.
+
+### F4 — Enlaces y conversión hacia productos, categorías y productores [PENDIENTE]
+
+- [ ] Auditar enlaces del blog a producto/categoría por relevancia y disponibilidad geográfica. No insertar CTA de compra en inglés a país sin envío.
+- [ ] Revisar títulos/snippets de categorías prioritarias: aceites, jamones y paletas, productores y fichas con impresiones pero CTR bajo.
+- [ ] Detectar páginas con productos agotados/no visibles y referencias cruzadas incorrectas.
+- [ ] Medir clics de artículo a producto, interacciones, add-to-cart y pedidos atribuidos antes de ampliar los CTAs.
+
+### F5 — Monetización inglesa / AdSense [PENDIENTE]
+
+- [ ] Obtener o consultar datos **AdSense** por página, país y dispositivo: vistas monetizables, impresiones de anuncio, cobertura, CTR de anuncio, RPM de página y revenue.
+- [ ] Cruzar tráfico SEO EN con países no compradores, **sin desactivar las protecciones de consentimiento ni geolocalización**.
+- [ ] Medir CWV móvil/desktop y viewability, huecos sin rellenar y desplazamientos de maquetación causados por anuncios.
+- [ ] Probar ajustes moderados de posición/densidad de anuncios cuando haya evidencia: prioridad experiencia y políticas Google.
+- [ ] Separar métricas de tráfico EN de **ingresos publicitarios reales**; no asumir que cada clic genera monetización.
+
+### F6 — Seguimiento, decisión y nuevos lotes [RECURRENTE]
+
+- [ ] Comparaciones GSC en ventanas equivalentes **7, 28 y 56 días** (por página, país y dispositivo), con cuidado de estacionalidad.
+- [ ] Cuadro de mando: clics EN / ES, impresiones, CTR, posición, páginas activas; además ingresos, page RPM y conversión a venta.
+- [ ] Clasificar cada cambio: **mejora / neutro / empeora**, recuperar si genera caída significativa tras comparar consulta y demanda.
+- [ ] Iterar por lotes de 20, priorizando el mayor rendimiento económico esperado y el menor riesgo.
+
+## Orden práctico ante «continuar»
+
+1. Terminar el **siguiente punto incompleto** de F0/F1 que sea posible con accesos disponibles, actualizar esta hoja y PR.
+2. Pasar a F2, F3, F4 y F5 según dependencias; las tareas de código no quedan bloqueadas por métricas no conectadas, pero las decisiones de intención por keyword **sí** dependen del cruce `page+query`.
+3. Marcar un punto como completado solo con evidencia: cambio fusionado o PR, CI, enlace de validación, métricas verificadas. **Nunca** afirmar que algo está en producción porque figura en una rama.
+4. Si WordPress, Search Console o AdSense exigen autorización adicional, avanzar con tareas independientes y consignar el bloqueo, sin repetir preguntas ya respondidas.
+
+## Referencias operativas
+
+- [PR #237 (20 entradas)](https://github.com/tostis005/MO/pull/237).
+- [Repositorio principal](https://github.com/tostis005/MO).
+- [Módulo SEO previo](https://github.com/tostis005/MO/blob/main/elmercadodeorigen-child/inc/seo-search-console-010313.php).
+- Exportación GSC suministrada en la conversación: `elmercadodeorigen.com-Performance-on-Search-2026-10-12.xlsx`.
+- Informes guardados en conversación: `analisis_seo_gsc_el_mercado_de_origen_2026.xlsx` y `plan_seo_20_articulos_ingles_2026-10-12.xlsx`.
+
+**Última revisión:** 2026-10-12 — F1 con CI superada; todavía sin despliegue verificado ni acceso CMS/GSC page+query/AdSense.
