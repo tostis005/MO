@@ -47,3 +47,12 @@
 4. Medir clics/CTR/posición + datos de AdSense y no atribuir cambios a metas sin aislar estacionalidad.
 
 **Plan maestro:** [SEO_HOJA_DE_RUTA_2026-10-12.md](./SEO_HOJA_DE_RUTA_2026-10-12.md) — **seguimiento** [issue #238](https://github.com/tostis005/MO/issues/238).
+
+
+## Actualización del trabajo — 12-10-2026
+
+Los **20 títulos SEO y 20 meta descriptions** de esta cohorte han sido preparados en una **PR independiente en borrador [#241](https://github.com/tostis005/MO/pull/241)**. Su workflow PHP de verificación ha superado CI, pero **no hay publicación ni mejora de tráfico demostrada**.
+
+También existe un [brief de edición de los 20 textos](https://github.com/tostis005/MO/blob/seo/gsc-20-english-batch2-20261012/docs/SEO_EDITORIAL_COHORTE_2_20_INGLES_2026-10-12.md) con tareas por URL, preguntas a resolver, riesgos de seguridad alimentaria y propuestas de enlaces. Ninguna edición del contenido de WordPress ha sido ejecutada.
+
+**Dependencia de integración:** PR #237 y PR #241 modifican ambos `functions.php` y `seo-meta-descriptions-010265.php`; al preparar el merge secuencial deberá comprobarse compatibilidad y ejecutar nuevamente CI + auditor HTML completa. Falta staging autorizado (401 para verificador anónimo) y consultas GSC `página × query`.
