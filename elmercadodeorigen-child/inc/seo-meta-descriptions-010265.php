@@ -132,6 +132,18 @@ function elmercado_seo_generated_description() {
 		}
 	}
 
+	// Native fallback for the second and third independent 20-article EN cohorts.
+	if ( 'post' === $post->post_type ) {
+		foreach ( array( 'elmercado_gsc_en_second_fallback_description_20261012', 'elmercado_gsc_en_third_fallback_description_20261012' ) as $helper ) {
+			if ( function_exists( $helper ) ) {
+				$target_description = $helper();
+				if ( '' !== $target_description ) {
+					return elmercado_seo_trim_description( $target_description );
+				}
+			}
+		}
+	}
+
 	$title   = elmercado_seo_plain_text( get_the_title( $post ) );
 	$english = elmercado_seo_is_english();
 
