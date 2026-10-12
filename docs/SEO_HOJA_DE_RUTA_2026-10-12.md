@@ -46,7 +46,10 @@
 - [x] Revisar y acortar 8 títulos de la tanda que superaban 70 caracteres contando la marca (los 20 quedan ahora en 70 o menos; no es un límite impuesto por Google).
 - [x] Corregir en el tema las etiquetas «min de lectura» y «Leer el artículo» de las tarjetas inglesas y «artículos» del contador de categorías.
 - [x] Añadir pruebas PHP automáticas de alcance, idioma, longitud y H1, integradas en el workflow de validación (run **38298126806**, success).
-- [ ] Comprobar HTML real post-cambio en staging: meta etiquetas, enlaces, canónica, hreflang y AdSense.
+- [x] Añadir `tests/seo-html-audit.py` con prueba offline y auditoría real de **5 URLs** (3 EN + 2 ES) que verifica title, description, H1, lang, canonical y avisos hreflang.
+- [x] Integrar `--self-test` en CI y añadir `.github/workflows/seo-staging-html-audit.yml` de ejecución manual tras desplegar el código en staging.
+- [x] Corregir en single.php los enlaces de vuelta al Journal para mantener `/en/journal/` en entradas inglesas.
+- [ ] Comprobar HTML real post-cambio en staging: meta etiquetas, enlaces, canónica, hreflang y AdSense. **Bloqueo actual:** `dev.elmercadodeorigen.com` no resuelve DNS desde el entorno de verificación; la CI de PHP no sustituye esta prueba.
 - [ ] Verificación de HTML en **staging**: 3 URL EN + 2 ES, H1, meta description única, hreflang, canonical, idioma y enlaces.
 - [ ] Aprobar y desplegar cuando las comprobaciones sean satisfactorias; verificar producción y monitorizar errores 404, 5xx y CWV.
 
@@ -112,4 +115,4 @@
 - Exportación GSC suministrada en la conversación: `elmercadodeorigen.com-Performance-on-Search-2026-10-12.xlsx`.
 - Informes guardados en conversación: `analisis_seo_gsc_el_mercado_de_origen_2026.xlsx` y `plan_seo_20_articulos_ingles_2026-10-12.xlsx`.
 
-**Última revisión:** 2026-10-12 — F1: CI **success** en el último cambio de código (run 38298126806), pruebas SEO automáticas incluidas; H1 y etiquetas inglesas de tarjetas/categorías corregidos en PR #237. Cohorte 2 EN preseleccionada. La PR continúa **draft**, sin staging ni despliegue de producción verificados. F2 incluye auditoría del idioma de entradas (issue #239). Falta acceso CMS/GSC `page+query`/AdSense.
+**Última revisión:** 2026-10-12 — añadida auditoría HTML real con 5 URL en `tests/seo-html-audit.py`, su prueba offline al CI y workflow manual de staging. También arreglado retorno del blog EN al `/en/journal/`. El servidor `dev.elmercadodeorigen.com` no ha sido accesible desde el entorno de verificación, por lo que **no se puede afirmar validación en staging**. PR #237 continúa **draft**, sin despliegue de producción. F2 enlazada a issue #239; faltan CMS/GSC `page+query`/AdSense.
