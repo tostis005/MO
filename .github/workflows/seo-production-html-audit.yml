@@ -38,7 +38,7 @@ jobs:
             echo "Checking public HTML, attempt $attempt/4"
             if python3 tests/seo-html-audit.py \
               --base https://www.elmercadodeorigen.com \
-              --timeout 15; then
+              --timeout 15 --cache-bust; then
               echo "Production SEO HTML verified for 5 selected articles."
               exit 0
             fi
