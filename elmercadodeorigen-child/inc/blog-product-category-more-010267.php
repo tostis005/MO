@@ -257,6 +257,47 @@ function elmercado_blog_products_html_has_loop_010277( string $html ): bool {
 }
 
 /**
+ * Selección editorial acotada a la guía EN del hierro de ternera.
+ *
+ * Antes se elegían los 4 productos más populares de 'carnes', que podían ser
+ * únicamente productos de pato. Estos SKU han sido contrastados con fichas
+ * públicas de carne de vacuno/ternera. El ID se resuelve en runtime y solo
+ * participa si WooCommerce confirma producto publicado, visible y con stock.
+ *
+ * Null = URL no seleccionada (conservar lógica anterior).
+ * []   = URL seleccionada, pero ninguna ficha apta (no rellenar con pato).
+ *
+ * @return ?int[]
+ */
+function elmercado_blog_iron_beef_product_ids_010277(): ?array {
+	$uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+	$path = (string) wp_parse_url( $uri, PHP_URL_PATH );
+	if ( '/en/how-much-iron-in-beef/' !== trailingslashit( $path ) ) {
+		return null;
+	}
+
+	if ( ! function_exists( 'wc_get_product_id_by_sku' ) || ! function_exists( 'wc_get_product' ) ) {
+		return array();
+	}
+
+	$ids = array();
+	// Caja de filetes y magro, magro para ragú y chuletón de vaca madurada.
+	foreach ( array( '/filetes-magro-awr', '/magro-ragu-ternera-az', '29325' ) as $sku ) {
+		$id = (int) wc_get_product_id_by_sku( $sku );
+		if ( $id <= 0 || in_array( $id, $ids, true ) || 'publish' !== get_post_status( $id ) ) {
+			continue;
+		}
+		$product = wc_get_product( $id );
+		if ( ! $product || ! $product->is_visible() || ! $product->is_in_stock() ) {
+			continue;
+		}
+		$ids[] = $id;
+	}
+
+	return $ids;
+}
+
+/**
  * Renderiza un bloque de hasta cuatro productos de la categoría resuelta.
  *
  * @param array|string $atts Atributos del shortcode.
@@ -291,12 +332,25 @@ function elmercado_blog_dynamic_products_shortcode_010277( $atts ): string {
 	 * Delegamos la selección a WooCommerce para respetar visibilidad de catálogo,
 	 * proveedores desactivados y cualquier filtro comercial ya vigente en la web.
 	 */
-	$products_html = do_shortcode(
-		sprintf(
-			'[products category="%s" limit="4" columns="4" orderby="popularity"]',
-			esc_attr( $slug )
-		)
-	);
+	$curated_iron_ids = elmercado_blog_iron_beef_product_ids_010277();
+	if ( null !== $curated_iron_ids ) {
+		if ( ! $curated_iron_ids ) {
+			return '';
+		}
+		$products_html = do_shortcode(
+			sprintf(
+				'[products ids="%s" columns="3" orderby="post__in"]',
+				implode( ',', array_map( 'intval', $curated_iron_ids ) )
+			)
+		);
+	} else {
+		$products_html = do_shortcode(
+			sprintf(
+				'[products category="%s" limit="4" columns="4" orderby="popularity"]',
+				esc_attr( $slug )
+			)
+		);
+	}
 
 	/* Sin productos reales no existe ni sección, ni título, ni hueco, ni CTA. */
 	if ( ! elmercado_blog_products_html_has_loop_010277( $products_html ) ) {
