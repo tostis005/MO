@@ -172,6 +172,7 @@ $elmercado_modules = array(
 	'inc/blog-default-image-010264.php',
 	'inc/seo-meta-descriptions-010265.php',
 	'inc/seo-search-console-010313.php',
+	'inc/seo-gsc-english-batch3-20261012.php',
 	'inc/adsense-geo-010266.php',
 	'inc/adsterra-blog-010290.php',
 	'inc/cart-cross-sells-layout-010314.php',
