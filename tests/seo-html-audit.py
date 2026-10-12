@@ -9,7 +9,9 @@ Sin escribir en el sitio. La auditoría sirve para validar HTML renderizado desp
 de desplegar la rama a staging; no prueba los anuncios personalizados por IP.
 """
 import argparse
+import base64
 import html
+import os
 from html.parser import HTMLParser
 import re
 from pathlib import Path
@@ -123,6 +125,17 @@ def inspect(page, expected, html_source):
     return errs, warnings
 
 
+def build_request(url, username="", password=""):
+    """HTTP basic auth only for HTTPS staging; never embed credentials in URL."""
+    headers = {"User-Agent": "ELMERCADO-SEO-QA/1.0"}
+    if username and password:
+        if urlparse(url).scheme != "https":
+            raise ValueError("HTTPS required for staging Basic auth")
+        encoded = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
+        headers["Authorization"] = "Basic " + encoded
+    return Request(url, headers=headers)
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--base", default="https://dev.elmercadodeorigen.com")
@@ -150,6 +163,14 @@ def main():
             bad, _ = inspect(page, expected[page], invalid)
             if not any("canonical" in e for e in bad):
                 raise SystemExit(f"ERROR: no se detecta canonical incorrecta: {page}")
+        header = build_request("https://dev.example.test/post/", "demo", "secret").get_header("Authorization")
+        if header != "Basic ZGVtbzpzZWNyZXQ=":
+            raise SystemExit("ERROR: autenticación básica de staging mal codificada")
+        try:
+            build_request("http://dev.example.test/post/", "demo", "secret")
+            raise SystemExit("ERROR: credenciales en HTTP sin cifrar permitidas")
+        except ValueError:
+            pass
         print("OK: manifiesto, canonical EN y parser HTML, 20 entradas / 5 páginas de muestra")
         return
 
@@ -157,7 +178,11 @@ def main():
     for page in SAMPLES:
         full_url = args.base.rstrip("/") + page
         try:
-            req = Request(full_url, headers={"User-Agent": "ELMERCADO-SEO-QA/1.0"})
+            req = build_request(
+                full_url,
+                os.getenv("SEO_STAGING_BASIC_USER", ""),
+                os.getenv("SEO_STAGING_BASIC_PASSWORD", ""),
+            )
             with urlopen(req, timeout=args.timeout) as resp:
                 if resp.status != 200:
                     raise ValueError(f"HTTP {resp.status}")
