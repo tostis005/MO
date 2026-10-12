@@ -26,6 +26,8 @@ jobs:
       - name: Check rendered page HTML
         env:
           SITE_URL: ${{ inputs.site_url }}
+          SEO_STAGING_BASIC_USER: ${{ secrets.SEO_STAGING_BASIC_USER }}
+          SEO_STAGING_BASIC_PASSWORD: ${{ secrets.SEO_STAGING_BASIC_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
