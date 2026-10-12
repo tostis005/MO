@@ -9,6 +9,26 @@ function add_shortcode( $name, $callback ) {}
 function wp_unslash( $value ) { return stripslashes( (string) $value ); }
 function wp_parse_url( $url, $component ) { return parse_url( $url, $component ); }
 
+function trailingslashit( $value ) { return rtrim( (string) $value, '/' ) . '/'; }
+$GLOBALS['sku_to_product'] = array(
+	'/filetes-magro-awr'     => 501,
+	'/magro-ragu-ternera-az' => 502,
+	'29325'                 => 503,
+);
+$GLOBALS['product_status'] = array( 501 => 'publish', 502 => 'publish', 503 => 'publish' );
+$GLOBALS['product_visible'] = array( 501 => true, 502 => true, 503 => false );
+$GLOBALS['product_stock'] = array( 501 => true, 502 => true, 503 => true );
+function wc_get_product_id_by_sku( $sku ) { return $GLOBALS['sku_to_product'][ $sku ] ?? 0; }
+function get_post_status( $id ) { return $GLOBALS['product_status'][ $id ] ?? ''; }
+class MockWCProduct {
+	private int $id;
+	public function __construct( int $id ) { $this->id = $id; }
+	public function is_visible(): bool { return (bool) ( $GLOBALS['product_visible'][ $this->id ] ?? false ); }
+	public function is_in_stock(): bool { return (bool) ( $GLOBALS['product_stock'][ $this->id ] ?? false ); }
+}
+function wc_get_product( $id ) { return isset( $GLOBALS['product_status'][ $id ] ) ? new MockWCProduct( (int) $id ) : null; }
+
+
 $GLOBALS['mock_locale'] = 'es_ES';
 $GLOBALS['mock_falang_names'] = array();
 function determine_locale() { return $GLOBALS['mock_locale']; }
@@ -74,4 +94,34 @@ if ( 'carnes' !== elmercado_blog_product_term_name_010277( $term ) ) {
 	exit( 1 );
 }
 
-echo "OK: public route determines blog language; Falang term labels and fallbacks preserved.\n";
+
+// Targeted merchandising must never fall back to popular duck products.
+$_SERVER['REQUEST_URI'] = '/en/how-much-iron-in-beef/?utm_source=test';
+$beef_ids = elmercado_blog_iron_beef_product_ids_010277();
+if ( $beef_ids !== array( 501, 502 ) ) {
+	fwrite( STDERR, "FAIL: expected two currently visible and in-stock beef SKUs.\n" );
+	exit( 1 );
+}
+$GLOBALS['product_stock'][502] = false;
+$beef_ids = elmercado_blog_iron_beef_product_ids_010277();
+if ( $beef_ids !== array( 501 ) ) {
+	fwrite( STDERR, "FAIL: out-of-stock product was included.\n" );
+	exit( 1 );
+}
+$GLOBALS['product_visible'][501] = false;
+if ( elmercado_blog_iron_beef_product_ids_010277() !== array() ) {
+	fwrite( STDERR, "FAIL: no eligible beef products should return an empty list.\n" );
+	exit( 1 );
+}
+$_SERVER['REQUEST_URI'] = '/en/lean-beef-what-it-is-how-to-cook-tender/';
+if ( null !== elmercado_blog_iron_beef_product_ids_010277() ) {
+	fwrite( STDERR, "FAIL: unrelated beef guide must keep its original product selection.\n" );
+	exit( 1 );
+}
+$_SERVER['REQUEST_URI'] = '/how-much-iron-in-beef/';
+if ( null !== elmercado_blog_iron_beef_product_ids_010277() ) {
+	fwrite( STDERR, "FAIL: Spanish/unprefixed page must remain unchanged.\n" );
+	exit( 1 );
+}
+
+echo "OK: public route determines blog language; Falang term labels preserved; curated beef SKUs and stock visibility verified.\n";
