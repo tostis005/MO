@@ -174,6 +174,7 @@ $elmercado_modules = array(
 	'inc/adsense-geo-010266.php',
 	'inc/adsterra-blog-010290.php',
 	'inc/cart-cross-sells-layout-010314.php',
+	'inc/montjam-dop-attributes-010317.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
