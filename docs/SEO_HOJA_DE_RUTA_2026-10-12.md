@@ -49,6 +49,8 @@
 - [x] Añadir `tests/seo-html-audit.py` con prueba offline y auditoría real de **5 URLs** (3 EN + 2 ES) que verifica title, description, H1, lang, canonical y avisos hreflang.
 - [x] Integrar `--self-test` en CI y añadir `.github/workflows/seo-staging-html-audit.yml` de ejecución manual tras desplegar el código en staging.
 - [x] Corregir en single.php los enlaces de vuelta al Journal para mantener `/en/journal/` en entradas inglesas.
+- [x] Evitar tarjetas especiales **con fecha de vencimiento explícita y ya pasada** (inglés/español) al renderizar el blog; preservar vigentes y ambiguas. Test PHPUnit-independent en `tests/seo-expired-special-20261012.php`, incorporado en CI.
+- [x] Ampliar la limpieza de H1 idénticos a **20 URLs candidatas adicionales en inglés**, sin alterar sus títulos SEO ni descriptions, y añadir test de alcance.
 - [ ] Comprobar HTML real post-cambio en staging: meta etiquetas, enlaces, canónica, hreflang y AdSense. **Bloqueo actual:** `dev.elmercadodeorigen.com` no resuelve DNS desde el entorno de verificación; la CI de PHP no sustituye esta prueba.
 - [ ] Verificación de HTML en **staging**: 3 URL EN + 2 ES, H1, meta description única, hreflang, canonical, idioma y enlaces.
 - [ ] Aprobar y desplegar cuando las comprobaciones sean satisfactorias; verificar producción y monitorizar errores 404, 5xx y CWV.
@@ -70,7 +72,7 @@
 
 ### F3 — Segundo lote de alto potencial, énfasis inglés [PENDIENTE]
 
-- [x] Preseleccionar 20 URLs EN (94.123 impresiones y 169 clics GSC) en [SEO_COHORTE_2_20_INGLES_2026-10-12.md](./SEO_COHORTE_2_20_INGLES_2026-10-12.md); todavía **sin aplicar cambios**.
+- [x] Preseleccionar 20 URLs EN (94.123 impresiones y 169 clics GSC) en [SEO_COHORTE_2_20_INGLES_2026-10-12.md](./SEO_COHORTE_2_20_INGLES_2026-10-12.md). Sin cambios de metadatos/contenido; **solo la corrección conservadora de H1 idénticos** añadida a la PR #237.
 - [ ] Repriorizar las URLs con consultas por página, RPM publicitario y revisión editorial, excluyendo las optimizadas previamente.
 - [ ] Hacer hipótesis específicas por consulta de mayor volumen y probar mejoras parciales.
 - [ ] Validar primero aquellas con bajo CTR; **no tocar a ciegas** la guía inglesa de oxidación de frutas y verduras, que ya tiene un CTR ~3,2 % y 838 clics.
@@ -81,6 +83,7 @@
 ### F4 — Enlaces y conversión hacia productos, categorías y productores [PENDIENTE]
 
 - [ ] Auditar enlaces del blog a producto/categoría por relevancia y disponibilidad geográfica. No insertar CTA de compra en inglés a país sin envío.
+- [ ] Revisar la [promoción Montjam caducada a 30/09/2026](https://github.com/tostis005/MO/issues/240): la landing pública aún anuncia 225 € como oferta especial pasada. Confirmar vigencia real y corregir contenido CMS/plugin, sin modificar precios de WooCommerce arbitrariamente.
 - [ ] Revisar títulos/snippets de categorías prioritarias: aceites, jamones y paletas, productores y fichas con impresiones pero CTR bajo.
 - [ ] Detectar páginas con productos agotados/no visibles y referencias cruzadas incorrectas.
 - [ ] Medir clics de artículo a producto, interacciones, add-to-cart y pedidos atribuidos antes de ampliar los CTAs.
@@ -115,4 +118,4 @@
 - Exportación GSC suministrada en la conversación: `elmercadodeorigen.com-Performance-on-Search-2026-10-12.xlsx`.
 - Informes guardados en conversación: `analisis_seo_gsc_el_mercado_de_origen_2026.xlsx` y `plan_seo_20_articulos_ingles_2026-10-12.xlsx`.
 
-**Última revisión:** 2026-10-12 — añadida auditoría HTML real con 5 URL en `tests/seo-html-audit.py`, su prueba offline al CI y workflow manual de staging. También arreglado retorno del blog EN al `/en/journal/`. El servidor `dev.elmercadodeorigen.com` no ha sido accesible desde el entorno de verificación, por lo que **no se puede afirmar validación en staging**. PR #237 continúa **draft**, sin despliegue de producción. F2 enlazada a issue #239; faltan CMS/GSC `page+query`/AdSense.
+**Última revisión:** 2026-10-12 — cuarta ejecución: web de desarrollo responde **HTTP 401**, no es un fallo de DNS. PR #237 incorpora protección contra tarjetas de ofertas caducadas (Montjam 30/09/2026) con test CI y extiende la eliminación de H1 idéntico a 20 candidatas EN sin cambios de meta. Último `Validate child theme` **success**, ejecución 38307208415. [Issue #240](https://github.com/tostis005/MO/issues/240) registra la landing caducada, pendiente de CMS/plugin. Aún falta staging HTML real y despliegue; PR draft. Falta GSC page+query, acceso CMS y AdSense.
