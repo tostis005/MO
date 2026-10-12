@@ -85,6 +85,16 @@
 
 **Salida:** segunda cohorte con control independiente y aprendizaje de F1/F2.
 
+### Resultado ampliado de la selección — 60 URLs (3 tandas)
+
+- **Tanda 1:** 20 URLs (16 EN, 4 ES), 189.684 impresiones, 782 clics. Títulos y metadatos preparados en PR #237; **sin publicar**.
+- **Tanda 2:** 20 URLs EN, 94.123 impresiones, 169 clics. Solo H1 repetido en PR; los cambios de intención/meta/editorial todavía no se han ejecutado.
+- **Tanda 3:** 20 URLs EN, 70.776 impresiones, 201 clics, [documento de selección](./SEO_COHORTE_3_20_INGLES_2026-10-12.md). **Sin cambios de código en estas URLs**.
+- **Total de las tres cohortes, sin URL duplicadas:** 60 URLs, 56 EN, 354.583 impresiones y 1.152 clics en 60 días, CTR agregado ~0,325%.
+- Libro Excel con el seguimiento, fórmulas, estados e indicadores disponible como archivo generado en esta conversación: `seguimiento_seo_60_articulos_2026-10-12.xlsx`.
+
+**Seguridad al publicar:** la versión inglesa de artículos individuales no entra en la caché temprana del blog, pero algunas entradas españolas sí. Los cambios del tema no demuestran por sí solos que se haya invalidado el directorio `uploads/elmercado-blog-static-v2`. Comprobar esta caché tras el despliegue. Asimismo, el fallback EN de categorías conserva ahora los enlaces editoriales originales en un índice desplegable para no perderlos, y la navegación de `single.php` usa etiquetas inglesas explícitas respetando las traducciones del resto de idiomas.
+
 ### F4 — Enlaces y conversión hacia productos, categorías y productores [PENDIENTE]
 
 - [ ] Auditar enlaces del blog a producto/categoría por relevancia y disponibilidad geográfica. No insertar CTA de compra en inglés a país sin envío.
@@ -94,6 +104,8 @@
 - [ ] Medir clics de artículo a producto, interacciones, add-to-cart y pedidos atribuidos antes de ampliar los CTAs.
 
 ### F5 — Monetización inglesa / AdSense [PENDIENTE]
+
+- [x] Auditoría del control actual de ads/zonas WooCommerce y línea base GSC por país/dispositivo; [informe](./SEO_ADSENSE_MONETIZACION_2026-10-12.md). **Sin modificar política geográfica, TCF, cookies ni densidad publicitaria.**
 
 - [ ] Obtener o consultar datos **AdSense** por página, país y dispositivo: vistas monetizables, impresiones de anuncio, cobertura, CTR de anuncio, RPM de página y revenue.
 - [ ] Cruzar tráfico SEO EN con países no compradores, **sin desactivar las protecciones de consentimiento ni geolocalización**.
@@ -123,4 +135,4 @@
 - Exportación GSC suministrada en la conversación: `elmercadodeorigen.com-Performance-on-Search-2026-10-12.xlsx`.
 - Informes guardados en conversación: `analisis_seo_gsc_el_mercado_de_origen_2026.xlsx` y `plan_seo_20_articulos_ingles_2026-10-12.xlsx`.
 
-**Última revisión:** 2026-10-12 — sexta ejecución: corregidos H1, intros y etiquetas del blog inglés en Duck/Foie de forma condicional si Falang no tiene traducción EN publicada; sin cambiar posts ni canonical/hreflang. Se ha endurecido el auditor SEO para fallar con canonical distinta y corregido el disparador de CI al cambiar tests. **Primera tanda PR #237 sigue en borrador y sin desplegar**: el HTML de staging permanece sin verificar por acceso restringido. Quedan en issue #239 las traducciones reales de artículos y una imagen provisional Wagyu; falta GSC page×query, WP y AdSense.
+**Última revisión:** 2026-10-12 — iteración extendida: módulo EN de navegación del artículo corregido, protegiendo los demás locales; el fallback de categorías preserva ahora enlaces originales, tests añadidos y **CI de código passing** (run 38309657808). Tercera tanda de 20 EN documentada; 60 URLs/354.583 impresiones/1.152 clics de base, 56 EN. Auditoría de monetización en doc separado sin cambiar anuncios. **PR #237 sigue draft y no está en producción**. Staging HTTP 401 al verificador externo, sin acceso autorizado para QA; faltan acceso WP/Falang, GSC page×query y datos AdSense.
