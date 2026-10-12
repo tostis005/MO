@@ -3,6 +3,7 @@
 declare( strict_types=1 );
 define( 'ABSPATH', __DIR__ . '/' );
 
+function esc_html( $value ) { return htmlspecialchars( (string) $value, ENT_QUOTES, 'UTF-8' ); }
 function wp_unslash( $value ) { return stripslashes( (string) $value ); }
 function wp_parse_url( $url, $component ) { return parse_url( $url, $component ); }
 $GLOBALS['term_flags'] = array();
@@ -52,4 +53,18 @@ $_SERVER['REQUEST_URI'] = '/es/category/carnes/pato/';
 must( ! elmercado_blog_en_category_request_20261012(), 'Other language untouched' );
 $_SERVER['REQUEST_URI'] = '/enquiries/';
 must( ! elmercado_blog_en_category_request_20261012(), 'Do not confuse en prefix' );
+$_SERVER['REQUEST_URI'] = '/en/category/carnes/pato/';
+$original = '<p>Enlaces originales <a href="/en/article-one/">primer artículo</a> y <a href="/en/article-two/">segundo artículo</a>.</p>';
+$new_intro = elmercado_blog_category_intro_20261012( $duck, $original );
+must( str_contains( $new_intro, 'Explore guides to duck meat' ), 'English summary shown' );
+must( str_contains( $new_intro, 'lang="es"' ), 'Spanish original directory labelled as such' );
+must( str_contains( $new_intro, 'href="/en/article-one/"' ) && str_contains( $new_intro, 'href="/en/article-two/"' ), 'All original internal links must survive' );
+must( elmercado_blog_category_intro_20261012( $duck, 'No linked directory') !== 'No linked directory', 'Plain text gets a concise English summary' );
+
+$_SERVER['REQUEST_URI'] = '/category/carnes/pato/';
+must( elmercado_blog_category_intro_20261012( $duck, $original ) === $original, 'Spanish original directory never modified' );
+$_SERVER['REQUEST_URI'] = '/en/category/carnes/pato/';
+$GLOBALS['term_flags'][1] = array( '_en_US_published' => '1' );
+must( elmercado_blog_category_intro_20261012( $duck, $original ) === $original, 'Published Falang intro remains authoritative' );
+
 echo "OK: EN category fallback labels and copy scoped, Spanish/Falang/product cats untouched.\n";
