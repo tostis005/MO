@@ -1,0 +1,48 @@
+name: Verify published SEO HTML on production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/**'
+      - 'tests/seo-html-audit.py'
+      - '.github/workflows/seo-production-html-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: seo-production-html-verification
+  cancel-in-progress: true
+
+jobs:
+  production-seo-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout production repository
+        uses: actions/checkout@v4
+
+      - name: Check parser and expected metadata offline
+        run: python3 tests/seo-html-audit.py --self-test
+
+      - name: Compare rendered HTML with merged metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The live WordPress site may sync after the GitHub push, and it may
+          # have a page cache. Check several times instead of assuming an
+          # immediate publish. Never print cookies or any credentials.
+          for attempt in 1 2 3 4; do
+            echo "Checking public HTML, attempt $attempt/4"
+            if python3 tests/seo-html-audit.py \
+              --base https://www.elmercadodeorigen.com \
+              --timeout 15; then
+              echo "Production SEO HTML verified for 5 selected articles."
+              exit 0
+            fi
+            if [ "$attempt" -lt 4 ]; then sleep 45; fi
+          done
+          echo "Production HTML has not yet passed SEO checks; inspect theme sync, cache and Falang." >&2
+          exit 1
