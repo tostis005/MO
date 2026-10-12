@@ -116,6 +116,14 @@ function elmercado_seo_generated_description() {
 	 * description específica. Esta llamada se resuelve en runtime después de
 	 * cargar todos los módulos, también cuando no hay plugin SEO activo.
 	 */
+	// Los 20 nuevos artículos usan el mismo fallback cuando no hay plugin SEO.
+	if ( 'post' === $post->post_type && function_exists( 'elmercado_gsc_batch_20_fallback_description_20261012' ) ) {
+		$batch_description = elmercado_gsc_batch_20_fallback_description_20261012();
+		if ( '' !== $batch_description ) {
+			return elmercado_seo_trim_description( $batch_description );
+		}
+	}
+
 	if ( 'post' === $post->post_type && function_exists( 'elmercado_gsc_fallback_description_010313' ) ) {
 		$gsc_description = elmercado_gsc_fallback_description_010313();
 
