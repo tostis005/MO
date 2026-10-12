@@ -4,7 +4,10 @@ on:
   pull_request:
     paths:
       - 'elmercadodeorigen-child/**'
+      - 'tests/seo-*.php'
+      - 'tests/seo-*.py'
       - '.github/workflows/validate.yml'
+      - '.github/workflows/seo-staging-html-audit.yml'
   workflow_dispatch:
 
 permissions:
