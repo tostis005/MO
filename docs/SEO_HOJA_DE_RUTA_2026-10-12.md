@@ -49,6 +49,7 @@
 - [x] Añadir `tests/seo-html-audit.py` con prueba offline y auditoría real de **5 URLs** (3 EN + 2 ES) que verifica title, description, H1, lang, canonical y avisos hreflang.
 - [x] Integrar `--self-test` en CI y añadir `.github/workflows/seo-staging-html-audit.yml` de ejecución manual tras desplegar el código en staging.
 - [x] Corregir en single.php los enlaces de vuelta al Journal para mantener `/en/journal/` en entradas inglesas.
+- [x] Corregir detección de idioma en productos dinámicos del blog: Falang puede servir `/en/` con `determine_locale() == es_ES`; ahora se respeta la ruta y el nombre traducido de WooCommerce cuando Falang lo tiene publicado. Test PHP de EN/ES y nombres de categorías, CI **success** (run 38307700639).
 - [x] Evitar tarjetas especiales **con fecha de vencimiento explícita y ya pasada** (inglés/español) al renderizar el blog; preservar vigentes y ambiguas. Test PHPUnit-independent en `tests/seo-expired-special-20261012.php`, incorporado en CI.
 - [x] Ampliar la limpieza de H1 idénticos a **20 URLs candidatas adicionales en inglés**, sin alterar sus títulos SEO ni descriptions, y añadir test de alcance.
 - [ ] Comprobar HTML real post-cambio en staging: meta etiquetas, enlaces, canónica, hreflang y AdSense. **Bloqueo actual:** `dev.elmercadodeorigen.com` devuelve HTTP 401 a la comprobación pública. Hace falta acceso autorizado y despliegue de la rama en staging; la CI de PHP no sustituye esta prueba.
@@ -64,6 +65,7 @@
 - [ ] Mejorar imágenes descriptivas/alt cuando estén incorrectos, sin sustituir media que ya esté funcionando por capricho.
 - [ ] Revisar la versión inglesa **como artículo natural en inglés**, no traducción literal; verificar datos y unidades (US/UK cuando corresponda).
 - [ ] Investigar las entradas con título/extracto español que figuran en las categorías `/en/` (ver [issue #239](https://github.com/tostis005/MO/issues/239)); no ocultarlas hasta verificar traducción, canonical/hreflang y datos GSC.
+- [x] Auditoría pública de muestra: `/en/category/meat/` mezcla ES/EN, `/en/category/carnes/pato/` y `/en/category/foie-pates-untables/` muestran encabezados y descripciones españoles; `/en/category/cheese/` y `/en/category/vegetables/` conservan etiquetas `min de lectura` antes del despliegue. Estos hallazgos requieren editar Falang/CMS, no forzar redirecciones.
 - [ ] Evitar contenido duplicado y fragmentación entre guías similares. Añadir enlaces solo donde aporten.
 - [ ] Editar en el **CMS de WordPress** mediante acceso autorizado: el repositorio del tema **no almacena el cuerpo de cada artículo**; no prometer que GitHub lo publica.
 - [ ] Controlar una muestra móvil y de escritorio y comparar 7/28 días tras el cambio.
@@ -118,4 +120,4 @@
 - Exportación GSC suministrada en la conversación: `elmercadodeorigen.com-Performance-on-Search-2026-10-12.xlsx`.
 - Informes guardados en conversación: `analisis_seo_gsc_el_mercado_de_origen_2026.xlsx` y `plan_seo_20_articulos_ingles_2026-10-12.xlsx`.
 
-**Última revisión:** 2026-10-12 — cuarta ejecución: web de desarrollo responde **HTTP 401**, no es un fallo de DNS. PR #237 incorpora protección contra tarjetas de ofertas caducadas (Montjam 30/09/2026) con test CI y extiende la eliminación de H1 idéntico a 20 candidatas EN sin cambios de meta. Último `Validate child theme` **success**, ejecución 38307208415. [Issue #240](https://github.com/tostis005/MO/issues/240) registra la landing caducada, pendiente de CMS/plugin. Aún falta staging HTML real y despliegue; PR draft. Falta GSC page+query, acceso CMS y AdSense.
+**Última revisión:** 2026-10-12 — quinta ejecución: PR #237 incluye arreglo de idioma de bloques WooCommerce del blog basado en `/en/`, con fallback de nombres traducidos Falang y prueba CI **success** (38307700639). Auditoría pública amplía issue #239 a hubs Pato/Foie, todavía con contenido español. Staging devuelve **HTTP 401**, no existe verificación renderizada tras despliegue. Primera tanda y limpiezas de segundo lote permanecen sin publicar; faltan datos por consulta y acceso CMS.
