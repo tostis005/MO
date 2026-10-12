@@ -36,5 +36,9 @@ jobs:
         shell: bash
         run: php tests/seo-gsc-batch-20-20261012.php
 
+      - name: Validate staging HTML auditor fixtures
+        shell: bash
+        run: python3 tests/seo-html-audit.py --self-test
+
       - name: Check whitespace errors
         run: git diff --check HEAD~1 HEAD || git diff --check
