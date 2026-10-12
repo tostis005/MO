@@ -28,7 +28,7 @@ while ( have_posts() ) :
 					<?php if ( $eyebrow ) : ?><p class="mdo-promotions__kicker"><?php echo esc_html( $eyebrow ); ?></p><?php endif; ?>
 					<h1><?php echo esc_html( $title ); ?></h1>
 					<?php if ( $supplier ) : ?><p class="mdo-promo-hero__producer"><?php echo esc_html( MDO_Specials::strings( 'with', $lang ) . ' ' . (string) $supplier['name'] ); ?></p><?php endif; ?>
-					<?php if ( $summary ) : ?><p class="mdo-promo-hero__summary"><?php echo esc_html( $summary ); ?></p><?php endif; ?>
+					<?php if ( 'active' === $status && $summary ) : ?><p class="mdo-promo-hero__summary"><?php echo esc_html( $summary ); ?></p><?php endif; ?>
 					<?php if ( 'expired' === $status ) : ?>
 						<div class="mdo-promo-notice"><strong><?php echo esc_html( MDO_Specials::strings( 'expired_title', $lang ) ); ?></strong> <?php echo esc_html( MDO_Specials::strings( 'expired', $lang ) ); ?></div>
 						<a class="mdo-promo-button" href="<?php echo esc_url( MDO_Specials::archive_url( $lang ) ); ?>"><?php echo esc_html( MDO_Specials::strings( 'current', $lang ) ); ?></a>
@@ -43,6 +43,7 @@ while ( have_posts() ) :
 			</div>
 		</section>
 
+		<?php if ( 'active' === $status ) : ?>
 		<section class="mdo-promo-detail">
 			<div class="mdo-promotions__shell mdo-promo-detail__grid">
 				<div class="mdo-promo-detail__main">
@@ -59,6 +60,7 @@ while ( have_posts() ) :
 				</aside>
 			</div>
 		</section>
+		<?php endif; ?>
 	</main>
 	<?php if ( $meta['coupon'] && 'active' === $status ) : ?>
 	<script>(function(){var b=document.querySelector('.mdo-promo-copy');if(!b){return;}b.addEventListener('click',function(){var code=b.getAttribute('data-copy')||'',label=b.getAttribute('data-label')||'',copied=b.getAttribute('data-copied')||'';if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(code).then(function(){b.textContent=copied;setTimeout(function(){b.textContent=label;},1800);});}});})();</script>
