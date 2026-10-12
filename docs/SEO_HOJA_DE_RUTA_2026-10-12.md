@@ -48,6 +48,7 @@
 - [x] Añadir pruebas PHP automáticas de alcance, idioma, longitud y H1, integradas en el workflow de validación (run **38298126806**, success).
 - [x] Añadir `tests/seo-html-audit.py` con prueba offline y auditoría real de **5 URLs** (3 EN + 2 ES) que verifica title, description, H1, lang, canonical y avisos hreflang.
 - [x] Integrar `--self-test` en CI y añadir `.github/workflows/seo-staging-html-audit.yml` de ejecución manual tras desplegar el código en staging.
+- [x] Elevar a **error** en el auditor staging una canonical que apunte a otra ruta, en especial `/en/`→ES (evita publicar páginas inglesas no indexables sin advertencia). El CI también se ejecuta cuando se modifican los tests SEO.
 - [x] Corregir en single.php los enlaces de vuelta al Journal para mantener `/en/journal/` en entradas inglesas.
 - [x] Corregir detección de idioma en productos dinámicos del blog: Falang puede servir `/en/` con `determine_locale() == es_ES`; ahora se respeta la ruta y el nombre traducido de WooCommerce cuando Falang lo tiene publicado. Test PHP de EN/ES y nombres de categorías, CI **success** (run 38307700639).
 - [x] Evitar tarjetas especiales **con fecha de vencimiento explícita y ya pasada** (inglés/español) al renderizar el blog; preservar vigentes y ambiguas. Test PHPUnit-independent en `tests/seo-expired-special-20261012.php`, incorporado en CI.
@@ -65,6 +66,8 @@
 - [ ] Mejorar imágenes descriptivas/alt cuando estén incorrectos, sin sustituir media que ya esté funcionando por capricho.
 - [ ] Revisar la versión inglesa **como artículo natural en inglés**, no traducción literal; verificar datos y unidades (US/UK cuando corresponda).
 - [ ] Investigar las entradas con título/extracto español que figuran en las categorías `/en/` (ver [issue #239](https://github.com/tostis005/MO/issues/239)); no ocultarlas hasta verificar traducción, canonical/hreflang y datos GSC.
+- [x] Fallback visual **únicamente para categorías editoriales Duck/Foie** en `/en/` cuando Falang no marca la traducción como publicada: H1, introducción, etiquetas de navegación y tarjetas EN. El contenido almacenado ES y sus URLs no se tocan; si Falang publica traducción tiene prioridad. Tests PHP integrados en CI.
+- [x] Revisar guías EN ya desarrolladas de lavado de carne y mitos Wagyu: tienen respuestas claras/FAQ, mejor no reescribir indiscriminadamente. Wagyu aún muestra una imagen «Imagen provisional del blog…» que requiere reemplazo editorial real en WordPress, no modificación del tema.
 - [x] Auditoría pública de muestra: `/en/category/meat/` mezcla ES/EN, `/en/category/carnes/pato/` y `/en/category/foie-pates-untables/` muestran encabezados y descripciones españoles; `/en/category/cheese/` y `/en/category/vegetables/` conservan etiquetas `min de lectura` antes del despliegue. Estos hallazgos requieren editar Falang/CMS, no forzar redirecciones.
 - [ ] Evitar contenido duplicado y fragmentación entre guías similares. Añadir enlaces solo donde aporten.
 - [ ] Editar en el **CMS de WordPress** mediante acceso autorizado: el repositorio del tema **no almacena el cuerpo de cada artículo**; no prometer que GitHub lo publica.
@@ -120,4 +123,4 @@
 - Exportación GSC suministrada en la conversación: `elmercadodeorigen.com-Performance-on-Search-2026-10-12.xlsx`.
 - Informes guardados en conversación: `analisis_seo_gsc_el_mercado_de_origen_2026.xlsx` y `plan_seo_20_articulos_ingles_2026-10-12.xlsx`.
 
-**Última revisión:** 2026-10-12 — quinta ejecución: PR #237 incluye arreglo de idioma de bloques WooCommerce del blog basado en `/en/`, con fallback de nombres traducidos Falang y prueba CI **success** (38307700639). Auditoría pública amplía issue #239 a hubs Pato/Foie, todavía con contenido español. Staging devuelve **HTTP 401**, no existe verificación renderizada tras despliegue. Primera tanda y limpiezas de segundo lote permanecen sin publicar; faltan datos por consulta y acceso CMS.
+**Última revisión:** 2026-10-12 — sexta ejecución: corregidos H1, intros y etiquetas del blog inglés en Duck/Foie de forma condicional si Falang no tiene traducción EN publicada; sin cambiar posts ni canonical/hreflang. Se ha endurecido el auditor SEO para fallar con canonical distinta y corregido el disparador de CI al cambiar tests. **Primera tanda PR #237 sigue en borrador y sin desplegar**: el HTML de staging permanece sin verificar por acceso restringido. Quedan en issue #239 las traducciones reales de artículos y una imagen provisional Wagyu; falta GSC page×query, WP y AdSense.
