@@ -53,7 +53,7 @@
 - [x] Corregir detección de idioma en productos dinámicos del blog: Falang puede servir `/en/` con `determine_locale() == es_ES`; ahora se respeta la ruta y el nombre traducido de WooCommerce cuando Falang lo tiene publicado. Test PHP de EN/ES y nombres de categorías, CI **success** (run 38307700639).
 - [x] Evitar tarjetas especiales **con fecha de vencimiento explícita y ya pasada** (inglés/español) al renderizar el blog; preservar vigentes y ambiguas. Test PHPUnit-independent en `tests/seo-expired-special-20261012.php`, incorporado en CI.
 - [x] Ampliar la limpieza de H1 idénticos a **20 URLs candidatas adicionales en inglés**, sin alterar sus títulos SEO ni descriptions, y añadir test de alcance.
-- [ ] Comprobar HTML real post-cambio en staging: meta etiquetas, enlaces, canónica, hreflang y AdSense. **Bloqueo actual:** `dev.elmercadodeorigen.com` devuelve HTTP 401 a la comprobación pública. Hace falta acceso autorizado y despliegue de la rama en staging; la CI de PHP no sustituye esta prueba.
+- [ ] Comprobar HTML real post-cambio en staging: meta etiquetas, enlaces, canónica, hreflang y AdSense. **Bloqueo actual:** `dev.elmercadodeorigen.com` devuelve HTTP 401 al verificador anónimo. Se ha preparado autenticación HTTPS Basic opcional por secretos, pero no se afirma que existan credenciales ni que staging esté desplegado. [Runbook de acceso, QA y orden de merges](./SEO_STAGING_PUBLICACION_RUNBOOK_2026-10-12.md).
 - [ ] Verificación de HTML en **staging**: 3 URL EN + 2 ES, H1, meta description única, hreflang, canonical, idioma y enlaces.
 - [ ] Aprobar y desplegar cuando las comprobaciones sean satisfactorias; verificar producción y monitorizar errores 404, 5xx y CWV.
 
@@ -75,13 +75,15 @@
 
 **Salida:** 20 contenidos enriquecidos, con auditoría de lo realmente publicado.
 
-### F3 — Segundo lote de alto potencial, énfasis inglés [PENDIENTE]
+### F3 — Segundo lote de alto potencial, énfasis inglés [CÓDIGO EN DRAFT PR #241]
 
 - [x] Preseleccionar 20 URLs EN (94.123 impresiones y 169 clics GSC) en [SEO_COHORTE_2_20_INGLES_2026-10-12.md](./SEO_COHORTE_2_20_INGLES_2026-10-12.md). Sin cambios de metadatos/contenido; **solo la corrección conservadora de H1 idénticos** añadida a la PR #237.
 - [ ] Repriorizar las URLs con consultas por página, RPM publicitario y revisión editorial, excluyendo las optimizadas previamente.
 - [ ] Hacer hipótesis específicas por consulta de mayor volumen y probar mejoras parciales.
 - [ ] Validar primero aquellas con bajo CTR; **no tocar a ciegas** la guía inglesa de oxidación de frutas y verduras, que ya tiene un CTR ~3,2 % y 838 clics.
-- [ ] Ejecutar F3 con PR nueva y la misma validación; si el tráfico mejora, repetir en lotes adicionales de 20.
+- [x] Preparar títulos y meta descriptions para las 20 URLs EN en PR [#241](https://github.com/tostis005/MO/pull/241), con prueba de alcance/longitud. CI **#38310535552 success**; no se ha fusionado ni publicado.
+- [x] Preparar [brief editorial de cada URL de la tanda 2](https://github.com/tostis005/MO/blob/seo/gsc-20-english-batch2-20261012/docs/SEO_EDITORIAL_COHORTE_2_20_INGLES_2026-10-12.md) con pautas food safety y enlaces candidatos. No se han editado post_content ni traducciones Falang.
+- [ ] Verificar consulta × página, integración secuencial con PR #237, staging/producción y mediciones a 7/28/56 días. Si el tráfico mejora, repetir en lotes adicionales de 20.
 
 **Salida:** segunda cohorte con control independiente y aprendizaje de F1/F2.
 
@@ -135,4 +137,4 @@
 - Exportación GSC suministrada en la conversación: `elmercadodeorigen.com-Performance-on-Search-2026-10-12.xlsx`.
 - Informes guardados en conversación: `analisis_seo_gsc_el_mercado_de_origen_2026.xlsx` y `plan_seo_20_articulos_ingles_2026-10-12.xlsx`.
 
-**Última revisión:** 2026-10-12 — iteración extendida: módulo EN de navegación del artículo corregido, protegiendo los demás locales; el fallback de categorías preserva ahora enlaces originales, tests añadidos y **CI de código passing** (run 38309657808). Tercera tanda de 20 EN documentada; 60 URLs/354.583 impresiones/1.152 clics de base, 56 EN. Auditoría de monetización en doc separado sin cambiar anuncios. **PR #237 sigue draft y no está en producción**. Staging HTTP 401 al verificador externo, sin acceso autorizado para QA; faltan acceso WP/Falang, GSC page×query y datos AdSense.
+**Última revisión:** 2026-10-12 — octava iteración larga: PR #237 (primer lote 20) y PR #241 (segundo lote 20 EN) preparadas con tests automáticos **success** (#38310821007 y #38310535552), 0 URLs de meta solapadas; ambas **draft, no merge/no despliegue**. El auditor staging admite Basic auth HTTPS opcional mediante Secrets y existe [runbook](./SEO_STAGING_PUBLICACION_RUNBOOK_2026-10-12.md). Brief editorial por 20 URLs EN listo (sin edición WP), tercera tanda 20 EN todavía analizada, no optimizada. Incidencia de productos relacionados poco pertinentes [#242](https://github.com/tostis005/MO/issues/242). Faltan acceso staging, CMS/Falang, GSC page×query y AdSense por landing para completar publicación y medición.
