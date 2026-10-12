@@ -200,7 +200,7 @@ while ( have_posts() ) :
 								<a href="<?php echo esc_url( get_category_link( $category ) ); ?>"><?php echo esc_html( $category->name ); ?></a>
 							<?php endif; ?>
 							<span><?php echo esc_html( get_the_date( 'j F Y' ) ); ?></span>
-							<span><?php echo esc_html( (string) elmercado_reading_time( $post_id ) ); ?> <?php esc_html_e( 'min de lectura', 'elmercadodeorigen' ); ?></span>
+							<span><?php echo esc_html( (string) elmercado_reading_time( $post_id ) ); ?> <?php echo esc_html( function_exists( 'elmercado_seo_is_english' ) && elmercado_seo_is_english() ? 'min read' : 'min de lectura' ); ?></span>
 						</div>
 						<h1><?php the_title(); ?></h1>
 					</div>
