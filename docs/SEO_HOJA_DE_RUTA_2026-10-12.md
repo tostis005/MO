@@ -42,8 +42,11 @@
 - [x] Incluir enlaces contextuales a lenteja pardina y garbanzo pedrosillano, solo cuando estén visibles y disponibles.
 - [x] Adaptar etiqueta «min de lectura» a «min read» en páginas inglesas.
 - [x] Superar `Validate child theme` de GitHub Actions (ejecución 38295470801).
-- [x] Revisión preliminar del diff, los enlaces GSC y los productos reales; añadida protección contra H1 duplicado en las 20 URLs.
-- [ ] Revisión final del diff y comprobación contra HTML real para detectar colisiones con plugins SEO/Falang y bloque de anuncios.
+- [x] Revisión preliminar del diff, enlaces GSC y productos reales. H1 duplicado comprobado en la guía de garbanzos: guardarraíl al renderizado final para URL GSC nuevas y anteriores.
+- [x] Revisar y acortar 8 títulos de la tanda que superaban 70 caracteres contando la marca (los 20 quedan ahora en 70 o menos; no es un límite impuesto por Google).
+- [x] Corregir en el tema las etiquetas «min de lectura» y «Leer el artículo» de las tarjetas inglesas y «artículos» del contador de categorías.
+- [x] Añadir pruebas PHP automáticas de alcance, idioma, longitud y H1, integradas en el workflow de validación (run **38298126806**, success).
+- [ ] Comprobar HTML real post-cambio en staging: meta etiquetas, enlaces, canónica, hreflang y AdSense.
 - [ ] Verificación de HTML en **staging**: 3 URL EN + 2 ES, H1, meta description única, hreflang, canonical, idioma y enlaces.
 - [ ] Aprobar y desplegar cuando las comprobaciones sean satisfactorias; verificar producción y monitorizar errores 404, 5xx y CWV.
 
@@ -55,6 +58,7 @@
 - [ ] Revisar exactitud, primer bloque de respuesta, subtítulos, tablas comparativas útiles y preguntas frecuentes **solo si mejoran realmente la lectura**.
 - [ ] Mejorar imágenes descriptivas/alt cuando estén incorrectos, sin sustituir media que ya esté funcionando por capricho.
 - [ ] Revisar la versión inglesa **como artículo natural en inglés**, no traducción literal; verificar datos y unidades (US/UK cuando corresponda).
+- [ ] Investigar las entradas con título/extracto español que figuran en las categorías `/en/` (ver [issue #239](https://github.com/tostis005/MO/issues/239)); no ocultarlas hasta verificar traducción, canonical/hreflang y datos GSC.
 - [ ] Evitar contenido duplicado y fragmentación entre guías similares. Añadir enlaces solo donde aporten.
 - [ ] Editar en el **CMS de WordPress** mediante acceso autorizado: el repositorio del tema **no almacena el cuerpo de cada artículo**; no prometer que GitHub lo publica.
 - [ ] Controlar una muestra móvil y de escritorio y comparar 7/28 días tras el cambio.
@@ -108,4 +112,4 @@
 - Exportación GSC suministrada en la conversación: `elmercadodeorigen.com-Performance-on-Search-2026-10-12.xlsx`.
 - Informes guardados en conversación: `analisis_seo_gsc_el_mercado_de_origen_2026.xlsx` y `plan_seo_20_articulos_ingles_2026-10-12.xlsx`.
 
-**Última revisión:** 2026-10-12 — F1 CI superada tras primera implementación; añadido guardarraíl H1 tardío y cohorte 2 preseleccionada. **Hay que comprobar CI de los commits posteriores**. Sin despliegue verificado ni acceso CMS/GSC page+query/AdSense.
+**Última revisión:** 2026-10-12 — F1: CI **success** en el último cambio de código (run 38298126806), pruebas SEO automáticas incluidas; H1 y etiquetas inglesas de tarjetas/categorías corregidos en PR #237. Cohorte 2 EN preseleccionada. La PR continúa **draft**, sin staging ni despliegue de producción verificados. F2 incluye auditoría del idioma de entradas (issue #239). Falta acceso CMS/GSC `page+query`/AdSense.
