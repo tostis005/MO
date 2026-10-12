@@ -1,5 +1,8 @@
 # Runbook de salida — primera y segunda tanda SEO (octubre 2026)
 
+> **ARCHIVADO — 12/10/2026:** el usuario confirmó que el repositorio `tostis005/MO` publica directamente en **producción**, no en `dev`. Este documento se conserva para historial técnico pero **no es el procedimiento de salida de SEO**. La PR #237 se fusionó en `main` (`7a222e0`). El control correcto es [auditor de HTML público de producción](https://github.com/tostis005/MO/blob/main/.github/workflows/seo-production-html-audit.yml), y el siguiente lote está en [PR #245](https://github.com/tostis005/MO/pull/245). Todavía falta confirmar que el servidor público sirve la versión fusionada.
+
+
 **Objetivo:** validar en staging el HTML REAL antes de fusionar las PR [#237](https://github.com/tostis005/MO/pull/237) y [#241](https://github.com/tostis005/MO/pull/241). Ambas siguen en borrador: no confundir CI de PHP con SEO publicado.
 
 ## Bloqueo actual
