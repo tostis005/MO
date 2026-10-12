@@ -309,6 +309,9 @@ while ( have_posts() ) :
 		if ( class_exists( 'MDO_Home_Featured_Special' ) && is_callable( array( 'MDO_Home_Featured_Special', 'render' ) ) ) {
 			try {
 				$specials_html = (string) MDO_Home_Featured_Special::render();
+				if ( function_exists( 'elmercado_blog_hide_expired_special_20261012' ) ) {
+					$specials_html = elmercado_blog_hide_expired_special_20261012( $specials_html );
+				}
 			} catch ( Throwable $exception ) {
 				$specials_html = '';
 			}
