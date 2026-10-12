@@ -174,6 +174,7 @@ $elmercado_modules = array(
 	'inc/seo-search-console-010313.php',
 	'inc/seo-gsc-batch-20-20261012.php',
 	'inc/blog-expired-special-20261012.php',
+	'inc/blog-category-english-copy-20261012.php',
 	'inc/adsense-geo-010266.php',
 	'inc/adsterra-blog-010290.php',
 	'inc/cart-cross-sells-layout-010314.php',
