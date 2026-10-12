@@ -32,5 +32,9 @@ jobs:
           find elmercadodeorigen-child -type f -name '*.php' -print0 \
             | xargs -0 -n1 php -l
 
+      - name: Validate GSC SEO batch invariants
+        shell: bash
+        run: php tests/seo-gsc-batch-20-20261012.php
+
       - name: Check whitespace errors
         run: git diff --check HEAD~1 HEAD || git diff --check
