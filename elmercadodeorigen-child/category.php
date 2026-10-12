@@ -15,6 +15,17 @@ $category = get_queried_object();
 $is_category = $category instanceof WP_Term && 'category' === $category->taxonomy;
 $title = $is_category ? $category->name : single_cat_title( '', false );
 $description = $is_category ? term_description( $category ) : '';
+// Only when Falang has no EN category translation: safe visible-copy fallback.
+$english_fallback = $is_category && function_exists( 'elmercado_blog_category_english_fallback_20261012' )
+	? elmercado_blog_category_english_fallback_20261012( $category )
+	: null;
+if ( null !== $english_fallback ) {
+	$title = $english_fallback['title'];
+	// Preserve historical linked directory rather than silently dropping its hrefs.
+	$description = function_exists( 'elmercado_blog_category_intro_20261012' )
+		? elmercado_blog_category_intro_20261012( $category, (string) $description )
+		: $description;
+}
 $active = $is_category ? array( $category->slug ) : array();
 $blog_url = function_exists( 'elmercado_blog_public_url_010263' ) ? elmercado_blog_public_url_010263() : elmercado_blog_url();
 ?>
@@ -29,7 +40,7 @@ $blog_url = function_exists( 'elmercado_blog_public_url_010263' ) ? elmercado_bl
 	<section class="emo-journal-listing emo-journal-listing--discovery"><div class="emo-shell">
 		<?php if ( function_exists( 'elmercado_render_blog_discovery_controls_010263' ) ) { elmercado_render_blog_discovery_controls_010263( '', $active ); } ?>
 		<section class="emo-blog-results">
-			<header class="emo-blog-section-heading"><div><span class="emo-kicker"><?php echo esc_html( elmercado_blog_copy_010263( 'Categoría', 'Category' ) ); ?></span><h2><?php echo esc_html( sprintf( elmercado_blog_copy_010263( 'Artículos sobre %s', 'Articles about %s' ), $title ) ); ?></h2></div><?php if ( $is_category ) : ?><span class="emo-blog-result-count"><?php echo esc_html( sprintf( _n( '%s artículo', '%s artículos', (int) $category->count, 'elmercadodeorigen' ), number_format_i18n( (int) $category->count ) ) ); ?></span><?php endif; ?></header>
+			<header class="emo-blog-section-heading"><div><span class="emo-kicker"><?php echo esc_html( elmercado_blog_copy_010263( 'Categoría', 'Category' ) ); ?></span><h2><?php echo esc_html( sprintf( elmercado_blog_copy_010263( 'Artículos sobre %s', 'Articles about %s' ), $title ) ); ?></h2></div><?php if ( $is_category ) : ?><span class="emo-blog-result-count"><?php $category_count = (int) $category->count; $count_pattern = $category_count === 1 ? elmercado_blog_copy_010263( '%s artículo', '%s article' ) : elmercado_blog_copy_010263( '%s artículos', '%s articles' ); echo esc_html( sprintf( $count_pattern, number_format_i18n( $category_count ) ) ); ?></span><?php endif; ?></header>
 			<?php if ( have_posts() ) : ?>
 				<div class="emo-blog-grid"><?php while ( have_posts() ) : the_post(); echo elmercado_render_post_card( get_the_ID() ); endwhile; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div>
 				<nav class="emo-journal-pagination" aria-label="<?php echo esc_attr( elmercado_blog_copy_010263( 'Paginación de categoría', 'Category pagination' ) ); ?>"><?php the_posts_pagination( array( 'mid_size' => 1, 'prev_text' => '←', 'next_text' => '→' ) ); ?></nav>

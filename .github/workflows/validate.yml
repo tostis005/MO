@@ -4,7 +4,10 @@ on:
   pull_request:
     paths:
       - 'elmercadodeorigen-child/**'
+      - 'tests/seo-*.php'
+      - 'tests/seo-*.py'
       - '.github/workflows/validate.yml'
+      - '.github/workflows/seo-staging-html-audit.yml'
   workflow_dispatch:
 
 permissions:
@@ -31,6 +34,26 @@ jobs:
           set -euo pipefail
           find elmercadodeorigen-child -type f -name '*.php' -print0 \
             | xargs -0 -n1 php -l
+
+      - name: Validate GSC SEO batch invariants
+        shell: bash
+        run: php tests/seo-gsc-batch-20-20261012.php
+
+      - name: Validate fallback category translation without Falang overrides
+        shell: bash
+        run: php tests/seo-blog-category-english-20261012.php
+
+      - name: Validate EN blog products and Falang labels
+        shell: bash
+        run: php tests/seo-blog-products-language-20261012.php
+
+      - name: Validate expired promotional card handling
+        shell: bash
+        run: php tests/seo-expired-special-20261012.php
+
+      - name: Validate staging HTML auditor fixtures
+        shell: bash
+        run: python3 tests/seo-html-audit.py --self-test
 
       - name: Check whitespace errors
         run: git diff --check HEAD~1 HEAD || git diff --check

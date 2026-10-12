@@ -75,12 +75,12 @@ function elmercado_render_post_card( int $post_id, bool $featured = false ): str
 		$category_html = sprintf(
 			'<a class="emo-article-card__category" href="%1$s">%2$s</a>',
 			esc_url( get_category_link( $category ) ),
-			esc_html( $category->name )
+			esc_html( function_exists( 'elmercado_blog_category_label_20261012' ) ? elmercado_blog_category_label_20261012( $category ) : $category->name )
 		);
 	}
 
 	return sprintf(
-		'<article class="%1$s"><a class="emo-article-card__media" href="%2$s">%3$s</a><div class="emo-article-card__body"><div class="emo-article-card__meta">%4$s<span>%5$s</span><span>%6$s min de lectura</span></div><h2><a href="%2$s">%7$s</a></h2><p>%8$s</p><a class="emo-article-card__link" href="%2$s">Leer el artículo <span aria-hidden="true">→</span></a></div></article>',
+		'<article class="%1$s"><a class="emo-article-card__media" href="%2$s">%3$s</a><div class="emo-article-card__body"><div class="emo-article-card__meta">%4$s<span>%5$s</span><span>%6$s %9$s</span></div><h2><a href="%2$s">%7$s</a></h2><p>%8$s</p><a class="emo-article-card__link" href="%2$s">%10$s <span aria-hidden="true">→</span></a></div></article>',
 		esc_attr( $classes ),
 		esc_url( get_permalink( $post_id ) ),
 		$image,
@@ -88,7 +88,9 @@ function elmercado_render_post_card( int $post_id, bool $featured = false ): str
 		esc_html( get_the_date( 'j M Y', $post_id ) ),
 		esc_html( (string) elmercado_reading_time( $post_id ) ),
 		esc_html( get_the_title( $post_id ) ),
-		esc_html( elmercado_editorial_excerpt( $post_id, $featured ? 38 : 25 ) )
+		esc_html( elmercado_editorial_excerpt( $post_id, $featured ? 38 : 25 ) ),
+		esc_html( function_exists( 'elmercado_is_english_request_010245' ) && elmercado_is_english_request_010245() ? 'min read' : 'min de lectura' ),
+		esc_html( function_exists( 'elmercado_is_english_request_010245' ) && elmercado_is_english_request_010245() ? 'Read the article' : 'Leer el artículo' )
 	);
 }
 
