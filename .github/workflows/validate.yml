@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'elmercadodeorigen-child/**'
+      - 'tests/seo-gsc-english-batch2-20261012.php'
       - '.github/workflows/validate.yml'
   workflow_dispatch:
 
@@ -31,6 +32,10 @@ jobs:
           set -euo pipefail
           find elmercadodeorigen-child -type f -name '*.php' -print0 \
             | xargs -0 -n1 php -l
+
+      - name: Check second GSC English cohort
+        shell: bash
+        run: php tests/seo-gsc-english-batch2-20261012.php
 
       - name: Check whitespace errors
         run: git diff --check HEAD~1 HEAD || git diff --check
