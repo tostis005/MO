@@ -125,6 +125,40 @@ add_filter( 'aioseo_description', 'elmercado_gsc_batch_20_filter_description_202
 add_filter( 'seopress_titles_desc', 'elmercado_gsc_batch_20_filter_description_20261012', 125 );
 
 /**
+ * Al final del procesamiento editorial elimina solo H1 repetidos del título.
+ * La plantilla single.php ya imprime el H1. Las entradas antiguas pueden
+ * generar otro H1 mediante bloques que se expanden tras el filtro SEO previo.
+ * Se aplica exclusivamente a las 20 URL de esta tanda y deja intactos
+ * los encabezados H1 con un texto diferente.
+ */
+add_filter(
+	'the_content',
+	static function ( $content ) {
+		if ( ! is_string( $content ) || is_admin() || ! is_singular( 'post' ) || ! function_exists( 'elmercado_gsc_normalize_heading_010313' ) ) {
+			return $content;
+		}
+		$target = elmercado_gsc_batch_20_target_20261012();
+		if ( ! $target || false === stripos( $content, '<h1' ) ) {
+			return $content;
+		}
+		$main_heading = elmercado_gsc_normalize_heading_010313( get_the_title( get_queried_object_id() ) );
+		if ( '' === $main_heading ) {
+			return $content;
+		}
+		$result = preg_replace_callback(
+			'~<h1\\b[^>]*>(.*?)</h1>~isu',
+			static function ( array $matches ) use ( $main_heading ): string {
+				$heading = elmercado_gsc_normalize_heading_010313( $matches[1] );
+				return $heading === $main_heading ? '' : $matches[0];
+			},
+			$content
+		);
+		return is_string( $result ) ? $result : $content;
+	},
+	42
+);
+
+/**
  * Enlaces editoriales útiles, por intención de búsqueda.
  * Evita repetir las URL que ya se enlacen desde el cuerpo y no crea
  * enlaces fuera del mismo idioma.
