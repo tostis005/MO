@@ -20,8 +20,34 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Indica si la petición actual está usando la versión inglesa del sitio.
  */
 function elmercado_blog_products_is_english_010277(): bool {
+	/*
+	 * Falang puede servir /en/ manteniendo el locale base de WordPress en es_ES.
+	 * La ruta pública es la señal autoritativa cuando se conoce. No permitimos
+	 * que el locale/HTTP_REFERER marquen inglés para una URL española.
+	 */
+	$uri  = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+	$path = (string) wp_parse_url( $uri, PHP_URL_PATH );
+	if ( '' !== $path ) {
+		return 1 === preg_match( '~^/en(?:/|$)~i', $path );
+	}
+
 	$locale = function_exists( 'determine_locale' ) ? determine_locale() : get_locale();
 	return 0 === strpos( strtolower( (string) $locale ), 'en' );
+}
+
+/**
+ * Usa el nombre de la categoría comercial traducido en Falang cuando existe.
+ * Si el término no tiene traducción publicada, deja la etiqueta original.
+ */
+function elmercado_blog_product_term_name_010277( WP_Term $term ): string {
+	if ( ! elmercado_blog_products_is_english_010277() ) {
+		return (string) $term->name;
+	}
+	if ( '1' !== (string) get_term_meta( (int) $term->term_id, '_en_US_published', true ) ) {
+		return (string) $term->name;
+	}
+	$translated = trim( (string) get_term_meta( (int) $term->term_id, '_en_US_name', true ) );
+	return '' !== $translated ? $translated : (string) $term->name;
 }
 
 /**
@@ -280,9 +306,10 @@ function elmercado_blog_dynamic_products_shortcode_010277( $atts ): string {
 	$show_heading = ! in_array( strtolower( trim( (string) $atts['heading'] ) ), array( '0', 'false', 'no', 'off' ), true );
 	$is_english   = elmercado_blog_products_is_english_010277();
 	$heading      = $is_english ? 'Related products' : 'Productos relacionados';
+	$term_name    = elmercado_blog_product_term_name_010277( $term );
 	$label        = $is_english
-		? sprintf( 'View all products in %s', $term->name )
-		: sprintf( 'Ver todos los productos de %s', $term->name );
+		? sprintf( 'View all products in %s', $term_name )
+		: sprintf( 'Ver todos los productos de %s', $term_name );
 
 	$heading_html = $show_heading
 		? sprintf( '<h2 class="emo-related-products-dynamic__title">%s</h2>', esc_html( $heading ) )
