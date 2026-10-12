@@ -75,6 +75,17 @@ $clean = elmercado_gsc_remove_repeated_heading_at_render_20261012( $body );
 check( ! str_contains( $clean, '<h1>How to Store Food Safely</h1>' ), 'Duplicate H1 was not removed' );
 check( str_contains( $clean, '<h1>Another heading</h1>' ), 'Unrelated H1 must remain' );
 
+$second_candidates = elmercado_gsc_candidate_h1_paths_20261012();
+check( count( $second_candidates ) === 20, 'Exactly 20 H1-only English candidate URLs' );
+check( count( array_unique( $second_candidates ) ) === 20, 'No duplicate EN candidate paths' );
+foreach ( $second_candidates as $candidate ) {
+	check( str_starts_with( $candidate, '/en/' ), 'H1-only candidate must be English' );
+	check( ! isset( $batch[ $candidate ] ), 'H1-only candidate must not override first batch' );
+}
+$GLOBALS['seo_test_path'] = $second_candidates[0];
+check( elmercado_gsc_remove_repeated_heading_at_render_20261012( $body ) === $clean, 'Second cohort identical H1 clean-up' );
+check( elmercado_gsc_batch_20_filter_title_20261012( 'Original' ) === 'Original', 'Second cohort metadata must remain unchanged' );
+
 $GLOBALS['seo_test_path'] = '/legacy-test/';
 $GLOBALS['seo_legacy_target'] = true;
 check( elmercado_gsc_remove_repeated_heading_at_render_20261012( $body ) === $clean, 'Legacy batch H1 regression' );
@@ -82,7 +93,7 @@ check( elmercado_gsc_remove_repeated_heading_at_render_20261012( $body ) === $cl
 $GLOBALS['seo_legacy_target'] = false;
 check( elmercado_gsc_remove_repeated_heading_at_render_20261012( $body ) === $body, 'Unrelated article must remain unchanged' );
 
-echo "OK: 20 URL, 16 EN, 4 ES, scoped metadata, internal links, duplicate H1 and legacy safety checks.\n";
+echo "OK: 20 URL, 16 EN, 4 ES, +20 English H1 candidates, scoped metadata, internal links and legacy safety checks.\n";
 
 function mb_safe_length( string $value ): int {
 	if ( function_exists( 'mb_strlen' ) ) { return mb_strlen( $value, 'UTF-8' ); }
