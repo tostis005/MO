@@ -15,6 +15,14 @@ $category = get_queried_object();
 $is_category = $category instanceof WP_Term && 'category' === $category->taxonomy;
 $title = $is_category ? $category->name : single_cat_title( '', false );
 $description = $is_category ? term_description( $category ) : '';
+// Only when Falang has no EN category translation: safe visible-copy fallback.
+$english_fallback = $is_category && function_exists( 'elmercado_blog_category_english_fallback_20261012' )
+	? elmercado_blog_category_english_fallback_20261012( $category )
+	: null;
+if ( null !== $english_fallback ) {
+	$title = $english_fallback['title'];
+	$description = $english_fallback['description'];
+}
 $active = $is_category ? array( $category->slug ) : array();
 $blog_url = function_exists( 'elmercado_blog_public_url_010263' ) ? elmercado_blog_public_url_010263() : elmercado_blog_url();
 ?>
