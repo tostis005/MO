@@ -159,7 +159,7 @@ function elmercado_render_blog_discovery_controls_010263( string $query = '', ar
 			<div class="emo-blog-chips" aria-label="<?php echo esc_attr( elmercado_blog_copy_010263( 'Categorías del blog', 'Blog categories' ) ); ?>">
 				<button type="button" class="emo-blog-chip<?php echo empty( $active_categories ) ? ' is-active' : ''; ?>" data-blog-all aria-pressed="<?php echo empty( $active_categories ) ? 'true' : 'false'; ?>"><?php echo esc_html( elmercado_blog_copy_010263( 'Todos', 'All' ) ); ?></button>
 				<?php foreach ( $categories as $category ) : $selected = in_array( sanitize_title( $category->slug ), $active_categories, true ); ?>
-					<button type="button" class="emo-blog-chip<?php echo $selected ? ' is-active' : ''; ?>" data-blog-chip="<?php echo esc_attr( $category->slug ); ?>" aria-pressed="<?php echo $selected ? 'true' : 'false'; ?>"><?php echo esc_html( $category->name ); ?></button>
+					<button type="button" class="emo-blog-chip<?php echo $selected ? ' is-active' : ''; ?>" data-blog-chip="<?php echo esc_attr( $category->slug ); ?>" aria-pressed="<?php echo $selected ? 'true' : 'false'; ?>"><?php echo esc_html( function_exists( 'elmercado_blog_category_label_20261012' ) ? elmercado_blog_category_label_20261012( $category ) : $category->name ); ?></button>
 				<?php endforeach; ?>
 			</div>
 			<div class="emo-blog-filter-actions">
@@ -188,7 +188,7 @@ function elmercado_render_blog_category_navigation_010263(): void {
 				$style = '' !== $image ? ' style="--emo-blog-category-image:url(' . esc_url( $image ) . ')"' : '';
 				$count_label = sprintf( elmercado_blog_copy_010263( '%s artículos', '%s articles' ), number_format_i18n( (int) $category->count ) );
 				?>
-				<a class="emo-blog-category-card" href="<?php echo esc_url( $link ); ?>"<?php echo $style; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>><span class="emo-blog-category-card__media" aria-hidden="true"></span><span class="emo-blog-category-card__content"><strong><?php echo esc_html( $category->name ); ?></strong><small><?php echo esc_html( $count_label ); ?></small></span></a>
+				<a class="emo-blog-category-card" href="<?php echo esc_url( $link ); ?>"<?php echo $style; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>><span class="emo-blog-category-card__media" aria-hidden="true"></span><span class="emo-blog-category-card__content"><strong><?php echo esc_html( function_exists( 'elmercado_blog_category_label_20261012' ) ? elmercado_blog_category_label_20261012( $category ) : $category->name ); ?></strong><small><?php echo esc_html( $count_label ); ?></small></span></a>
 			<?php endforeach; ?>
 		</div>
 	</section>
