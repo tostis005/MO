@@ -230,6 +230,10 @@ while ( have_posts() ) :
 					<div class="emo-article-content">
 						<?php
 						$content_html = apply_filters( 'the_content', get_the_content() );
+						// Verificación final: algunos bloques añaden encabezados después del filtro SEO temprano.
+						if ( function_exists( 'elmercado_gsc_remove_repeated_heading_at_render_20261012' ) ) {
+							$content_html = elmercado_gsc_remove_repeated_heading_at_render_20261012( $content_html );
+						}
 
 						/*
 						 * La entrada histórica de Jamón Ibérico conserva el encabezado de
