@@ -1,0 +1,28 @@
+name: Validate EMDO CSV Mailer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mdo-csv-mailer/**'
+      - '.github/workflows/validate-emdo-csv-mailer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check PHP syntax
+        run: php -l mdo-csv-mailer/mdo-csv-mailer.php
+      - name: Verify sample CSV headers and sample domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f mdo-csv-mailer/README.md
+          test -f mdo-csv-mailer/ejemplo.csv
+          head -n1 mdo-csv-mailer/ejemplo.csv | grep -q '^email;asunto;mensaje;permiso;origen$'
+          grep -q 'example.com' mdo-csv-mailer/ejemplo.csv
