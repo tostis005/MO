@@ -35,6 +35,18 @@ jobs:
           find elmercadodeorigen-child -type f -name '*.php' -print0 \
             | xargs -0 -n1 php -l
 
+      - name: Validate second GSC English cohort
+        shell: bash
+        run: php tests/seo-gsc-english-batch2-20261012.php
+
+      - name: Validate third GSC English cohort
+        shell: bash
+        run: php tests/seo-gsc-english-batch3-20261012.php
+
+      - name: Validate all 60 GSC URL integration
+        shell: bash
+        run: php tests/seo-gsc-all-60-integration-20261012.php
+
       - name: Validate GSC SEO batch invariants
         shell: bash
         run: php tests/seo-gsc-batch-20-20261012.php
