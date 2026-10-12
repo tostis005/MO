@@ -42,7 +42,8 @@
 - [x] Incluir enlaces contextuales a lenteja pardina y garbanzo pedrosillano, solo cuando estén visibles y disponibles.
 - [x] Adaptar etiqueta «min de lectura» a «min read» en páginas inglesas.
 - [x] Superar `Validate child theme` de GitHub Actions (ejecución 38295470801).
-- [ ] Revisión final del diff para detectar colisiones con plugins SEO/Falang y bloque de anuncios.
+- [x] Revisión preliminar del diff, los enlaces GSC y los productos reales; añadida protección contra H1 duplicado en las 20 URLs.
+- [ ] Revisión final del diff y comprobación contra HTML real para detectar colisiones con plugins SEO/Falang y bloque de anuncios.
 - [ ] Verificación de HTML en **staging**: 3 URL EN + 2 ES, H1, meta description única, hreflang, canonical, idioma y enlaces.
 - [ ] Aprobar y desplegar cuando las comprobaciones sean satisfactorias; verificar producción y monitorizar errores 404, 5xx y CWV.
 
@@ -62,7 +63,8 @@
 
 ### F3 — Segundo lote de alto potencial, énfasis inglés [PENDIENTE]
 
-- [ ] Priorizar otras ~20 URLs por impresiones, posición 4–10, CTR bajo y señales de intención, excluyendo las 15 anteriores y las 20 de F1.
+- [x] Preseleccionar 20 URLs EN (94.123 impresiones y 169 clics GSC) en [SEO_COHORTE_2_20_INGLES_2026-10-12.md](./SEO_COHORTE_2_20_INGLES_2026-10-12.md); todavía **sin aplicar cambios**.
+- [ ] Repriorizar las URLs con consultas por página, RPM publicitario y revisión editorial, excluyendo las optimizadas previamente.
 - [ ] Hacer hipótesis específicas por consulta de mayor volumen y probar mejoras parciales.
 - [ ] Validar primero aquellas con bajo CTR; **no tocar a ciegas** la guía inglesa de oxidación de frutas y verduras, que ya tiene un CTR ~3,2 % y 838 clics.
 - [ ] Ejecutar F3 con PR nueva y la misma validación; si el tráfico mejora, repetir en lotes adicionales de 20.
@@ -106,4 +108,4 @@
 - Exportación GSC suministrada en la conversación: `elmercadodeorigen.com-Performance-on-Search-2026-10-12.xlsx`.
 - Informes guardados en conversación: `analisis_seo_gsc_el_mercado_de_origen_2026.xlsx` y `plan_seo_20_articulos_ingles_2026-10-12.xlsx`.
 
-**Última revisión:** 2026-10-12 — F1 con CI superada; todavía sin despliegue verificado ni acceso CMS/GSC page+query/AdSense.
+**Última revisión:** 2026-10-12 — F1 CI superada tras primera implementación; añadido guardarraíl H1 tardío y cohorte 2 preseleccionada. **Hay que comprobar CI de los commits posteriores**. Sin despliegue verificado ni acceso CMS/GSC page+query/AdSense.
