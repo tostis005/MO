@@ -51,7 +51,7 @@
 - [x] Corregir en single.php los enlaces de vuelta al Journal para mantener `/en/journal/` en entradas inglesas.
 - [x] Evitar tarjetas especiales **con fecha de vencimiento explícita y ya pasada** (inglés/español) al renderizar el blog; preservar vigentes y ambiguas. Test PHPUnit-independent en `tests/seo-expired-special-20261012.php`, incorporado en CI.
 - [x] Ampliar la limpieza de H1 idénticos a **20 URLs candidatas adicionales en inglés**, sin alterar sus títulos SEO ni descriptions, y añadir test de alcance.
-- [ ] Comprobar HTML real post-cambio en staging: meta etiquetas, enlaces, canónica, hreflang y AdSense. **Bloqueo actual:** `dev.elmercadodeorigen.com` no resuelve DNS desde el entorno de verificación; la CI de PHP no sustituye esta prueba.
+- [ ] Comprobar HTML real post-cambio en staging: meta etiquetas, enlaces, canónica, hreflang y AdSense. **Bloqueo actual:** `dev.elmercadodeorigen.com` devuelve HTTP 401 a la comprobación pública. Hace falta acceso autorizado y despliegue de la rama en staging; la CI de PHP no sustituye esta prueba.
 - [ ] Verificación de HTML en **staging**: 3 URL EN + 2 ES, H1, meta description única, hreflang, canonical, idioma y enlaces.
 - [ ] Aprobar y desplegar cuando las comprobaciones sean satisfactorias; verificar producción y monitorizar errores 404, 5xx y CWV.
 
