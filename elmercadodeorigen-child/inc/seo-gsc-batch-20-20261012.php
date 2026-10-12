@@ -13,11 +13,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 function elmercado_gsc_batch_20_20261012(): array {
 	return array(
 	'/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/' => array(
-		'title' => 'Why Cut Potatoes Turn Black: Causes and Prevention',
+		'title' => 'Why Cut Potatoes Turn Black: Causes',
 		'description' => 'Why do cut potatoes turn black? Learn how oxidation causes darkening, whether they are safe to eat and how cold water and refrigeration help.',
 	),
 	'/en/white-foam-when-cooking-meat-what-it-is-why-it-appears/' => array(
-		'title' => 'White Foam When Cooking Meat: What It Is and Why',
+		'title' => 'White Foam When Cooking Meat: Causes',
 		'description' => 'What is the white foam that forms when you cook meat? Learn why it appears, whether it is harmful and when skimming it makes sense.',
 	),
 	'/en/yellow-broccoli-why-it-changes-colour-and-when-it-is-edible/' => array(
@@ -41,15 +41,15 @@ function elmercado_gsc_batch_20_20261012(): array {
 		'description' => 'Black or brown spots on cauliflower may reflect oxidation or spoilage. Learn how to recognise warning signs and when to discard the vegetable.',
 	),
 	'/en/dented-can-when-safe-when-to-discard/' => array(
-		'title' => 'Dented Can: When Is It Safe and When to Discard?',
+		'title' => 'Dented Cans: Safe or Unsafe?',
 		'description' => 'Is a dented food can safe? Learn why damage around seams, swelling and leaks are warning signs and when it is safer not to use a can.',
 	),
 	'/en/foam-when-cooking-chickpeas-lentils-beans-what-it-is-remove-it/' => array(
-		'title' => 'Foam When Cooking Beans and Chickpeas: Remove It?',
+		'title' => 'Foam on Beans and Chickpeas: Skim It?',
 		'description' => 'Why do chickpeas, lentils and beans foam as they cook? Learn what causes the bubbles and whether you need to skim them off.',
 	),
 	'/en/why-meat-releases-water-in-pan-how-to-stop-it/' => array(
-		'title' => 'Why Meat Releases Water in the Pan and How to Stop It',
+		'title' => 'Why Meat Releases Water in the Pan',
 		'description' => 'Does your meat release water instead of browning? Learn what causes it and how pan temperature, crowding and drying affect searing.',
 	),
 	'/en/black-spots-inside-potato-why-they-appear-when-to-discard/' => array(
@@ -65,7 +65,7 @@ function elmercado_gsc_batch_20_20261012(): array {
 		'description' => 'Vacuum-packed meat may smell strong when opened. Learn when the odour can be temporary and which signs mean you should discard it.',
 	),
 	'/en/why-oil-foams-when-frying-causes-when-to-worry/' => array(
-		'title' => 'Why Oil Foams When Frying: Causes and Warning Signs',
+		'title' => 'Why Frying Oil Foams: Causes and Signs',
 		'description' => 'Why is frying oil foaming? Explore common causes including moisture, food residues and repeated use, plus signs it may be time to change the oil.',
 	),
 	'/en/how-to-tell-cheese-gone-bad-mould-smell-texture-discard/' => array(
@@ -77,7 +77,7 @@ function elmercado_gsc_batch_20_20261012(): array {
 		'description' => 'Travelling with cheese? Learn how to pack it, manage the cold chain and assess storage needs when travelling by car or plane.',
 	),
 	'/cuanta-carne-calcular-por-persona-corte-receta/' => array(
-		'title' => 'Cuánta carne por persona: gramos según corte y receta',
+		'title' => 'Cuánta carne por persona: tabla y gramos',
 		'description' => 'Calcula cuánta carne comprar por persona según el corte y la receta, con orientaciones para raciones, piezas con hueso y comidas en grupo.',
 	),
 	'/aguja-ternera-que-corte-es-como-cocinarla/' => array(
@@ -85,7 +85,7 @@ function elmercado_gsc_batch_20_20261012(): array {
 		'description' => 'Descubre dónde está la aguja de ternera, qué textura tiene y cómo prepararla en guisos, al horno o a la plancha según el corte.',
 	),
 	'/cuantos-litros-leche-hacen-falta-1-kg-queso-rendimiento/' => array(
-		'title' => 'Cuántos litros de leche se necesitan para 1 kg de queso',
+		'title' => 'Litros de leche para 1 kg de queso',
 		'description' => '¿Cuánta leche hace falta para elaborar un kilo de queso? Aprende por qué el rendimiento depende del tipo de queso, la humedad y la leche.',
 	),
 	'/se-puede-volver-congelar-carne-descongelada-cuando-si-cuando-no/' => array(
@@ -125,38 +125,44 @@ add_filter( 'aioseo_description', 'elmercado_gsc_batch_20_filter_description_202
 add_filter( 'seopress_titles_desc', 'elmercado_gsc_batch_20_filter_description_20261012', 125 );
 
 /**
- * Al final del procesamiento editorial elimina solo H1 repetidos del título.
- * La plantilla single.php ya imprime el H1. Las entradas antiguas pueden
- * generar otro H1 mediante bloques que se expanden tras el filtro SEO previo.
- * Se aplica exclusivamente a las 20 URL de esta tanda y deja intactos
- * los encabezados H1 con un texto diferente.
+ * El tema imprime un H1 principal propio. Para las páginas de los lotes GSC
+ * elimina únicamente el H1 del cuerpo que sea réplica exacta de ese título.
+ * Se ejecuta tanto al final de the_content como justo después de aplicar
+ * todos los filtros en single.php. No altera el contenido de WordPress.
  */
-add_filter(
-	'the_content',
-	static function ( $content ) {
-		if ( ! is_string( $content ) || is_admin() || ! is_singular( 'post' ) || ! function_exists( 'elmercado_gsc_normalize_heading_010313' ) ) {
-			return $content;
-		}
-		$target = elmercado_gsc_batch_20_target_20261012();
-		if ( ! $target || false === stripos( $content, '<h1' ) ) {
-			return $content;
-		}
-		$main_heading = elmercado_gsc_normalize_heading_010313( get_the_title( get_queried_object_id() ) );
-		if ( '' === $main_heading ) {
-			return $content;
-		}
-		$result = preg_replace_callback(
-			'~<h1\\b[^>]*>(.*?)</h1>~isu',
-			static function ( array $matches ) use ( $main_heading ): string {
-				$heading = elmercado_gsc_normalize_heading_010313( $matches[1] );
-				return $heading === $main_heading ? '' : $matches[0];
-			},
-			$content
-		);
-		return is_string( $result ) ? $result : $content;
-	},
-	42
-);
+function elmercado_gsc_remove_repeated_heading_at_render_20261012( $content ) {
+	if ( ! is_string( $content ) || is_admin() || ! is_singular( 'post' ) || false === stripos( $content, '<h1' ) ) {
+		return $content;
+	}
+	if ( ! function_exists( 'elmercado_gsc_normalize_heading_010313' ) ) {
+		return $content;
+	}
+	$is_batch = (bool) elmercado_gsc_batch_20_target_20261012();
+	$is_legacy = function_exists( 'elmercado_gsc_targeted_title_010313' )
+		&& '' !== elmercado_gsc_targeted_title_010313();
+	if ( ! $is_batch && ! $is_legacy ) {
+		return $content;
+	}
+	$post_id = (int) get_queried_object_id();
+	if ( $post_id < 1 || ( get_the_ID() && (int) get_the_ID() !== $post_id ) ) {
+		return $content;
+	}
+	$main = elmercado_gsc_normalize_heading_010313( get_the_title( $post_id ) );
+	if ( '' === $main ) {
+		return $content;
+	}
+	$clean = preg_replace_callback(
+		'~<h1\\b[^>]*>(.*?)</h1>~isu',
+		static function ( array $matches ) use ( $main ): string {
+			return $main === elmercado_gsc_normalize_heading_010313( $matches[1] )
+				? ''
+				: $matches[0];
+		},
+		$content
+	);
+	return is_string( $clean ) ? $clean : $content;
+}
+add_filter( 'the_content', 'elmercado_gsc_remove_repeated_heading_at_render_20261012', 42 );
 
 /**
  * Enlaces editoriales útiles, por intención de búsqueda.
