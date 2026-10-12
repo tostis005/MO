@@ -68,3 +68,26 @@ function elmercado_blog_category_label_20261012( WP_Term $term ): string {
 	$fallback = elmercado_blog_category_english_fallback_20261012( $term );
 	return null !== $fallback ? $fallback['title'] : (string) $term->name;
 }
+
+/**
+ * Keep the original rich directory's links accessible when replacing Spanish
+ * introductory copy with the temporary English summary. No rewriting hrefs.
+ * Once a Falang translation is published, it takes complete precedence.
+ */
+function elmercado_blog_category_intro_20261012( WP_Term $term, string $existing ): string {
+	$fallback = elmercado_blog_category_english_fallback_20261012( $term );
+	if ( null === $fallback ) {
+		return $existing;
+	}
+
+	$intro = '<p>' . esc_html( $fallback['description'] ) . '</p>';
+	if ( false === stripos( $existing, '<a ' ) && false === stripos( $existing, '<a>' ) ) {
+		return $intro;
+	}
+
+	return $intro
+		. '<details class="emo-category-original-directory" lang="es">'
+		. '<summary>' . esc_html( 'Browse the full guide index in Spanish' ) . '</summary>'
+		. '<div class="emo-category-original-directory__body">' . $existing . '</div>'
+		. '</details>';
+}
