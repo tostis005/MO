@@ -9,7 +9,7 @@
 3. No sobreoptimizar artículos que ya captan bien tráfico: comparar **consulta × página × país × dispositivo** siempre que haya datos.
 4. Priorizar precisión editorial y seguridad alimentaria; no crear consejos absolutos ni datos inventados. Revisión de hechos para artículos de salud/seguridad.
 5. Publicidad: mantener el control actual por **país comprador/no comprador**, consentimiento y cumplimiento AdSense; nunca sortearlo para incrementar ingresos.
-6. Cualquier cambio de código pasa por **rama, PR, CI, comprobación en staging y validación en producción**. No confundir PR abierta con despliegue.
+6. Los cambios van al **repositorio MO que publica directamente en producción**: rama/PR, CI, fusión controlada en main y **verificación en el dominio público**. No exigir staging `dev`: el usuario confirmó que NO es el despliegue objetivo. No confundir merge con HTML público verificado.
 
 ## Línea base (exportación indicada)
 
@@ -35,7 +35,7 @@
 
 **Salida:** un inventario de consultas reales y riesgos antes de modificar más copy.
 
-### F1 — Primera tanda: 20 artículos / 16 EN [EN REVISIÓN, PR #237]
+### F1 — Primera tanda: 20 artículos / 16 EN [FUSIONADA EN MAIN; VERIFICACIÓN PÚBLICA PENDIENTE]
 
 - [x] Implementar 20 title/meta descriptions sin reescribir post_content ni tocar URLs.
 - [x] Añadir relaciones entre guías sin repetir el mismo href si ya existe en el artículo.
@@ -53,11 +53,11 @@
 - [x] Corregir detección de idioma en productos dinámicos del blog: Falang puede servir `/en/` con `determine_locale() == es_ES`; ahora se respeta la ruta y el nombre traducido de WooCommerce cuando Falang lo tiene publicado. Test PHP de EN/ES y nombres de categorías, CI **success** (run 38307700639).
 - [x] Evitar tarjetas especiales **con fecha de vencimiento explícita y ya pasada** (inglés/español) al renderizar el blog; preservar vigentes y ambiguas. Test PHPUnit-independent en `tests/seo-expired-special-20261012.php`, incorporado en CI.
 - [x] Ampliar la limpieza de H1 idénticos a **20 URLs candidatas adicionales en inglés**, sin alterar sus títulos SEO ni descriptions, y añadir test de alcance.
-- [ ] Comprobar HTML real post-cambio en staging: meta etiquetas, enlaces, canónica, hreflang y AdSense. **Bloqueo actual:** `dev.elmercadodeorigen.com` devuelve HTTP 401 al verificador anónimo. Se ha preparado autenticación HTTPS Basic opcional por secretos, pero no se afirma que existan credenciales ni que staging esté desplegado. [Runbook de acceso, QA y orden de merges](./SEO_STAGING_PUBLICACION_RUNBOOK_2026-10-12.md).
-- [ ] Verificación de HTML en **staging**: 3 URL EN + 2 ES, H1, meta description única, hreflang, canonical, idioma y enlaces.
+- [ ] Comprobar el HTML de **producción** tras merge de [#237](https://github.com/tostis005/MO/pull/237) (`7a222e037d0bbfe72bee4cb88d127a1762d2d4f4`): meta, H1, canonical, hreflang, enlaces y AdSense. Auditor de producción [workflow](../../.github/workflows/seo-production-html-audit.yml) creado en main. Varias consultas desde verificador dieron timeouts o contenido anterior: no afirmar despliegue visible todavía.
+- [ ] Verificación de HTML en **producción**: 3 URLs EN + 2 ES, H1, meta description única, hreflang, canonical, idioma y enlaces; comprobar caché estática de posts ES.
 - [ ] Aprobar y desplegar cuando las comprobaciones sean satisfactorias; verificar producción y monitorizar errores 404, 5xx y CWV.
 
-**Salida:** PR #237 fusionada/desplegada **solo después** de los controles anteriores.
+**Estado real:** PR #237 **fusionada a main**; la sincronización y el HTML servido por el servidor público **no están confirmados aún**, por lo que faltan controles post-merge.
 
 ### F2 — Mejoras editoriales profundas en esas mismas 20 URLs [PENDIENTE]
 
@@ -75,21 +75,22 @@
 
 **Salida:** 20 contenidos enriquecidos, con auditoría de lo realmente publicado.
 
-### F3 — Segundo lote de alto potencial, énfasis inglés [CÓDIGO EN DRAFT PR #241]
+### F3 — Lotes 2 y 3, 40 artículos ingleses [PR #245 DRAFT SOBRE MAIN ACTUALIZADO]
 
-- [x] Preseleccionar 20 URLs EN (94.123 impresiones y 169 clics GSC) en [SEO_COHORTE_2_20_INGLES_2026-10-12.md](./SEO_COHORTE_2_20_INGLES_2026-10-12.md). Sin cambios de metadatos/contenido; **solo la corrección conservadora de H1 idénticos** añadida a la PR #237.
+- [x] Seleccionar 20 URLs EN (94.123 impresiones, 169 clics GSC) y preparar sus metadatos en el lote 2. [Documento](./SEO_COHORTE_2_20_INGLES_2026-10-12.md). Los cuerpos WP no se han editado.
 - [ ] Repriorizar las URLs con consultas por página, RPM publicitario y revisión editorial, excluyendo las optimizadas previamente.
 - [ ] Hacer hipótesis específicas por consulta de mayor volumen y probar mejoras parciales.
 - [ ] Validar primero aquellas con bajo CTR; **no tocar a ciegas** la guía inglesa de oxidación de frutas y verduras, que ya tiene un CTR ~3,2 % y 838 clics.
 - [x] Preparar títulos y meta descriptions para las 20 URLs EN en PR [#241](https://github.com/tostis005/MO/pull/241), con prueba de alcance/longitud. CI **#38310535552 success**; no se ha fusionado ni publicado.
 - [x] Preparar [brief editorial de cada URL de la tanda 2](https://github.com/tostis005/MO/blob/seo/gsc-20-english-batch2-20261012/docs/SEO_EDITORIAL_COHORTE_2_20_INGLES_2026-10-12.md) con pautas food safety y enlaces candidatos. No se han editado post_content ni traducciones Falang.
-- [ ] Verificar consulta × página, integración secuencial con PR #237, staging/producción y mediciones a 7/28/56 días. Si el tráfico mejora, repetir en lotes adicionales de 20.
+- [x] Consolidar 40 URLs de tandas 2 y 3 en [PR #245](https://github.com/tostis005/MO/pull/245) desde el main actualizado después de #237. CI combinado de 60 páginas **success #38314460960**; PR **draft**, NO fusionada.
+- [ ] Confirmar propagación de #237 en producción y después aprobar/revisar #245; medir tráfico orgánico y AdSense a 7/28/56 días sin inferir causalidad prematura.
 
 **Salida:** segunda cohorte con control independiente y aprendizaje de F1/F2.
 
 ### Resultado ampliado de la selección — 60 URLs (3 tandas)
 
-- **Tanda 1:** 20 URLs (16 EN, 4 ES), 189.684 impresiones, 782 clics. Títulos y metadatos preparados en PR #237; **sin publicar**.
+- **Tanda 1:** 20 URLs (16 EN, 4 ES), 189.684 impresiones, 782 clics históricos. Código **fusionado en main** en PR #237; **HTML de producción sin confirmar**.
 - **Tanda 2:** 20 URLs EN, 94.123 impresiones, 169 clics. Solo H1 repetido en PR; los cambios de intención/meta/editorial todavía no se han ejecutado.
 - **Tanda 3:** 20 URLs EN, 70.776 impresiones, 201 clics, [documento de selección](./SEO_COHORTE_3_20_INGLES_2026-10-12.md). **Sin cambios de código en estas URLs**.
 - **Total de las tres cohortes, sin URL duplicadas:** 60 URLs, 56 EN, 354.583 impresiones y 1.152 clics en 60 días, CTR agregado ~0,325%.
@@ -99,7 +100,7 @@
 
 ### F4 — Enlaces y conversión hacia productos, categorías y productores [PENDIENTE]
 
-- [x] **Corrección acotada de relevancia comercial**: la guía EN `/en/how-much-iron-in-beef/` deja de recomendar por popularidad productos de pato; usa SKU confirmados de ternera/vacuno (caja filetes+magro, magro ragú, chuletón), comprobando publicación, visibilidad y stock. Si ninguno está apto se omite el bloque, no se rellena con pato. Tests incluidos (PR #237, [issue #242](https://github.com/tostis005/MO/issues/242)). **Sin publicar.**
+- [x] **Corrección acotada de relevancia comercial**: la guía EN `/en/how-much-iron-in-beef/` deja de recomendar por popularidad productos de pato; usa SKU de vacuno elegibles según publicación/visibilidad/stock; si ninguno está apto, omite el bloque. Tests incluidos (PR #237, [issue #242](https://github.com/tostis005/MO/issues/242)). **Fusionado a main; efecto público sin verificar.**
 - [ ] Seguir auditando enlaces del resto del blog a producto/categoría por relevancia y disponibilidad geográfica. No insertar CTA de compra en inglés a país sin envío.
 - [ ] Revisar la [promoción Montjam caducada a 30/09/2026](https://github.com/tostis005/MO/issues/240): la landing pública aún anuncia 225 € como oferta especial pasada. Confirmar vigencia real y corregir contenido CMS/plugin, sin modificar precios de WooCommerce arbitrariamente.
 - [ ] Revisar títulos/snippets de categorías prioritarias: aceites, jamones y paletas, productores y fichas con impresiones pero CTR bajo.
@@ -138,4 +139,4 @@
 - Exportación GSC suministrada en la conversación: `elmercadodeorigen.com-Performance-on-Search-2026-10-12.xlsx`.
 - Informes guardados en conversación: `analisis_seo_gsc_el_mercado_de_origen_2026.xlsx` y `plan_seo_20_articulos_ingles_2026-10-12.xlsx`.
 
-**Última revisión:** 2026-10-12 — novena iteración: tres PR independientes en borrador, [#237](https://github.com/tostis005/MO/pull/237) (20 artículos, 16 EN + 4 ES), [#241](https://github.com/tostis005/MO/pull/241) (20 EN) y [#243](https://github.com/tostis005/MO/pull/243) (20 EN); primeras pruebas CI de cada una success, ningún lote publicado. Corrección acotada en #237 de productos de pato mostrados en guía de hierro de ternera; SKU de vacuno verificados y test de stock/visibilidad (run 38312011996 success). [Integración técnica #244](https://github.com/tostis005/MO/pull/244) (base rama de #237) monta los 60 módulos y verifica conflictos de title/description/fallback con test completo: resultado CI por confirmar. Continúa pendiente QA HTML autenticado de staging HTTP 401 y acceso WP/Falang, GSC page×query, AdSense RPM por URL.
+**Última revisión:** 2026-10-12 — corrección del despliegue: **MO/main publica directamente en producción**, no debe utilizarse `dev` como puerta de salida. PR #237 fusionada (commit `7a222e0`), pendiente verificar HTML público. Auditor post-merge de producción [workflow](../../.github/workflows/seo-production-html-audit.yml) añadido a main (commit `8b68ca7`); comprobaciones externas web devolvieron contenido anterior/timeouts, sin prueba inequívoca del despliegue. PR #245 prepara **40 artículos EN restantes** desde main vigente, tests de integración de **60 URL** success #38314460960, sin fusionar. Estado de progreso: 20 URLs fusionadas a GitHub, 40 listas para revisión; ninguno de los aumentos de tráfico medido y sin conexión WP, GSC página×consulta o AdSense por URL.
