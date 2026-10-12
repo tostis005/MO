@@ -75,7 +75,7 @@ function elmercado_render_post_card( int $post_id, bool $featured = false ): str
 		$category_html = sprintf(
 			'<a class="emo-article-card__category" href="%1$s">%2$s</a>',
 			esc_url( get_category_link( $category ) ),
-			esc_html( $category->name )
+			esc_html( function_exists( 'elmercado_blog_category_label_20261012' ) ? elmercado_blog_category_label_20261012( $category ) : $category->name )
 		);
 	}
 
