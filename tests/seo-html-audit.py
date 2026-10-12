@@ -15,7 +15,8 @@ import os
 from html.parser import HTMLParser
 import re
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlencode, urlsplit, urlunsplit, parse_qsl
+from uuid import uuid4
 from urllib.request import urlopen, Request
 
 SAMPLES = (
@@ -127,7 +128,11 @@ def inspect(page, expected, html_source):
 
 def build_request(url, username="", password=""):
     """HTTP basic auth only for HTTPS staging; never embed credentials in URL."""
-    headers = {"User-Agent": "ELMERCADO-SEO-QA/1.0"}
+    headers = {
+        "User-Agent": "ELMERCADO-SEO-QA/1.0",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+    }
     if username and password:
         if urlparse(url).scheme != "https":
             raise ValueError("HTTPS required for staging Basic auth")
@@ -136,11 +141,20 @@ def build_request(url, username="", password=""):
     return Request(url, headers=headers)
 
 
+def bust_cache(url, token):
+    """Append a harmless query parameter without changing the article path."""
+    parts = urlsplit(url)
+    query = list(parse_qsl(parts.query, keep_blank_values=True))
+    query.append(("_seo_html_audit", token))
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--base", default="https://dev.elmercadodeorigen.com")
     p.add_argument("--self-test", action="store_true")
     p.add_argument("--timeout", type=int, default=20)
+    p.add_argument("--cache-bust", action="store_true", help="Avoid stale HTML on deployed pages")
     args = p.parse_args()
     expected = manifest()
     if len(expected) != 20:
@@ -171,12 +185,17 @@ def main():
             raise SystemExit("ERROR: credenciales en HTTP sin cifrar permitidas")
         except ValueError:
             pass
+        tagged = bust_cache("https://example.com/en/path/?x=1", "smoke")
+        if tagged != "https://example.com/en/path/?x=1&_seo_html_audit=smoke":
+            raise SystemExit("ERROR: cache bust altered article path")
         print("OK: manifiesto, canonical EN y parser HTML, 20 entradas / 5 páginas de muestra")
         return
 
     failed = 0
     for page in SAMPLES:
         full_url = args.base.rstrip("/") + page
+        if args.cache_bust:
+            full_url = bust_cache(full_url, uuid4().hex)
         try:
             req = build_request(
                 full_url,
