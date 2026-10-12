@@ -149,7 +149,7 @@ function elmercado_gsc_batch_20_links_20261012(): array {
 	'/en/how-to-transport-cheese-travel-car-plane-cold-chain/' => array(array( '/en/how-to-tell-cheese-gone-bad-mould-smell-texture-discard/', 'signs that cheese has spoiled' ), array( '/en/can-you-eat-cheese-rind-which-rinds-edible-which-remove/', 'types of cheese rind' )),
 	'/cuanta-carne-calcular-por-persona-corte-receta/' => array(array( '/cuanta-proteina-tiene-carne-ternera/', 'proteína por 100 g de ternera' ), array( '/carne-magra-ternera-que-es-como-cocinar-tierna/', 'cortes magros de ternera' )),
 	'/aguja-ternera-que-corte-es-como-cocinarla/' => array(array( '/carne-magra-ternera-que-es-como-cocinar-tierna/', 'carne magra de ternera' ), array( '/cuanta-carne-calcular-por-persona-corte-receta/', 'cuánta carne calcular por persona' )),
-	'/cuantos-litros-leche-hacen-falta-1-kg-queso-rendimiento/' => array(array( '/como-saber-si-un-queso-esta-malo-moho-olor-textura/', 'conservar el queso en buen estado' ), array( '/cuantos-kilos-queso-salen-10-litros-leche/', 'rendimiento del queso a partir de leche' )),
+	
 	'/se-puede-volver-congelar-carne-descongelada-cuando-si-cuando-no/' => array(array( '/cuanto-tiempo-puede-estar-carne-fuera-nevera-antes-cocinarla/', 'carne fuera de la nevera' ), array( '/se-puede-congelar-carne-cocinada-como-conservar-descongelar/', 'congelar carne cocinada' )),
 	);
 }
