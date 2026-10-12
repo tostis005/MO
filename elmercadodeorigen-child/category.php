@@ -21,7 +21,10 @@ $english_fallback = $is_category && function_exists( 'elmercado_blog_category_en
 	: null;
 if ( null !== $english_fallback ) {
 	$title = $english_fallback['title'];
-	$description = $english_fallback['description'];
+	// Preserve historical linked directory rather than silently dropping its hrefs.
+	$description = function_exists( 'elmercado_blog_category_intro_20261012' )
+		? elmercado_blog_category_intro_20261012( $category, (string) $description )
+		: $description;
 }
 $active = $is_category ? array( $category->slug ) : array();
 $blog_url = function_exists( 'elmercado_blog_public_url_010263' ) ? elmercado_blog_public_url_010263() : elmercado_blog_url();
