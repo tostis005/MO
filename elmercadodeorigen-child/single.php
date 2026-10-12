@@ -200,10 +200,10 @@ while ( have_posts() ) :
 					<div class="emo-shell emo-article-hero__inner">
 						<div class="emo-article-hero__meta">
 							<?php if ( $category instanceof WP_Term ) : ?>
-								<a href="<?php echo esc_url( get_category_link( $category ) ); ?>"><?php echo esc_html( $category->name ); ?></a>
+								<a href="<?php echo esc_url( get_category_link( $category ) ); ?>"><?php echo esc_html( function_exists( 'elmercado_blog_category_label_20261012' ) ? elmercado_blog_category_label_20261012( $category ) : $category->name ); ?></a>
 							<?php endif; ?>
 							<span><?php echo esc_html( get_the_date( 'j F Y' ) ); ?></span>
-							<span><?php echo esc_html( (string) elmercado_reading_time( $post_id ) ); ?> <?php echo esc_html( function_exists( 'elmercado_seo_is_english' ) && elmercado_seo_is_english() ? 'min read' : 'min de lectura' ); ?></span>
+							<span><?php echo esc_html( (string) elmercado_reading_time( $post_id ) ); ?> <?php echo esc_html( $is_english_blog ? 'min read' : 'min de lectura' ); ?></span>
 						</div>
 						<h1><?php the_title(); ?></h1>
 					</div>
@@ -281,7 +281,7 @@ while ( have_posts() ) :
 						echo $content_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 						wp_link_pages(
 							array(
-								'before' => '<nav class="page-links">' . esc_html__( 'Páginas:', 'elmercadodeorigen' ),
+								'before' => '<nav class="page-links">' . esc_html( $is_english_blog ? 'Pages:' : __( 'Páginas:', 'elmercadodeorigen' ) ),
 								'after'  => '</nav>',
 							)
 						);
@@ -289,13 +289,13 @@ while ( have_posts() ) :
 					</div>
 
 					<footer class="emo-article-footer">
-						<a class="emo-article-back" href="<?php echo esc_url( $blog_return_url ); ?>">← <?php esc_html_e( 'Volver al blog', 'elmercadodeorigen' ); ?></a>
-						<nav class="emo-article-navigation" aria-label="<?php esc_attr_e( 'Otras entradas', 'elmercadodeorigen' ); ?>">
+						<a class="emo-article-back" href="<?php echo esc_url( $blog_return_url ); ?>">← <?php echo esc_html( $is_english_blog ? 'Back to the blog' : __( 'Volver al blog', 'elmercadodeorigen' ) ); ?></a>
+						<nav class="emo-article-navigation" aria-label="<?php echo esc_attr( $is_english_blog ? 'Other articles' : __( 'Otras entradas', 'elmercadodeorigen' ) ); ?>">
 							<?php if ( $previous instanceof WP_Post ) : ?>
-								<a href="<?php echo esc_url( get_permalink( $previous ) ); ?>"><?php esc_html_e( 'Anterior', 'elmercadodeorigen' ); ?></a>
+								<a href="<?php echo esc_url( get_permalink( $previous ) ); ?>"><?php echo esc_html( $is_english_blog ? 'Previous' : __( 'Anterior', 'elmercadodeorigen' ) ); ?></a>
 							<?php endif; ?>
 							<?php if ( $next instanceof WP_Post ) : ?>
-								<a href="<?php echo esc_url( get_permalink( $next ) ); ?>"><?php esc_html_e( 'Siguiente', 'elmercadodeorigen' ); ?></a>
+								<a href="<?php echo esc_url( get_permalink( $next ) ); ?>"><?php echo esc_html( $is_english_blog ? 'Next' : __( 'Siguiente', 'elmercadodeorigen' ) ); ?></a>
 							<?php endif; ?>
 						</nav>
 					</footer>
@@ -348,10 +348,10 @@ while ( have_posts() ) :
 				<div class="emo-shell">
 					<header class="emo-related-reading__heading">
 						<div>
-							<span class="emo-kicker"><?php esc_html_e( 'Seguir descubriendo', 'elmercadodeorigen' ); ?></span>
-							<h2><?php esc_html_e( 'Más historias del mercado', 'elmercadodeorigen' ); ?></h2>
+							<span class="emo-kicker"><?php echo esc_html( $is_english_blog ? 'Keep exploring' : __( 'Seguir descubriendo', 'elmercadodeorigen' ) ); ?></span>
+							<h2><?php echo esc_html( $is_english_blog ? 'More from our journal' : __( 'Más historias del mercado', 'elmercadodeorigen' ) ); ?></h2>
 						</div>
-						<a class="emo-text-link" href="<?php echo esc_url( $blog_return_url ); ?>"><?php esc_html_e( 'Ver todos los artículos', 'elmercadodeorigen' ); ?> <span aria-hidden="true">→</span></a>
+						<a class="emo-text-link" href="<?php echo esc_url( $blog_return_url ); ?>"><?php echo esc_html( $is_english_blog ? 'View all articles' : __( 'Ver todos los artículos', 'elmercadodeorigen' ) ); ?> <span aria-hidden="true">→</span></a>
 					</header>
 					<div class="emo-journal-grid" style="grid-template-columns: repeat(4, minmax(0, 1fr)) !important;">
 						<?php
