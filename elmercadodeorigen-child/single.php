@@ -189,6 +189,9 @@ while ( have_posts() ) :
 	$category   = ! empty( $categories ) ? $categories[0] : null;
 	$previous   = get_previous_post();
 	$next       = get_next_post();
+	// En /en/ la vuelta al Journal no debe enviarnos al archivo español.
+	$is_english_blog = function_exists( 'elmercado_seo_is_english' ) && elmercado_seo_is_english();
+	$blog_return_url = $is_english_blog ? home_url( '/en/journal/' ) : elmercado_blog_url();
 	?>
 	<main id="primary" class="site-main emo-article-page">
 		<article <?php post_class( 'emo-article' ); ?>>
@@ -286,7 +289,7 @@ while ( have_posts() ) :
 					</div>
 
 					<footer class="emo-article-footer">
-						<a class="emo-article-back" href="<?php echo esc_url( elmercado_blog_url() ); ?>">← <?php esc_html_e( 'Volver al blog', 'elmercadodeorigen' ); ?></a>
+						<a class="emo-article-back" href="<?php echo esc_url( $blog_return_url ); ?>">← <?php esc_html_e( 'Volver al blog', 'elmercadodeorigen' ); ?></a>
 						<nav class="emo-article-navigation" aria-label="<?php esc_attr_e( 'Otras entradas', 'elmercadodeorigen' ); ?>">
 							<?php if ( $previous instanceof WP_Post ) : ?>
 								<a href="<?php echo esc_url( get_permalink( $previous ) ); ?>"><?php esc_html_e( 'Anterior', 'elmercadodeorigen' ); ?></a>
@@ -345,7 +348,7 @@ while ( have_posts() ) :
 							<span class="emo-kicker"><?php esc_html_e( 'Seguir descubriendo', 'elmercadodeorigen' ); ?></span>
 							<h2><?php esc_html_e( 'Más historias del mercado', 'elmercadodeorigen' ); ?></h2>
 						</div>
-						<a class="emo-text-link" href="<?php echo esc_url( elmercado_blog_url() ); ?>"><?php esc_html_e( 'Ver todos los artículos', 'elmercadodeorigen' ); ?> <span aria-hidden="true">→</span></a>
+						<a class="emo-text-link" href="<?php echo esc_url( $blog_return_url ); ?>"><?php esc_html_e( 'Ver todos los artículos', 'elmercadodeorigen' ); ?> <span aria-hidden="true">→</span></a>
 					</header>
 					<div class="emo-journal-grid" style="grid-template-columns: repeat(4, minmax(0, 1fr)) !important;">
 						<?php
