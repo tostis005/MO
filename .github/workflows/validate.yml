@@ -36,6 +36,10 @@ jobs:
         shell: bash
         run: php tests/seo-gsc-batch-20-20261012.php
 
+      - name: Validate EN blog products and Falang labels
+        shell: bash
+        run: php tests/seo-blog-products-language-20261012.php
+
       - name: Validate expired promotional card handling
         shell: bash
         run: php tests/seo-expired-special-20261012.php
