@@ -1,0 +1,45 @@
+name: Audit SEO HTML on staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      site_url:
+        description: "URL base del WordPress con la rama SEO ya desplegada"
+        required: true
+        default: "https://dev.elmercadodeorigen.com"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  html-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check out audit scripts
+        uses: actions/checkout@v4
+
+      - name: Validate audit fixtures
+        run: python3 tests/seo-html-audit.py --self-test
+
+      - name: Check rendered page HTML
+        env:
+          SITE_URL: ${{ inputs.site_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$SITE_URL" =~ ^https://[a-zA-Z0-9.-]+/?$ ]]; then
+            echo "Invalid staging base URL" >&2
+            exit 1
+          fi
+          python3 tests/seo-html-audit.py --base "$SITE_URL" --timeout 20
+
+      - name: Manual verification still required
+        if: success()
+        run: |
+          echo "HTML smoke checks passed. Before merging still verify:"
+          echo "- hreflang consistency in Falang and article excerpts"
+          echo "- AdSense regional eligibility and consent"
+          echo "- rendered layout and links on mobile"
+          echo "- absence of unexpected title/meta overrides in SEO plugin"
