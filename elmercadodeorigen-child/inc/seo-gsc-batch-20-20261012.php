@@ -130,6 +130,32 @@ add_filter( 'seopress_titles_desc', 'elmercado_gsc_batch_20_filter_description_2
  * Se ejecuta tanto al final de the_content como justo después de aplicar
  * todos los filtros en single.php. No altera el contenido de WordPress.
  */
+/** Twenty additional high-impression English URL candidates: clean identical duplicate H1 only. */
+function elmercado_gsc_candidate_h1_paths_20261012(): array {
+	return array(
+		'/en/how-much-iron-in-beef/',
+		'/en/can-you-store-an-open-can-in-the-fridge-why-transfer-food/',
+		'/en/chickpeas-soaking-time-how-long-to-cook/',
+		'/en/green-sprouted-potatoes-when-safe-when-to-discard/',
+		'/en/yellow-or-slimy-spinach-when-to-use-and-when-to-discard/',
+		'/en/should-you-wash-meat-before-cooking-why-not/',
+		'/en/verdura-vs-hortaliza-difference-which-foods-belong-to-each-group/',
+		'/en/kuroge-washu-japanese-black-wagyu/',
+		'/en/what-do-wagyu-cattle-eat-beer-massage-myths/',
+		'/en/iberian-sobrasada-what-it-is-how-made-what-to-look-for-when-buying/',
+		'/en/can-you-eat-chorizo-salchichon-casing-natural-collagen-artificial/',
+		'/en/lettuce-red-or-brown-edges-why-it-happens-and-when-to-discard/',
+		'/en/cheese-nutrition-calories-protein-fat-salt-carbohydrates/',
+		'/en/what-is-cheese-affinage-maturation-humidity-rind-care-affineur/',
+		'/en/jar-vacuum-seal-how-to-check-closure/',
+		'/en/root-leaf-fruit-flower-bulb-stem-vegetables/',
+		'/en/lean-beef-what-it-is-how-to-cook-tender/',
+		'/en/how-long-cooked-meat-lasts-in-fridge-safe-storage/',
+		'/en/how-much-meat-to-plan-per-person-by-cut-and-recipe/',
+		'/en/how-many-litres-milk-to-make-1-kg-cheese-yield/',
+	);
+}
+
 function elmercado_gsc_remove_repeated_heading_at_render_20261012( $content ) {
 	if ( ! is_string( $content ) || is_admin() || ! is_singular( 'post' ) || false === stripos( $content, '<h1' ) ) {
 		return $content;
@@ -140,7 +166,8 @@ function elmercado_gsc_remove_repeated_heading_at_render_20261012( $content ) {
 	$is_batch = (bool) elmercado_gsc_batch_20_target_20261012();
 	$is_legacy = function_exists( 'elmercado_gsc_targeted_title_010313' )
 		&& '' !== elmercado_gsc_targeted_title_010313();
-	if ( ! $is_batch && ! $is_legacy ) {
+	$is_candidate = in_array( elmercado_gsc_current_path_010313(), elmercado_gsc_candidate_h1_paths_20261012(), true );
+	if ( ! $is_batch && ! $is_legacy && ! $is_candidate ) {
 		return $content;
 	}
 	$post_id = (int) get_queried_object_id();
