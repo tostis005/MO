@@ -169,6 +169,53 @@ jobs:
           fi
           echo "advanced_cache_provider=$provider"
 
+          echo '=== CACHE ROUTING FINGERPRINT (READ-ONLY; BOOLEANS ONLY) ==='
+          # Fingerprint code indicators without printing config, source or paths.
+          for indicator in custom_marker request_uri query_args early_exit english_route; do
+            found=no
+            if [ -f "$dropin" ]; then
+              case "$indicator" in
+                custom_marker) grep -Eqi 'elmercado|mercado-blog-static|blog-static-v2|emo[-_]|cache-bridge' "$dropin" && found=yes || true ;;
+                request_uri) grep -Eqi 'REQUEST_URI|SCRIPT_NAME|REQUEST_METHOD' "$dropin" && found=yes || true ;;
+                query_args) grep -Eqi 'QUERY_STRING|parse_str|_GET' "$dropin" && found=yes || true ;;
+                early_exit) grep -Eqi '(exit|die)[[:space:]]*[;(]' "$dropin" && found=yes || true ;;
+                english_route) grep -Eqi '/en/|lang[_-]?en|english|is_english' "$dropin" && found=yes || true ;;
+              esac
+            fi
+            echo "cache_code_${indicator}=$found"
+          done
+          for family in rocket supercache w3tc litespeed custom_blog; do
+            found=no
+            case "$family" in
+              rocket) [ ! -d "$prod/wp-content/cache/wp-rocket" ] || found=yes ;;
+              supercache) [ ! -d "$prod/wp-content/cache/supercache" ] || found=yes ;;
+              w3tc) [ ! -d "$prod/wp-content/cache/page_enhanced" ] || found=yes ;;
+              litespeed) [ ! -d "$prod/wp-content/litespeed" ] || found=yes ;;
+              custom_blog) [ ! -d "$prod/wp-content/uploads/elmercado-blog-static-v2" ] || found=yes ;;
+            esac
+            echo "cache_family_${family}=$found"
+          done
+          probe_ip="$(hostname -I 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {print $i;exit}}')"
+          if [ -n "$probe_ip" ]; then
+            sample_url='https://www.elmercadodeorigen.com/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/'
+            for variant in baseline unique_no_cache; do
+              headers="$(mktemp)"; body="$(mktemp)"; url="$sample_url"
+              [ "$variant" != unique_no_cache ] || url="${sample_url}?seo_origin_diag_20261013=1"
+              status="$(curl -ksS --connect-timeout 4 --max-time 14 --resolve "www.elmercadodeorigen.com:443:$probe_ip" -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -D "$headers" -o "$body" -w '%{http_code}' "$url" || true)"
+              [ -n "$status" ] || status=000
+              h1="$(grep -oEi '<h1([[:space:]>])' "$body" | wc -l | tr -d ' ' || true)"
+              cache_header=none
+              if grep -Eqi '^(x-cache|cf-cache-status|x-litespeed-cache|x-rocket-cache|x-proxy-cache):' "$headers"; then
+                if grep -Eiq '^(x-cache|cf-cache-status|x-litespeed-cache|x-rocket-cache|x-proxy-cache):[[:space:]]*(hit|cached|stale)([[:space:];]|$)' "$headers"; then cache_header=hit
+                elif grep -Eiq '^(x-cache|cf-cache-status|x-litespeed-cache|x-rocket-cache|x-proxy-cache):[[:space:]]*(miss|bypass|dynamic|expired)([[:space:];]|$)' "$headers"; then cache_header=miss
+                else cache_header=other; fi
+              fi
+              echo "cache_probe_${variant}=http:${status} h1:${h1} header:${cache_header}"
+              rm -f "$headers" "$body"
+            done
+          else
+            echo 'cache_probe_origin=no_ip'
+          fi
           echo '=== ORIGIN HOST LISTENERS (PORTS ONLY) ==='
           ss -lnt 2>/dev/null | awk 'NR > 1 { print $4 }' | grep -E '(:80|:443)$' | sed -E 's/^.*:/:/' | sort -u || true
           echo '=== ORIGIN DIRECT READ-ONLY HTTP PROBES ==='
@@ -208,6 +255,32 @@ jobs:
               grep -E '^(active_theme=elmercadodeorigen-child|batch1_(module|loader)_present=(yes|no)|FILE_(MATCH|DIFFERENT|MISSING) (functions.php|single.php|category.php|inc/[a-z0-9.-]+\.php)|php_version=[0-9.]+ (opcache\.[a-z_]+=[0-9]+ |realpath_cache_ttl=[0-9]+ )*|nginx_explicit_cache_directive=(yes|no)|cache_dropin_present=(advanced-cache.php|object-cache.php)|wp_cache_constant=(enabled|disabled|unknown)|advanced_cache_provider=(none|unknown|wp-rocket|wp-super-cache|w3-total-cache|litespeed|wp-fastest-cache|cache-enabler|wp-optimize))$' "$log" | head -n 30 || true
               grep -E '^opcache\.validate_timestamps[[:space:]]*=>' "$log" | head -n 1 || true
               sed -nE 's/^(origin_probe=[1-3] http=[0-9]{3}) title=.*/\1/p' "$log" | head -n 3 || true
+              grep -E '^(cache_code_(custom_marker|request_uri|query_args|early_exit|english_route)|cache_family_(rocket|supercache|w3tc|litespeed|custom_blog))=(yes|no) "$log"; then
+                echo 'origin_expected_batch1_title=yes'
+              else
+                echo 'origin_expected_batch1_title=no'
+              fi
+            else
+              echo 'No se capturo salida SSH. Consultar el enlace del workflow.'
+            fi
+            echo '```'
+            echo 'La auditoria no instala modulos ni modifica el servidor; no confirma por si sola un despliegue SEO.'
+          } > "$report"
+          gh issue comment 246 --repo "$GITHUB_REPOSITORY" --body-file "$report"
+ "$log" | head -n 10 || true
+              grep -E '^cache_probe_(baseline|unique_no_cache)=http:[0-9]{3} h1:[0-9]+ header:(hit|miss|other|none)$|^cache_probe_origin=no_ip "$log"; then
+                echo 'origin_expected_batch1_title=yes'
+              else
+                echo 'origin_expected_batch1_title=no'
+              fi
+            else
+              echo 'No se capturo salida SSH. Consultar el enlace del workflow.'
+            fi
+            echo '```'
+            echo 'La auditoria no instala modulos ni modifica el servidor; no confirma por si sola un despliegue SEO.'
+          } > "$report"
+          gh issue comment 246 --repo "$GITHUB_REPOSITORY" --body-file "$report"
+ "$log" | head -n 3 || true
               if grep -Fq 'title=<title>Why Cut Potatoes Turn Black: Causes' "$log"; then
                 echo 'origin_expected_batch1_title=yes'
               else
