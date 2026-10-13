@@ -117,3 +117,63 @@ foreach ( $paths as $path ) {
 		echo 'SEO_DIAG_AIOSEO_META_READ=unavailable' . "\n";
 	}
 }
+
+
+/* Diagnose TranslatePress translation storage, without exposing strings. */
+$settings = get_option( 'trp_settings', array() );
+$default_lang = is_array( $settings ) ? (string) ( $settings['default-language'] ?? '' ) : '';
+if ( preg_match( '/^[a-z]{2}_[A-Z]{2}$/', $default_lang ) ) {
+	echo 'SEO_DIAG_TRP_DEFAULT_LANGUAGE=' . $default_lang . "\n";
+}
+if ( is_array( $settings ) && isset( $settings['translation-languages'] ) ) {
+	foreach ( (array) $settings['translation-languages'] as $lang ) {
+		if ( preg_match( '/^[a-z]{2}_[A-Z]{2}$/', (string) $lang ) ) {
+			echo 'SEO_DIAG_TRP_TRANSLATION_LANGUAGE=' . $lang . "\n";
+		}
+	}
+}
+$table_prefix = $wpdb->prefix . 'trp_dictionary_';
+$tables = $wpdb->get_col(
+	$wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table_prefix ) . '%' )
+);
+foreach ( (array) $tables as $table ) {
+	if ( ! preg_match( '/^[A-Za-z0-9_]+$/', (string) $table ) ) {
+		continue;
+	}
+	$label = substr( $table, strlen( $table_prefix ) );
+	$quoted = chr(96) . $table . chr(96);
+	$columns = $wpdb->get_col( "SHOW COLUMNS FROM " . $quoted );
+	if ( ! in_array( 'original', (array) $columns, true ) || ! in_array( 'translated', (array) $columns, true ) ) {
+		echo 'SEO_DIAG_TRP_TABLE_' . $label . '=schema_unexpected' . "\n";
+		continue;
+	}
+	$old_prefix = 'A peeled or cut potato can darken on contact with air';
+	$n = (int) $wpdb->get_var( $wpdb->prepare(
+		"SELECT COUNT(*) FROM " . $quoted . " WHERE translated LIKE %s",
+		$wpdb->esc_like( $old_prefix ) . '%'
+	) );
+	echo 'SEO_DIAG_TRP_TABLE_' . $label . '=old_potato_description_matches:' . $n . "\n";
+	$desired = $targets['/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/']['description'] ?? '';
+	if ( $desired ) {
+		$origin_hits = (int) $wpdb->get_var( $wpdb->prepare(
+			"SELECT COUNT(*) FROM " . $quoted . " WHERE original = %s", $desired
+		) );
+		$target_hits = (int) $wpdb->get_var( $wpdb->prepare(
+			"SELECT COUNT(*) FROM " . $quoted . " WHERE translated = %s", $desired
+		) );
+		echo 'SEO_DIAG_TRP_TARGET_POTATO_' . $label . '=original:' . $origin_hits . ' translated:' . $target_hits . "\n";
+	}
+}
+$original_meta = $wpdb->prefix . 'trp_original_meta';
+$original_meta_exists = $wpdb->get_var(
+	$wpdb->prepare( 'SHOW TABLES LIKE %s', $original_meta )
+) === $original_meta;
+echo 'SEO_DIAG_TRP_ORIGINAL_META=' . ( $original_meta_exists ? 'exists' : 'missing' ) . "\n";
+if ( $original_meta_exists ) {
+	$fields = $wpdb->get_col( 'SHOW COLUMNS FROM ' . chr(96) . $original_meta . chr(96) );
+	foreach ( (array) $fields as $field ) {
+		if ( preg_match( '/^[A-Za-z0-9_]{1,65}$/', (string) $field ) ) {
+			echo 'SEO_DIAG_TRP_ORIGINAL_META_COLUMN=' . $field . "\n";
+		}
+	}
+}
