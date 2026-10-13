@@ -393,7 +393,10 @@ jobs:
             echo "transient_http_${variant}=status:${status} title:${title} desc:${desc} h1:${h1} module_style_marker:${runtime} flags:${probe} ${observed_route}"
             if [ "$variant" = baseline ]; then
               "$php_bin" -r '$s=file_get_contents($argv[1]); preg_match_all("~<h1\\b[^>]*>(.*?)</h1>~is",$s,$m); foreach(array_slice($m[1],0,3) as $k=>$h){$t=trim(preg_replace("~\\s+~u"," ",strip_tags($h))); echo "H1_PUBLIC_".$k."=".substr($t,0,120).PHP_EOL;}' "$temp" || true
-              grep -oEi '<meta[^>]*name="description"[^>]*>' "$temp" | head -c 210 || true
+              if grep -Fq 'class="site-main emo-article-page"' "$temp"; then echo 'child_single_template=yes'; else echo 'child_single_template=no'; fi
+              qa_calls="$(grep -oE 'id="emo-qa-content" data-calls="[0-9]+" data-h1seen="[0-9]+"' "$temp" | head -n 1 || true)"
+              echo "content_filter_qa=${qa_calls:-missing}"
+              "$php_bin" -r '$s=file_get_contents($argv[1]);preg_match_all("~<meta[^>]+name=\"description\"[^>]*>~i",$s,$m);echo "META_DESCRIPTION_COUNT=".count($m[0]).PHP_EOL;foreach(array_slice($m[0],0,3)as$i=>$tag){preg_match("~content=\"([^\"]*)\"~i",$tag,$n);echo "META_DESCRIPTION_".$i."=".substr(trim(html_entity_decode($n[1]??"")),0,155).PHP_EOL;}' "$temp" || true
               echo
             fi
             rm -f "$temp"
