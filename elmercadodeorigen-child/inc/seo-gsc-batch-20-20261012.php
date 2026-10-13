@@ -312,11 +312,16 @@ add_action( 'wp_head', static function (): void {
 	$target = elmercado_gsc_batch_20_target_20261012();
 	$early_path = (string) wp_parse_url( (string) ( $GLOBALS['emo_seo_diag_early_uri'] ?? '' ), PHP_URL_PATH );
 	$late_kind = '/' === $route ? 'root' : ( 0 === strpos( $route, '/en/' ) ? 'english' : ( 0 === strpos( $route, '/' ) ? 'other_path' : 'other' ) );
+	$desc_hook = has_filter( 'aioseo_description', 'elmercado_gsc_batch_20_filter_description_20261012' );
+	$desc_test = apply_filters( 'aioseo_description', '__EMO_SEO_PROBE__' );
+	$desc_match = is_string( $desc_test ) && 0 === strpos( $desc_test, 'Why do cut potatoes turn black? Learn how oxidation' );
 	$hook   = has_filter( 'pre_get_document_title', 'elmercado_gsc_batch_20_filter_title_20261012' );
 	$plugin = defined( 'WPSEO_VERSION' ) ? 'yoast' : ( defined( 'RANK_MATH_VERSION' ) ? 'rankmath' : ( defined( 'AIOSEO_VERSION' ) ? 'aioseo' : ( defined( 'SEOPRESS_VERSION' ) ? 'seopress' : 'other' ) ) );
 	echo '<meta name="emo-seo-diag-20261013" content="pathmatch:' . ( $route === $wanted ? 'yes' : 'no' ) .
 		';target:' . ( ! empty( $target ) ? 'yes' : 'no' ) .
 		';title_hook:' . ( false !== $hook ? 'yes' : 'no' ) .
+		';desc_hook:' . ( false !== $desc_hook ? 'yes' : 'no' ) .
+		';desc_match:' . ( $desc_match ? 'yes' : 'no' ) .
 		';plugin:' . esc_attr( $plugin ) . ';earlymatch:' . ( $early_path === $wanted ? 'yes' : 'no' ) . ';latekind:' . esc_attr( $late_kind ) . '">' . "\n";
 }, 1 );
 
@@ -327,7 +332,7 @@ add_filter( 'wp_title', 'elmercado_gsc_batch_20_filter_title_20261012', 100001 )
 add_filter( 'aioseo_title', 'elmercado_gsc_batch_20_filter_title_20261012', 100001 );
 add_filter( 'aioseo_description', 'elmercado_gsc_batch_20_filter_description_20261012', 100001 );
 add_filter( 'the_content', static function ( $content ) {
-	if ( ! is_string( $content ) || is_admin() || ! is_singular( 'post' ) || ! in_the_loop() || ! is_main_query() || ! elmercado_gsc_batch_20_target_20261012() ) {
+	if ( ! is_string( $content ) || is_admin() || ! is_singular( 'post' ) || ! elmercado_gsc_batch_20_target_20261012() ) {
 		return $content;
 	}
 	// The single.php template already provides the page's only main H1.
