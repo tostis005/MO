@@ -314,3 +314,30 @@ add_action(
 	},
 	-5000
 );
+
+
+/* TEMPORARY DIAGNOSTIC ONLY. Never merge. One public EN URL only. */
+add_action( 'wp_footer', static function (): void {
+	$u = (string) ( $_SERVER['REQUEST_URI'] ?? '' );
+	if ( false !== strpos( $u, 'why-cut-potatoes-turn-black' ) ) {
+		echo '<!-- emo-seo-runtime-footer-probe-20261013 -->';
+	}
+}, PHP_INT_MAX );
+add_filter( 'trp_before_translate_content', static function ( $html ) {
+	$u = (string) ( $_SERVER['REQUEST_URI'] ?? '' );
+	if ( is_string( $html ) && false !== strpos( $u, 'why-cut-potatoes-turn-black' ) ) {
+		return $html . '<!-- emo-seo-translatepress-before-probe-20261013 -->';
+	}
+	return $html;
+}, PHP_INT_MAX );
+add_filter( 'trp_translated_html', static function ( $html, $language = null ) {
+	$u = (string) ( $_SERVER['REQUEST_URI'] ?? '' );
+	if ( ! is_string( $html ) || false === strpos( $u, 'why-cut-potatoes-turn-black' ) ) {
+		return $html;
+	}
+	$route = function_exists( 'elmercado_gsc_current_path_010313' ) ? elmercado_gsc_current_path_010313() : '';
+	$target = function_exists( 'elmercado_gsc_batch_20_target_20261012' ) ? elmercado_gsc_batch_20_target_20261012() : array();
+	return $html . '<!-- emo-seo-translatepress-final-probe-20261013 route_en:' .
+		( 0 === strpos( (string) $route, '/en/' ) ? 'yes' : 'no' ) .
+		' target:' . ( empty( $target ) ? 'no' : 'yes' ) . ' -->';
+}, PHP_INT_MAX, 2 );
