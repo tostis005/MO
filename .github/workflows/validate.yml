@@ -120,3 +120,13 @@ jobs:
 
       - name: Check whitespace errors
         run: git diff --check HEAD~1 HEAD || git diff --check
+
+  audit-seo-batch1-live-html:
+    # Diagnostic branch only. No SSH, WordPress login, secrets or server writes.
+    if: github.event_name == 'pull_request' && github.head_ref == 'seo/batch1-20-url-public-audit-20261013'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit all 20 published SEO titles, H1 and descriptions
+        run: python3 tests/seo-batch1-public-audit-20261013.py
