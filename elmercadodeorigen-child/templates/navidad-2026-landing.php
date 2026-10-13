@@ -28,7 +28,7 @@ if ( ! $privacy_url ) { $privacy_url = home_url( '/politica-de-privacidad/' ); }
 
 $photo_premium = emdo_navidad_real_photo_2026( 'jamon-de-bellota-100-iberico-montjam', 'Jamón de bellota 100 % ibérico Montjam, fotografía real del producto' );
 $photo_paleta = emdo_navidad_real_photo_2026( 'paleta-cebo-de-campo-iberica-50-montjam', 'Paleta ibérica Montjam de cebo de campo, fotografía real del producto' );
-$photo_conserva = emdo_navidad_real_photo_2026( 'mousse-de-pato-al-cognac-200-g', 'Mousse de pato en conserva de Selectos de Castilla, fotografía real del producto' );
+$photo_conserva = emdo_navidad_real_photo_2026( 'salchichon-iberico-bellota-montjam', 'Salchichón ibérico de bellota Montjam en pieza, fotografía real del producto' );
 get_header();
 ?>
 <main id="contenido" class="emdo-xmas emdo-xmas--landing">
@@ -73,7 +73,7 @@ get_header();
 						<span class="emdo-xmas__tag">CESTA BÁSICA</span>
 						<p class="emdo-xmas__price">~60 € <small>/ unidad</small></p>
 						<h3>Un detalle para empleados y clientes</h3>
-						<p class="emdo-xmas__includes">Aceite de oliva, paté en conserva, otros aperitivos envasados y algún dulce navideño. Podemos valorar un embutido curado pequeño si su conservación y el presupuesto lo permiten.</p>
+						<p class="emdo-xmas__includes">Salchichón ibérico curado en pieza, aceite de oliva, paté o foie en conserva y un dulce navideño.</p>
 						<a href="#presupuesto">Solicitar presupuesto →</a>
 					</div>
 				</article>
