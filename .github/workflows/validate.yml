@@ -8,6 +8,7 @@ on:
       - 'tests/seo-*.py'
       - '.github/workflows/validate.yml'
       - '.github/workflows/seo-staging-html-audit.yml'
+      - '.github/workflows/production-seo-gsc-batch1-20261013.yml'
   workflow_dispatch:
 
 permissions:
@@ -19,6 +20,19 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Check guarded SEO release workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          file=.github/workflows/production-seo-gsc-batch1-20261013.yml
+          test -f "$file"
+          grep -q 'Production SEO GSC batch 1 controlled release' "$file"
+          grep -q 'trap rollback EXIT HUP INT TERM' "$file"
+          grep -q 'theme.tar.gz' "$file"
+          grep -q 'check_seo_post' "$file"
+          grep -q 'PRODUCTION_SEO_BATCH1_OK' "$file"
+          ! grep -q 'production-contact-footer-hotfix' "$file"
 
       - name: Check required files
         shell: bash
