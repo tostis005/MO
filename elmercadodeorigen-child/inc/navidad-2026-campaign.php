@@ -15,7 +15,7 @@ function emdo_navidad_2026_route(): string {
 	if ( '' !== $base && 0 === strpos( $path, $base . '/' ) ) {
 		$path = substr( $path, strlen( $base ) + 1 );
 	}
-	if ( in_array( $path, array( 'cestas-navidad-empresas-2026', 'vista-previa-banners-navidad-2026' ), true ) ) {
+	if ( 'cestas-navidad-empresas-2026' === $path ) {
 		return $path;
 	}
 	return '';
