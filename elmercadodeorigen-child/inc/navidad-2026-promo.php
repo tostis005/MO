@@ -119,13 +119,15 @@ add_filter( 'the_content', static function ( $content ) {
 }, 89 );
 
 /**
- * WooCommerce: encima de la cabecera y antes de los productos.
- * No mostrar en ficha de producto o checkout.
+ * WooCommerce: la franja se inserta dentro del encabezado del catálogo.
+ *
+ * NO imprimir en woocommerce_before_main_content: ese hook se ejecuta antes
+ * de que Woostify abra su wrapper de catálogo y convierte la franja en un
+ * hermano de la columna principal. En escritorio, el flexbox comprime todo
+ * el catálogo a unos pocos píxeles, aunque en móvil parece correcto.
+ * El fallback existente en wp_footer hace una única inserción DOM en el
+ * encabezado real de la página.
  */
-add_action( 'woocommerce_before_main_content', static function (): void {
-	if ( 'shop' !== emdo_navidad_promo_surface_2026() ) { return; }
-	echo emdo_navidad_promo_markup_2026( 'shop' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- markup generado y escapado.
-}, 5 );
 
 add_action( 'wp_enqueue_scripts', static function (): void {
 	if ( ! emdo_navidad_promo_surface_2026() ) { return; }
@@ -161,8 +163,35 @@ add_action( 'wp_footer', static function (): void {
 			if (surface === 'home') {
 				target = document.querySelector('main .emo-hero, .emo-home .emo-hero, main .home-hero, main section');
 			} else if (surface === 'shop') {
-				target = document.querySelector('h1.woocommerce-products-header__title, .woocommerce-products-header, h1.page-title, main h1');
-				before = true;
+				var candidates = document.querySelectorAll('main .woocommerce-products-header, .woocommerce .woocommerce-products-header, main .emo-shop-header, main .emo-market-header');
+				var header = null;
+				for (var j = 0; j < candidates.length; j++) {
+					var candidate = candidates[j];
+					var rect = candidate.getBoundingClientRect(), style = window.getComputedStyle(candidate);
+					if (rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none') {
+						header = candidate;
+						break;
+					}
+				}
+				if (!header) {
+					var headings = document.querySelectorAll('main h1, h1.page-title, h1.woocommerce-products-header__title');
+					for (var i = 0; i < headings.length; i++) {
+						var h = headings[i];
+						var cs = window.getComputedStyle(h);
+						if (h.getBoundingClientRect().width > 0 && h.getBoundingClientRect().height > 0
+							&& cs.visibility !== 'hidden' && cs.display !== 'none') {
+							header = h.parentElement;
+							break;
+						}
+					}
+				}
+				// Se coloca COMO HIJO del bloque de título, nunca junto a los
+				// contenedores flex de dos columnas del catálogo.
+				if (header) {
+					header.insertBefore(banner, header.firstChild);
+					return;
+				}
+				return;
 			} else if (surface === 'journal') {
 				target = document.querySelector('main .emo-journal-hero, main header');
 			} else if (surface === 'post') {
