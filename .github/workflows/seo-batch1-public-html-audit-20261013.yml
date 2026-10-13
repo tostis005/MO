@@ -1,0 +1,54 @@
+name: Audit first 20 GSC SEO articles live HTML
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/seo-batch1-public-html-audit-20261013.yml'
+      - 'tests/seo-batch1-public-audit-20261013.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit-public:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout expected SEO targets
+        uses: actions/checkout@v4
+      - name: Verify PHP data and audit 20 real URLs
+        id: audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/seo-gsc-batch-20-20261012.php
+          python3 tests/seo-batch1-public-audit-20261013.py | tee "$RUNNER_TEMP/gsc-seo-20-public-summary.log"
+          grep -q '^GSC_BATCH1_PUBLIC_SUMMARY ' "$RUNNER_TEMP/gsc-seo-20-public-summary.log"
+      - name: Publish safe aggregate findings to issue 246
+        if: ${{ always() && github.ref == 'refs/heads/main' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/gsc-seo-20-public-report.md"
+          {
+            echo '### GSC cohort 1: HTML real de 20 URL (solo lectura)'
+            echo "Ejecución: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "Estado de la auditoría: $AUDIT_OUTCOME"
+            echo 'Títulos, descripciones y H1 se verifican comparando el HTML público con el módulo PHP versionado. No se modifican artículos ni datos.'
+            echo
+            echo '```text'
+            if [ -s "$RUNNER_TEMP/gsc-seo-20-public-summary.log" ]; then
+              grep '^GSC_BATCH1_PUBLIC_SUMMARY ' "$RUNNER_TEMP/gsc-seo-20-public-summary.log" | head -n 1 || echo 'Resumen no disponible; revisar logs.'
+            else
+              echo 'Resumen no disponible; revisar logs.'
+            fi
+            echo '```'
+            echo 'El resumen identifica resultados técnicos, no incremento de tráfico ni cambios en el snippet mostrado por Google.'
+          } > "$report"
+          gh issue comment 246 --repo "$GITHUB_REPOSITORY" --body-file "$report"
