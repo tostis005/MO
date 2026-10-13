@@ -10,6 +10,7 @@ on:
       - '.github/workflows/seo-staging-html-audit.yml'
       - '.github/workflows/production-seo-gsc-batch1-20261013.yml'
       - '.github/workflows/diagnose-production-seo-origin-20261013.yml'
+      - '.github/workflows/production-install-gsc-batch1-module-20261013.yml'
   workflow_dispatch:
 
 permissions:
@@ -21,6 +22,20 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Validate narrowly scoped missing-module production release
+        shell: bash
+        run: |
+          set -euo pipefail
+          file=.github/workflows/production-install-gsc-batch1-module-20261013.yml
+          test -f "$file"
+          grep -q 'Module already exists; refusing overwrite' "$file"
+          grep -q 'SEO_BATCH1_SINGLE_MODULE_RELEASE_OK' "$file"
+          grep -q "rollback()" "$file"
+          grep -q 'seo-gsc-batch-20-20261012.php' "$file"
+          grep -q 'sha256sum -c' "$file"
+          grep -q 'verify ' "$file"
+          ! grep -q 'rsync ' "$file"
 
       - name: Confirm production diagnostic is read-only
         shell: bash
