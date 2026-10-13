@@ -17,6 +17,9 @@ jobs:
         run: |
           set -Eeuo pipefail
           curl -fLsS --max-time 45 https://www.elmercadodeorigen.com/tienda/ -o /tmp/emdo-live-shop.html
+          curl -fLsS --max-time 45 https://www.elmercadodeorigen.com/ -o /tmp/emdo-live-home.html
+          grep -Fq 'id="elmercado-home-vendor-grid-firstpaint-20261013"' /tmp/emdo-live-home.html
+          echo 'HOME_FIRSTPAINT_CSS_PUBLIC_HTML=OK'
           python3 - <<'PY'
           from pathlib import Path
           import re
