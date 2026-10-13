@@ -68,14 +68,25 @@ jobs:
             "/categoria-producto/jamones-paletas/":"es-cat-jamones-paletas",
             "/categoria-producto/embutidos-y-curados/":"es-cat-embutidos-curados"
           }
-          lines=[begin, "# Only anonymous GET without cookies or query parameters is served statically."]
+          # Mirror the safe analytics/consent cookie names already accepted by
+          # wp-content/advanced-cache.php. Unknown or stateful cookies bypass Nginx.
+          # Only cookie *names* are inspected; values are never shared or cached.
+          harmless = (
+            r'_ga[^=;[:space:]]*|_gid[^=;[:space:]]*|_gat[^=;[:space:]]*|'
+            r'_gcl_[^=;[:space:]]*|_fbp[^=;[:space:]]*|_fbc[^=;[:space:]]*|'
+            r'_pin_unauth[^=;[:space:]]*|cookielawinfo-[^=;[:space:]]*|'
+            r'sbjs_[^=;[:space:]]*|tk_[^=;[:space:]]*|'
+            r'CookieLawInfoConsent|viewed_cookie_policy|total_page'
+          )
+          unsafe_cookie_re = r'(?:^|;[[:space:]]*)(?!(?:' + harmless + r')=)[^=;[:space:]]+='
+          lines=[begin, "# Anonymous GET: safe analytics cookies allowed; unknown, cart and login cookies bypass."]
           for url,slug in paths.items():
               lines += [
                 "location = "+url+" {",
                 "    error_page 418 = @emdo_hot_static_origin;",
                 '    if ($request_method != GET) { return 418; }',
                 '    if ($args != "") { return 418; }',
-                '    if ($http_cookie != "") { return 418; }',
+                '    if ($http_cookie ~ "'+unsafe_cookie_re+'") { return 418; }',
                 '    root "'+root+'";',
                 '    try_files /wp-content/uploads/elmercado-hot-static-v1/'+slug+'.html @emdo_hot_static_origin;',
                 '    add_header X-EMDO-Nginx-Hot-Cache "HIT" always;',
@@ -124,7 +135,16 @@ jobs:
             test "$status" = 200 && grep -qi '^X-EMDO-Nginx-Hot-Cache: HIT' "$h" || exit 30
             rm -f "$h"
           done
-          for mode in 'cookie=wordpress_logged_in_test' 'query=emdo_cache_bypass_test=1'; do
+          # Positive checks: safe cookies must use the same pre-rendered HTML,
+          # so browsers with analytics do not trigger a full WordPress load.
+          for cookie in '_ga=GA1.1.test; _fbp=fb.1.test' 'CookieLawInfoConsent=yes; viewed_cookie_policy=yes' 'total_page=1'; do
+            h="$(mktemp)"
+            status="$(curl -k -sS --connect-timeout 4 --max-time 18 -A 'MDO-Nginx-Cookie-Gate/1.0' -H "Cookie: $cookie" -D "$h" -o /dev/null -w '%{http_code}' 'https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/')"
+            echo "SAFE COOKIE VERIFY: HTTP=$status header=$(grep -i '^x-emdo-nginx-hot-cache:' "$h" | tr -d '\r' || true)"
+            test "$status" = 200 && grep -qi '^X-EMDO-Nginx-Hot-Cache: HIT' "$h" || exit 32
+            rm -f "$h"
+          done
+          for mode in 'cookie=wordpress_logged_in_test=1' 'cookie=wp_woocommerce_session_test=1' 'cookie=woocommerce_items_in_cart=1' 'cookie=woocommerce_cart_hash=test' 'cookie=unrecognized_personalization_cookie=1' 'query=emdo_cache_bypass_test=1'; do
             args=(-k -sS --connect-timeout 4 --max-time 18 -D /tmp/emdo-bypass-header -o /dev/null -w '%{http_code}')
             url="https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/"
             if [[ "$mode" == cookie=* ]]; then args+=(-H "Cookie: ${mode#cookie=}"); else url+="?${mode#query=}"; fi
