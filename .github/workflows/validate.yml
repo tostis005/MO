@@ -175,6 +175,38 @@ jobs:
             echo "dropin_${indicator}=$found"
           done
           if [ -d "$prod/wp-content/uploads/elmercado-blog-static-v2" ]; then echo 'blog_static_dir=present'; else echo 'blog_static_dir=missing'; fi
+          echo '=== NONMUTATING CACHE PATH CHECKS ==='
+          for marker in blog_static_v2 home_static php_read_file uncached_condition; do
+            found=no
+            if [ -f "$dropin" ]; then
+              case "$marker" in
+                blog_static_v2) grep -Fqi 'elmercado-blog-static-v2' "$dropin" && found=yes || true ;;
+                home_static) grep -Fqi 'elmercado-home-static' "$dropin" && found=yes || true ;;
+                php_read_file) grep -Eqi 'readfile[[:space:]]*\(|file_get_contents[[:space:]]*\(' "$dropin" && found=yes || true ;;
+                uncached_condition) grep -Eqi 'HTTP_CACHE_CONTROL|HTTP_PRAGMA|no-cache|no-store|_COOKIE' "$dropin" && found=yes || true ;;
+              esac
+            fi
+            echo "dropin_rule_${marker}=$found"
+          done
+          # Only bounded samples of generated HTML, no paths or contents printed.
+          cache_dir="$prod/wp-content/uploads/elmercado-blog-static-v2"
+          if [ -d "$cache_dir" ]; then
+            count="$(find "$cache_dir" -maxdepth 5 -type f -name '*.html' -print | head -n 2001 | wc -l | tr -d ' ')"
+            [ "$count" -lt 2001 ] || count=2000_plus
+            echo "blog_static_html_files=$count"
+            old_cached=no
+            files="$(find "$cache_dir" -maxdepth 5 -type f -name '*.html' -size -3000k -print | head -n 400)"
+            if [ -n "$files" ]; then
+              while IFS= read -r file; do
+                if LC_ALL=C grep -Fq '<title>Why Cut Potatoes Turn Black and How to Stop It' "$file" 2>/dev/null; then
+                  old_cached=yes; break
+                fi
+              done <<EOF_CACHE_LIST
+          $files
+          EOF_CACHE_LIST
+            fi
+            echo "blog_static_old_en_title_in_sample=$old_cached"
+          fi
           probe_ip="$(hostname -I 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {print $i;exit}}')"
           [ -n "$probe_ip" ] || { echo 'http_origin_probe=no_ipv4'; exit 0; }
           url='https://www.elmercadodeorigen.com/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/'
