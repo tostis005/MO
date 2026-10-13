@@ -36,13 +36,13 @@ jobs:
           function moveStyles(html){
             const ids=['mdo-catalog-toolbar-layout-20260820','mdo-catalog-toolbar-final-polish-20260820'];
             const moved=[];
-            html=html.replace(/<style\\b[^>]*>[\\s\\S]*?<\\/style\\s*>/gi,tag=>{
+            html=html.replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi,tag=>{
               if(ids.some(id=>tag.slice(0,230).includes('id="'+id+'"')||tag.slice(0,230).includes("id='"+id+"'"))){moved.push(tag);return '';}
               return tag;
             });
             if(moved.length!==2)throw new Error('Expected two footer toolbar style blocks, found '+moved.length);
             console.log('MOVED_STYLES '+moved.map(x=>x.match(/id=["']([^"']+)/)?.[1]+':'+x.length).join(','));
-            return html.replace(/<\\/head>/i,moved.join('\\n')+'\\n</head>');
+            return html.replace(/<\/head>/i,moved.join('\n')+'\n</head>');
           }
           (async()=>{const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-dev-shm-usage']});
             for(const [mode,isCandidate] of [['baseline',false],['early-css',true],['early-css-struct',true]]){
