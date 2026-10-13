@@ -328,7 +328,7 @@ add_action(
  * @return string
  */
 function elmercado_gsc_batch_20_translated_meta_20261013( $html ) {
-	if ( ! is_string( $html ) || is_admin() || ! is_singular( 'post' ) ) {
+	if ( ! is_string( $html ) || is_admin() ) {
 		return $html;
 	}
 	if ( ! function_exists( 'elmercado_gsc_current_path_010313' ) ) {
@@ -338,7 +338,10 @@ function elmercado_gsc_batch_20_translated_meta_20261013( $html ) {
 	if ( 0 !== strpos( $path, '/en/' ) ) {
 		return $html;
 	}
-	$target = elmercado_gsc_batch_20_target_20261012();
+	// TranslatePress runs at output-buffer shutdown, where query conditionals
+	// may no longer be reliable. Match only the exact, approved EN public paths.
+	$targets = elmercado_gsc_batch_20_20261012();
+	$target  = $targets[ $path ] ?? array();
 	if ( empty( $target['description'] ) ) {
 		return $html;
 	}
