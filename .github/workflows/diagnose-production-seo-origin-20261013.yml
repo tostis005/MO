@@ -8,7 +8,6 @@ on:
   pull_request:
     paths:
       - '.github/workflows/diagnose-production-seo-origin-20261013.yml'
-  workflow_call:  # Allow guarded read-only inspection from standard PR validation.
   workflow_dispatch:
 
 permissions:
