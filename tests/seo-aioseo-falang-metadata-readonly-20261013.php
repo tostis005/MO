@@ -177,3 +177,60 @@ if ( $original_meta_exists ) {
 		}
 	}
 }
+
+
+/*
+ * Read only the existing generated-HTML cache, never paths/content or secrets.
+ * Distinguish static page HTML created before/after the GSC metadata release.
+ */
+$static_directory = WP_CONTENT_DIR . '/uploads/elmercado-blog-static-v2';
+$checked = 0;
+$match_title = 0;
+$match_current_description = 0;
+$match_old_description = 0;
+$match_exact_meta = 0;
+$sample_old = 'A peeled or cut potato can darken on contact with air';
+$target_path = '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/';
+$expected_meta = (string) ( $targets[ $target_path ]['description'] ?? '' );
+if ( is_dir( $static_directory ) && is_readable( $static_directory ) ) {
+	try {
+		$iterator = new RecursiveIteratorIterator(
+			new RecursiveDirectoryIterator( $static_directory, FilesystemIterator::SKIP_DOTS )
+		);
+		foreach ( $iterator as $file ) {
+			if ( $checked >= 600 ) {
+				break;
+			}
+			if ( ! $file->isFile() || 'html' !== strtolower( $file->getExtension() ) || $file->getSize() > 26000000 ) {
+				continue;
+			}
+			++$checked;
+			$handle = @fopen( $file->getPathname(), 'rb' );
+			if ( false === $handle ) {
+				continue;
+			}
+			$body = (string) fread( $handle, 4000000 );
+			fclose( $handle );
+			if ( false === strpos( $body, 'Why Cut Potatoes Turn Black: Causes' ) ) {
+				continue;
+			}
+			++$match_title;
+			if ( '' !== $expected_meta && false !== strpos( $body, $expected_meta ) ) {
+				++$match_current_description;
+			}
+			if ( false !== strpos( $body, $sample_old ) ) {
+				++$match_old_description;
+			}
+			if ( preg_match( '~<meta\b[^>]*\bname=["\x27]description["\x27][^>]*>~iu', $body ) ) {
+				++$match_exact_meta;
+			}
+		}
+	} catch ( Throwable $ex ) {
+		echo "SEO_DIAG_STATIC_CACHE_SCAN=unavailable\n";
+	}
+}
+echo 'SEO_DIAG_STATIC_CACHE_SCAN=' . $checked .
+	' potato_new_title:' . $match_title .
+	' potato_desired_meta:' . $match_current_description .
+	' potato_old_meta:' . $match_old_description .
+	' potato_meta_tag:' . $match_exact_meta . "\n";
