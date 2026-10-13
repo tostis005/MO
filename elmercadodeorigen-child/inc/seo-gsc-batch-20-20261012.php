@@ -319,3 +319,17 @@ add_action( 'wp_head', static function (): void {
 		';title_hook:' . ( false !== $hook ? 'yes' : 'no' ) .
 		';plugin:' . esc_attr( $plugin ) . ';earlymatch:' . ( $early_path === $wanted ? 'yes' : 'no' ) . ';latekind:' . esc_attr( $late_kind ) . '">' . "\n";
 }, 1 );
+
+
+/* TEMPORARY PR #260: validate AIOSEO's 99999 title priority and body H1 semantics. */
+add_filter( 'pre_get_document_title', 'elmercado_gsc_batch_20_filter_title_20261012', 100001 );
+add_filter( 'wp_title', 'elmercado_gsc_batch_20_filter_title_20261012', 100001 );
+add_filter( 'aioseo_title', 'elmercado_gsc_batch_20_filter_title_20261012', 100001 );
+add_filter( 'aioseo_description', 'elmercado_gsc_batch_20_filter_description_20261012', 100001 );
+add_filter( 'the_content', static function ( $content ) {
+	if ( ! is_string( $content ) || is_admin() || ! is_singular( 'post' ) || ! in_the_loop() || ! is_main_query() || ! elmercado_gsc_batch_20_target_20261012() ) {
+		return $content;
+	}
+	// The single.php template already provides the page's only main H1.
+	return preg_replace( '~<(/?)h1\\b([^>]*)>~i', '<$1h2$2>', $content ) ?? $content;
+}, PHP_INT_MAX );
