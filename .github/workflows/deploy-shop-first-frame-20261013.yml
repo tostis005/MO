@@ -62,7 +62,12 @@ jobs:
           }
           trap restore ERR
           install -m0644 "$IN" "$DEST"
-          php -l "$DEST"
+          PHP="$(command -v php || true)"
+          if test -z "$PHP"; then
+            PHP="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          fi
+          test -x "$PHP"
+          "$PHP" -l "$DEST"
           for uri in '/tienda/' '/tienda/?orderby=popularity'; do
             html="$(mktemp)"
             status="$(curl -k -sS --connect-timeout 8 --max-time 55 \
