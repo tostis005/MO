@@ -386,11 +386,16 @@ jobs:
             [ -n "$h1" ] || h1=0
             desc=other
             grep -Fq 'Why do cut potatoes turn black? Learn how oxidation' "$temp" && desc=new || true
-            probe="$(grep -oE 'pathmatch:(yes|no);target:(yes|no);title_hook:(yes|no);plugin:(yoast|rankmath|aioseo|seopress|other)' "$temp" | head -n 1 || true)"
+            probe="$(grep -oE 'pathmatch:(yes|no);target:(yes|no);title_hook:(yes|no);desc_hook:(yes|no);desc_match:(yes|no);plugin:(yoast|rankmath|aioseo|seopress|other)' "$temp" | head -n 1 || true)"
             [ -n "$probe" ] || probe=missing
             observed_route="$(grep -oE 'earlymatch:(yes|no);latekind:(root|english|other_path|other)' "$temp" | head -n 1 || true)"
             [ -n "$observed_route" ] || observed_route=missing
             echo "transient_http_${variant}=status:${status} title:${title} desc:${desc} h1:${h1} module_style_marker:${runtime} flags:${probe} ${observed_route}"
+            if [ "$variant" = baseline ]; then
+              "$php_bin" -r '$s=file_get_contents($argv[1]); preg_match_all("~<h1\\b[^>]*>(.*?)</h1>~is",$s,$m); foreach(array_slice($m[1],0,3) as $k=>$h){$t=trim(preg_replace("~\\s+~u"," ",strip_tags($h))); echo "H1_PUBLIC_".$k."=".substr($t,0,120).PHP_EOL;}' "$temp" || true
+              grep -oEi '<meta[^>]*name="description"[^>]*>' "$temp" | head -c 210 || true
+              echo
+            fi
             rm -f "$temp"
           done
           # EXIT trap ALWAYS removes ONLY the PHP modules this job installed.
