@@ -17,6 +17,13 @@ permissions:
   contents: read
 
 jobs:
+  # Runs only for this controlled same-repository branch. The reused
+  # workflow is read-only: no cache invalidation, deploy or theme writes.
+  seo-origin-readonly-snapshot:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'seo/origin-readonly-snapshot-20261013'
+    uses: ./.github/workflows/diagnose-production-seo-origin-20261013.yml
+    secrets: inherit
+
   validate:
     runs-on: ubuntu-latest
     steps:
