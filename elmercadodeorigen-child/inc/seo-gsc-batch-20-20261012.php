@@ -314,3 +314,41 @@ add_action(
 	},
 	-5000
 );
+
+
+/* TEMPORARY DIAGNOSTIC ONLY: target only ONE existing EN description tag. */
+add_filter( 'trp_translated_html', static function ( $html ) {
+	$uri = (string) ( $_SERVER['REQUEST_URI'] ?? '' );
+	if ( ! is_string( $html ) || false === strpos( $uri, '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/' ) ) {
+		return $html;
+	}
+	$path = '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/';
+	$all  = elmercado_gsc_batch_20_20261012();
+	$target = $all[ $path ]['description'] ?? '';
+	if ( '' === $target ) {
+		return $html . '<!-- emo-trp-meta-test-20261013:no_target -->';
+	}
+	$seen = 0;
+	$replaced = 0;
+	$result = preg_replace_callback(
+		'~<meta\b[^>]*>~iu',
+		static function ( array $m ) use ( $target, &$seen, &$replaced ): string {
+			if ( false === stripos( $m[0], 'name="description"' ) ) {
+				return $m[0];
+			}
+			++$seen;
+			if ( $replaced ) {
+				return $m[0];
+			}
+			++$replaced;
+			return '<meta name="description" content="' . esc_attr( $target ) . '">';
+		},
+		$html
+	);
+	if ( ! is_string( $result ) ) {
+		return $html . '<!-- emo-trp-meta-test-20261013:replace_error -->';
+	}
+	$new = false !== strpos( $result, '<meta name="description" content="' . esc_attr( $target ) . '">' );
+	return $result . '<!-- emo-trp-meta-test-20261013 seen:' . (int) $seen .
+		' replaced:' . (int) $replaced . ' has_expected:' . ( $new ? 'yes' : 'no' ) . ' -->';
+}, PHP_INT_MAX );
