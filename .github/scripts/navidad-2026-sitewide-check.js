@@ -23,8 +23,14 @@ const pages = [
        const v=await page.evaluate(()=>{
          const els=[...document.querySelectorAll('.emdo-navidad-promo[data-emdo-navidad-promo="2026"]')];
          const b=els[0];const r=b?.getBoundingClientRect();
-         const h1=document.querySelector('h1');
-         const h=h1?.getBoundingClientRect();
+         // Woostify incluye H1 ocultos con bounding box 0x0.
+         // Evaluamos solo el encabezado que realmente se pinta en pantalla.
+         const headers=[...document.querySelectorAll('main h1, main h2, .woocommerce-products-header h1, h1.page-title')];
+         const visibleHeading=headers.find(el=>{
+           const rect=el.getBoundingClientRect(),style=getComputedStyle(el);
+           return rect.width>0&&rect.height>0&&style.visibility!=='hidden'&&style.display!=='none';
+         });
+         const h=visibleHeading?.getBoundingClientRect();
          const target=b?.querySelector('a.emdo-navidad-promo__link');
          return {
            banners:els.length,
@@ -44,7 +50,7 @@ const pages = [
        if(v.banners&&(!v.label||!/(presupuesto)/i.test(v.label)))issues.push('CTA incorrecta');
        if(v.docWidth>width+5)issues.push('Desbordamiento horizontal');
        if(v.rect&&(v.rect.left<-5||v.rect.right>width+5))issues.push('Banner supera viewport');
-       if(item.surface==='shop'&&v.banners&&!v.shopBeforeHeading)issues.push('Banner no esta antes del H1 de tienda');
+       if(item.surface==='shop'&&v.banners&&v.h1&&!v.shopBeforeHeading)issues.push('Banner no esta antes del primer encabezado visible de tienda');
        if(item.surface==='post'&&v.banners&&!v.blogContent)issues.push('Banner fuera de tarjeta de articulo');
        console.log(JSON.stringify({path:item.path,width,...v,issues}));
        await page.screenshot({path:'/tmp/navidad-banner-'+item.surface+'-'+width+'.png',fullPage:true});
