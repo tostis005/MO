@@ -43,6 +43,18 @@ jobs:
         shell: bash
         run: php tests/seo-gsc-english-batch3-20261012.php
 
+      # Advisory only: GitHub-hosted runner provides an independent external
+      # vantage point to check if first-cohort changes are live on WordPress.
+      # Never gate unrelated tests on intermittent public HTTP failures.
+      - name: Diagnose first SEO batch HTML on production
+        shell: bash
+        timeout-minutes: 3
+        continue-on-error: true
+        run: |
+          python3 tests/seo-html-audit.py \
+            --base https://www.elmercadodeorigen.com \
+            --timeout 8 --cache-bust
+
       - name: Validate all 60 GSC URL integration
         shell: bash
         run: php tests/seo-gsc-all-60-integration-20261012.php
