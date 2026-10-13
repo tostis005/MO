@@ -71,16 +71,16 @@ add_action( 'wp_head', static function (): void {
 	$route = emdo_navidad_2026_route();
 	if ( ! $route ) { return; }
 	if ( 'cestas-navidad-empresas-2026' === $route ) {
-		echo '<meta name="description" content="Cestas de Navidad y regalos de empresa con productos seleccionados de origen. Cuéntanos cuántas necesitas y tu presupuesto: preparamos una propuesta personalizada.">' . "\n";
+		echo '<meta name="description" content="Cestas de Navidad para empresas, empleados y clientes. Indícanos cantidad y presupuesto por cesta y te enviamos una propuesta personalizada.">' . "\n";
 	} else {
 		echo '<meta name="robots" content="noindex,nofollow">' . "\n";
 	}
 }, 1 );
 
 add_filter( 'wp_robots', static function ( array $robots ): array {
-	if ( 'vista-previa-banners-navidad-2026' === emdo_navidad_2026_route() ) {
+	if ( in_array( emdo_navidad_2026_route(), array( 'cestas-navidad-empresas-2026', 'vista-previa-banners-navidad-2026' ), true ) ) {
 		$robots['noindex'] = true;
-		$robots['nofollow'] = true;
+		if ( 'vista-previa-banners-navidad-2026' === emdo_navidad_2026_route() ) { $robots['nofollow'] = true; }
 		unset( $robots['index'], $robots['follow'] );
 	}
 	return $robots;
@@ -108,14 +108,13 @@ function emdo_navidad_2026_submit(): void {
 	$business = isset( $_POST['emdo_empresa'] ) ? sanitize_text_field( wp_unslash( $_POST['emdo_empresa'] ) ) : '';
 	$phone = isset( $_POST['emdo_telefono'] ) ? sanitize_text_field( wp_unslash( $_POST['emdo_telefono'] ) ) : '';
 	$quantity = isset( $_POST['emdo_cantidad'] ) ? absint( $_POST['emdo_cantidad'] ) : 0;
-	$budget = isset( $_POST['emdo_presupuesto'] ) ? sanitize_text_field( wp_unslash( $_POST['emdo_presupuesto'] ) ) : '';
+	$budget = isset( $_POST['emdo_presupuesto'] ) ? filter_var( wp_unslash( $_POST['emdo_presupuesto'] ), FILTER_VALIDATE_INT ) : false;
 	$date = isset( $_POST['emdo_fecha'] ) ? sanitize_text_field( wp_unslash( $_POST['emdo_fecha'] ) ) : '';
 	$message = isset( $_POST['emdo_detalles'] ) ? sanitize_textarea_field( wp_unslash( $_POST['emdo_detalles'] ) ) : '';
 	$consent = isset( $_POST['emdo_privacidad'] ) && '1' === (string) $_POST['emdo_privacidad'];
-	$budgets = array( 'sin-definir', 'menos-30', '30-50', '50-80', '80-120', '120-200', 'mas-200' );
 	if ( strlen( $name ) < 2 || strlen( $name ) > 120 || ! is_email( $email )
 		|| strlen( $email ) > 190 || $quantity < 1 || $quantity > 100000
-		|| ! in_array( $budget, $budgets, true ) || ! $consent
+		|| false === $budget || $budget < 1 || $budget > 10000 || ! $consent
 		|| strlen( $message ) > 2000 || strlen( $business ) > 160 || strlen( $phone ) > 40 || strlen( $date ) > 100 ) {
 		wp_safe_redirect( add_query_arg( 'estado', 'revisar', $redirect ) );
 		exit;
@@ -139,7 +138,7 @@ function emdo_navidad_2026_submit(): void {
 		'Correo: ' . $email,
 		'Teléfono: ' . $phone,
 		'Cantidad: ' . $quantity,
-		'Presupuesto por cesta: ' . $budget,
+		'Presupuesto por cesta: ' . $budget . ' EUR',
 		'Fecha aproximada de entrega: ' . $date,
 		'Detalles: ' . $message,
 		'Origen: landing de Navidad 2026',
