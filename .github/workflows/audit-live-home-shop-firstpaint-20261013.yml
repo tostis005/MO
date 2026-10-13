@@ -29,7 +29,7 @@ jobs:
           cat >/tmp/audit.cjs <<'JS'
           const {chromium}=require(process.cwd()+'/node_modules/playwright-core');
           const sleep=n=>new Promise(r=>setTimeout(r,n));
-          const CSS='<style id="emo-mobile-firstpaint-probe">@media(max-width:767px){body.home .emo-hero__visual{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}body.home .emo-hero__visual .emo-hero-card{min-height:137px!important;max-height:137px!important;height:137px!important}body.home .emo-hero-card--5,body.home .emo-hero-card--6{display:none!important}}</style>';
+          const CSS='<style id="emo-mobile-firstpaint-probe">@media(max-width:767px){html body.home.elmercado-child-theme .emo-home .emo-hero .emo-hero__visual.emo-hero__visual--vendors{grid-template-columns:repeat(2,minmax(0,1fr))!important;column-gap:10px!important;row-gap:10px!important;grid-auto-rows:137px!important;height:430px!important;min-height:430px!important;max-height:430px!important}html body.home.elmercado-child-theme .emo-home .emo-hero .emo-hero__visual.emo-hero__visual--vendors .emo-hero-card{height:137px!important;min-height:137px!important;max-height:137px!important}html body.home.elmercado-child-theme .emo-hero-card--5,html body.home.elmercado-child-theme .emo-hero-card--6{display:none!important}}</style>';
           (async()=>{
             const b=await chromium.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
             for(const [what,url,override] of [['home-base','https://www.elmercadodeorigen.com/',false],['home-css-candidate','https://www.elmercadodeorigen.com/',true],['shop-live','https://www.elmercadodeorigen.com/tienda/',false]]){
