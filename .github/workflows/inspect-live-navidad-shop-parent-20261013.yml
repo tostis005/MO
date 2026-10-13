@@ -1,0 +1,37 @@
+name: Inspect Nav¡dad Shop Banner Parent 20261013
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/inspect-live-navidad-shop-parent-20261013.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - run: npm install --no-save --no-audit --no-fund playwright-core@1.56.1 >/dev/null
+      - name: Discover live banner insertion parent and raw HTML structure
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat >/tmp/inspect.cjs <<'JS'
+          const {chromium}=require(process.cwd()+'/node_modules/playwright-core');
+          (async()=>{
+            const b=await chromium.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            for(const [size,width,height] of [['mobile',390,844],['desktop',1365,900]]){
+              const p=await b.newPage({viewport:{width,height}});
+              await p.goto('https://www.elmercadodeorigen.com/tienda/',{waitUntil:'domcontentloaded',timeout:60000});
+              const result=await p.evaluate(()=>{
+                const banner=document.querySelector('[data-emdo-navidad-promo="2026"]');
+                const summary=e=>!e?null:{tag:e.tagName,id:e.id,cls:e.className?.toString().slice(0,180),firstChildTag:e.firstElementChild?.tagName,firstChildClass:e.firstElementChild?.className?.toString().slice(0,120),childCount:e.children.length,htmlStart:e.outerHTML.slice(0,440),rect:{x:Math.round(e.getBoundingClientRect().x),y:Math.round(e.getBoundingClientRect().y),w:Math.round(e.getBoundingClientRect().width),h:Math.round(e.getBoundingClientRect().height)}};
+                return {banner:summary(banner),parent:summary(banner?.parentElement),grandparent:summary(banner?.parentElement?.parentElement),parentChildren:[...(banner?.parentElement?.children||[])].slice(0,8).map(x=>({tag:x.tagName,cls:x.className?.toString().slice(0,110),id:x.id})),headers:[...document.querySelectorAll('main .woocommerce-products-header,main .emo-shop-header,main .emo-market-header,main h1')].slice(0,10).map(summary),sorting:summary(document.querySelector('.woostify-sorting'))};
+              });
+              console.log('BANNER '+size+' '+JSON.stringify(result));
+              await p.close();
+            }await b.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          export CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          node /tmp/inspect.cjs
