@@ -163,7 +163,16 @@ add_action( 'wp_footer', static function (): void {
 			if (surface === 'home') {
 				target = document.querySelector('main .emo-hero, .emo-home .emo-hero, main .home-hero, main section');
 			} else if (surface === 'shop') {
-				var header = document.querySelector('main .woocommerce-products-header, .woocommerce .woocommerce-products-header, main .emo-shop-header, main .emo-market-header');
+				var candidates = document.querySelectorAll('main .woocommerce-products-header, .woocommerce .woocommerce-products-header, main .emo-shop-header, main .emo-market-header');
+				var header = null;
+				for (var j = 0; j < candidates.length; j++) {
+					var candidate = candidates[j];
+					var rect = candidate.getBoundingClientRect(), style = window.getComputedStyle(candidate);
+					if (rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none') {
+						header = candidate;
+						break;
+					}
+				}
 				if (!header) {
 					var headings = document.querySelectorAll('main h1, h1.page-title, h1.woocommerce-products-header__title');
 					for (var i = 0; i < headings.length; i++) {
