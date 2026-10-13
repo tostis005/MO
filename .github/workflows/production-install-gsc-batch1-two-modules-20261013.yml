@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  issues: write  # Only record whitelisted release result in issue 246.
 
 concurrency:
   group: elmercado-production-theme
@@ -68,6 +69,7 @@ jobs:
           sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P "$port" elmercadodeorigen-child/inc/seo-search-console-010313.php "$STAGING_USER@$STAGING_HOST:$base_remote"
 
       - name: Install only two absent modules, verify five real pages or roll back
+        id: release
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -187,3 +189,20 @@ jobs:
           trap - EXIT HUP INT TERM
           echo 'SEO_BATCH1_DUAL_MODULE_TITLE_H1_RELEASE_OK_METADATA_PENDING'
           REMOTE
+
+      - name: Record sanitized release outcome in SEO issue 246
+        if: ${{ always() }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_OUTCOME: ${{ steps.release.outcome }}
+        run: |
+          set -euo pipefail
+          case "$RELEASE_OUTCOME" in success|failure|skipped|cancelled) ;; *) RELEASE_OUTCOME=unknown ;; esac
+          {
+            echo '### GSC SEO batch 1 — two-module production release'
+            echo "Workflow: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "Guarded release result: $RELEASE_OUTCOME"
+            echo 'On failure, the remote rollback is designed to remove only newly installed SEO modules. Inspect Actions logs before assuming final remote state.'
+            echo 'On success, the job verifies HTTP 200, updated titles and one H1 across five URLs (4 EN, 1 ES). Meta descriptions from AIOSEO/Falang remain a separately unresolved item.'
+          } | gh issue comment 246 --repo "$GITHUB_REPOSITORY" --body-file -
