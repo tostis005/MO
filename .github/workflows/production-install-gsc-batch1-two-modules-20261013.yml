@@ -1,0 +1,189 @@
+name: Production release GSC batch 1 two missing SEO modules
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-install-gsc-batch1-two-modules-20261013.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+
+jobs:
+  targeted-module-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate narrowly scoped two-module SEO release
+        shell: bash
+        run: |
+          set -euo pipefail
+          module=elmercadodeorigen-child/inc/seo-gsc-batch-20-20261012.php
+          base_module=elmercadodeorigen-child/inc/seo-search-console-010313.php
+          test -f "$module" && test -f "$base_module"
+          grep -q 'seo-search-console-010313.php' elmercadodeorigen-child/functions.php
+          grep -q 'seo-gsc-batch-20-20261012.php' elmercadodeorigen-child/functions.php
+          php -l "$base_module"
+          php -l "$module"
+          php tests/seo-gsc-batch-20-20261012.php
+          : "${STAGING_HOST:?Missing SSH host}"
+          : "${STAGING_USER:?Missing SSH user}"
+          : "${STAGING_PASSWORD:?Missing SSH password}"
+          : "${STAGING_REMOTE_PATH:?Missing SSH path}"
+          [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
+          [[ "$STAGING_REMOTE_PATH" =~ ^/[A-Za-z0-9._/-]+/?$ ]]
+
+      - name: Upload only the two missing SEO modules to temporary server paths
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          port="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$port" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          remote_file="/tmp/elmercado-gsc-batch1-module-${GITHUB_RUN_ID}.php"
+          echo "REMOTE_MODULE_FILE=$remote_file" >> "$GITHUB_ENV"
+          echo "MODULE_SHA256=$(sha256sum elmercadodeorigen-child/inc/seo-gsc-batch-20-20261012.php | awk '{print $1}')" >> "$GITHUB_ENV"
+          base_remote="/tmp/elmercado-seo-base-${GITHUB_RUN_ID}.php"
+          echo "REMOTE_BASE_MODULE_FILE=$base_remote" >> "$GITHUB_ENV"
+          echo "BASE_SHA256=$(sha256sum elmercadodeorigen-child/inc/seo-search-console-010313.php | awk '{print $1}')" >> "$GITHUB_ENV"
+          sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P "$port" elmercadodeorigen-child/inc/seo-gsc-batch-20-20261012.php "$STAGING_USER@$STAGING_HOST:$remote_file"
+          sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P "$port" elmercadodeorigen-child/inc/seo-search-console-010313.php "$STAGING_USER@$STAGING_HOST:$base_remote"
+
+      - name: Install only two absent modules, verify five real pages or roll back
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          port="${STAGING_PORT:-22}"
+          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$port" "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$REMOTE_MODULE_FILE' '$MODULE_SHA256' '$REMOTE_BASE_MODULE_FILE' '$BASE_SHA256'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; incoming="$2"; checksum="$3"; base_incoming="$4"; base_checksum="$5"
+          dev=""
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            config="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n 1 || true)"
+            [ -n "$config" ] || { echo 'Cannot resolve Plesk reference path' >&2; exit 1; }
+            dev="$(dirname "$config")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] || { echo 'Production root missing' >&2; exit 1; }
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1)"
+          wp_bin="$(command -v wp || true)"
+          [ -n "$wp_bin" ] && [ -x "$php_bin" ] || { echo 'WP-CLI or PHP missing'; exit 1; }
+          siteurl="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+          case "$siteurl" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) ;;
+            *) echo 'Unexpected production site URL, refusing release' >&2; exit 1 ;;
+          esac
+          active="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null)"
+          [ "$active" = 'elmercadodeorigen-child' ] || { echo 'Unexpected active theme'; exit 1; }
+          theme="$prod/wp-content/themes/elmercadodeorigen-child"
+          target="$theme/inc/seo-gsc-batch-20-20261012.php"
+          base_target="$theme/inc/seo-search-console-010313.php"
+          test -f "$theme/functions.php"
+          grep -q 'seo-gsc-batch-20-20261012.php' "$theme/functions.php"
+          grep -q 'seo-search-console-010313.php' "$theme/functions.php"
+          [ ! -e "$target" ] || { echo 'Batch module already exists; refusing overwrite'; exit 1; }
+          [ ! -e "$base_target" ] || { echo 'Base module already exists; refusing overwrite'; exit 1; }
+          [ -f "$incoming" ] && [ -f "$base_incoming" ] || { echo 'Temporary SEO modules missing'; exit 1; }
+          echo "$checksum  $incoming" | sha256sum -c -
+          echo "$base_checksum  $base_incoming" | sha256sum -c -
+          "$php_bin" -l "$incoming" >/dev/null
+          "$php_bin" -l "$base_incoming" >/dev/null
+
+          installed=0
+          base_installed=0
+          rollback() {
+            rc=$?
+            if [ "$rc" -ne 0 ]; then
+              echo 'SEO two-module validation failed; removing only files installed by this run.' >&2
+              [ "$installed" -ne 1 ] || rm -f "$target"
+              [ "$base_installed" -ne 1 ] || rm -f "$base_target"
+              [ ! -e "$target" ] || echo 'WARNING: batch module remains present after rollback' >&2
+              [ ! -e "$base_target" ] || echo 'WARNING: base module remains present after rollback' >&2
+            fi
+            rm -f "$incoming" "$base_incoming"
+            exit "$rc"
+          }
+          trap rollback EXIT HUP INT TERM
+          base_installed=1
+          install -m 0644 "$base_incoming" "$base_target"
+          installed=1
+          install -m 0644 "$incoming" "$target"
+          cli_state="$("$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo ( function_exists( "elmercado_gsc_current_path_010313" ) && function_exists( "elmercado_gsc_batch_20_20261012" ) ) ? "yes" : "no";' --path="$prod" --skip-plugins --allow-root 2>/dev/null || true)"
+          echo "SEO_WPCLI_BOTH_MODULES_LOADED=$cli_state"
+          [ "$cli_state" = yes ] || { echo 'WordPress cannot load both SEO modules' >&2; exit 1; }
+
+          # No global cache purge and no unrelated theme-file replacement.
+          # HTTP nonce checks below validate real public rendering before commit.
+          base="${siteurl%/}"
+          verify() {
+            path="$1"; title="$2"; description="$3"
+            output="$(mktemp)"
+            http="$(curl -ksS -L --connect-timeout 10 --max-time 35 -o "$output" -w '%{http_code}' "$base$path?seo_module_release=$checksum" || true)"
+            [ "$http" = '200' ] || { echo "SEO_PATH_ERROR path=$path HTTP=$http" >&2; rm -f "$output"; return 1; }
+            # Public and direct-origin HTML inspected while the module exists.
+            live_h1="$(grep -oEi '<h1([[:space:]>])' "$output" | wc -l | tr -d ' ' || true)"
+            live_title="$(grep -oEi '<title[^>]*>[^<]*</title>' "$output" | head -n 1 || true)"
+            echo "SEO_PUBLIC_RUNTIME path=$path title=$live_title h1=$live_h1"
+            domain="$(printf '%s' "$base" | sed -E 's#^https?://([^/]+).*$#\1#')"
+            for candidate in $(hostname -I 2>/dev/null); do
+              case "$candidate" in *:*) continue ;; esac
+              origin="$(mktemp)"
+              origin_status="$(curl -ksS --connect-timeout 4 --max-time 12 --max-redirs 0 --resolve "$domain:443:$candidate" -o "$origin" -w '%{http_code}' "$base$path?seo_origin_module=$checksum" || true)"
+              origin_title="$(grep -oEi '<title[^>]*>[^<]*</title>' "$origin" | head -n 1 || true)"
+              origin_h1="$(grep -oEi '<h1([[:space:]>])' "$origin" | wc -l | tr -d ' ' || true)"
+              echo "SEO_DIRECT_ORIGIN_RUNTIME http=$origin_status title=$origin_title h1=$origin_h1"
+              rm -f "$origin"
+              [ "$origin_status" != 200 ] || break
+            done
+            if ! grep -Fq "$title" "$output"; then
+              actual="$(grep -oEi '<title[^>]*>[^<]*</title>' "$output" | head -n 1 || true)"
+              echo "SEO_TITLE_ERROR path=$path actual=$actual" >&2
+              rm -f "$output"
+              return 1
+            fi
+            # AIOSEO/Falang metadata persists separately; report, do not falsely claim its release.
+            meta="$(grep -oEi '<meta[[:space:]]+name=["\x27]description["\x27][^>]*>' "$output" | head -n 1 || true)"
+            if [ -n "$meta" ] && printf '%s' "$meta" | grep -Fq "$description"; then
+              echo "SEO_DESCRIPTION_VERIFIED path=$path"
+            else
+              echo "SEO_DESCRIPTION_PENDING path=$path"
+            fi
+            h1="$(grep -oEi '<h1([[:space:]>])' "$output" | wc -l | tr -d ' ' || true)"
+            [ "$h1" = 1 ] || { echo "SEO_H1_ERROR path=$path count=$h1" >&2; rm -f "$output"; return 1; }
+            ! grep -Eqi 'Fatal error:|Parse error:|Uncaught Error:|There has been a critical error on this website' "$output" || { echo "SEO_FATAL_ERROR path=$path" >&2; rm -f "$output"; return 1; }
+            echo "SEO_MODULE_LIVE_OK path=$path h1=$h1"
+            rm -f "$output"
+          }
+          verify '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/' 'Why Cut Potatoes Turn Black: Causes' 'Why do cut potatoes turn black? Learn how oxidation'
+          verify '/en/white-foam-when-cooking-meat-what-it-is-why-it-appears/' 'White Foam When Cooking Meat: Causes' 'What is the white foam that forms when you cook meat?'
+          verify '/en/yellow-broccoli-why-it-changes-colour-and-when-it-is-edible/' 'Yellow Broccoli: Can You Eat It? Signs to Check' 'Is yellow broccoli still safe to eat?'
+          verify '/en/red-liquid-in-meat-is-not-blood-what-it-really-is/' 'Red Liquid in Meat: Is It Blood or Myoglobin?' 'The red liquid in packaged meat'
+          verify '/cuanta-carne-calcular-por-persona-corte-receta/' 'Cuánta carne por persona: tabla y gramos' 'Calcula cuánta carne comprar por persona según el corte'
+          installed=0
+          base_installed=0
+          rm -f "$incoming" "$base_incoming"
+          trap - EXIT HUP INT TERM
+          echo 'SEO_BATCH1_DUAL_MODULE_TITLE_H1_RELEASE_OK_METADATA_PENDING'
+          REMOTE
