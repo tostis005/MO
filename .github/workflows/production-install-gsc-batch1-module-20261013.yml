@@ -113,6 +113,9 @@ jobs:
           trap rollback EXIT HUP INT TERM
           install -m 0644 "$incoming" "$target"
           installed=1
+          # This CLI request bypasses HTTP caches and confirms whether WordPress
+          # loads the new module, without writing any WordPress content.
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo "SEO_WPCLI_MODULE_LOADED=" . ( function_exists( "elmercado_gsc_batch_20_20261012" ) ? "yes" : "no" ) . PHP_EOL;' --path="$prod" --skip-plugins --allow-root 2>/dev/null || true
           "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
 
           # Delete only generated ES blog HTML to avoid serving an obsolete title.
@@ -127,6 +130,21 @@ jobs:
             output="$(mktemp)"
             http="$(curl -ksS -L --connect-timeout 10 --max-time 35 -o "$output" -w '%{http_code}' "$base$path?seo_module_release=$checksum" || true)"
             [ "$http" = '200' ] || { echo "SEO_PATH_ERROR path=$path HTTP=$http" >&2; rm -f "$output"; return 1; }
+            # Public and direct-origin HTML inspected while the module exists.
+            live_h1="$(grep -oEi '<h1([[:space:]>])' "$output" | wc -l | tr -d ' ' || true)"
+            live_title="$(grep -oEi '<title[^>]*>[^<]*</title>' "$output" | head -n 1 || true)"
+            echo "SEO_PUBLIC_RUNTIME path=$path title=$live_title h1=$live_h1"
+            domain="$(printf '%s' "$base" | sed -E 's#^https?://([^/]+).*$#\1#')"
+            for candidate in $(hostname -I 2>/dev/null); do
+              case "$candidate" in *:*) continue ;; esac
+              origin="$(mktemp)"
+              origin_status="$(curl -ksS --connect-timeout 4 --max-time 12 --max-redirs 0 --resolve "$domain:443:$candidate" -o "$origin" -w '%{http_code}' "$base$path?seo_origin_module=$checksum" || true)"
+              origin_title="$(grep -oEi '<title[^>]*>[^<]*</title>' "$origin" | head -n 1 || true)"
+              origin_h1="$(grep -oEi '<h1([[:space:]>])' "$origin" | wc -l | tr -d ' ' || true)"
+              echo "SEO_DIRECT_ORIGIN_RUNTIME http=$origin_status title=$origin_title h1=$origin_h1"
+              rm -f "$origin"
+              [ "$origin_status" != 200 ] || break
+            done
             if ! grep -Fq "$title" "$output"; then
               actual="$(grep -oEi '<title[^>]*>[^<]*</title>' "$output" | head -n 1 || true)"
               echo "SEO_TITLE_ERROR path=$path actual=$actual" >&2
