@@ -9,6 +9,11 @@ on:
       - 'elmercadodeorigen-child/assets/css/navidad-2026.css'
       - 'elmercadodeorigen-child/inc/navidad-2026-campaign.php'
       - '.github/scripts/navidad-2026-layout-check.js'
+      - 'elmercadodeorigen-child/inc/navidad-2026-promo.php'
+      - 'elmercadodeorigen-child/assets/css/navidad-2026-promo.css'
+      - '.github/scripts/navidad-2026-mu-loader.php'
+      - '.github/scripts/navidad-2026-production-install.sh'
+      - '.github/scripts/navidad-2026-sitewide-check.js'
   workflow_dispatch:
 
 permissions:
@@ -37,8 +42,10 @@ jobs:
           php -l elmercadodeorigen-child/inc/navidad-2026-campaign.php
           php -l elmercadodeorigen-child/templates/navidad-2026-landing.php
           php -l .github/scripts/navidad-2026-mu-loader.php
+          php -l elmercadodeorigen-child/inc/navidad-2026-promo.php
           sh -n .github/scripts/navidad-2026-production-install.sh
           test -s elmercadodeorigen-child/assets/css/navidad-2026.css
+          test -s elmercadodeorigen-child/assets/css/navidad-2026-promo.css
           grep -Fq 'Cestas de Navidad para empresas, empleados y clientes' elmercadodeorigen-child/templates/navidad-2026-landing.php
 
       - name: Instalar 4 ficheros sin sustituir el tema ni el SEO
@@ -58,7 +65,7 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
           remote="/tmp/emdo-navidad-landing-$GITHUB_RUN_ID"
           sshpass -e ssh -o StrictHostKeyChecking=yes -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$port" "$STAGING_USER@$STAGING_HOST" "mkdir -p '$remote'"
-          for file in elmercadodeorigen-child/inc/navidad-2026-campaign.php elmercadodeorigen-child/templates/navidad-2026-landing.php elmercadodeorigen-child/assets/css/navidad-2026.css .github/scripts/navidad-2026-mu-loader.php .github/scripts/navidad-2026-production-install.sh; do
+          for file in elmercadodeorigen-child/inc/navidad-2026-campaign.php elmercadodeorigen-child/templates/navidad-2026-landing.php elmercadodeorigen-child/assets/css/navidad-2026.css .github/scripts/navidad-2026-mu-loader.php .github/scripts/navidad-2026-production-install.sh elmercadodeorigen-child/inc/navidad-2026-promo.php elmercadodeorigen-child/assets/css/navidad-2026-promo.css; do
             sshpass -e scp -P "$port" -o StrictHostKeyChecking=yes -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no "$file" "$STAGING_USER@$STAGING_HOST:$remote/"
           done
           sshpass -e ssh -o StrictHostKeyChecking=yes -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$port" "$STAGING_USER@$STAGING_HOST" "sh '$remote/navidad-2026-production-install.sh' '$STAGING_REMOTE_PATH' '$remote'"
@@ -91,11 +98,22 @@ jobs:
           test -n "$CHROME_PATH"
           node .github/scripts/navidad-2026-layout-check.js
 
+      - name: Verificar banners en portada tienda y artículos con navegador
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          export CHROME_PATH
+          test -n "$CHROME_PATH"
+          node .github/scripts/navidad-2026-sitewide-check.js
+
       - name: Capturas del diseño para revisión
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: capturas-navidad-2026-${{ github.run_id }}
-          path: /tmp/navidad-2026-*.png
+          path: |
+            /tmp/navidad-2026-*.png
+            /tmp/navidad-banner-*.png
           if-no-files-found: ignore
           retention-days: 7
