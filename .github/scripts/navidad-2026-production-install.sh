@@ -40,7 +40,12 @@ d3="$theme/assets/css/navidad-2026.css"
 d4="$prod/wp-content/mu-plugins/emdo-navidad-2026.php"
 mkdir -p "$theme/inc" "$theme/templates" "$theme/assets/css" "$prod/wp-content/mu-plugins" "$incoming/backup"
 for i in 1 2 3 4; do
-  eval "dest=\\$d$i"
+  case "$i" in
+    1) dest="$d1" ;;
+    2) dest="$d2" ;;
+    3) dest="$d3" ;;
+    4) dest="$d4" ;;
+  esac
   if [ -f "$dest" ]; then
     cp -p "$dest" "$incoming/backup/$i"
   fi
@@ -53,7 +58,12 @@ rollback() {
   if [ "$code" -ne 0 ] && [ "$installed" -eq 1 ]; then
     echo 'Despliegue incorrecto: restaurando SOLO los archivos Navidad' >&2
     for i in 1 2 3 4; do
-      eval "dest=\\$d$i"
+      case "$i" in
+    1) dest="$d1" ;;
+    2) dest="$d2" ;;
+    3) dest="$d3" ;;
+    4) dest="$d4" ;;
+  esac
       if [ -f "$incoming/backup/$i" ]; then
         cp -p "$incoming/backup/$i" "$dest"
       else
