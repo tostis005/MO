@@ -291,7 +291,7 @@ add_filter(
 );
 add_action( 'wp_head', static function (): void {
 	if ( ! is_singular( 'post' ) ) { return; }
-	echo '<style id="emo-gsc-batch-20-style">.emo-gsc-related-guides,.emo-gsc-product-link{margin:24px 0;padding:14px 18px;border-left:3px solid #54745b;background:#f5f7f3;border-radius:5px}.emo-gsc-related-guides p,.emo-gsc-product-link p{margin:0 0 8px}.emo-gsc-product-link p{margin:0}.emo-gsc-related-guides ul{margin:0;padding-left:20px}.emo-gsc-related-guides li+li{margin-top:6px}</style>' . "\n";
+	echo '<style id="emo-gsc-batch-20-style" data-emo-php-fpm-marker="gsc-20261013-001">.emo-gsc-related-guides,.emo-gsc-product-link{margin:24px 0;padding:14px 18px;border-left:3px solid #54745b;background:#f5f7f3;border-radius:5px}.emo-gsc-related-guides p,.emo-gsc-product-link p{margin:0 0 8px}.emo-gsc-product-link p{margin:0}.emo-gsc-related-guides ul{margin:0;padding-left:20px}.emo-gsc-related-guides li+li{margin-top:6px}</style>' . "\n";
 }, 24 );
 
 
