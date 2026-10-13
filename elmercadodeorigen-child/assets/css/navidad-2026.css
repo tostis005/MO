@@ -233,3 +233,136 @@
  .emdo-xmas--landing .emdo-xmas__section--form-last{padding:45px 0}
  .emdo-xmas--landing .emdo-xmas__form-card{padding:20px}
 }
+
+
+/* Octubre 2026 — formulario: una columna real, sin superposición de paneles.
+   Aislado en la landing, sin reglas globales de formularios ni cambios de tema. */
+.emdo-xmas--landing .emdo-xmas__section--form-last {
+  display: flow-root;
+  clear: both;
+  position: relative;
+  padding-block: clamp(48px, 6vw, 84px);
+  background: #f7f7f3;
+}
+.emdo-xmas--landing .emdo-xmas__form-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: min(800px, calc(100% - 40px));
+  max-width: 800px;
+  min-width: 0;
+  gap: 22px;
+  margin: 0 auto;
+}
+.emdo-xmas--landing .emdo-xmas__form-intro {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+.emdo-xmas--landing .emdo-xmas__form-intro h2 {
+  margin: 0;
+  max-width: none;
+  font-size: clamp(28px, 3.4vw, 40px);
+  line-height: 1.2;
+  text-align: left;
+}
+.emdo-xmas--landing .emdo-xmas__form-card {
+  position: relative;
+  display: block;
+  float: none;
+  transform: none;
+  clear: both;
+  isolation: isolate;
+  flex: none;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  margin: 0;
+  padding: clamp(22px, 4vw, 38px);
+  overflow: visible;
+  background: #fff;
+  border: 1px solid #dfe4dc;
+  border-radius: 8px;
+  box-shadow: none;
+}
+.emdo-xmas--landing .emdo-xmas__form-card > form {
+  display: block;
+  float: none;
+  position: static;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  height: auto;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+}
+.emdo-xmas--landing .emdo-xmas__form-card .emdo-xmas__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+  max-width: 100%;
+  gap: 18px 20px;
+  margin: 0;
+}
+.emdo-xmas--landing .emdo-xmas__fields > label {
+  display: block;
+  position: static;
+  float: none;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  line-height: 1.5;
+}
+.emdo-xmas--landing .emdo-xmas__fields > label.emdo-xmas__field-wide {
+  grid-column: 1 / -1;
+}
+.emdo-xmas--landing .emdo-xmas__fields input,
+.emdo-xmas--landing .emdo-xmas__fields select,
+.emdo-xmas--landing .emdo-xmas__fields textarea {
+  display: block;
+  position: static;
+  float: none;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 8px 0 0;
+  line-height: 1.45;
+}
+.emdo-xmas--landing .emdo-xmas__check {
+  position: static;
+  float: none;
+  width: 100%;
+  margin: 23px 0;
+}
+.emdo-xmas--landing .emdo-xmas__submit {
+  display: inline-flex;
+  width: 100%;
+  margin: 0;
+  position: static;
+}
+.emdo-xmas--landing .emdo-xmas__form-card small {
+  display: block;
+  margin: 12px 0 0;
+}
+@media (max-width: 680px) {
+  .emdo-xmas--landing .emdo-xmas__form-layout {
+    width: calc(100% - 32px);
+    gap: 16px;
+  }
+  .emdo-xmas--landing .emdo-xmas__form-card {
+    padding: 20px 16px;
+  }
+  .emdo-xmas--landing .emdo-xmas__form-card .emdo-xmas__fields {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 15px;
+  }
+  .emdo-xmas--landing .emdo-xmas__fields > label {
+    grid-column: 1 / -1;
+  }
+}
