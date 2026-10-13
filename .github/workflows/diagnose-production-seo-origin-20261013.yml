@@ -142,6 +142,33 @@ jobs:
           for candidate in "$prod/wp-content/advanced-cache.php" "$prod/wp-content/object-cache.php"; do
             [ ! -f "$candidate" ] || echo "cache_dropin_present=$(basename "$candidate")"
           done
+          echo '=== ADVANCED-CACHE DROP-IN IDENTITY (READ-ONLY) ==='
+          # Probe only the WordPress cache constant and the name of a known
+          # cache provider; never print drop-in source, configuration or paths.
+          flag="$("$php_bin" -d memory_limit=256M "$wp_bin" eval 'echo ( defined("WP_CACHE") && WP_CACHE ) ? "enabled" : "disabled";' --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+          case "$flag" in enabled|disabled) ;; *) flag=unknown ;; esac
+          echo "wp_cache_constant=$flag"
+          provider=unknown
+          dropin="$prod/wp-content/advanced-cache.php"
+          if [ ! -f "$dropin" ]; then
+            provider=none
+          elif grep -Eqi 'wp-rocket|WP_ROCKET|WP Rocket' "$dropin"; then
+            provider=wp-rocket
+          elif grep -Eqi 'wp-super-cache|WP Super Cache|wp_cache_check_mobile' "$dropin"; then
+            provider=wp-super-cache
+          elif grep -Eqi 'w3-total-cache|W3TC|W3 Total Cache' "$dropin"; then
+            provider=w3-total-cache
+          elif grep -Eqi 'litespeed|LSCWP' "$dropin"; then
+            provider=litespeed
+          elif grep -Eqi 'wp-fastest-cache|WpFastestCache' "$dropin"; then
+            provider=wp-fastest-cache
+          elif grep -Eqi 'cache-enabler|Cache Enabler' "$dropin"; then
+            provider=cache-enabler
+          elif grep -Eqi 'wp-optimize|WPO_CACHE' "$dropin"; then
+            provider=wp-optimize
+          fi
+          echo "advanced_cache_provider=$provider"
+
           echo '=== ORIGIN HOST LISTENERS (PORTS ONLY) ==='
           ss -lnt 2>/dev/null | awk 'NR > 1 { print $4 }' | grep -E '(:80|:443)$' | sed -E 's/^.*:/:/' | sort -u || true
           echo '=== ORIGIN DIRECT READ-ONLY HTTP PROBES ==='
@@ -178,7 +205,7 @@ jobs:
             echo '```text'
             if [ -s "$log" ]; then
               # Report only enum values, static relative filenames and numeric PHP cache flags.
-              grep -E '^(active_theme=elmercadodeorigen-child|batch1_(module|loader)_present=(yes|no)|FILE_(MATCH|DIFFERENT|MISSING) (functions.php|single.php|category.php|inc/[a-z0-9.-]+\.php)|php_version=[0-9.]+ (opcache\.[a-z_]+=[0-9]+ |realpath_cache_ttl=[0-9]+ )*|nginx_explicit_cache_directive=(yes|no)|cache_dropin_present=(advanced-cache.php|object-cache.php))$' "$log" | head -n 30 || true
+              grep -E '^(active_theme=elmercadodeorigen-child|batch1_(module|loader)_present=(yes|no)|FILE_(MATCH|DIFFERENT|MISSING) (functions.php|single.php|category.php|inc/[a-z0-9.-]+\.php)|php_version=[0-9.]+ (opcache\.[a-z_]+=[0-9]+ |realpath_cache_ttl=[0-9]+ )*|nginx_explicit_cache_directive=(yes|no)|cache_dropin_present=(advanced-cache.php|object-cache.php)|wp_cache_constant=(enabled|disabled|unknown)|advanced_cache_provider=(none|unknown|wp-rocket|wp-super-cache|w3-total-cache|litespeed|wp-fastest-cache|cache-enabler|wp-optimize))$' "$log" | head -n 30 || true
               grep -E '^opcache\.validate_timestamps[[:space:]]*=>' "$log" | head -n 1 || true
               sed -nE 's/^(origin_probe=[1-3] http=[0-9]{3}) title=.*/\1/p' "$log" | head -n 3 || true
               if grep -Fq 'title=<title>Why Cut Potatoes Turn Black: Causes' "$log"; then
