@@ -1,0 +1,83 @@
+name: AB Home Shop stable first render 20261013
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ab-home-shop-layout-stability-20261013.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - run: npm install --no-save --no-audit --no-fund playwright-core@1.56.1 >/dev/null
+      - name: Experiment with response-only rewrites, do not change production
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat > /tmp/ab-layout.cjs <<'JS'
+          const { chromium } = require(process.cwd()+'/node_modules/playwright-core');
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          const HOME='https://www.elmercadodeorigen.com/';
+          const SHOP='https://www.elmercadodeorigen.com/tienda/';
+          const browserTest=async()=>{
+            const browser=await chromium.launch({executablePath:process.env.CHROME,args:['--no-sandbox','--disable-dev-shm-usage'],headless:true});
+            for(const [name,url] of [['shop',SHOP],['home',HOME]]) {
+              for(const mode of ['baseline','candidate']) {
+                const page=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1});
+                const session=await page.context().newCDPSession(page);
+                await session.send('Network.enable');
+                await session.send('Network.emulateNetworkConditions',{offline:false,latency:120,downloadThroughput:500000,uploadThroughput:125000,connectionType:'cellular4g'});
+                await page.addInitScript(()=>{
+                  window.__probe={cls:0,shifts:[],lcp:0,fcp:0};
+                  new PerformanceObserver(list=>{for(const e of list.getEntries()){if(!e.hadRecentInput){window.__probe.cls+=e.value;window.__probe.shifts.push({t:Math.round(e.startTime),v:+e.value.toFixed(3),src:e.sources?.slice(0,2).map(x=>x.node?.className?.toString?.().slice(0,90))});}}}).observe({type:'layout-shift',buffered:true});
+                  new PerformanceObserver(list=>{let x=list.getEntries().at(-1);window.__probe.lcp=Math.round(x?.startTime||0)}).observe({type:'largest-contentful-paint',buffered:true});
+                  new PerformanceObserver(list=>{let x=list.getEntries().find(x=>x.name==='first-contentful-paint');if(x)window.__probe.fcp=Math.round(x.startTime)}).observe({type:'paint',buffered:true});
+                });
+                if(mode==='candidate'){
+                  await page.route(url,async route=>{
+                    const response=await route.fetch({timeout:55000});
+                    let html=await response.text();
+                    if(name==='shop'){
+                      let n=0;
+                      html=html.replace(/<div\\b(?=[^>]*\\bwoostify-sorting\\b)[^>]*>/i,(tag)=>{
+                        if(tag.includes('emo-catalog-toolbar-shared-010229'))return tag;
+                        n++;
+                        return tag.replace(/\\bclass=(["'])(.*?)\\1/i,(m,q,c)=>'class='+q+c+' emo-catalog-toolbar-shared-010229'+q);
+                      });
+                      html=html.replace(/<button\\b(?=[^>]*\\bemo-mobile-filter-toggle\\b)[^>]*>/i,(tag)=>{
+                        if(tag.includes('emo-filter-toggle-shared-010229'))return tag;
+                        n++;
+                        return tag.replace(/\\bclass=(["'])(.*?)\\1/i,(m,q,c)=>'class='+q+c+' emo-filter-toggle-shared-010229'+q);
+                      });
+                      console.log('REWRITE shop classes='+n);
+                    }else{
+                      const original='id="elmercado-home-deferred-css" rel="preload" as="style"';
+                      if(!html.includes(original))throw new Error('Home CSS tag changed unexpectedly');
+                      html=html.replace(original,'id="elmercado-home-deferred-css" rel="stylesheet"');
+                      console.log('REWRITE home style=blocking');
+                    }
+                    await route.fulfill({response,body:html,headers:{...response.headers(),'content-type':'text/html; charset=UTF-8'}});
+                  });
+                }
+                let resp;
+                try{
+                  resp=await page.goto(url,{waitUntil:'domcontentloaded',timeout:60000});
+                  await sleep(5000);
+                  const d=await page.evaluate(()=>{
+                    const n=performance.getEntriesByType('navigation')[0],p=window.__probe;
+                    const box=s=>{const e=document.querySelector(s);if(!e)return null;const r=e.getBoundingClientRect();return {y:Math.round(r.top),h:Math.round(r.height),w:Math.round(r.width)}};
+                    return {cls:+p.cls.toFixed(4),fcp:p.fcp,lcp:p.lcp,ttfb:Math.round(n?.responseStart||0),dcl:Math.round(n?.domContentLoadedEventEnd||0),shifts:p.shifts.filter(s=>s.v>=0.01).slice(0,13),boxes:{header:box('#masthead'),hero:box('.emo-hero'),products:box('ul.products'),toolbar:box('.woostify-sorting'),filter:box('.emo-mobile-filter-toggle')}, classes:{toolbar:document.querySelector('.woostify-sorting')?.className,filter:document.querySelector('.emo-mobile-filter-toggle')?.className},css:document.querySelector('#elmercado-home-deferred-css')?.rel};
+                  });
+                  console.log('RESULT '+name+' '+mode+' HTTP='+resp.status()+' '+JSON.stringify(d));
+                }catch(e){console.log('FAIL '+name+' '+mode+' '+String(e).slice(0,400));}
+                await page.close();
+              }
+            }
+            await browser.close();
+          };
+          browserTest().catch(x=>{console.error(x);process.exit(1);});
+          JS
+          export CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          node /tmp/ab-layout.cjs
