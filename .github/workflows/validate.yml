@@ -134,7 +134,7 @@ jobs:
 
   seo-falang-aioseo-readonly:
     # Same-repository PR only; no database writes or production theme changes.
-    if: github.event_name == 'pull_request' && github.head_ref == 'seo/verify-prod-sha-after-trp-20261013' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'pull_request' && github.head_ref == 'seo/opcache-fpm-readonly-20261013' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 8
     env:
@@ -200,5 +200,24 @@ jobs:
           else
             echo 'SEO_DIAG_LIVE_MODULE_MATCH_MAIN=no'
           fi
+          echo '=== SEO FPM/PHP CONFIG INSPECTION (READ-ONLY, WHITELISTED) ==='
+          inspected=0
+          # Only inspect standard Plesk per-domain configuration candidates; never print paths.
+          for conf in /var/www/vhosts/system/elmercadodeorigen.com/conf/php.ini /var/www/vhosts/system/elmercadodeorigen.com/etc/php.ini /var/www/vhosts/system/elmercadodeorigen.com/etc/php-fpm.conf /var/www/vhosts/system/elmercadodeorigen.com/conf/php-fpm.conf "$prod/.user.ini"; do
+            [ -f "$conf" ] && [ -r "$conf" ] || continue
+            inspected=$((inspected + 1))
+            for setting in opcache.validate_timestamps opcache.revalidate_freq opcache.file_update_protection opcache.enable; do
+              # Report only exact numeric settings and no other contents.
+              match="$(grep -Ei "^[[:space:]]*${setting//./\.}[[:space:]]*=[[:space:]]*[0-9]+[[:space:]]*(;.*)?$" "$conf" | tail -n 1 || true)"
+              if [ -n "$match" ]; then
+                value="$(printf '%s' "$match" | sed -nE 's/^[^=]*=[[:space:]]*([0-9]+).*/\1/p')"
+                case "$value" in ''|*[!0-9]*) ;; *) echo "SEO_FPM_SETTING_${setting}=$value" ;; esac
+              fi
+            done
+          done
+          echo "SEO_FPM_CONFIG_READABLE_COUNT=$inspected"
+          echo 'SEO_FPM_CLI_OPCACHE_BEGIN'
+          "$php_bin" -r 'foreach(array("opcache.enable","opcache.validate_timestamps","opcache.revalidate_freq","opcache.file_update_protection") as $k){$v=ini_get($k); if($v!==false&&preg_match("/^[0-9]+$/",(string)$v))echo "SEO_PHP_CLI_".$k."=".$v.PHP_EOL;}'
+          echo 'SEO_FPM_CLI_OPCACHE_END'
           "$php_bin" -d memory_limit=512M "$wp_bin" eval-file "$script" --path="$prod" --allow-root
           REMOTE
