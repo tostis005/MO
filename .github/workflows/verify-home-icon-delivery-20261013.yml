@@ -1,0 +1,54 @@
+name: Verify Home externalized icons 20261013
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-home-icon-delivery-20261013.yml'
+      - 'elmercadodeorigen-child/inc/home-cache.php'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Check exact Home HTML and versioned icon payload
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p /tmp/emo-home-icons
+          HOME='https://www.elmercadodeorigen.com/'
+          curl --fail --silent --show-error --compressed --retry 2 --max-time 40 -o /tmp/emo-home-icons/home.html "$HOME"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,sys
+          text=Path('/tmp/emo-home-icons/home.html').read_text(encoding='utf-8',errors='replace')
+          raw=len(text.encode())
+          hit=re.search(r'<script\\b[^>]*\\bid=["\\\']woostify-general-js-extra["\\\'][^>]*>',text,re.I)
+          if hit is None:raise SystemExit('Missing Woostify config script')
+          tag=hit.group(0)
+          src=re.search(r'\\bsrc=["\\\'](https://www\\.elmercadodeorigen\\.com/wp-content/uploads/elmercado-home-static/woostify-icons-([0-9a-f]{20})\\.js)["\\\']',tag)
+          if src is None:raise SystemExit('External config JS missing or not versioned')
+          if 'woostify_svg_icons' in tag:raise SystemExit('Config unexpectedly inlined')
+          if raw>=650000:raise SystemExit(f'Home HTML regression: {raw} bytes')
+          for marker in ['id="woostify-parent-style-inline-css"','id="elmercado-home-first-view-css"','Cestas de Navidad','emo-hero']:
+              if marker not in text:raise SystemExit('Missing baseline design/content marker: '+marker)
+          Path('/tmp/emo-home-icons/src').write_text(src.group(1))
+          Path('/tmp/emo-home-icons/hash').write_text(src.group(2))
+          print('HOME_HTML_BYTES',raw)
+          print('ICON_SCRIPT_URL',src.group(1))
+          print('CSS_STILL_INLINE',True)
+          print('CONTENT_AND_HERO',True)
+          PY
+          URL="$(cat /tmp/emo-home-icons/src)"
+          HASH="$(cat /tmp/emo-home-icons/hash)"
+          curl --fail --silent --show-error --retry 2 --max-time 35 -D /tmp/emo-home-icons/script.headers -o /tmp/emo-home-icons/icons.js "$URL"
+          actual="$(sha256sum /tmp/emo-home-icons/icons.js | cut -d' ' -f1)"
+          echo "ICON_JAVASCRIPT_BYTES=$(wc -c </tmp/emo-home-icons/icons.js)"
+          echo "ICON_SHA256=$actual"
+          test "${actual:0:20}" = "$HASH"
+          grep -q 'woostify_svg_icons' /tmp/emo-home-icons/icons.js
+          node --check /tmp/emo-home-icons/icons.js
+          grep -Ei '^HTTP/|^Content-Type:|^Cache-Control:' /tmp/emo-home-icons/script.headers || true
+          echo 'PASS: Home HTML reduced, CSS and content retained, icon JS accessible, byte integrity and syntax verified.'
