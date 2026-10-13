@@ -88,6 +88,42 @@ jobs:
           grep -Fq 'Solicitar presupuesto' /tmp/emdo-navidad.html
           echo 'NAVIDAD_LANDING_PUBLICA_OK'
 
+      - name: Probar todos los campos del formulario una sola vez
+        if: contains(github.event.head_commit.message, 'test-full-cesta-form-20261013')
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://www.elmercadodeorigen.com'
+          page="$base/cestas-navidad-empresas-2026/?test_completo=$GITHUB_RUN_ID"
+          curl -LsS --connect-timeout 12 --max-time 45 -A 'Mozilla/5.0 EMDO-full-form-check' -c /tmp/navidad-cookie.txt -b /tmp/navidad-cookie.txt "$page" -o /tmp/navidad-complete-form.html
+          for field in emdo_nombre emdo_email emdo_empresa emdo_telefono emdo_cantidad emdo_presupuesto emdo_fecha emdo_detalles emdo_privacidad; do
+            grep -Fq "name=\"$field\"" /tmp/navidad-complete-form.html || { echo "FALTA_CAMPO=$field"; exit 1; }
+          done
+          nonce="$(grep -oE 'name="emdo_navidad_nonce" value="[a-zA-Z0-9]+"' /tmp/navidad-complete-form.html | head -n1 | sed -E 's/.*value="([^"]+)"/\1/' || true)"
+          test -n "$nonce"
+          # Enviar datos de prueba, claramente identificados para no crear pedidos falsos.
+          http="$(curl -sS --connect-timeout 12 --max-time 50 \
+            -c /tmp/navidad-cookie.txt -b /tmp/navidad-cookie.txt \
+            -D /tmp/navidad-complete-headers.txt -o /tmp/navidad-complete-response.txt -w '%{http_code}' \
+            --data-urlencode 'action=emdo_navidad_2026_quote' \
+            --data-urlencode "emdo_navidad_nonce=$nonce" \
+            --data-urlencode "emdo_nombre=PRUEBA TODOS LOS CAMPOS - $GITHUB_RUN_ID" \
+            --data-urlencode 'emdo_email=pruebas-cestas@example.com' \
+            --data-urlencode 'emdo_empresa=EMPRESA DE PRUEBA - NO PRESUPUESTAR' \
+            --data-urlencode 'emdo_telefono=600 123 456' \
+            --data-urlencode 'emdo_cantidad=23' \
+            --data-urlencode 'emdo_presupuesto=150' \
+            --data-urlencode 'emdo_fecha=Primera semana de diciembre de 2026' \
+            --data-urlencode 'emdo_detalles=TEST TODOS LOS CAMPOS - Productos ibericos, aceite, queso y turron. Prueba tecnica; ignorar sin respuesta.' \
+            --data-urlencode 'emdo_privacidad=1' \
+            "$base/wp-admin/admin-post.php")"
+          echo "FORMULARIO_COMPLETO_POST_HTTP=$http"
+          test "$http" = 302
+          grep -Eqi '^location: .*estado=enviada' /tmp/navidad-complete-headers.txt
+          echo "SOLICITUD_COMPLETA_ACEPTADA_POR_WORDPRESS=SI"
+          echo "Referencia de prueba: PRUEBA TODOS LOS CAMPOS - $GITHUB_RUN_ID"
+          echo "Destinatario del modulo: hola@elmercadodeorigen.com"
+
       - name: Revisar solapamientos del formulario en seis anchuras
         shell: bash
         run: |

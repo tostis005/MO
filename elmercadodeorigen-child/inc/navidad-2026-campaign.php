@@ -132,16 +132,18 @@ function emdo_navidad_2026_submit(): void {
 		exit;
 	}
 	$body = implode( "\n", array(
-		'Nueva solicitud de presupuesto — Cestas Navidad 2026',
+		'NUEVA SOLICITUD DE PRESUPUESTO - CESTAS NAVIDAD 2026',
+		'',
 		'Nombre: ' . $name,
-		'Empresa: ' . $business,
-		'Correo: ' . $email,
-		'Teléfono: ' . $phone,
-		'Cantidad: ' . $quantity,
+		'Empresa u organización: ' . ( '' !== $business ? $business : 'No indicada' ),
+		'Correo electrónico: ' . $email,
+		'Teléfono: ' . ( '' !== $phone ? $phone : 'No indicado' ),
+		'Número aproximado de cestas: ' . $quantity,
 		'Presupuesto por cesta: ' . $budget . ' EUR',
-		'Fecha aproximada de entrega: ' . $date,
-		'Detalles: ' . $message,
-		'Origen: landing de Navidad 2026',
+		'Fecha prevista de entrega: ' . ( '' !== $date ? $date : 'No indicada' ),
+		'Productos o preferencias: ' . ( '' !== $message ? $message : 'No indicados' ),
+		'',
+		'Origen: formulario /cestas-navidad-empresas-2026/',
 	) );
 	$sent = wp_mail(
 		$admin,
