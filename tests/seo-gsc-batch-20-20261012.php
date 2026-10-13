@@ -19,7 +19,7 @@ function remove_action( $tag, $callback, $priority = 10 ) { $GLOBALS['seo_remove
 function esc_attr( $value ): string { return htmlspecialchars( (string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' ); }
 function is_admin(): bool { return false; }
 function is_feed(): bool { return false; }
-function is_singular( $type ): bool { return 'post' === $type; }
+function is_singular( $type ): bool { return 'post' === $type && empty( $GLOBALS['seo_simulate_shutdown_conditionals_unavailable'] ); }
 function in_the_loop(): bool { return true; }
 function is_main_query(): bool { return true; }
 function get_queried_object_id(): int { return 123; }
@@ -144,6 +144,9 @@ check( str_contains( $after, '<h1>Keep H1</h1>' ), 'Do not alter article heading
 check( str_contains( $after, '<title>Leave title alone</title>' ), 'Do not alter title' );
 check( str_contains( $after, '<meta name="robots" content="index,follow">' ), 'Do not alter robots' );
 check( elmercado_gsc_batch_20_translated_meta_20261013( $after ) === $after, 'Idempotent final meta' );
+$GLOBALS['seo_simulate_shutdown_conditionals_unavailable'] = true;
+check( elmercado_gsc_batch_20_translated_meta_20261013( $before ) === $after, 'Filter works after TranslatePress buffer shutdown without is_singular' );
+unset( $GLOBALS['seo_simulate_shutdown_conditionals_unavailable'] );
 $GLOBALS['seo_test_path'] = '/en/unrelated-article/';
 check( elmercado_gsc_batch_20_translated_meta_20261013( $before ) === $before, 'Non-batch EN untouched' );
 $GLOBALS['seo_test_path'] = '/cuanta-carne-calcular-por-persona-corte-receta/';
