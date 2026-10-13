@@ -1,0 +1,75 @@
+name: Diagnose Home Shop progressive render 20261013
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/diagnose-home-shop-progressive-render-20261013.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Install browser diagnostics
+        run: npm install --no-save --no-audit --no-fund playwright-core@1.56.1 >/dev/null
+      - name: Measure snapshots shifts and network on Home and Shop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat > /tmp/render-profile.cjs <<'JS'
+          const {chromium} = require(process.cwd()+'/node_modules/playwright-core');
+          const sleep = n => new Promise(r=>setTimeout(r,n));
+          (async() => {
+            const binary=process.env.CHROME || '/usr/bin/google-chrome';
+            const browser=await chromium.launch({executablePath:binary,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            for(const [path,label] of [['/','home'],['/tienda/','shop']]){
+              for(const [device,viewport,throttle] of [['desktop',{width:1365,height:900},false],['mobile',{width:390,height:844},true]]){
+                const page=await browser.newPage({viewport,deviceScaleFactor:1});
+                const errors=[], failed=[], responses=[];
+                page.on('pageerror', e=>errors.push(String(e).slice(0,160)));
+                page.on('requestfailed', r=>failed.push({url:r.url().slice(0,150),failure:r.failure()}));
+                page.on('response', r=>{if(r.status()>=400)responses.push({status:r.status(),url:r.url().slice(0,150)});});
+                await page.addInitScript(() => {
+                  window.__diag={cls:0,shifts:[],lcp:0,lcpElement:'',styleEvents:[]};
+                  try{new PerformanceObserver(list=>{for(const e of list.getEntries()){if(!e.hadRecentInput){window.__diag.cls+=e.value;window.__diag.shifts.push({value:+e.value.toFixed(3),time:Math.round(e.startTime),sources:e.sources?.slice(0,2).map(s=>s.node?.className?.toString?.().slice(0,130)||s.node?.tagName)||[]});}}}).observe({type:'layout-shift',buffered:true});}catch(e){}
+                  try{new PerformanceObserver(list=>{const e=list.getEntries().at(-1);if(e){window.__diag.lcp=Math.round(e.startTime);window.__diag.lcpElement=e.element?.className?.toString?.().slice(0,90)||'';}}).observe({type:'largest-contentful-paint',buffered:true});}catch(e){}
+                  document.addEventListener('load',e=>{if(e.target?.tagName==='LINK'&&e.target?.rel==='stylesheet')window.__diag.styleEvents.push({id:e.target.id,time:Math.round(performance.now()),href:e.target.href.slice(0,130)});},true);
+                });
+                if(throttle){
+                  const cdp=await page.context().newCDPSession(page);
+                  await cdp.send('Network.enable');
+                  await cdp.send('Network.emulateNetworkConditions',{offline:false,latency:120,downloadThroughput:500000,uploadThroughput:125000,connectionType:'cellular4g'});
+                }
+                const begin=Date.now();
+                let resp;
+                try{resp=await page.goto('https://www.elmercadodeorigen.com'+path,{waitUntil:'domcontentloaded',timeout:65000});}
+                catch(e){console.log('NAV_ERROR '+label+' '+device+' '+e);await page.close();continue;}
+                const snap=async(t)=>page.evaluate(t=>{
+                  const q=(s)=>{const e=document.querySelector(s);if(!e)return null;const r=e.getBoundingClientRect(),c=getComputedStyle(e);return{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),display:c.display,opacity:c.opacity,visibility:c.visibility,font:c.fontFamily.slice(0,45)};};
+                  const links=[...document.querySelectorAll('link[rel=stylesheet],link[rel=preload][as=style]')].map(e=>({id:e.id,rel:e.rel,loaded:!!e.sheet,href:e.href.slice(0,105)}));
+                  return {at:t,now:Math.round(performance.now()),ready:document.readyState,cls:+window.__diag.cls.toFixed(3),lcp:window.__diag.lcp,
+                  bodyWidth:document.documentElement.scrollWidth,viewport:innerWidth,cssLinks:links,htmlStyleCount:document.querySelectorAll('style').length,
+                  nodes:{header:q('#masthead'),headerInner:q('.site-header-inner'),search:q('.dgwt-wcas-search-wrapp'),hero:q('.emo-hero'),heroCopy:q('.emo-hero__copy'),heroCard:q('.emo-hero-card'),shopBanner:q('.emo-shop-intro,.mdo-shop-banner,.woocommerce-products-header'),products:q('ul.products'),firstProduct:q('ul.products li.product'),shopSidebar:q('.widget-area,.emo-shop-sidebar,.shop-sidebar'),shopTitle:q('.woocommerce-products-header h1,.page-title')}};
+                },t);
+                const snaps=[];
+                snaps.push(await snap('dcl'));
+                for(const [name,ms] of [['300ms',300],['1000ms',700],['2500ms',1500],['5500ms',3000]]){await sleep(ms);snaps.push(await snap(name));}
+                const metrics=await page.evaluate(()=>{
+                  const nav=performance.getEntriesByType('navigation')[0];
+                  const resources=performance.getEntriesByType('resource');
+                  const order=resources.slice().sort((a,b)=>b.duration-a.duration).slice(0,15).map(x=>({name:x.name.slice(0,140),duration:Math.round(x.duration),end:Math.round(x.responseEnd),bytes:x.transferSize}));
+                  return {navigation:nav?{ttfb:Math.round(nav.responseStart),domcontentloaded:Math.round(nav.domContentLoadedEventEnd),load:Math.round(nav.loadEventEnd),encodedBody:nav.encodedBodySize,decodedBody:nav.decodedBodySize}:null,resources:resources.length,slowest:order,diag:window.__diag};
+                });
+                console.log('PAGE '+label+' '+device+' HTTP '+resp.status()+' wallms '+(Date.now()-begin));
+                console.log('SNAPS '+label+' '+device+' '+JSON.stringify(snaps));
+                console.log('METRICS '+label+' '+device+' '+JSON.stringify(metrics));
+                console.log('FAILURES '+label+' '+device+' '+JSON.stringify({errors,failed:failed.slice(0,14),responses:responses.slice(0,14)}));
+                await page.close();
+              }
+            }
+            await browser.close();
+          })().catch(e=>{console.error(e.stack||e);process.exit(1)});
+          JS
+          export CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          node /tmp/render-profile.cjs
