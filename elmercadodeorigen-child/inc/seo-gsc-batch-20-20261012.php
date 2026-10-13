@@ -378,8 +378,9 @@ add_action( 'wp_head', static function (): void {
 
 /* TEMPORARY PR #260: replace one SEO description in buffered wp_head only. */
 add_action( 'get_header', static function (): void {
-	if ( is_singular( 'post' ) && elmercado_gsc_batch_20_target_20261012() ) {
+	if ( is_singular( 'post' ) ) {
 		$GLOBALS['emo_seo_head_buffer_active_20261013'] = true;
+		$GLOBALS['emo_seo_buffer_started_20261013'] = true;
 		ob_start();
 	}
 }, PHP_INT_MAX );
@@ -394,6 +395,10 @@ add_action( 'wp_head', static function (): void {
 		return;
 	}
 	$hits = 0;
+	if ( empty( $target['description'] ) ) {
+		echo $head;
+		return;
+	}
 	$head = preg_replace_callback(
 		'~<meta\\b[^>]*\\bname\\s*=\\s*["\\x27]description["\\x27][^>]*>~iu',
 		static function ( array $match ) use ( $target, &$hits ): string {
@@ -403,5 +408,13 @@ add_action( 'wp_head', static function (): void {
 		$head,
 		1
 	) ?? $head;
+	$GLOBALS['emo_seo_meta_replaced_20261013'] = $hits;
 	echo $head; // Output remains unchanged except for the single description meta.
+}, PHP_INT_MAX );
+
+// TEMPORARY QA only: expose buffer states without HTML or secrets.
+add_action( 'wp_footer', static function (): void {
+	if ( is_singular( 'post' ) && elmercado_gsc_batch_20_target_20261012() ) {
+		echo '<span id="emo-qa-buffer" data-start="' . ( ! empty( $GLOBALS['emo_seo_buffer_started_20261013'] ) ? 'yes' : 'no' ) . '" data-replaced="' . (int) ( $GLOBALS['emo_seo_meta_replaced_20261013'] ?? 0 ) . '" hidden></span>';
+	}
 }, PHP_INT_MAX );
