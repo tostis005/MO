@@ -32,6 +32,10 @@ const pages = [
          });
          const h=visibleHeading?.getBoundingClientRect();
          const target=b?.querySelector('a.emdo-navidad-promo__link');
+         const shopGrid=document.querySelector('ul.products');
+         const shopRect=shopGrid?.getBoundingClientRect();
+         const shopFirstProduct=document.querySelector('li.product');
+         const shopFirstRect=shopFirstProduct?.getBoundingClientRect();
          return {
            banners:els.length,
            href:target?.getAttribute('href'),
@@ -42,6 +46,9 @@ const pages = [
            width:innerWidth,
            blogContent:!!b?.closest('.emo-article-content'),
            shopBeforeHeading:r&&h? r.top <= h.top+1:null,
+           shopGridWidth:shopRect?Math.round(shopRect.width):null,
+           shopFirstProductWidth:shopFirstRect?Math.round(shopFirstRect.width):null,
+           shopProductCount:document.querySelectorAll('li.product').length,
          };
        });
        const issues=[];
@@ -52,6 +59,12 @@ const pages = [
        if(v.rect&&(v.rect.left<-5||v.rect.right>width+5))issues.push('Banner supera viewport');
        if(item.surface==='shop'&&v.banners&&v.h1&&!v.shopBeforeHeading)issues.push('Banner no esta antes del primer encabezado visible de tienda');
        if(item.surface==='post'&&v.banners&&!v.blogContent)issues.push('Banner fuera de tarjeta de articulo');
+       // La regresión anterior comprimió el catálogo de escritorio a 25px sin
+       // alterar el ancho del viewport: detectar el fallo de geometría real.
+       if(item.surface==='shop'&&width>=1000&&v.shopGridWidth!==null&&v.shopGridWidth<500)
+         issues.push('REGRESION: ancho del grid de productos inferior a 500px');
+       if(item.surface==='shop'&&width>=1000&&v.shopFirstProductWidth!==null&&v.shopFirstProductWidth<155)
+         issues.push('REGRESION: tarjetas de producto comprimidas en desktop');
        console.log(JSON.stringify({path:item.path,width,...v,issues}));
        await page.screenshot({path:'/tmp/navidad-banner-'+item.surface+'-'+width+'.png',fullPage:true});
        await page.close();
