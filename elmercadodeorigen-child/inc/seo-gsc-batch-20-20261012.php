@@ -173,11 +173,6 @@ function elmercado_gsc_remove_repeated_heading_at_render_20261012( $content ) {
 	if ( ! $is_batch && ! $is_legacy && ! $is_candidate ) {
 		return $content;
 	}
-	// TEMPORARY QA: the template supplies the only primary H1, so demote H1 tags
-	// inside the body of a selected GSC article; never alter stored post content.
-	if ( $is_batch ) {
-		return preg_replace( '~<(/?)h1\\b([^>]*)>~iu', '<$1h2$2>', $content ) ?? $content;
-	}
 	$post_id = (int) get_queried_object_id();
 	if ( $post_id < 1 || ( get_the_ID() && (int) get_the_ID() !== $post_id ) ) {
 		return $content;
@@ -186,10 +181,22 @@ function elmercado_gsc_remove_repeated_heading_at_render_20261012( $content ) {
 	if ( '' === $main ) {
 		return $content;
 	}
+	$headings = array( $main );
+	if ( $is_batch && function_exists( 'the_title' ) ) {
+		// Falang can translate the template's visible title differently from
+		// get_the_title( ID ); compare the exact title that single.php prints.
+		ob_start();
+		the_title();
+		$visible = (string) ob_get_clean();
+		$normalized = elmercado_gsc_normalize_heading_010313( $visible );
+		if ( '' !== $normalized ) {
+			$headings[] = $normalized;
+		}
+	}
 	$clean = preg_replace_callback(
 		'~<h1\\b[^>]*>(.*?)</h1>~isu',
-		static function ( array $matches ) use ( $main ): string {
-			return $main === elmercado_gsc_normalize_heading_010313( $matches[1] )
+		static function ( array $matches ) use ( $headings ): string {
+			return in_array( elmercado_gsc_normalize_heading_010313( $matches[1] ), $headings, true )
 				? ''
 				: $matches[0];
 		},
@@ -336,13 +343,6 @@ add_filter( 'pre_get_document_title', 'elmercado_gsc_batch_20_filter_title_20261
 add_filter( 'wp_title', 'elmercado_gsc_batch_20_filter_title_20261012', 100001 );
 add_filter( 'aioseo_title', 'elmercado_gsc_batch_20_filter_title_20261012', 100001 );
 add_filter( 'aioseo_description', 'elmercado_gsc_batch_20_filter_description_20261012', 100001 );
-add_filter( 'the_content', static function ( $content ) {
-	if ( ! is_string( $content ) || is_admin() || ! is_singular( 'post' ) || ! elmercado_gsc_batch_20_target_20261012() ) {
-		return $content;
-	}
-	// The single.php template already provides the page's only main H1.
-	return preg_replace( '~<(/?)h1\\b([^>]*)>~i', '<$1h2$2>', $content ) ?? $content;
-}, PHP_INT_MAX );
 
 /* TEMPORARY PR #260: ensure the AIOSEO description filter is last. */
 add_filter( 'aioseo_description', 'elmercado_gsc_batch_20_filter_description_20261012', PHP_INT_MAX );
