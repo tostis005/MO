@@ -20,13 +20,13 @@ jobs:
           const {chromium}=require(process.cwd()+'/node_modules/playwright-core');
           const sleep=x=>new Promise(r=>setTimeout(r,x));
           function rewrite(html){
-            const start=html.search(/<div\\b[^>]*class=["'][^"']*\\bwoostify-sorting\\b[^"']*["'][^>]*>/i);
+            const start=html.search(/<div\b[^>]*class=["'][^"']*\bwoostify-sorting\b[^"']*["'][^>]*>/i);
             if(start<0)throw new Error('sorting div not found in HTML');
-            const opening=html.slice(start).match(/^<div\\b[^>]*>/i)?.[0];
+            const opening=html.slice(start).match(/^<div\b[^>]*>/i)?.[0];
             if(!opening)throw new Error('sorting div opening not found');
-            const updated=opening.replace(/\\bclass=(["'])(.*?)\\1/i,(m,q,v)=>'class='+q+v+(v.includes('emo-catalog-toolbar-shared-010229')?'':' emo-catalog-toolbar-shared-010229')+q);
+            const updated=opening.replace(/\bclass=(["'])(.*?)\1/i,(m,q,v)=>'class='+q+v+(v.includes('emo-catalog-toolbar-shared-010229')?'':' emo-catalog-toolbar-shared-010229')+q);
             html=html.slice(0,start)+updated+html.slice(start+opening.length);
-            let pos=start+updated.length, depth=1, regex=/<\\/?div\\b[^>]*>/gi;regex.lastIndex=pos;
+            let pos=start+updated.length, depth=1, regex=/<\/?div\b[^>]*>/gi;regex.lastIndex=pos;
             while(depth>0){const m=regex.exec(html);if(!m)throw new Error('woostify sorting closing div not found');depth+=m[0].startsWith('</')?-1:1;pos=regex.lastIndex;}
             const button='<button type="button" class="emo-mobile-filter-toggle" aria-expanded="false" aria-controls="emo-mobile-filter-panel"><span class="emo-filter-label">Filtrar productos</span><span class="emo-filter-chevron" aria-hidden="true">⌄</span></button>';
             html=html.slice(0,pos)+button+html.slice(pos);
