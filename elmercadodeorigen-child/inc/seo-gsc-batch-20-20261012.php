@@ -346,3 +346,24 @@ add_filter( 'aioseo_description', 'elmercado_gsc_batch_20_filter_description_202
 
 /* TEMPORARY PR #260: ensure the AIOSEO description filter is last. */
 add_filter( 'aioseo_description', 'elmercado_gsc_batch_20_filter_description_20261012', PHP_INT_MAX );
+
+
+/* TEMPORARY PR #260: identify whether the English template applies the_content. */
+$GLOBALS['emo_seo_qa_content_calls'] = 0;
+$GLOBALS['emo_seo_qa_content_h1'] = 0;
+add_filter( 'the_content', static function ( $content ) {
+	if ( is_string( $content ) && is_singular( 'post' ) && elmercado_gsc_batch_20_target_20261012() ) {
+		$GLOBALS['emo_seo_qa_content_calls']++;
+		if ( false !== stripos( $content, '<h1' ) ) {
+			$GLOBALS['emo_seo_qa_content_h1']++;
+		}
+	}
+	return $content;
+}, PHP_INT_MAX - 2 );
+add_action( 'wp_footer', static function (): void {
+	if ( ! is_singular( 'post' ) || ! elmercado_gsc_batch_20_target_20261012() ) {
+		return;
+	}
+	echo '<span id="emo-qa-content" data-calls="' . (int) $GLOBALS['emo_seo_qa_content_calls'] .
+		'" data-h1seen="' . (int) $GLOBALS['emo_seo_qa_content_h1'] . '" hidden></span>';
+}, PHP_INT_MAX );
