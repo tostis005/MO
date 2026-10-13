@@ -86,7 +86,10 @@ jobs:
             sleep 7
           done
           echo "HOME_NO_QUERY_HTTP=$status"
-          echo "HOME_NAVIDAD_BANNER_COUNT=$(grep -oc 'data-emdo-navidad-promo="2026"' /tmp/emdo-home-cache-body.html || true)"
+          banner_count="$(grep -oF 'data-emdo-navidad-promo="2026"' /tmp/emdo-home-cache-body.html | wc -l)"
+          echo "HOME_NAVIDAD_BANNER_COUNT=$banner_count"
+          # Deben existir la franja real + el respaldo template, no solo el template oculto.
+          test "$banner_count" -ge 2
           grep -Ei '^(x-el-mercado-cache|x-rocket|x-cache|cf-cache-status|age|cache-control):' /tmp/emdo-home-cache-headers.txt || true
           test "$status" = '200'
           grep -Fq 'data-emdo-navidad-promo="2026"' /tmp/emdo-home-cache-body.html
@@ -100,6 +103,9 @@ jobs:
           grep -Ei '^(x-el-mercado-cache|x-rocket|x-cache|cf-cache-status|age|cache-control):' /tmp/emdo-home-cache-warm-headers.txt || true
           test "$warm" = '200'
           grep -Fq 'data-emdo-navidad-promo="2026"' /tmp/emdo-home-cache-warm-body.html
+          warm_count="$(grep -oF 'data-emdo-navidad-promo="2026"' /tmp/emdo-home-cache-warm-body.html | wc -l)"
+          echo "HOME_REWARM_BANNER_COUNT=$warm_count"
+          test "$warm_count" -ge 2
           echo 'HOME_CACHE_REGENERATED_WITH_NAVIDAD_BANNER_OK'
 
       - name: Verificar respuesta HTTP y formulario de la landing
