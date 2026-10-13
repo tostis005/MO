@@ -1,0 +1,99 @@
+name: Diagnose production SEO origin and cache layers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-production-seo-origin-20261013.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - name: Validate SSH access inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?Missing SSH host}"
+          : "${STAGING_USER:?Missing SSH user}"
+          : "${STAGING_PASSWORD:?Missing SSH password}"
+          : "${STAGING_REMOTE_PATH:?Missing SSH path}"
+          [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
+          [[ "$STAGING_REMOTE_PATH" =~ ^/[A-Za-z0-9._/-]+/?$ ]]
+
+      - name: Install read-only SSH helper
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Inspect origin cache and installed theme without changes
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          port="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$port" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$port" "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"
+          dev=""
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            config="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n 1 || true)"
+            [ -n "$config" ] || { echo 'Cannot resolve SSH-connected Plesk WordPress path.' >&2; exit 1; }
+            dev="$(dirname "$config")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] || { echo 'Production root unavailable'; exit 1; }
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1)"
+          wp_bin="$(command -v wp || true)"
+          [ -n "$wp_bin" ] || exit 1
+          siteurl="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+          case "$siteurl" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) ;;
+            *) echo 'Unexpected production siteurl, stopping read-only inspection'; exit 1 ;;
+          esac
+          echo '=== PRODUCTION SEO FILE/WORDPRESS STATE ==='
+          active="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+          echo "active_theme=$active"
+          theme="$prod/wp-content/themes/elmercadodeorigen-child"
+          if [ -f "$theme/inc/seo-gsc-batch-20-20261012.php" ]; then echo 'batch1_module_present=yes'; else echo 'batch1_module_present=no'; fi
+          if [ -f "$theme/functions.php" ] && grep -q 'seo-gsc-batch-20-20261012.php' "$theme/functions.php"; then echo 'batch1_loader_present=yes'; else echo 'batch1_loader_present=no'; fi
+          echo '=== POSSIBLE CACHE COMPONENTS ==='
+          "$php_bin" -i 2>/dev/null | grep -i '^opcache.validate_timestamps' | head -n 1 || true
+          "$php_bin" -d memory_limit=512M "$wp_bin" plugin list --path="$prod" --skip-plugins --skip-themes --allow-root --status=active --field=name 2>/dev/null | grep -Ei 'cache|rocket|litespeed|cloudflare|redis|autoptimize|w3-|wp-optimize|speed' || true
+          if [ -d "$prod/wp-content/cache" ]; then
+            find "$prod/wp-content/cache" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | head -n 20 || true
+          fi
+          echo '=== ORIGIN HOST LISTENERS (PORTS ONLY) ==='
+          ss -lnt 2>/dev/null | awk 'NR > 1 { print $4 }' | grep -E '(:80|:443)$' | sed -E 's/^.*:/:/' | sort -u || true
+          echo '=== ORIGIN DIRECT READ-ONLY HTTP PROBES ==='
+          tries=0
+          for ip in $(hostname -I 2>/dev/null); do
+            case "$ip" in *:*) continue ;; esac
+            tries=$((tries+1))
+            [ "$tries" -le 3 ] || break
+            outfile="$(mktemp)"
+            code="$(curl -ksS --connect-timeout 4 --max-time 12 --max-redirs 0 --resolve "www.elmercadodeorigen.com:443:$ip" -o "$outfile" -w '%{http_code}' "https://www.elmercadodeorigen.com/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/?seo_origin_readonly=1" || true)"
+            title="$(grep -oEi '<title[^>]*>[^<]*</title>' "$outfile" | head -n 1 || true)"
+            echo "origin_probe=$tries http=$code title=$title"
+            rm -f "$outfile"
+            [ "$code" != 200 ] || break
+          done
+          REMOTE
