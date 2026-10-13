@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/diagnose-production-seo-origin-20261013.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/diagnose-production-seo-origin-20261013.yml'
   workflow_dispatch:
 
 permissions:
@@ -13,6 +16,8 @@ permissions:
 
 jobs:
   diagnose:
+    # Secrets are available only for branches in this same repository; forks skip.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
