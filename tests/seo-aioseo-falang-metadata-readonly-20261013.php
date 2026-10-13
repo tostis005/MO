@@ -295,3 +295,63 @@ foreach ( $stop_callbacks as $priority => $entries ) {
 			' source_basename:' . substr( (string) $source, 0, 85 ) . "\n";
 	}
 }
+
+
+/* Additional read-only search for plugins and callbacks that can alter the
+ * already-translated HTML (especially an outer response buffer).
+ * No plugin data or HTML content is printed.
+ */
+$active_plugins = (array) get_option( 'active_plugins', array() );
+foreach ( array(
+	'wp-rocket' => 'wp-rocket/wp-rocket.php',
+	'autoptimize' => 'autoptimize/autoptimize.php',
+	'litespeed-cache' => 'litespeed-cache/litespeed-cache.php',
+	'w3-total-cache' => 'w3-total-cache/w3-total-cache.php',
+	'translatepress-business' => 'translatepress-business/index.php',
+	'translatepress-personal' => 'translatepress-personal/index.php',
+	'translatepress-multilingual' => 'translatepress-multilingual/index.php',
+) as $label => $basename ) {
+	echo 'SEO_DIAG_EXTRA_PLUGIN_' . strtoupper( str_replace( '-', '_', $label ) ) .
+		'=' . ( in_array( $basename, $active_plugins, true ) ? 'active' : 'other' ) . "\n";
+}
+
+$seo_pack_objects = array(
+	'TRP_Seo_Pack',
+	'TRP_Seo_Pack_Addon',
+	'TRP_Seo_Pack_Class',
+);
+foreach ( $seo_pack_objects as $object_name ) {
+	echo 'SEO_DIAG_TRP_SEOPACK_CLASS_' . strtoupper( $object_name ) .
+		'=' . ( class_exists( $object_name, false ) ? 'loaded' : 'absent' ) . "\n";
+}
+
+foreach ( array( 'init', 'template_redirect', 'wp', 'wp_head', 'shutdown' ) as $hook ) {
+	$callbacks = isset( $wp_filter[ $hook ] ) ? (array) $wp_filter[ $hook ]->callbacks : array();
+	$hits = 0;
+	foreach ( $callbacks as $priority => $records ) {
+		foreach ( $records as $entry ) {
+			$callback = $entry['function'] ?? '';
+			$name = '';
+			if ( is_array( $callback ) ) {
+				$name = ( is_object( $callback[0] ) ? get_class( $callback[0] ) : (string) $callback[0] ) .
+					'::' . (string) $callback[1];
+			} elseif ( is_string( $callback ) ) {
+				$name = $callback;
+			}
+			if ( ! preg_match( '/(buffer|cache|rocket|optimi|translate|html|output)/i', $name ) ) {
+				continue;
+			}
+			if ( ++$hits > 25 ) {
+				break 2;
+			}
+			$name = preg_replace( '/[^a-zA-Z0-9_:\\\\-]/', '', $name );
+			echo 'SEO_DIAG_HTML_CALLBACK=' . $hook . ':' . (int) $priority .
+				' name:' . substr( $name, 0, 115 ) . "\n";
+		}
+	}
+	echo 'SEO_DIAG_HTML_CALLBACK_COUNT_' . strtoupper( $hook ) . '=' . $hits . "\n";
+}
+foreach ( ob_list_handlers() as $handler ) {
+	$handler = preg_replace( '/[^a-zA-Z0-9_:\\\\-]/', '', (string) $handler );
+	echo 'SEO_DIAG_ACTIVE_BUFFER_HANDLER=' . substr( $handler, 0, 110 ) . "\n";
+}
