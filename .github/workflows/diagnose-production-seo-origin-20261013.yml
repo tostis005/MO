@@ -71,10 +71,12 @@ jobs:
           )
           for file in "${files[@]}"; do test -f "$file"; done
           manifest="$(sha256sum "${files[@]}" | base64 -w0)"
-          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$port" "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$manifest'" <<'REMOTE' | tee "$RUNNER_TEMP/seo-origin-diagnostic-$GITHUB_RUN_ID.log"
+          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$port" "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$manifest' '$GITHUB_RUN_ID'" <<'REMOTE' | tee "$RUNNER_TEMP/seo-origin-diagnostic-$GITHUB_RUN_ID.log"
           set -eu
           raw="${1%/}"
           manifest="$2"
+          diag_id="$3"
+          case "$diag_id" in *[!0-9]*|'') echo 'Invalid numeric diagnostic id' >&2; exit 1 ;; esac
           dev=""
           case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
           if [ ! -f "$dev/wp-config.php" ]; then
@@ -205,14 +207,14 @@ jobs:
             sample_url='https://www.elmercadodeorigen.com/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/'
             for variant in baseline unique_no_cache; do
               headers="$(mktemp)"; body="$(mktemp)"; url="$sample_url"
-              [ "$variant" != unique_no_cache ] || url="${sample_url}?seo_origin_diag_20261013=1"
+              [ "$variant" != unique_no_cache ] || url="${sample_url}?seo_origin_diag_20261013=${diag_id}"
               status="$(curl -ksS --connect-timeout 4 --max-time 14 --resolve "www.elmercadodeorigen.com:443:$probe_ip" -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -D "$headers" -o "$body" -w '%{http_code}' "$url" || true)"
               [ -n "$status" ] || status=000
               h1="$(grep -oEi '<h1([[:space:]>])' "$body" | wc -l | tr -d ' ' || true)"
               cache_header=none
-              if grep -Eqi '^(x-cache|cf-cache-status|x-litespeed-cache|x-rocket-cache|x-proxy-cache):' "$headers"; then
-                if grep -Eiq '^(x-cache|cf-cache-status|x-litespeed-cache|x-rocket-cache|x-proxy-cache):[[:space:]]*(hit|cached|stale)([[:space:];]|$)' "$headers"; then cache_header=hit
-                elif grep -Eiq '^(x-cache|cf-cache-status|x-litespeed-cache|x-rocket-cache|x-proxy-cache):[[:space:]]*(miss|bypass|dynamic|expired)([[:space:];]|$)' "$headers"; then cache_header=miss
+              if grep -Eqi '^(x-cache|cf-cache-status|x-litespeed-cache|x-rocket-cache|x-proxy-cache|x-el-mercado-cache):' "$headers"; then
+                if grep -Eiq '^(x-cache|cf-cache-status|x-litespeed-cache|x-rocket-cache|x-proxy-cache|x-el-mercado-cache):[[:space:]]*(hit|cached|stale)([[:space:];]|$)' "$headers"; then cache_header=hit
+                elif grep -Eiq '^(x-cache|cf-cache-status|x-litespeed-cache|x-rocket-cache|x-proxy-cache|x-el-mercado-cache):[[:space:]]*(miss|bypass|dynamic|expired)([[:space:];]|$)' "$headers"; then cache_header=miss
                 else cache_header=other; fi
               fi
               echo "cache_probe_${variant}=http:${status} h1:${h1} header:${cache_header}"
