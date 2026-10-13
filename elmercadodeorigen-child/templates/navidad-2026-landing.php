@@ -126,7 +126,7 @@ get_header();
 					</div>
 				</article>
 			</div>
-			<p class="emdo-xmas__note">Precios orientativos, con embalaje y envío estándar estimados. El contenido y el precio definitivo se ajustan según las unidades, calidades y destino. La selección se confirmará según las condiciones de transporte y conservación de cada producto.</p>
+			<p class="emdo-xmas__note">Precios orientativos por cesta. El precio final depende de la cantidad y los productos elegidos.</p>
 		</div>
 	</section>
 
@@ -144,10 +144,7 @@ get_header();
 	<section class="emdo-xmas__section emdo-xmas__section--form-last" id="presupuesto">
 		<div class="emdo-xmas__wrap emdo-xmas__form-layout">
 			<div class="emdo-xmas__form-intro">
-				<span class="emdo-xmas__eyebrow">PRESUPUESTO SIN COMPROMISO</span>
 				<h2>Solicita tu presupuesto</h2>
-				<p>Solo necesitamos el número aproximado de cestas y el presupuesto que tienes previsto por unidad.</p>
-				<p>Puedes añadir cualquier preferencia o fecha de entrega prevista.</p>
 			</div>
 			<div class="emdo-xmas__form-card">
 				<?php $state = isset( $_GET['estado'] ) ? sanitize_key( wp_unslash( $_GET['estado'] ) ) : ''; ?>

@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/publish-navidad-2026-landing-production.yml'
+      - 'elmercadodeorigen-child/templates/navidad-2026-landing.php'
+      - 'elmercadodeorigen-child/assets/css/navidad-2026.css'
+      - 'elmercadodeorigen-child/inc/navidad-2026-campaign.php'
+      - '.github/scripts/navidad-2026-layout-check.js'
   workflow_dispatch:
 
 permissions:
@@ -77,27 +81,21 @@ jobs:
           grep -Fq 'Solicitar presupuesto' /tmp/emdo-navidad.html
           echo 'NAVIDAD_LANDING_PUBLICA_OK'
 
-      - name: Probar un envio real de solicitud de presupuesto
+      - name: Revisar solapamientos del formulario en seis anchuras
         shell: bash
         run: |
           set -euo pipefail
-          base='https://www.elmercadodeorigen.com'
-          curl -LsS --connect-timeout 10 --max-time 40 -A 'Mozilla/5.0 EMDO-form-test' -c /tmp/emdo-cookies.txt -b /tmp/emdo-cookies.txt "$base/cestas-navidad-empresas-2026/?probar_formulario=$GITHUB_RUN_ID" -o /tmp/emdo-formulario.html
-          nonce="$(grep -oE 'name="emdo_navidad_nonce" value="[a-zA-Z0-9]+"' /tmp/emdo-formulario.html | head -n1 | sed -E 's/.*value="([^"]+)"/\1/' || true)"
-          test -n "$nonce"
-          http="$(curl -sS --connect-timeout 10 --max-time 45 -c /tmp/emdo-cookies.txt -b /tmp/emdo-cookies.txt -D /tmp/emdo-post-headers.txt -o /tmp/emdo-post-body.txt -w '%{http_code}' \
-            --data-urlencode 'action=emdo_navidad_2026_quote' \
-            --data-urlencode "emdo_navidad_nonce=$nonce" \
-            --data-urlencode 'emdo_nombre=PRUEBA TECNICA NAVIDAD - IGNORAR' \
-            --data-urlencode 'emdo_email=hola@elmercadodeorigen.com' \
-            --data-urlencode 'emdo_cantidad=1' \
-            --data-urlencode 'emdo_presupuesto=60' \
-            --data-urlencode 'emdo_empresa=PRUEBA INTERNA - NO PRESUPUESTAR' \
-            --data-urlencode 'emdo_detalles=Prueba automatica de recepcion del formulario de Navidad 2026. No responder ni preparar presupuesto.' \
-            --data-urlencode 'emdo_privacidad=1' \
-            "$base/wp-admin/admin-post.php" || true)"
-          echo "FORM_SUBMISSION_HTTP=$http"
-          test "$http" = 302
-          grep -Eqi '^location: .*estado=enviada' /tmp/emdo-post-headers.txt
-          echo 'NAVIDAD_FORMULARIO_ENVIO_OK'
+          npm install --no-save --no-audit --no-fund playwright-core@1.55.0 >/dev/null 2>&1
+          CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          export CHROME_PATH
+          test -n "$CHROME_PATH"
+          node .github/scripts/navidad-2026-layout-check.js
 
+      - name: Capturas del diseño para revisión
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capturas-navidad-2026-${{ github.run_id }}
+          path: /tmp/navidad-2026-*.png
+          if-no-files-found: ignore
+          retention-days: 7
