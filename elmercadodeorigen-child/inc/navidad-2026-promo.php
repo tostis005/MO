@@ -125,9 +125,51 @@ add_filter( 'the_content', static function ( $content ) {
  * de que Woostify abra su wrapper de catálogo y convierte la franja en un
  * hermano de la columna principal. En escritorio, el flexbox comprime todo
  * el catálogo a unos pocos píxeles, aunque en móvil parece correcto.
- * El fallback existente en wp_footer hace una única inserción DOM en el
- * encabezado real de la página.
+ * La inserción de primer pintado arriba respeta ese encabezado interno.
+ * El fallback de wp_footer sigue disponible si alguna plantilla no lo incluye.
  */
+
+/**
+ * Keep the Christmas banner at its existing, verified location, but include it
+ * in the original HTML rather than inserting it on DOMContentLoaded.
+ *
+ * Shop layout: <main.site-main> -> <header.emo-shop-title-block> -> first child.
+ * This avoids the 153px mobile banner shifting catalogue products after paint.
+ * Other routes and all translated English pages retain their existing behavior.
+ */
+function emdo_navidad_shop_first_paint_20261013( string $html ): string {
+	if ( '' === $html || false === stripos( $html, 'emo-shop-title-block' ) ) {
+		return $html;
+	}
+
+	// Ignore the fallback <template>: it is not a banner rendered on the page.
+	$fallback_start = stripos( $html, '<template id="emdo-navidad-promo-fallback-2026"' );
+	$rendered_html  = false === $fallback_start ? $html : substr( $html, 0, $fallback_start );
+	if ( preg_match( '~<aside\b[^>]*\bdata-emdo-navidad-promo=["\']2026["\']~i', $rendered_html ) ) {
+		return $html;
+	}
+
+	if ( ! preg_match(
+		'~<header\b[^>]*class=(["\'])[^"\']*\bemo-shop-title-block\b[^"\']*\1[^>]*>~i',
+		$html,
+		$match,
+		PREG_OFFSET_CAPTURE
+	) ) {
+		return $html;
+	}
+	$position = (int) $match[0][1] + strlen( $match[0][0] );
+	return substr_replace( $html, emdo_navidad_promo_markup_2026( 'shop' ), $position, 0 );
+}
+
+add_action( 'template_redirect', static function (): void {
+	if ( 'shop' !== emdo_navidad_promo_surface_2026() ) {
+		return;
+	}
+	if ( isset( $_SERVER['REQUEST_METHOD'] ) && 'GET' !== strtoupper( (string) $_SERVER['REQUEST_METHOD'] ) ) {
+		return;
+	}
+	ob_start( 'emdo_navidad_shop_first_paint_20261013' );
+}, -1200 );
 
 add_action( 'wp_enqueue_scripts', static function (): void {
 	if ( ! emdo_navidad_promo_surface_2026() ) { return; }
