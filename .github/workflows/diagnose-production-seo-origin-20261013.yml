@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  issues: write  # Only to post whitelisted, non-secret diagnostics to issue #246.
 
 jobs:
   diagnose:
@@ -39,6 +40,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
 
       - name: Inspect origin cache and installed theme without changes
+        id: origin_report
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -64,7 +66,7 @@ jobs:
           )
           for file in "${files[@]}"; do test -f "$file"; done
           manifest="$(sha256sum "${files[@]}" | base64 -w0)"
-          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$port" "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$manifest'" <<'REMOTE'
+          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$port" "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$manifest'" <<'REMOTE' | tee "$RUNNER_TEMP/seo-origin-diagnostic-$GITHUB_RUN_ID.log"
           set -eu
           raw="${1%/}"
           manifest="$2"
@@ -156,3 +158,38 @@ jobs:
             [ "$code" != 200 ] || break
           done
           REMOTE
+
+      - name: Report sanitized read-only findings to SEO issue 246
+        if: ${{ always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SSH_OUTCOME: ${{ steps.origin_report.outcome }}
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/seo-origin-diagnostic-$GITHUB_RUN_ID.log"
+          report="$RUNNER_TEMP/seo-origin-issue246-$GITHUB_RUN_ID.md"
+          {
+            echo '### Informe automático SEO del origen (solo lectura)'
+            echo "Ejecución: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "Paso SSH: $SSH_OUTCOME"
+            echo 'Solo se incluyen resultados de una lista blanca; no se incluyen IP, contraseñas, rutas absolutas ni configuraciones completas.'
+            echo
+            echo '```text'
+            if [ -s "$log" ]; then
+              # Report only enum values, static relative filenames and numeric PHP cache flags.
+              grep -E '^(active_theme=elmercadodeorigen-child|batch1_(module|loader)_present=(yes|no)|FILE_(MATCH|DIFFERENT|MISSING) (functions.php|single.php|category.php|inc/[a-z0-9.-]+\.php)|php_version=[0-9.]+ (opcache\.[a-z_]+=[0-9]+ |realpath_cache_ttl=[0-9]+ )*|nginx_explicit_cache_directive=(yes|no)|cache_dropin_present=(advanced-cache.php|object-cache.php))$' "$log" | head -n 30 || true
+              grep -E '^opcache\.validate_timestamps[[:space:]]*=>' "$log" | head -n 1 || true
+              sed -nE 's/^(origin_probe=[1-3] http=[0-9]{3}) title=.*/\1/p' "$log" | head -n 3 || true
+              if grep -Fq 'title=<title>Why Cut Potatoes Turn Black: Causes' "$log"; then
+                echo 'origin_expected_batch1_title=yes'
+              else
+                echo 'origin_expected_batch1_title=no'
+              fi
+            else
+              echo 'No se capturo salida SSH. Consultar el enlace del workflow.'
+            fi
+            echo '```'
+            echo 'La auditoria no instala modulos ni modifica el servidor; no confirma por si sola un despliegue SEO.'
+          } > "$report"
+          gh issue comment 246 --repo "$GITHUB_REPOSITORY" --body-file "$report"
