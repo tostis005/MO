@@ -10,6 +10,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+// TEMPORARY #260: record the original URI before runtime plugins/rewrites can change it.
+$GLOBALS['emo_seo_diag_early_uri'] = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
+
 function elmercado_gsc_batch_20_20261012(): array {
 	return array(
 	'/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/' => array(
@@ -307,10 +310,12 @@ add_action( 'wp_head', static function (): void {
 	$wanted = '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/';
 	$route  = function_exists( 'elmercado_gsc_current_path_010313' ) ? elmercado_gsc_current_path_010313() : '';
 	$target = elmercado_gsc_batch_20_target_20261012();
+	$early_path = (string) wp_parse_url( (string) ( $GLOBALS['emo_seo_diag_early_uri'] ?? '' ), PHP_URL_PATH );
+	$late_kind = '/' === $route ? 'root' : ( 0 === strpos( $route, '/en/' ) ? 'english' : ( 0 === strpos( $route, '/' ) ? 'other_path' : 'other' ) );
 	$hook   = has_filter( 'pre_get_document_title', 'elmercado_gsc_batch_20_filter_title_20261012' );
 	$plugin = defined( 'WPSEO_VERSION' ) ? 'yoast' : ( defined( 'RANK_MATH_VERSION' ) ? 'rankmath' : ( defined( 'AIOSEO_VERSION' ) ? 'aioseo' : ( defined( 'SEOPRESS_VERSION' ) ? 'seopress' : 'other' ) ) );
 	echo '<meta name="emo-seo-diag-20261013" content="pathmatch:' . ( $route === $wanted ? 'yes' : 'no' ) .
 		';target:' . ( ! empty( $target ) ? 'yes' : 'no' ) .
 		';title_hook:' . ( false !== $hook ? 'yes' : 'no' ) .
-		';plugin:' . esc_attr( $plugin ) . ';route:' . esc_attr( preg_match( '~^/[a-z0-9/_-]{1,170}$~', $route ) ? $route : 'other' ) . '">' . "\n";
+		';plugin:' . esc_attr( $plugin ) . ';earlymatch:' . ( $early_path === $wanted ? 'yes' : 'no' ) . ';latekind:' . esc_attr( $late_kind ) . '">' . "\n";
 }, 1 );
