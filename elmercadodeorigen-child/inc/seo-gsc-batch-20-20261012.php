@@ -114,14 +114,15 @@ function elmercado_gsc_batch_20_fallback_description_20261012(): string {
 	$target = elmercado_gsc_batch_20_target_20261012();
 	return isset( $target['description'] ) ? $target['description'] : '';
 }
-add_filter( 'pre_get_document_title', 'elmercado_gsc_batch_20_filter_title_20261012', 125 );
+add_filter( 'pre_get_document_title', 'elmercado_gsc_batch_20_filter_title_20261012', 100001 );
+add_filter( 'wp_title', 'elmercado_gsc_batch_20_filter_title_20261012', 100001 );
 add_filter( 'wpseo_title', 'elmercado_gsc_batch_20_filter_title_20261012', 125 );
 add_filter( 'rank_math/frontend/title', 'elmercado_gsc_batch_20_filter_title_20261012', 125 );
-add_filter( 'aioseo_title', 'elmercado_gsc_batch_20_filter_title_20261012', 125 );
+add_filter( 'aioseo_title', 'elmercado_gsc_batch_20_filter_title_20261012', 100001 );
 add_filter( 'seopress_titles_title', 'elmercado_gsc_batch_20_filter_title_20261012', 125 );
 add_filter( 'wpseo_metadesc', 'elmercado_gsc_batch_20_filter_description_20261012', 125 );
 add_filter( 'rank_math/frontend/description', 'elmercado_gsc_batch_20_filter_description_20261012', 125 );
-add_filter( 'aioseo_description', 'elmercado_gsc_batch_20_filter_description_20261012', 125 );
+add_filter( 'aioseo_description', 'elmercado_gsc_batch_20_filter_description_20261012', PHP_INT_MAX );
 add_filter( 'seopress_titles_desc', 'elmercado_gsc_batch_20_filter_description_20261012', 125 );
 
 /**
@@ -292,3 +293,24 @@ add_action( 'wp_head', static function (): void {
 	if ( ! is_singular( 'post' ) ) { return; }
 	echo '<style id="emo-gsc-batch-20-style">.emo-gsc-related-guides,.emo-gsc-product-link{margin:24px 0;padding:14px 18px;border-left:3px solid #54745b;background:#f5f7f3;border-radius:5px}.emo-gsc-related-guides p,.emo-gsc-product-link p{margin:0 0 8px}.emo-gsc-product-link p{margin:0}.emo-gsc-related-guides ul{margin:0;padding-left:20px}.emo-gsc-related-guides li+li{margin-top:6px}</style>' . "\n";
 }, 24 );
+
+
+/**
+ * El tema padre Woostify imprime un H1 extra en .page-header, aunque el child
+ * theme ya lo oculta visualmente por CSS. Single.php imprime su propio H1.
+ *
+ * En las 20 URL GSC seleccionadas se desactiva únicamente el render del
+ * page-header padre antes de que se construya; así queda un solo H1 en el HTML.
+ * No modifica entradas, productos, archivos o URLs fuera de este lote.
+ */
+add_action(
+	'wp_head',
+	static function (): void {
+		if ( is_admin() || ! is_singular( 'post' ) || ! elmercado_gsc_batch_20_target_20261012() ) {
+			return;
+		}
+
+		remove_action( 'woostify_after_header', 'woostify_page_header', 10 );
+	},
+	-5000
+);
