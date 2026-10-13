@@ -314,3 +314,44 @@ add_action(
 	},
 	-5000
 );
+
+
+/**
+ * TranslatePress translates whole-page HTML after AIOSEO renders wp_head.
+ *
+ * For the sixteen EN URLs in this GSC batch, reassert the approved SEO
+ * description once TranslatePress has finished translating the document.
+ * Operates on one existing meta tag only. All product, ES and non-batch
+ * requests are left completely untouched; no WordPress content is written.
+ *
+ * @param string $html Final HTML after TranslatePress translation.
+ * @return string
+ */
+function elmercado_gsc_batch_20_translated_meta_20261013( $html ) {
+	if ( ! is_string( $html ) || is_admin() || ! is_singular( 'post' ) ) {
+		return $html;
+	}
+	if ( ! function_exists( 'elmercado_gsc_current_path_010313' ) ) {
+		return $html;
+	}
+	$path = elmercado_gsc_current_path_010313();
+	if ( 0 !== strpos( $path, '/en/' ) ) {
+		return $html;
+	}
+	$target = elmercado_gsc_batch_20_target_20261012();
+	if ( empty( $target['description'] ) ) {
+		return $html;
+	}
+	$replaced = 0;
+	$fixed = preg_replace_callback(
+		'~<meta\b(?=[^>]*\bname\s*=\s*(?:"description"|\x27description\x27|description\b))[^>]*>~iu',
+		static function () use ( $target, &$replaced ): string {
+			++$replaced;
+			return '<meta name="description" content="' . esc_attr( $target['description'] ) . '">';
+		},
+		$html,
+		1
+	);
+	return 1 === $replaced && is_string( $fixed ) ? $fixed : $html;
+}
+add_filter( 'trp_translated_html', 'elmercado_gsc_batch_20_translated_meta_20261013', PHP_INT_MAX );
