@@ -12,6 +12,7 @@ on:
       - '.github/workflows/diagnose-production-seo-origin-20261013.yml'
       - '.github/workflows/production-install-gsc-batch1-module-20261013.yml'
       - '.github/workflows/production-install-gsc-batch1-two-modules-20261013.yml'
+      - '.github/workflows/seo-batch1-public-html-audit-20261013.yml'
   workflow_dispatch:
 
 permissions:
@@ -117,6 +118,16 @@ jobs:
       - name: Validate staging HTML auditor fixtures
         shell: bash
         run: python3 tests/seo-html-audit.py --self-test
+
+      - name: Validate reusable GSC batch 1 HTML audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f tests/seo-batch1-public-audit-20261013.py
+          python3 -m py_compile tests/seo-batch1-public-audit-20261013.py
+          test -f .github/workflows/seo-batch1-public-html-audit-20261013.yml
+          grep -q 'GSC_BATCH1_PUBLIC_SUMMARY' tests/seo-batch1-public-audit-20261013.py
+          ! grep -Eq 'wp cache flush|rsync |theme activate|rm -rf' .github/workflows/seo-batch1-public-html-audit-20261013.yml
 
       - name: Check whitespace errors
         run: git diff --check HEAD~1 HEAD || git diff --check
