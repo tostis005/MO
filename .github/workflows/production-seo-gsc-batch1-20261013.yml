@@ -170,7 +170,19 @@ jobs:
             output="$(mktemp)"
             code="$(curl -ksS -L --connect-timeout 12 --max-time 40 -o "$output" -w '%{http_code}' "$base$path?seo_release=$commit" || true)"
             [ "$code" = '200' ] || { echo "SEO page $path HTTP $code" >&2; rm -f "$output"; return 1; }
-            grep -Fq "$expected" "$output" || { echo "Missing expected SEO title on $path" >&2; rm -f "$output"; return 1; }
+            if ! grep -Fq "$expected" "$output"; then
+              public_title="$(grep -oEi '<title[^>]*>[^<]*</title>' "$output" | head -n 1 || true)"
+              echo "SEO_PUBLIC_TITLE path=$path title=$public_title expected=$expected" >&2
+              echo "Checking origin directly before automatic rollback (read-only)..."
+              domain="$(printf '%s' "$base" | sed -E 's#^https?://([^/]+).*$#\1#')"
+              case "$base" in https://*) origin_port=443 ;; *) origin_port=80 ;; esac
+              origin_file="$(mktemp)"
+              origin_code="$(curl -ksS --max-redirs 0 --connect-timeout 5 --max-time 15 --resolve "$domain:$origin_port:127.0.0.1" -o "$origin_file" -w '%{http_code}' "$base$path?seo_release=$commit-origin" || true)"
+              origin_title="$(grep -oEi '<title[^>]*>[^<]*</title>' "$origin_file" | head -n 1 || true)"
+              echo "SEO_ORIGIN_DIAG code=$origin_code title=$origin_title" >&2
+              rm -f "$origin_file" "$output"
+              return 1
+            fi
             h1_count="$(grep -oEi '<h1([[:space:]>])' "$output" | wc -l | tr -d ' ' || true)"
             [ "$h1_count" = '1' ] || { echo "$path has $h1_count H1s, expected 1" >&2; rm -f "$output"; return 1; }
             grep -Eiq '<meta[^>]+name="description"' "$output" || { echo "Missing description on $path" >&2; rm -f "$output"; return 1; }
