@@ -16,6 +16,7 @@ $GLOBALS['seo_removed_actions'] = array();
 function add_filter( $tag, $callback, $priority = 10, $args = 1 ) { $GLOBALS['seo_registered_filters'][ $tag ][] = array( $callback, $priority ); }
 function add_action( $tag, $callback, $priority = 10, $args = 1 ) { $GLOBALS['seo_registered_actions'][ $tag ][] = array( $callback, $priority ); }
 function remove_action( $tag, $callback, $priority = 10 ) { $GLOBALS['seo_removed_actions'][] = array( $tag, $callback, $priority ); return true; }
+function esc_attr( $value ): string { return htmlspecialchars( (string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' ); }
 function is_admin(): bool { return false; }
 function is_feed(): bool { return false; }
 function is_singular( $type ): bool { return 'post' === $type; }
@@ -129,6 +130,27 @@ $GLOBALS['seo_removed_actions'] = array();
 $GLOBALS['seo_test_path'] = '/blog/';
 $remove_header();
 check( empty( $GLOBALS['seo_removed_actions'] ), 'Do not remove Woostify title outside the cohort' );
+
+
+// TranslatePress final HTML may overwrite AIOSEO's freshly generated metadata.
+// Update only one existing EN description for explicitly approved GSC targets.
+$GLOBALS['seo_test_path'] = '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/';
+$expected = $batch[ $GLOBALS['seo_test_path'] ]['description'];
+$before = '<html><head><title>Leave title alone</title><meta name="description" content="Old translated SEO text"><meta name="robots" content="index,follow"></head><body><h1>Keep H1</h1></body></html>';
+$after = elmercado_gsc_batch_20_translated_meta_20261013( $before );
+check( substr_count( $after, 'name="description"' ) === 1, 'Exactly one final description' );
+check( str_contains( $after, esc_attr( $expected ) ), 'Translated English meta matches GSC target' );
+check( str_contains( $after, '<h1>Keep H1</h1>' ), 'Do not alter article heading' );
+check( str_contains( $after, '<title>Leave title alone</title>' ), 'Do not alter title' );
+check( str_contains( $after, '<meta name="robots" content="index,follow">' ), 'Do not alter robots' );
+check( elmercado_gsc_batch_20_translated_meta_20261013( $after ) === $after, 'Idempotent final meta' );
+$GLOBALS['seo_test_path'] = '/en/unrelated-article/';
+check( elmercado_gsc_batch_20_translated_meta_20261013( $before ) === $before, 'Non-batch EN untouched' );
+$GLOBALS['seo_test_path'] = '/cuanta-carne-calcular-por-persona-corte-receta/';
+check( elmercado_gsc_batch_20_translated_meta_20261013( $before ) === $before, 'Spanish metadata untouched' );
+$GLOBALS['seo_test_path'] = '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/';
+check( elmercado_gsc_batch_20_translated_meta_20261013( '<html><head></head></html>' ) === '<html><head></head></html>', 'Do not insert a second tag' );
+check( elmercado_gsc_batch_20_translated_meta_20261013( '<meta NAME="description" CONTENT="Old">' ) === '<meta name="description" content="' . esc_attr( $expected ) . '">', 'Uppercase meta supported' );
 
 echo "OK: 20 URL, 16 EN, 4 ES, title priorities, article H1 only, link and metadata scope.\n";
 
