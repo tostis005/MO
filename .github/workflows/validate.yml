@@ -48,6 +48,23 @@ jobs:
       # Advisory only: GitHub-hosted runner provides an independent external
       # vantage point to check if first-cohort changes are live on WordPress.
       # Never gate unrelated tests on intermittent public HTTP failures.
+      - name: Inspect public cache headers and HTML variant
+        shell: bash
+        timeout-minutes: 2
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          base="https://www.elmercadodeorigen.com/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/"
+          for mode in standard uncached; do
+            url="$base"
+            [ "$mode" != uncached ] || url="${base}?seo_header_probe=${GITHUB_RUN_ID}"
+            echo "=== SEO_HTTP_DIAG $mode ==="
+            code="$(curl -sS -L --connect-timeout 8 --max-time 20 -H 'Cache-Control: no-cache' -D /tmp/seo-probe-headers -o /tmp/seo-probe-html -w '%{http_code}' "$url" || true)"
+            echo "HTTP=$code"
+            grep -Ei '^(server|cache-control|age|x-cache|x-litespeed-cache|x-el-mercado-.*|cf-cache-status|last-modified|vary):' /tmp/seo-probe-headers || true
+            grep -oEi '<title[^>]*>[^<]*</title>' /tmp/seo-probe-html | head -n 1 || true
+          done
+
       - name: Inspect guarded production SEO deployment state
         shell: bash
         timeout-minutes: 1
