@@ -94,6 +94,42 @@ function elmercado_optimize_home_runtime_010259( string $html ): string {
 }
 
 /**
+ * Move the large Woostify SVG icon configuration to a fingerprinted static
+ * JavaScript file, preserving the exact original code and execution order.
+ * The original inline script is retained if the file cannot be generated.
+ *
+ * This is a byte-for-byte relocation, not an icon removal or a redesign.
+ */
+function elmercado_externalize_home_woostify_icons_20261013( string $html ): string {
+	return preg_replace_callback(
+		'~(<script\\b(?=[^>]*\\bid=["\\\']woostify-general-js-extra["\\\'])[^>]*>)(.*?)</script\\s*>~is',
+		static function ( array $matches ): string {
+			$javascript = $matches[2] ?? '';
+			if ( strlen( $javascript ) < 150000 || false === strpos( $javascript, 'woostify_svg_icons' ) ) {
+				return $matches[0];
+			}
+
+			$hash     = hash( 'sha256', $javascript );
+			$filename = 'woostify-icons-' . substr( $hash, 0, 20 ) . '.js';
+			$file     = dirname( elmercado_home_static_cache_file() ) . '/' . $filename;
+			$existing = is_readable( $file ) ? @hash_file( 'sha256', $file ) : false;
+
+			if ( ! is_string( $existing ) || ! hash_equals( $hash, $existing ) ) {
+				if ( ! elmercado_write_atomic_home_file( $file, $javascript ) ) {
+					return $matches[0];
+				}
+			}
+
+			$url = esc_url( content_url( '/uploads/elmercado-home-static/' . $filename ) );
+			// Keep the same script ID, attributes, source, and relative ordering.
+			return substr( $matches[1], 0, -1 ) . ' src="' . $url . '"></script>';
+		},
+		$html,
+		1
+	) ?? $html;
+}
+
+/**
  * Reduce la ruta de render de Home sin eliminar ninguna regla visual:
  * - conserva al inicio solo el CSS medido para el primer viewport;
  * - agrupa el CSS inline completo existente en una hoja asíncrona;
@@ -110,6 +146,7 @@ function elmercado_optimize_home_document_for_first_paint( string $html ): strin
 	}
 
 	$html = elmercado_optimize_home_runtime_010259( $html );
+	$html = elmercado_externalize_home_woostify_icons_20261013( $html );
 
 	if ( '' === $html || false !== strpos( $html, 'id="elmercado-home-first-view-css"' ) ) {
 		return $html;
