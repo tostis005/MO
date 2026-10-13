@@ -312,5 +312,5 @@ add_action( 'wp_head', static function (): void {
 	echo '<meta name="emo-seo-diag-20261013" content="pathmatch:' . ( $route === $wanted ? 'yes' : 'no' ) .
 		';target:' . ( ! empty( $target ) ? 'yes' : 'no' ) .
 		';title_hook:' . ( false !== $hook ? 'yes' : 'no' ) .
-		';plugin:' . esc_attr( $plugin ) . '">' . "\n";
+		';plugin:' . esc_attr( $plugin ) . ';route:' . esc_attr( preg_match( '~^/[a-z0-9/_-]{1,170}$~', $route ) ? $route : 'other' ) . '">' . "\n";
 }, 1 );
