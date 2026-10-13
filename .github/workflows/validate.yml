@@ -43,6 +43,7 @@ jobs:
         shell: bash
         run: php tests/seo-gsc-english-batch3-20261012.php
 
+      # Post-release independent check after production deploy workflow #247.
       # Advisory only: GitHub-hosted runner provides an independent external
       # vantage point to check if first-cohort changes are live on WordPress.
       # Never gate unrelated tests on intermittent public HTTP failures.
