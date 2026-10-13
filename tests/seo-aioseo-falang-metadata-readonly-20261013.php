@@ -260,3 +260,38 @@ echo 'SEO_DIAG_TRP_BUFFER_STARTED=' .
 echo 'SEO_DIAG_TRP_LANGUAGE_CLI=' .
 	( isset( $GLOBALS['TRP_LANGUAGE'] ) && preg_match( '/^[a-z]{2}_[A-Z]{2}$/', (string) $GLOBALS['TRP_LANGUAGE'] )
 		? $GLOBALS['TRP_LANGUAGE'] : 'unresolved' ) . "\n";
+
+
+/* Identify the registered stop-translation callbacks by safe basename only. */
+$stop_callbacks = isset( $wp_filter['trp_stop_translating_page'] )
+	? (array) $wp_filter['trp_stop_translating_page']->callbacks : array();
+foreach ( $stop_callbacks as $priority => $entries ) {
+	foreach ( $entries as $entry ) {
+		$cb = $entry['function'] ?? '';
+		$name = 'anonymous';
+		$source = 'unknown';
+		try {
+			if ( is_array( $cb ) ) {
+				$prefix = is_object( $cb[0] ) ? get_class( $cb[0] ) : (string) $cb[0];
+				$name = $prefix . '::' . (string) $cb[1];
+				$reflection = new ReflectionMethod( $prefix, (string) $cb[1] );
+			} elseif ( $cb instanceof Closure ) {
+				$reflection = new ReflectionFunction( $cb );
+			} elseif ( is_string( $cb ) && function_exists( $cb ) ) {
+				$name = $cb;
+				$reflection = new ReflectionFunction( $cb );
+			} else {
+				continue;
+			}
+			$file_name = (string) $reflection->getFileName();
+			$source = basename( $file_name );
+		} catch ( Throwable $ignored ) {
+			$source = 'unresolved';
+		}
+		$name = preg_replace( '/[^a-zA-Z0-9_:\\\\-]/', '', $name );
+		$source = preg_replace( '/[^a-zA-Z0-9_.-]/', '', $source );
+		echo 'SEO_DIAG_TRP_STOP_CALLBACK=priority:' . (int) $priority .
+			' name:' . substr( (string) $name, 0, 105 ) .
+			' source_basename:' . substr( (string) $source, 0, 85 ) . "\n";
+	}
+}
