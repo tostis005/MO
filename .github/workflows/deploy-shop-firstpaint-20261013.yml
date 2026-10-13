@@ -49,10 +49,28 @@ jobs:
           sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=yes -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no elmercadodeorigen-child/inc/mobile-catalog-interactions-final.php "$STAGING_USER@$STAGING_HOST:$REMOTE/mobile-catalog-interactions-final.php"
           sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$STAGING_REMOTE_PATH' '$REMOTE' '$GITHUB_RUN_ID'" <<'REMOTE_SCRIPT'
           set -Eeuo pipefail
-          ROOT="$1"; UPLOAD="$2"; ID="$3"
+          REFERENCE="${1%/}"; UPLOAD="$2"; ID="$3"
+          case "$REFERENCE" in
+            */wp-content/*) REFERENCE="${REFERENCE%%/wp-content/*}" ;;
+            */wp-content) REFERENCE="$(dirname "$REFERENCE")" ;;
+          esac
+          if [ ! -f "$REFERENCE/wp-config.php" ]; then
+            CONFIG="$(find /var/www/vhosts "$HOME" -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            test -n "$CONFIG"
+            REFERENCE="$(dirname "$CONFIG")"
+          fi
+          ROOT="$(dirname "$REFERENCE")/httpdocs"
+          test -f "$ROOT/wp-config.php"
           THEME="$ROOT/wp-content/themes/elmercadodeorigen-child/inc"
           BACKUP="/tmp/emdo-shop-firstpaint-backup-$ID"
-          test -f "$ROOT/wp-config.php" && test -s "$THEME/navidad-2026-promo.php" && test -s "$THEME/mobile-catalog-interactions-final.php"
+          test -s "$THEME/navidad-2026-promo.php" && test -s "$THEME/mobile-catalog-interactions-final.php"
+          WP="$(command -v wp)"
+          PHP="$(command -v php)"
+          SITE="$("$PHP" "$WP" option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)"
+          case "$SITE" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) ;;
+            *) echo "Refusing to deploy: unexpected siteurl" >&2; exit 5 ;;
+          esac
           mkdir -p "$BACKUP"
           cp -p "$THEME/navidad-2026-promo.php" "$BACKUP/navidad-2026-promo.php"
           cp -p "$THEME/mobile-catalog-interactions-final.php" "$BACKUP/mobile-catalog-interactions-final.php"
@@ -154,7 +172,19 @@ jobs:
           test -n "$STAGING_HOST" && test -n "$STAGING_USER" && test -n "$STAGING_REMOTE_PATH"
           sshpass -e ssh -o StrictHostKeyChecking=yes -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" "bash -s -- '$STAGING_REMOTE_PATH' '$BACKUP'" <<'REMOTE_ROLLBACK'
           set -e
-          ROOT="$1"; BACKUP="$2"; TARGET="$ROOT/wp-content/themes/elmercadodeorigen-child/inc"
+          REFERENCE="${1%/}"; BACKUP="$2"
+          case "$REFERENCE" in
+            */wp-content/*) REFERENCE="${REFERENCE%%/wp-content/*}" ;;
+            */wp-content) REFERENCE="$(dirname "$REFERENCE")" ;;
+          esac
+          if [ ! -f "$REFERENCE/wp-config.php" ]; then
+            CONFIG="$(find /var/www/vhosts "$HOME" -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$CONFIG" ] || exit 1
+            REFERENCE="$(dirname "$CONFIG")"
+          fi
+          ROOT="$(dirname "$REFERENCE")/httpdocs"
+          test -f "$ROOT/wp-config.php"
+          TARGET="$ROOT/wp-content/themes/elmercadodeorigen-child/inc"
           if [ -s "$BACKUP/navidad-2026-promo.php" ] && [ -s "$BACKUP/mobile-catalog-interactions-final.php" ]; then
             cp -p "$BACKUP/navidad-2026-promo.php" "$TARGET/navidad-2026-promo.php"
             cp -p "$BACKUP/mobile-catalog-interactions-final.php" "$TARGET/mobile-catalog-interactions-final.php"
