@@ -1,0 +1,55 @@
+name: Trace shop first-paint layout 20261013
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/shop-first-paint-mutation-trace-20261013.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - run: npm install --no-save --no-audit --no-fund playwright-core@1.56.1 >/dev/null
+      - name: Find exact geometry changes during parsing and JS execution
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat >/tmp/trace.cjs <<'JS'
+          const {chromium}=require(process.cwd()+'/node_modules/playwright-core');
+          (async()=>{
+            const b=await chromium.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await b.newPage({viewport:{width:390,height:844}});
+            const c=await page.context().newCDPSession(page);await c.send('Network.enable');await c.send('Network.emulateNetworkConditions',{offline:false,latency:120,downloadThroughput:500000,uploadThroughput:125000,connectionType:'cellular4g'});
+            await page.addInitScript(()=>{
+              window.__trace={moves:[],mutations:[],shifts:[],resourceStyles:[]};
+              let last='';
+              const snap=()=>{
+                const get=selector=>{const e=document.querySelector(selector);if(!e)return null;const r=e.getBoundingClientRect();return [Math.round(r.top),Math.round(r.height),Math.round(r.width),Math.round(r.left)]};
+                const props={p:get('ul.products'),first:get('ul.products li.product'),bar:get('.woostify-sorting'),filter:get('.emo-mobile-filter-toggle'),sidebar:get('#secondary'),content:get('.site-content'),sortClass:document.querySelector('.woostify-sorting')?.className,prodParent:document.querySelector('ul.products')?.parentElement?.className?.toString().slice(0,100),ready:document.readyState};
+                const key=JSON.stringify(props);
+                if(key!==last){last=key;window.__trace.moves.push({at:Math.round(performance.now()),...props});}
+              };
+              setInterval(snap,25);
+              new MutationObserver(records=>{
+                const interesting=records.filter(r=>(r.target?.className?.toString?.().includes('sorting')||r.target?.className?.toString?.().includes('products')||r.target?.className?.toString?.().includes('filter')||Array.from(r.addedNodes||[]).some(n=>n.nodeType===1 && /sorting|products|filter/.test(n.className?.toString?.()||''))));
+                for(const r of interesting.slice(0,5))window.__trace.mutations.push({at:Math.round(performance.now()),type:r.type,attr:r.attributeName,node:r.target?.className?.toString?.().slice(0,110),added:Array.from(r.addedNodes||[]).slice(0,2).map(n=>n.nodeType===1?n.className?.toString().slice(0,65):'text')});
+                snap();
+              }).observe(document,{subtree:true,childList:true,attributes:true,attributeFilter:['class','style']});
+              new PerformanceObserver(l=>{for(const s of l.getEntries()){if(s.hadRecentInput)continue;window.__trace.shifts.push({at:Math.round(s.startTime),v:+s.value.toFixed(4),sources:s.sources?.slice(0,3).map(x=>({name:x.node?.className?.toString().slice(0,100),prev:x.previousRect?.toJSON?.(),current:x.currentRect?.toJSON?.()}))});snap();}}).observe({type:'layout-shift',buffered:true});
+              document.addEventListener('load',e=>{if(e.target?.tagName==='LINK')window.__trace.resourceStyles.push({at:Math.round(performance.now()),id:e.target?.id})},true);
+            });
+            const response=await page.goto('https://www.elmercadodeorigen.com/tienda/',{waitUntil:'domcontentloaded',timeout:62000});
+            await page.waitForTimeout(2400);
+            const trace=await page.evaluate(()=>window.__trace);
+            console.log('HTTP '+response.status());
+            console.log('GEOMETRY '+JSON.stringify(trace.moves.filter((m,i,a)=>i===0||i===a.length-1||i===0||Math.abs((a[i-1]?.p?.[0]||0)-(m.p?.[0]||0))>3||Math.abs((a[i-1]?.bar?.[1]||0)-(m.bar?.[1]||0))>3||(!a[i-1]?.filter&&m.filter)).slice(-50)));
+            console.log('SHIFTS '+JSON.stringify(trace.shifts));
+            console.log('MUTATIONS '+JSON.stringify(trace.mutations.slice(-90)));
+            console.log('STYLES '+JSON.stringify(trace.resourceStyles.slice(-30)));
+            await b.close();
+          })().catch(e=>{console.error(e.stack);process.exit(1)});
+          JS
+          export CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          node /tmp/trace.cjs
