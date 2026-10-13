@@ -71,18 +71,27 @@ def audit(index, path, target):
         with urllib.request.urlopen(req, timeout=20) as res:
             status = res.status
             content_type = res.headers.get("Content-Type", "")
-            raw = res.read(1_000_001)
-            if len(raw) > 1_000_000:
-                return {"path": path, "status": status, "title": False, "h1": -1,
-                        "desc": False, "desc_count": -1, "error": "response_too_large"}
+            # This site includes large inline assets. Read in bounded chunks
+            # rather than rejecting valid documents at 1 MB.
             charset = res.headers.get_content_charset() or "utf-8"
-            body = raw.decode(charset, "replace")
+            from codecs import getincrementaldecoder
+            decoder = getincrementaldecoder(charset)("replace")
+            parser = Metadata()
+            total_bytes = 0
+            while True:
+                chunk = res.read(65_536)
+                if not chunk:
+                    break
+                total_bytes += len(chunk)
+                if total_bytes > 25_000_000:
+                    return {"path": path, "status": status, "title": False, "h1": -1,
+                            "desc": False, "desc_count": -1, "error": "response_above_25_mb"}
+                parser.feed(decoder.decode(chunk))
+            parser.feed(decoder.decode(b"", final=True))
     except Exception as exc:
         return {"path": path, "status": None, "title": False, "h1": -1,
                 "desc": False, "desc_count": -1, "error": type(exc).__name__}
     try:
-        parser = Metadata()
-        parser.feed(body)
         expected_title = norm(target["title"] + " | El Mercado de Origen")
         expected_description = norm(target["description"])
         actual_title = norm("".join(parser.title_bits))
