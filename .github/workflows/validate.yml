@@ -17,16 +17,6 @@ permissions:
   contents: read
 
 jobs:
-  # Runs only for this controlled same-repository branch. The reused
-  # workflow is read-only: no cache invalidation, deploy or theme writes.
-  seo-origin-readonly-snapshot:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'seo/origin-readonly-snapshot-20261013'
-    permissions:
-      contents: read
-      issues: write  # Required by reusable workflow; issue reporter skips PR events.
-    uses: ./.github/workflows/diagnose-production-seo-origin-20261013.yml
-    secrets: inherit
-
   validate:
     runs-on: ubuntu-latest
     steps:
@@ -106,5 +96,15 @@ jobs:
         shell: bash
         run: python3 tests/seo-html-audit.py --self-test
 
+      - name: Inspect English article at production origin without writes
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'seo/origin-readonly-snapshot-20261013'
+        shell: bash
+        env:
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_PORT: ${{ secrets.STAGING_PORT }}
+          STAGING_USER: ${{ secrets.STAGING_USER }}
+          STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+          STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+        run: bash scripts/seo-origin-cache-readonly-20261013.sh
       - name: Check whitespace errors
         run: git diff --check HEAD~1 HEAD || git diff --check
