@@ -1,0 +1,51 @@
+name: AB early shop filter 20261013
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ab-early-catalog-filter-20261013.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - run: npm install --no-save --no-audit --no-fund playwright-core@1.56.1 >/dev/null
+      - name: Test no-production rewrite of filter and toolbar
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat >/tmp/early-filter.cjs <<'JS'
+          const {chromium}=require(process.cwd()+'/node_modules/playwright-core');
+          const sleep=x=>new Promise(r=>setTimeout(r,x));
+          function rewrite(html){
+            const start=html.search(/<div\\b[^>]*class=["'][^"']*\\bwoostify-sorting\\b[^"']*["'][^>]*>/i);
+            if(start<0)throw new Error('sorting div not found in HTML');
+            const opening=html.slice(start).match(/^<div\\b[^>]*>/i)?.[0];
+            if(!opening)throw new Error('sorting div opening not found');
+            const updated=opening.replace(/\\bclass=(["'])(.*?)\\1/i,(m,q,v)=>'class='+q+v+(v.includes('emo-catalog-toolbar-shared-010229')?'':' emo-catalog-toolbar-shared-010229')+q);
+            html=html.slice(0,start)+updated+html.slice(start+opening.length);
+            let pos=start+updated.length, depth=1, regex=/<\\/?div\\b[^>]*>/gi;regex.lastIndex=pos;
+            while(depth>0){const m=regex.exec(html);if(!m)throw new Error('woostify sorting closing div not found');depth+=m[0].startsWith('</')?-1:1;pos=regex.lastIndex;}
+            const button='<button type="button" class="emo-mobile-filter-toggle" aria-expanded="false" aria-controls="emo-mobile-filter-panel"><span class="emo-filter-label">Filtrar productos</span><span class="emo-filter-chevron" aria-hidden="true">⌄</span></button>';
+            html=html.slice(0,pos)+button+html.slice(pos);
+            console.log('INJECTED toolbar found at '+start+' earlyButtonAt '+pos+' htmlBytes '+html.length);
+            return html;
+          }
+          (async()=>{const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-dev-shm-usage']});
+            for(const [mode,isCandidate] of [['baseline',false],['early-struct',true]]){
+              const page=await browser.newPage({viewport:{width:390,height:844}});
+              const session=await page.context().newCDPSession(page);await session.send('Network.enable');
+              await session.send('Network.emulateNetworkConditions',{offline:false,latency:120,downloadThroughput:500000,uploadThroughput:125000,connectionType:'cellular4g'});
+              await page.addInitScript(()=>{window.__p={cls:0,shifts:[],lcp:0};new PerformanceObserver(l=>{for(let e of l.getEntries()){if(e.hadRecentInput)continue;window.__p.cls+=e.value;window.__p.shifts.push({t:Math.round(e.startTime),v:+e.value.toFixed(4),s:e.sources?.slice(0,2).map(s=>s.node?.className?.toString?.().slice(0,60))});}}).observe({type:'layout-shift',buffered:true});new PerformanceObserver(l=>{window.__p.lcp=Math.round(l.getEntries().at(-1)?.startTime||0)}).observe({type:'largest-contentful-paint',buffered:true});});
+              if(isCandidate)await page.route('https://www.elmercadodeorigen.com/tienda/',async route=>{
+                const origin=await route.fetch({timeout:60000});const html=rewrite(await origin.text());await route.fulfill({response:origin,body:html,headers:{...origin.headers(),'content-type':'text/html;charset=UTF-8'}});
+              });
+              const res=await page.goto('https://www.elmercadodeorigen.com/tienda/',{waitUntil:'domcontentloaded',timeout:65000});await sleep(3700);
+              const x=await page.evaluate(()=>{let n=performance.getEntriesByType('navigation')[0], p=window.__p;let pos=s=>{const r=document.querySelector(s)?.getBoundingClientRect();return r?{y:Math.round(r.top),h:Math.round(r.height)}:null};return {cls:+p.cls.toFixed(4),lcp:p.lcp,ttfb:Math.round(n?.responseStart||0),shifts:p.shifts.filter(x=>x.v>=0.01),toggleCount:document.querySelectorAll('.emo-mobile-filter-toggle').length,toggleExists:!!document.querySelector('.emo-mobile-filter-toggle'),positions:{products:pos('ul.products'),toolbar:pos('.woostify-sorting'),filter:pos('.emo-mobile-filter-toggle')},toolbarClass:document.querySelector('.woostify-sorting')?.className};});
+              console.log('RESULT '+mode+' HTTP '+res.status()+' '+JSON.stringify(x));await page.close();
+            }await browser.close();})().catch(e=>{console.error(e.stack);process.exit(1)});
+          JS
+          export CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          node /tmp/early-filter.cjs
