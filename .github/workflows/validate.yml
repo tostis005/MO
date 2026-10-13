@@ -9,6 +9,7 @@ on:
       - '.github/workflows/validate.yml'
       - '.github/workflows/seo-staging-html-audit.yml'
       - '.github/workflows/production-seo-gsc-batch1-20261013.yml'
+      - '.github/workflows/diagnose-production-seo-origin-20261013.yml'
   workflow_dispatch:
 
 permissions:
@@ -20,6 +21,17 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Confirm production diagnostic is read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          file=.github/workflows/diagnose-production-seo-origin-20261013.yml
+          test -f "$file"
+          grep -q 'Read-only' "$file" || grep -q 'read-only' "$file"
+          grep -q 'batch1_module_present' "$file"
+          grep -q 'wp-content/cache' "$file"
+          ! grep -Eq 'rsync |theme activate|wp cache flush|rm -rf|wp plugin (activate|deactivate)' "$file"
 
       - name: Check guarded SEO release workflow
         shell: bash
