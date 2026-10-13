@@ -224,6 +224,88 @@ add_action(
 	PHP_INT_MAX
 );
 
+/**
+ * Render the existing mobile catalogue filter trigger in the initial HTML.
+ *
+ * Previously the footer JavaScript inserted it after first paint, displacing
+ * the entire product grid. Keep exactly the same label and position; the
+ * original drawer script below only hydrates this pre-rendered button.
+ */
+function elmercado_shop_early_filter_markup_20261013( string $html ): string {
+	if ( '' === $html || false === stripos( $html, 'woostify-sorting' ) ) {
+		return $html;
+	}
+
+	// Do not create a second trigger if another template already renders it.
+	if ( preg_match( '~<button\b[^>]*class=(["\'])[^"\']*\bemo-mobile-filter-toggle\b[^"\']*\1~i', $html ) ) {
+		return $html;
+	}
+
+	if ( ! preg_match(
+		'~<div\b[^>]*class=(["\'])[^"\']*\bwoostify-sorting\b[^"\']*\1[^>]*>~i',
+		$html,
+		$match,
+		PREG_OFFSET_CAPTURE
+	) ) {
+		return $html;
+	}
+
+	$open        = $match[0][0];
+	$open_offset = (int) $match[0][1];
+	if ( false === strpos( $open, 'emo-catalog-toolbar-shared-010229' ) ) {
+		$updated = preg_replace_callback(
+			'~\bclass=(["\'])([^"\']*)\1~i',
+			static fn ( array $m ): string => 'class=' . $m[1] . $m[2] . ' emo-catalog-toolbar-shared-010229' . $m[1],
+			$open,
+			1
+		);
+		if ( is_string( $updated ) ) {
+			$html = substr_replace( $html, $updated, $open_offset, strlen( $open ) );
+			$open = $updated;
+		}
+	}
+
+	// Find the actual closing DIV, preserving Woostify's nested controls.
+	$position = $open_offset + strlen( $open );
+	$depth    = 1;
+	$limit    = 0;
+	while ( $depth > 0 && ++$limit < 500 ) {
+		if ( ! preg_match( '~</?div\b[^>]*>~i', $html, $tag, PREG_OFFSET_CAPTURE, $position ) ) {
+			return $html;
+		}
+		$depth   += str_starts_with( $tag[0][0], '</' ) ? -1 : 1;
+		$position = (int) $tag[0][1] + strlen( $tag[0][0] );
+	}
+	if ( 0 !== $depth ) {
+		return $html;
+	}
+
+	$button = '<button type="button" class="emo-mobile-filter-toggle" data-emo-early-filter="1" aria-expanded="false" aria-controls="emo-mobile-filter-panel">'
+		. '<span class="emo-filter-label">Filtrar productos</span>'
+		. '<span class="emo-filter-chevron" aria-hidden="true">⌄</span></button>';
+
+	return substr_replace( $html, $button, $position, 0 );
+}
+
+add_action(
+	'template_redirect',
+	static function (): void {
+		if ( is_admin() || is_feed() || wp_doing_ajax() || ( isset( $_SERVER['REQUEST_METHOD'] ) && 'GET' !== strtoupper( (string) $_SERVER['REQUEST_METHOD'] ) ) ) {
+			return;
+		}
+		if ( ! function_exists( 'is_shop' ) || ! ( is_shop() || is_product_category() || is_product_tag() ) ) {
+			return;
+		}
+		if ( get_query_var( 'store' )
+			|| ( function_exists( 'wcfm_is_store_page' ) && wcfm_is_store_page() )
+			|| ( function_exists( 'wcfmmp_is_store_page' ) && wcfmmp_is_store_page() ) ) {
+			return;
+		}
+		ob_start( 'elmercado_shop_early_filter_markup_20261013' );
+	},
+	-900
+);
+
 add_action(
 	'wp_footer',
 	static function (): void {
@@ -239,18 +321,22 @@ add_action(
 
 			const sorting = document.querySelector('.woostify-sorting');
 			const sidebar = document.querySelector('#secondary.widget-area,.site-content .widget-area,.content-area + .widget-area,.shop-widget-area');
-			if (!sorting || !sidebar || document.querySelector('.emo-mobile-filter-toggle')) return;
+			const earlyToggle = document.querySelector('.emo-mobile-filter-toggle[data-emo-early-filter="1"]');
+			const otherToggle = document.querySelector('.emo-mobile-filter-toggle');
+			if (!sorting || !sidebar || (otherToggle && !earlyToggle)) return;
 
 			const marker = document.createComment('emo-filter-sidebar-home');
 			sidebar.parentNode?.insertBefore(marker, sidebar);
 
-			const toggle = document.createElement('button');
-			toggle.type = 'button';
-			toggle.className = 'emo-mobile-filter-toggle';
-			toggle.setAttribute('aria-expanded', 'false');
-			toggle.setAttribute('aria-controls', 'emo-mobile-filter-panel');
-			toggle.innerHTML = '<span class="emo-filter-label">Filtrar productos</span><span class="emo-filter-chevron" aria-hidden="true">⌄</span>';
-			sorting.insertAdjacentElement('afterend', toggle);
+			const toggle = earlyToggle || document.createElement('button');
+			if (!earlyToggle) {
+				toggle.type = 'button';
+				toggle.className = 'emo-mobile-filter-toggle';
+				toggle.setAttribute('aria-expanded', 'false');
+				toggle.setAttribute('aria-controls', 'emo-mobile-filter-panel');
+				toggle.innerHTML = '<span class="emo-filter-label">Filtrar productos</span><span class="emo-filter-chevron" aria-hidden="true">⌄</span>';
+				sorting.insertAdjacentElement('afterend', toggle);
+			}
 
 			const shell = document.createElement('div');
 			shell.className = 'emo-mobile-filter-shell';
