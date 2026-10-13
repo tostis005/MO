@@ -33,14 +33,25 @@ jobs:
             console.log('INJECTED toolbar found at '+start+' earlyButtonAt '+pos+' htmlBytes '+html.length);
             return html;
           }
+          function moveStyles(html){
+            const ids=['mdo-catalog-toolbar-layout-20260820','mdo-catalog-toolbar-final-polish-20260820'];
+            const moved=[];
+            html=html.replace(/<style\\b[^>]*>[\\s\\S]*?<\\/style\\s*>/gi,tag=>{
+              if(ids.some(id=>tag.slice(0,230).includes('id="'+id+'"')||tag.slice(0,230).includes("id='"+id+"'"))){moved.push(tag);return '';}
+              return tag;
+            });
+            if(moved.length!==2)throw new Error('Expected two footer toolbar style blocks, found '+moved.length);
+            console.log('MOVED_STYLES '+moved.map(x=>x.match(/id=["']([^"']+)/)?.[1]+':'+x.length).join(','));
+            return html.replace(/<\\/head>/i,moved.join('\\n')+'\\n</head>');
+          }
           (async()=>{const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-dev-shm-usage']});
-            for(const [mode,isCandidate] of [['baseline',false],['early-struct',true]]){
+            for(const [mode,isCandidate] of [['baseline',false],['early-css',true],['early-css-struct',true]]){
               const page=await browser.newPage({viewport:{width:390,height:844}});
               const session=await page.context().newCDPSession(page);await session.send('Network.enable');
               await session.send('Network.emulateNetworkConditions',{offline:false,latency:120,downloadThroughput:500000,uploadThroughput:125000,connectionType:'cellular4g'});
               await page.addInitScript(()=>{window.__p={cls:0,shifts:[],lcp:0};new PerformanceObserver(l=>{for(let e of l.getEntries()){if(e.hadRecentInput)continue;window.__p.cls+=e.value;window.__p.shifts.push({t:Math.round(e.startTime),v:+e.value.toFixed(4),s:e.sources?.slice(0,2).map(s=>s.node?.className?.toString?.().slice(0,60))});}}).observe({type:'layout-shift',buffered:true});new PerformanceObserver(l=>{window.__p.lcp=Math.round(l.getEntries().at(-1)?.startTime||0)}).observe({type:'largest-contentful-paint',buffered:true});});
               if(isCandidate)await page.route('https://www.elmercadodeorigen.com/tienda/',async route=>{
-                const origin=await route.fetch({timeout:60000});const html=rewrite(await origin.text());await route.fulfill({response:origin,body:html,headers:{...origin.headers(),'content-type':'text/html;charset=UTF-8'}});
+                const origin=await route.fetch({timeout:60000});let html=moveStyles(await origin.text());if(mode==='early-css-struct')html=rewrite(html);await route.fulfill({response:origin,body:html,headers:{...origin.headers(),'content-type':'text/html;charset=UTF-8'}});
               });
               const res=await page.goto('https://www.elmercadodeorigen.com/tienda/',{waitUntil:'domcontentloaded',timeout:65000});await sleep(3700);
               const x=await page.evaluate(()=>{let n=performance.getEntriesByType('navigation')[0], p=window.__p;let pos=s=>{const r=document.querySelector(s)?.getBoundingClientRect();return r?{y:Math.round(r.top),h:Math.round(r.height)}:null};return {cls:+p.cls.toFixed(4),lcp:p.lcp,ttfb:Math.round(n?.responseStart||0),shifts:p.shifts.filter(x=>x.v>=0.01),toggleCount:document.querySelectorAll('.emo-mobile-filter-toggle').length,toggleExists:!!document.querySelector('.emo-mobile-filter-toggle'),positions:{products:pos('ul.products'),toolbar:pos('.woostify-sorting'),filter:pos('.emo-mobile-filter-toggle')},toolbarClass:document.querySelector('.woostify-sorting')?.className};});
