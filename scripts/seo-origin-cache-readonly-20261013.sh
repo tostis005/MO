@@ -61,6 +61,28 @@ if [ -f "$dropin" ]; then
     echo "advanced_cache_$flag=$state"
   done
 fi
+# Inspect only bounded counts and indicators. Never print cache filenames or PHP source.
+cache_dir="$prod/wp-content/uploads/elmercado-blog-static-v2"
+if [ -d "$cache_dir" ]; then
+  echo 'blog_static_v2_dir_present=yes'
+  root_html="$(find "$cache_dir" -mindepth 1 -maxdepth 1 -type f -name '*.html' 2>/dev/null | wc -l | tr -d ' ')"
+  nested_html="$(find "$cache_dir" -mindepth 2 -maxdepth 6 -type f -name '*.html' 2>/dev/null | wc -l | tr -d ' ')"
+  english_paths="$(find "$cache_dir" -mindepth 1 -maxdepth 6 -type f -path '*/en/*' 2>/dev/null | wc -l | tr -d ' ')"
+  potato_paths="$(find "$cache_dir" -mindepth 1 -maxdepth 6 -type f -iname '*why-cut-potatoes*' 2>/dev/null | wc -l | tr -d ' ')"
+  echo "blog_static_v2_root_html=$root_html"
+  echo "blog_static_v2_nested_html=$nested_html"
+  echo "blog_static_v2_en_paths=$english_paths"
+  echo "blog_static_v2_potato_paths=$potato_paths"
+else
+  echo 'blog_static_v2_dir_present=no'
+fi
+if [ -f "$dropin" ]; then
+  for pair in 'static_v2:elmercado-blog-static-v2' 'static_en:/en/|english' 'static_serving:readfile|file_get_contents|fpassthru' 'static_key:sha1|md5|hash|crc32'; do
+    flag="${pair%%:*}"; regex="${pair#*:}"
+    if grep -Eqi "$regex" "$dropin"; then state=yes; else state=no; fi
+    echo "advanced_cache_$flag=$state"
+  done
+fi
 wp_cache="$("$php_bin" -d memory_limit=256M "$wp_bin" eval 'echo defined("WP_CACHE") && WP_CACHE ? "yes" : "no";' --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
 case "$wp_cache" in yes|no) ;; *) wp_cache=unknown ;; esac
 echo "wp_cache_enabled=$wp_cache"
