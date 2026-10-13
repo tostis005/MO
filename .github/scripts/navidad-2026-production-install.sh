@@ -29,22 +29,27 @@ stylesheet="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --
 [ "$stylesheet" = 'elmercadodeorigen-child' ] || { echo 'Tema inesperado' >&2; exit 15; }
 theme="$prod/wp-content/themes/elmercadodeorigen-child"
 [ -f "$theme/functions.php" ] || exit 16
-for php in navidad-2026-campaign.php navidad-2026-landing.php navidad-2026-mu-loader.php; do
+for php in navidad-2026-campaign.php navidad-2026-landing.php navidad-2026-mu-loader.php navidad-2026-promo.php; do
   "$php_bin" -l "$incoming/$php" >/dev/null || exit 17
 done
 test -s "$incoming/navidad-2026.css"
+test -s "$incoming/navidad-2026-promo.css"
 
 d1="$theme/inc/navidad-2026-campaign.php"
 d2="$theme/templates/navidad-2026-landing.php"
 d3="$theme/assets/css/navidad-2026.css"
 d4="$prod/wp-content/mu-plugins/emdo-navidad-2026.php"
+d5="$theme/inc/navidad-2026-promo.php"
+d6="$theme/assets/css/navidad-2026-promo.css"
 mkdir -p "$theme/inc" "$theme/templates" "$theme/assets/css" "$prod/wp-content/mu-plugins" "$incoming/backup"
-for i in 1 2 3 4; do
+for i in 1 2 3 4 5 6; do
   case "$i" in
     1) dest="$d1" ;;
     2) dest="$d2" ;;
     3) dest="$d3" ;;
     4) dest="$d4" ;;
+    5) dest="$d5" ;;
+    6) dest="$d6" ;;
   esac
   if [ -f "$dest" ]; then
     cp -p "$dest" "$incoming/backup/$i"
@@ -57,12 +62,14 @@ rollback() {
   trap - EXIT HUP INT TERM
   if [ "$code" -ne 0 ] && [ "$installed" -eq 1 ]; then
     echo 'Despliegue incorrecto: restaurando SOLO los archivos Navidad' >&2
-    for i in 1 2 3 4; do
+    for i in 1 2 3 4 5 6; do
       case "$i" in
     1) dest="$d1" ;;
     2) dest="$d2" ;;
     3) dest="$d3" ;;
     4) dest="$d4" ;;
+    5) dest="$d5" ;;
+    6) dest="$d6" ;;
   esac
       if [ -f "$incoming/backup/$i" ]; then
         cp -p "$incoming/backup/$i" "$dest"
@@ -80,10 +87,21 @@ install -m 0644 "$incoming/navidad-2026-campaign.php" "$d1"
 install -m 0644 "$incoming/navidad-2026-landing.php" "$d2"
 install -m 0644 "$incoming/navidad-2026.css" "$d3"
 install -m 0644 "$incoming/navidad-2026-mu-loader.php" "$d4"
+install -m 0644 "$incoming/navidad-2026-promo.php" "$d5"
+install -m 0644 "$incoming/navidad-2026-promo.css" "$d6"
 
 loaded="$("$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo function_exists("emdo_navidad_2026_route") ? "NAVIDAD_ACTIVE" : "NAVIDAD_MISSING";' --path="$prod" --allow-root 2>/dev/null || true)"
 printf 'WP_CLI_MODULE_CHECK=%s\n' "$loaded"
 printf '%s' "$loaded" | grep -Fq 'NAVIDAD_ACTIVE'
+banners="$("$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo function_exists("emdo_navidad_promo_markup_2026") ? "BANNERS_ACTIVE" : "BANNERS_MISSING";' --path="$prod" --allow-root 2>/dev/null || true)"
+printf 'WP_CLI_BANNERS_CHECK=%s\n' "$banners"
+printf '%s' "$banners" | grep -Fq 'BANNERS_ACTIVE'
 "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
 "$php_bin" -d memory_limit=512M "$wp_bin" rocket clean --confirm --path="$prod" --allow-root >/dev/null 2>&1 || true
+# Regenerar versiones cacheadas de portada y blog sin tocar contenido/SEO.
+rm -f "$prod/wp-content/uploads/elmercado-home-static/index.html" "$prod/wp-content/cache/elmercado-home-static/index.html"
+blog_cache="$prod/wp-content/uploads/elmercado-blog-static-v2"
+if [ -d "$blog_cache" ]; then
+  find "$blog_cache" -maxdepth 1 -type f -name '*.html' -delete
+fi
 echo 'NAVIDAD_PRODUCTION_FILES_OK (no functions.php or SEO files changed)'
