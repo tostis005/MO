@@ -21,6 +21,9 @@ jobs:
   # workflow is read-only: no cache invalidation, deploy or theme writes.
   seo-origin-readonly-snapshot:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'seo/origin-readonly-snapshot-20261013'
+    permissions:
+      contents: read
+      issues: write  # Required by reusable workflow; issue reporter skips PR events.
     uses: ./.github/workflows/diagnose-production-seo-origin-20261013.yml
     secrets: inherit
 
