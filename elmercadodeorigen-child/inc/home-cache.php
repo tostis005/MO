@@ -216,6 +216,18 @@ function elmercado_optimize_home_document_for_first_paint( string $html ): strin
 	 */
 	$mobile_nav_guard  = '@media(min-width:992px){body.home #mobile-navigation.sidebar-menu,body.home .sidebar-menu{display:none!important}}@media(max-width:991px){html:not([data-emo-menu-intent="1"]) body.home .sidebar-menu{display:none!important}}';
 	$mobile_nav_intent = '<script id="elmercado-home-mobile-nav-intent-critical">document.addEventListener("click",function(e){var t=e.target&&e.target.closest?e.target.closest(".toggle-sidebar-menu-btn"):null;if(t){document.documentElement.setAttribute("data-emo-menu-intent","1");}},true);</script>';
+	/* Match the existing footer's exact six-vendor mobile collage contract at
+	 * first paint. The footer still prints its original CSS unchanged. */
+	$vendor_grid_firstpaint_css = '@media(max-width:599px){'
+		. 'html body.home.elmercado-child-theme .emo-home .emo-hero__grid > .emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-6{'
+		. 'display:grid!important;width:100%!important;height:auto!important;min-height:0!important;max-height:none!important;'
+		. 'margin:.15rem auto 0!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;'
+		. 'grid-template-rows:repeat(3,clamp(132px,35vw,158px))!important;grid-auto-rows:auto!important;gap:10px!important;transform:none!important}'
+		. 'html body.home.elmercado-child-theme .emo-home .emo-hero__grid > .emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-6 > .emo-hero-card{'
+		. 'grid-column:auto!important;grid-row:auto!important;width:auto!important;height:auto!important;'
+		. 'min-width:0!important;min-height:0!important;border-radius:14px!important;transform:none!important}'
+		. '}';
+	$vendor_grid_firstpaint_tag = '<style id="elmercado-home-vendor-grid-firstpaint-20261013">' . $vendor_grid_firstpaint_css . '</style>';
 	$critical_tag      = '<style id="elmercado-home-first-view-css">' . $mobile_nav_guard . $critical . '</style>' . $mobile_nav_intent;
 	$css_url           = esc_url( elmercado_home_deferred_css_url() );
 	$deferred_tag      = '<link id="elmercado-home-deferred-css" rel="preload" as="style" href="' . $css_url . '" onload="this.onload=null;this.rel=\'stylesheet\'">'
@@ -227,7 +239,7 @@ function elmercado_optimize_home_document_for_first_paint( string $html ): strin
 		$head_protected,
 		1
 	) ?? $head_protected;
-	$head_protected = preg_replace( '~</head>~i', $deferred_tag . '</head>', $head_protected, 1 ) ?? $head_protected;
+	$head_protected = preg_replace( '~</head>~i', $vendor_grid_firstpaint_tag . $deferred_tag . '</head>', $head_protected, 1 ) ?? $head_protected;
 	$optimized_head = strtr( $head_protected, $scripts );
 	$html           = substr_replace( $html, $optimized_head, $head_start, $head_end - $head_start );
 
