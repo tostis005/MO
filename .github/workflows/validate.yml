@@ -359,7 +359,9 @@ jobs:
             grep -Fq 'Why do cut potatoes turn black? Learn how oxidation' "$temp" && desc=new || true
             probe="$(grep -oE 'pathmatch:(yes|no);target:(yes|no);title_hook:(yes|no);plugin:(yoast|rankmath|aioseo|seopress|other)' "$temp" | head -n 1 || true)"
             [ -n "$probe" ] || probe=missing
-            echo "transient_http_${variant}=status:${status} title:${title} desc:${desc} h1:${h1} module_style_marker:${runtime} flags:${probe}"
+            observed_route="$(grep -oE 'route:(/[a-z0-9/_-]+|other)' "$temp" | head -n 1 || true)"
+            [ -n "$observed_route" ] || observed_route=missing
+            echo "transient_http_${variant}=status:${status} title:${title} desc:${desc} h1:${h1} module_style_marker:${runtime} flags:${probe} ${observed_route}"
             rm -f "$temp"
           done
           # EXIT trap ALWAYS removes the only installed PHP module.
