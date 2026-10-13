@@ -114,6 +114,32 @@ jobs:
           if [ -d "$prod/wp-content/cache" ]; then
             find "$prod/wp-content/cache" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | head -n 20 || true
           fi
+          echo '=== PHP-FPM / NGINX CACHE CONFIG (READ-ONLY, DIRECTIVE VALUES ONLY) ==='
+          for ini in /opt/plesk/php/*/etc/php.ini; do
+            [ -f "$ini" ] || continue
+            flavor="${ini#/opt/plesk/php/}"
+            flavor="${flavor%%/*}"
+            flags="$(awk -F= '
+              /^[[:space:]]*(opcache.validate_timestamps|opcache.revalidate_freq|realpath_cache_ttl|opcache.file_update_protection)[[:space:]]*=/ {
+                gsub(/[[:space:]]/, "", $1); gsub(/[[:space:]]|;.*/, "", $2);
+                if ($2 ~ /^[0-9]+$/) printf("%s=%s ", $1, $2);
+              }
+            ' "$ini" | head -c 230)"
+            [ -z "$flags" ] || echo "php_version=$flavor $flags"
+          done
+          found_cache=no
+          # Never print the entire webserver configuration (may contain secrets).
+          for conf in /etc/nginx/nginx.conf /etc/nginx/plesk.conf.d/vhosts/*.conf; do
+            [ -f "$conf" ] || continue
+            if grep -Eq '^[[:space:]]*(fastcgi_cache|proxy_cache)[[:space:]]+[^;]+' "$conf"; then
+              found_cache=yes
+            fi
+          done
+          echo "nginx_explicit_cache_directive=$found_cache"
+          echo '=== WORDPRESS CACHE DROP-INS (EXISTENCE ONLY) ==='
+          for candidate in "$prod/wp-content/advanced-cache.php" "$prod/wp-content/object-cache.php"; do
+            [ ! -f "$candidate" ] || echo "cache_dropin_present=$(basename "$candidate")"
+          done
           echo '=== ORIGIN HOST LISTENERS (PORTS ONLY) ==='
           ss -lnt 2>/dev/null | awk 'NR > 1 { print $4 }' | grep -E '(:80|:443)$' | sed -E 's/^.*:/:/' | sort -u || true
           echo '=== ORIGIN DIRECT READ-ONLY HTTP PROBES ==='
