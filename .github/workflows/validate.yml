@@ -208,7 +208,8 @@ jobs:
             inspected=$((inspected + 1))
             for setting in opcache.validate_timestamps opcache.revalidate_freq opcache.file_update_protection opcache.enable; do
               # Report only exact numeric settings and no other contents.
-              match="$(grep -Ei "^[[:space:]]*${setting//./\.}[[:space:]]*=[[:space:]]*[0-9]+[[:space:]]*(;.*)?$" "$conf" | tail -n 1 || true)"
+              setting_pattern="$(printf '%s' "$setting" | sed 's/\\./\\\\./g')"
+              match="$(grep -Ei "^[[:space:]]*$setting_pattern[[:space:]]*=[[:space:]]*[0-9]+[[:space:]]*(;.*)?$" "$conf" | tail -n 1 || true)"
               if [ -n "$match" ]; then
                 value="$(printf '%s' "$match" | sed -nE 's/^[^=]*=[[:space:]]*([0-9]+).*/\1/p')"
                 case "$value" in ''|*[!0-9]*) ;; *) echo "SEO_FPM_SETTING_${setting}=$value" ;; esac
