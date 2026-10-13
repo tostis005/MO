@@ -33,6 +33,16 @@ jobs:
             console.log('INJECTED toolbar found at '+start+' earlyButtonAt '+pos+' htmlBytes '+html.length);
             return html;
           }
+          function earlyBanner(html){
+            const match=html.match(/<template\b[^>]*id=["']emdo-navidad-promo-fallback-2026["'][^>]*>([\s\S]*?)<\/template\s*>/i);
+            if(!match)throw new Error('Navidad banner template absent');
+            const header=/<header\b[^>]*class=["'][^"']*\bemo-shop-title-block\b[^"']*["'][^>]*>/i;
+            const matchHeader=html.match(header);
+            if(!matchHeader)throw new Error('Shop title header absent');
+            if(html.slice(0,html.indexOf('<template')).includes('data-emdo-navidad-promo="2026"'))throw new Error('Banner already in HTML');
+            console.log('BANNER_SSR_INJECT at '+html.indexOf(matchHeader[0])+' size '+match[1].length);
+            return html.replace(header,matchHeader[0]+match[1]);
+          }
           function moveStyles(html){
             const ids=['mdo-catalog-toolbar-layout-20260820','mdo-catalog-toolbar-final-polish-20260820'];
             const moved=[];
@@ -45,13 +55,13 @@ jobs:
             return html.replace(/<\/head>/i,moved.join('\n')+'\n</head>');
           }
           (async()=>{const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-dev-shm-usage']});
-            for(const [mode,isCandidate] of [['baseline',false],['early-css',true],['early-css-struct',true]]){
+            for(const [mode,isCandidate] of [['baseline',false],['early-banner',true],['early-banner-toggle',true]]){
               const page=await browser.newPage({viewport:{width:390,height:844}});
               const session=await page.context().newCDPSession(page);await session.send('Network.enable');
               await session.send('Network.emulateNetworkConditions',{offline:false,latency:120,downloadThroughput:500000,uploadThroughput:125000,connectionType:'cellular4g'});
               await page.addInitScript(()=>{window.__p={cls:0,shifts:[],lcp:0};new PerformanceObserver(l=>{for(let e of l.getEntries()){if(e.hadRecentInput)continue;window.__p.cls+=e.value;window.__p.shifts.push({t:Math.round(e.startTime),v:+e.value.toFixed(4),s:e.sources?.slice(0,2).map(s=>s.node?.className?.toString?.().slice(0,60))});}}).observe({type:'layout-shift',buffered:true});new PerformanceObserver(l=>{window.__p.lcp=Math.round(l.getEntries().at(-1)?.startTime||0)}).observe({type:'largest-contentful-paint',buffered:true});});
               if(isCandidate)await page.route('https://www.elmercadodeorigen.com/tienda/',async route=>{
-                const origin=await route.fetch({timeout:60000});let html=moveStyles(await origin.text());if(mode==='early-css-struct')html=rewrite(html);await route.fulfill({response:origin,body:html,headers:{...origin.headers(),'content-type':'text/html;charset=UTF-8'}});
+                const origin=await route.fetch({timeout:60000});let html=earlyBanner(await origin.text());if(mode==='early-banner-toggle')html=rewrite(html);await route.fulfill({response:origin,body:html,headers:{...origin.headers(),'content-type':'text/html;charset=UTF-8'}});
               });
               const res=await page.goto('https://www.elmercadodeorigen.com/tienda/',{waitUntil:'domcontentloaded',timeout:65000});await sleep(3700);
               const x=await page.evaluate(()=>{let n=performance.getEntriesByType('navigation')[0], p=window.__p;let pos=s=>{const r=document.querySelector(s)?.getBoundingClientRect();return r?{y:Math.round(r.top),h:Math.round(r.height)}:null};return {cls:+p.cls.toFixed(4),lcp:p.lcp,ttfb:Math.round(n?.responseStart||0),shifts:p.shifts.filter(x=>x.v>=0.01),toggleCount:document.querySelectorAll('.emo-mobile-filter-toggle').length,toggleExists:!!document.querySelector('.emo-mobile-filter-toggle'),positions:{products:pos('ul.products'),toolbar:pos('.woostify-sorting'),filter:pos('.emo-mobile-filter-toggle')},toolbarClass:document.querySelector('.woostify-sorting')?.className};});
