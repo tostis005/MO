@@ -418,3 +418,27 @@ add_action( 'wp_footer', static function (): void {
 		echo '<span id="emo-qa-buffer" data-start="' . ( ! empty( $GLOBALS['emo_seo_buffer_started_20261013'] ) ? 'yes' : 'no' ) . '" data-replaced="' . (int) ( $GLOBALS['emo_seo_meta_replaced_20261013'] ?? 0 ) . '" hidden></span>';
 	}
 }, PHP_INT_MAX );
+
+
+/*
+ * TEMPORARY PR #260: pair AIOSEO description with its next localization.
+ * AIOSEO Meta\Helpers::prepare() applies aioseo_description and then runs
+ * sanitize() -> internationalize() -> localization. The multilingual layer
+ * may replace the freshly filtered SEO description in that second pass.
+ */
+add_filter( 'aioseo_description', static function ( $current ) {
+	$target = elmercado_gsc_batch_20_target_20261012();
+	if ( empty( $target['description'] ) ) {
+		return $current;
+	}
+	$GLOBALS['emo_seo_localize_desc_pending_20261013'] = (string) $target['description'];
+	return $target['description'];
+}, PHP_INT_MAX );
+add_filter( 'localization', static function ( $localized ) {
+	if ( ! isset( $GLOBALS['emo_seo_localize_desc_pending_20261013'] ) ) {
+		return $localized;
+	}
+	$value = $GLOBALS['emo_seo_localize_desc_pending_20261013'];
+	unset( $GLOBALS['emo_seo_localize_desc_pending_20261013'] );
+	return $value;
+}, PHP_INT_MAX );
