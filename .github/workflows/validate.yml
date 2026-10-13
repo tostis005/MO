@@ -235,3 +235,128 @@ jobs:
             rm -f "$hdr" "$body"
           done
           REMOTE
+
+  seo-module-transient-check:
+    # Diagnostic: add ONLY the missing module momentarily and ALWAYS remove it.
+    if: github.event_name == 'pull_request' && github.head_ref == 'seo/ci-backed-origin-readonly-20261013' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: seo-origin-readonly
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - name: Checkout SEO module and lint
+        uses: actions/checkout@v4
+      - name: Confirm only expected SEO module is staged
+        shell: bash
+        run: |
+          set -euo pipefail
+          module=elmercadodeorigen-child/inc/seo-gsc-batch-20-20261012.php
+          test -f "$module"
+          php -l "$module"
+          php tests/seo-gsc-batch-20-20261012.php
+          : "${STAGING_HOST:?SSH host missing}"
+          : "${STAGING_USER:?SSH user missing}"
+          : "${STAGING_PASSWORD:?SSH password missing}"
+          : "${STAGING_REMOTE_PATH:?SSH path missing}"
+          [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
+          [[ "$STAGING_REMOTE_PATH" =~ ^/[A-Za-z0-9._/-]+/?$ ]]
+      - name: Transient read-only HTTP checks with guaranteed module cleanup
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          port="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$port" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          remote_file="/tmp/elmercado-gsc-transient-${GITHUB_RUN_ID}.php"
+          local_file=elmercadodeorigen-child/inc/seo-gsc-batch-20-20261012.php
+          checksum="$(sha256sum "$local_file" | awk '{print $1}')"
+          sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P "$port" "$local_file" "$STAGING_USER@$STAGING_HOST:$remote_file"
+          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$port" "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$remote_file' '$checksum' '$GITHUB_RUN_ID'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; incoming="$2"; checksum="$3"; nonce="$4"
+          installed=0
+          target=''
+          cleanup() {
+            code=$?
+            if [ "$installed" -eq 1 ] && [ -n "$target" ]; then
+              rm -f "$target"
+              if [ -e "$target" ]; then
+                echo 'cleanup=failed' >&2
+                code=1
+              else
+                echo 'cleanup=module_removed'
+              fi
+            fi
+            rm -f "$incoming"
+            exit "$code"
+          }
+          trap cleanup EXIT
+          case "$nonce" in *[!0-9]*|'') exit 1 ;; esac
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            config="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n 1 || true)"
+            [ -n "$config" ] || { echo 'root=unresolved'; exit 1; }
+            dev="$(dirname "$config")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] || { echo 'prod=missing'; exit 1; }
+          wp_bin="$(command -v wp || true)"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1)"
+          [ -n "$wp_bin" ] && [ -x "$php_bin" ] || exit 1
+          site="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+          case "$site" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) ;;
+            *) echo 'siteurl=unexpected'; exit 1 ;;
+          esac
+          active="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+          [ "$active" = 'elmercadodeorigen-child' ] || { echo 'theme=unexpected'; exit 1; }
+          theme="$prod/wp-content/themes/elmercadodeorigen-child"
+          target="$theme/inc/seo-gsc-batch-20-20261012.php"
+          [ -f "$theme/functions.php" ] && grep -q 'seo-gsc-batch-20-20261012.php' "$theme/functions.php" || exit 1
+          [ ! -e "$target" ] || { echo 'module_already_present=refusing_overwrite'; exit 1; }
+          [ -f "$incoming" ] || exit 1
+          echo "$checksum  $incoming" | sha256sum -c - >/dev/null
+          "$php_bin" -l "$incoming" >/dev/null
+          install -m 0644 "$incoming" "$target"
+          installed=1
+          echo 'module_transiently_installed=yes'
+          loaded="$("$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo function_exists("elmercado_gsc_batch_20_20261012") ? "yes" : "no";' --path="$prod" --skip-plugins --allow-root 2>/dev/null || true)"
+          echo "wpcli_module_loaded=$loaded"
+          probe_ip="$(hostname -I 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {print $i;exit}}')"
+          [ -n "$probe_ip" ] || { echo 'origin_ipv4=missing'; exit 1; }
+          url='https://www.elmercadodeorigen.com/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/'
+          for variant in baseline nonce cookie; do
+            temp="$(mktemp)"; target_url="$url"
+            [ "$variant" = baseline ] || target_url="${url}?seo_transient_probe=${nonce}"
+            if [ "$variant" = cookie ]; then
+              status="$(curl -ksS --connect-timeout 5 --max-time 22 --max-redirs 0 --resolve "www.elmercadodeorigen.com:443:$probe_ip" -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -H "Cookie: emo_seo_probe=${nonce}" -o "$temp" -w '%{http_code}' "$target_url" || true)"
+            elif [ "$variant" = nonce ]; then
+              status="$(curl -ksS --connect-timeout 5 --max-time 22 --max-redirs 0 --resolve "www.elmercadodeorigen.com:443:$probe_ip" -H 'Cache-Control: no-cache, no-store' -o "$temp" -w '%{http_code}' "$target_url" || true)"
+            else
+              status="$(curl -ksS --connect-timeout 5 --max-time 22 --max-redirs 0 --resolve "www.elmercadodeorigen.com:443:$probe_ip" -o "$temp" -w '%{http_code}' "$target_url" || true)"
+            fi
+            [ -n "$status" ] || status=000
+            title=other
+            grep -Fqi '<title>Why Cut Potatoes Turn Black and How to Stop It' "$temp" && title=old || true
+            grep -Fqi '<title>Why Cut Potatoes Turn Black: Causes' "$temp" && title=new || true
+            runtime=no
+            grep -Fq 'id="emo-gsc-batch-20-style"' "$temp" && runtime=yes || true
+            h1="$(grep -oEi '<h1([[:space:]>])' "$temp" | wc -l | tr -d ' ' || true)"
+            [ -n "$h1" ] || h1=0
+            echo "transient_http_${variant}=status:${status} title:${title} h1:${h1} module_style_marker:${runtime}"
+            rm -f "$temp"
+          done
+          # EXIT trap ALWAYS removes the only installed PHP module.
+          REMOTE
