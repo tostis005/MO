@@ -10,8 +10,12 @@ define( 'ABSPATH', __DIR__ . '/' );
 $GLOBALS['seo_test_path'] = '/';
 $GLOBALS['seo_legacy_target'] = false;
 
-function add_filter( $tag, $callback, $priority = 10, $args = 1 ) {}
-function add_action( $tag, $callback, $priority = 10, $args = 1 ) {}
+$GLOBALS['seo_registered_filters'] = array();
+$GLOBALS['seo_registered_actions'] = array();
+$GLOBALS['seo_removed_actions'] = array();
+function add_filter( $tag, $callback, $priority = 10, $args = 1 ) { $GLOBALS['seo_registered_filters'][ $tag ][] = array( $callback, $priority ); }
+function add_action( $tag, $callback, $priority = 10, $args = 1 ) { $GLOBALS['seo_registered_actions'][ $tag ][] = array( $callback, $priority ); }
+function remove_action( $tag, $callback, $priority = 10 ) { $GLOBALS['seo_removed_actions'][] = array( $tag, $callback, $priority ); return true; }
 function is_admin(): bool { return false; }
 function is_feed(): bool { return false; }
 function is_singular( $type ): bool { return 'post' === $type; }
@@ -93,7 +97,41 @@ check( elmercado_gsc_remove_repeated_heading_at_render_20261012( $body ) === $cl
 $GLOBALS['seo_legacy_target'] = false;
 check( elmercado_gsc_remove_repeated_heading_at_render_20261012( $body ) === $body, 'Unrelated article must remain unchanged' );
 
-echo "OK: 20 URL, 16 EN, 4 ES, +20 English H1 candidates, scoped metadata, internal links and legacy safety checks.\n";
+
+/* AIOSEO overrides must run AFTER its default 99999 title priority. */
+foreach ( array( 'pre_get_document_title', 'aioseo_title', 'wp_title' ) as $hook ) {
+	$matches = array_filter(
+		$GLOBALS['seo_registered_filters'][ $hook ] ?? array(),
+		static fn( $entry ) => 'elmercado_gsc_batch_20_filter_title_20261012' === $entry[0] && $entry[1] > 99999
+	);
+	check( ! empty( $matches ), 'Missing late SEO title hook: ' . $hook );
+}
+$meta_hooks = array_filter(
+	$GLOBALS['seo_registered_filters']['aioseo_description'] ?? array(),
+	static fn( $entry ) => 'elmercado_gsc_batch_20_filter_description_20261012' === $entry[0] && PHP_INT_MAX === $entry[1]
+);
+check( ! empty( $meta_hooks ), 'AIOSEO description filter must be highest priority' );
+
+$page_header_removers = array_filter(
+	$GLOBALS['seo_registered_actions']['wp_head'] ?? array(),
+	static fn( $entry ) => -5000 === $entry[1]
+);
+check( 1 === count( $page_header_removers ), 'Expected exactly one early WP head H1 protection' );
+$remove_header = reset( $page_header_removers )[0];
+$GLOBALS['seo_removed_actions'] = array();
+$GLOBALS['seo_test_path'] = array_key_first( $batch );
+$remove_header();
+check(
+	in_array( array( 'woostify_after_header', 'woostify_page_header', 10 ), $GLOBALS['seo_removed_actions'], true ),
+	'Remove only the hidden Woostify H1 on selected article'
+);
+$GLOBALS['seo_removed_actions'] = array();
+$GLOBALS['seo_test_path'] = '/blog/';
+$remove_header();
+check( empty( $GLOBALS['seo_removed_actions'] ), 'Do not remove Woostify title outside the cohort' );
+
+echo "OK: 20 URL, 16 EN, 4 ES, title priorities, article H1 only, link and metadata scope.\n";
+
 
 function mb_safe_length( string $value ): int {
 	if ( function_exists( 'mb_strlen' ) ) { return mb_strlen( $value, 'UTF-8' ); }
