@@ -44,7 +44,7 @@ jobs:
         shell: bash
         run: php tests/seo-gsc-english-batch3-20261012.php
 
-      # Read SHA256 file-parity results after read-only production audit PR #250.
+      # Probe production PHP module loader and origin-vs-public SEO HTML following PR #252.
       # Advisory only: GitHub-hosted runner provides an independent external
       # vantage point to check if first-cohort changes are live on WordPress.
       # Never gate unrelated tests on intermittent public HTTP failures.
