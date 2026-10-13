@@ -11,6 +11,30 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 function emdo_navidad_real_photo_2026( string $slug, string $alt ): string {
 	if ( ! function_exists( 'wc_get_product' ) ) { return ''; }
 	$post = get_page_by_path( $slug, OBJECT, 'product' );
+	// El catálogo utiliza slugs propios: seleccionar una ficha real por su título.
+	if ( ! $post instanceof WP_Post || 'publish' !== $post->post_status ) {
+		$items = get_posts( array(
+			'post_type' => 'product', 'post_status' => 'publish',
+			'posts_per_page' => 30, 's' => 'Montjam', 'fields' => 'all',
+			'no_found_rows' => true,
+		) );
+		foreach ( $items as $item ) {
+			$name = strtolower( remove_accents( (string) $item->post_title ) );
+			if ( false === strpos( $name, 'montjam' ) ) { continue; }
+			$is_premium = false !== strpos( $slug, 'jamon-de-bellota' )
+				&& false !== strpos( $name, 'jamon de bellota 100%' )
+				&& false !== strpos( $name, 'brida negra' )
+				&& false === strpos( $name, 'loncheado' )
+				&& false === strpos( $name, 'jabugo' );
+			$is_paleta = false !== strpos( $slug, 'paleta-cebo' )
+				&& false !== strpos( $name, 'paleta de cebo de campo' )
+				&& false === strpos( $name, 'lonchead' );
+			$is_embutido = false !== strpos( $slug, 'salchichon' )
+				&& false !== strpos( $name, 'salchichon iberico de bellota' )
+				&& false === strpos( $name, 'lonchead' );
+			if ( $is_premium || $is_paleta || $is_embutido ) { $post = $item; break; }
+		}
+	}
 	if ( ! $post instanceof WP_Post || 'publish' !== $post->post_status ) { return ''; }
 	$product = wc_get_product( $post->ID );
 	if ( ! $product || ! $product->get_image_id() ) { return ''; }
@@ -50,7 +74,7 @@ get_header();
 				<?php else : ?>
 					<div class="emdo-xmas__photo-fallback" aria-hidden="true">Cestas de Navidad<br><strong>2026</strong></div>
 				<?php endif; ?>
-				<span class="emdo-xmas__photo-note">Foto de un producto real del catálogo. Las cestas se preparan a medida.</span>
+				<span class="emdo-xmas__photo-note">Fotografía de producto. Las cestas se preparan a medida.</span>
 			</div>
 		</div>
 	</section>
@@ -72,8 +96,8 @@ get_header();
 					<div class="emdo-xmas__card-copy">
 						<span class="emdo-xmas__tag">CESTA BÁSICA</span>
 						<p class="emdo-xmas__price">~60 € <small>/ unidad</small></p>
-						<h3>Un detalle para empleados y clientes</h3>
-						<p class="emdo-xmas__includes">Salchichón ibérico curado en pieza, aceite de oliva, paté o foie en conserva y un dulce navideño.</p>
+						<h3>Para empleados y clientes</h3>
+						<p class="emdo-xmas__includes">Surtido de productos ibéricos, aceite de oliva, queso curado, patés y dulces navideños. Composición adaptada a la cantidad de cestas.</p>
 						<a href="#presupuesto">Solicitar presupuesto →</a>
 					</div>
 				</article>
@@ -84,8 +108,8 @@ get_header();
 					<div class="emdo-xmas__card-copy">
 						<span class="emdo-xmas__tag">CESTA CON PALETA</span>
 						<p class="emdo-xmas__price">~150 € <small>/ unidad</small></p>
-						<h3>Paleta ibérica y acompañamientos</h3>
-						<p class="emdo-xmas__includes">Paleta ibérica de cebo de campo de tamaño seleccionado, aceite de oliva y uno o dos complementos, como paté en conserva o dulce navideño.</p>
+						<h3>Paleta ibérica y productos gourmet</h3>
+						<p class="emdo-xmas__includes">Paleta ibérica o una selección más completa de ibéricos, con aceite, queso, patés y dulces según el presupuesto.</p>
 						<a href="#presupuesto">Solicitar presupuesto →</a>
 					</div>
 				</article>
@@ -96,13 +120,13 @@ get_header();
 					<div class="emdo-xmas__card-copy">
 						<span class="emdo-xmas__tag">CESTA PREMIUM</span>
 						<p class="emdo-xmas__price">~350 € <small>/ unidad</small></p>
-						<h3>Jamón ibérico de brida negra</h3>
-						<p class="emdo-xmas__includes">Jamón de bellota 100 % ibérico de un tramo de peso concreto, aceite de oliva, paté o foie en conserva y dulces. Otros formatos pueden superar este presupuesto.</p>
+						<h3>Jamón ibérico de bellota</h3>
+						<p class="emdo-xmas__includes">Jamón ibérico de bellota, brida negra, acompañado de una selección de ibéricos, aceite, queso, patés o dulces. El contenido depende del peso del jamón elegido.</p>
 						<a href="#presupuesto">Solicitar presupuesto →</a>
 					</div>
 				</article>
 			</div>
-			<p class="emdo-xmas__note">Precios orientativos por cesta, con caja, preparación y envío estándar estimados. Sujetos a cantidades, productos disponibles y destino. Solo incluiremos alimentos que puedan viajar sin refrigeración según su etiquetado; quesos y loncheados, únicamente si su conservación lo permite.</p>
+			<p class="emdo-xmas__note">Precios orientativos, con embalaje y envío estándar estimados. El contenido y el precio definitivo se ajustan según las unidades, calidades y destino. La selección se confirmará según las condiciones de transporte y conservación de cada producto.</p>
 		</div>
 	</section>
 
@@ -122,8 +146,8 @@ get_header();
 			<div class="emdo-xmas__form-intro">
 				<span class="emdo-xmas__eyebrow">PRESUPUESTO SIN COMPROMISO</span>
 				<h2>Solicita tu presupuesto</h2>
-				<p>Con el número aproximado de cestas y tu presupuesto por unidad podemos empezar a preparar la propuesta.</p>
-				<p>Indica también si tienes alguna preferencia de productos o una fecha de entrega prevista.</p>
+				<p>Solo necesitamos el número aproximado de cestas y el presupuesto que tienes previsto por unidad.</p>
+				<p>Puedes añadir cualquier preferencia o fecha de entrega prevista.</p>
 			</div>
 			<div class="emdo-xmas__form-card">
 				<?php $state = isset( $_GET['estado'] ) ? sanitize_key( wp_unslash( $_GET['estado'] ) ) : ''; ?>

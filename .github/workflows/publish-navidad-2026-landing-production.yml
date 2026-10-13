@@ -1,0 +1,78 @@
+name: Publicar landing Navidad 2026 en produccion
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-navidad-2026-landing-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validar ficheros PHP y publicacion independiente
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/navidad-2026-campaign.php
+          php -l elmercadodeorigen-child/templates/navidad-2026-landing.php
+          php -l .github/scripts/navidad-2026-mu-loader.php
+          sh -n .github/scripts/navidad-2026-production-install.sh
+          test -s elmercadodeorigen-child/assets/css/navidad-2026.css
+          grep -Fq 'Cestas de Navidad para empresas, empleados y clientes' elmercadodeorigen-child/templates/navidad-2026-landing.php
+
+      - name: Instalar 4 ficheros sin sustituir el tema ni el SEO
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$STAGING_HOST" && test -n "$STAGING_USER" && test -n "$STAGING_PASSWORD" && test -n "$STAGING_REMOTE_PATH"
+          port="${STAGING_PORT:-22}"
+          [[ "$port" =~ ^[0-9]{1,5}$ ]]
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$port" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          remote="/tmp/emdo-navidad-landing-$GITHUB_RUN_ID"
+          sshpass -e ssh -o StrictHostKeyChecking=yes -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$port" "$STAGING_USER@$STAGING_HOST" "mkdir -p '$remote'"
+          for file in elmercadodeorigen-child/inc/navidad-2026-campaign.php elmercadodeorigen-child/templates/navidad-2026-landing.php elmercadodeorigen-child/assets/css/navidad-2026.css .github/scripts/navidad-2026-mu-loader.php .github/scripts/navidad-2026-production-install.sh; do
+            sshpass -e scp -P "$port" -o StrictHostKeyChecking=yes -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no "$file" "$STAGING_USER@$STAGING_HOST:$remote/"
+          done
+          sshpass -e ssh -o StrictHostKeyChecking=yes -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$port" "$STAGING_USER@$STAGING_HOST" "sh '$remote/navidad-2026-production-install.sh' '$STAGING_REMOTE_PATH' '$remote'"
+
+      - name: Verificar respuesta HTTP y formulario de la landing
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://www.elmercadodeorigen.com/cestas-navidad-empresas-2026/?verificar_navidad=$GITHUB_RUN_ID"
+          status=000
+          for n in 1 2 3 4; do
+            status="$(curl -LsS --connect-timeout 12 --max-time 40 -A 'Mozilla/5.0 EMDO-landing-verify' -o /tmp/emdo-navidad.html -w '%{http_code}' "$url" || true)"
+            if [ "$status" = 200 ] && grep -Fq 'Cestas de Navidad para empresas, empleados y clientes' /tmp/emdo-navidad.html; then break; fi
+            sleep 4
+          done
+          echo "HTTP_STATUS=$status"
+          test "$status" = 200
+          grep -Fq 'Cestas de Navidad para empresas, empleados y clientes' /tmp/emdo-navidad.html
+          grep -Fq 'emdo_navidad_2026_quote' /tmp/emdo-navidad.html
+          grep -Fq 'Solicitar presupuesto' /tmp/emdo-navidad.html
+          echo 'NAVIDAD_LANDING_PUBLICA_OK'

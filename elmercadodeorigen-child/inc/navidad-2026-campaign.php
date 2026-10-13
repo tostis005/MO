@@ -126,7 +126,7 @@ function emdo_navidad_2026_submit(): void {
 		exit;
 	}
 	set_transient( $key, 1, 3 * MINUTE_IN_SECONDS );
-	$admin = sanitize_email( (string) get_option( 'admin_email' ) );
+	$admin = 'hola@elmercadodeorigen.com';
 	if ( ! is_email( $admin ) ) {
 		wp_safe_redirect( add_query_arg( 'estado', 'error', $redirect ) );
 		exit;
