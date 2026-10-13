@@ -1,0 +1,38 @@
+name: Auditar visualmente campaña Navidad en producción
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/navidad-2026-extended-audit.js'
+      - '.github/workflows/navidad-2026-extended-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspeccionar renderizado desktop y movil
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-audit --no-fund playwright-core@1.55.0 >/dev/null 2>&1
+          CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          export CHROME_PATH
+          test -n "$CHROME_PATH"
+          node .github/scripts/navidad-2026-extended-audit.js | tee /tmp/emdo-audit-20261013.txt
+      - name: Guardar capturas y diagnóstico
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: navidad-auditoria-visual-${{ github.run_id }}
+          path: |
+            /tmp/emdo-audit-*.png
+            /tmp/emdo-audit-20261013.txt
+          if-no-files-found: ignore
+          retention-days: 7
