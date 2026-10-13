@@ -11,6 +11,7 @@ on:
       - '.github/workflows/production-seo-gsc-batch1-20261013.yml'
       - '.github/workflows/diagnose-production-seo-origin-20261013.yml'
       - '.github/workflows/production-install-gsc-batch1-module-20261013.yml'
+      - '.github/workflows/production-install-gsc-batch1-two-modules-20261013.yml'
   workflow_dispatch:
 
 permissions:
@@ -60,6 +61,27 @@ jobs:
           grep -q 'check_seo_post' "$file"
           grep -q 'PRODUCTION_SEO_BATCH1_OK' "$file"
           ! grep -q 'production-contact-footer-hotfix' "$file"
+
+      - name: Validate production two-module SEO release safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          file=.github/workflows/production-install-gsc-batch1-two-modules-20261013.yml
+          test -f "$file"
+          grep -q 'SEO_WPCLI_BOTH_MODULES_LOADED' "$file"
+          grep -q 'base_installed=1' "$file"
+          grep -q 'SEO_BATCH1_DUAL_MODULE_TITLE_H1_RELEASE_OK_METADATA_PENDING' "$file"
+          grep -q 'sha256sum -c' "$file"
+          grep -q 'trap rollback EXIT HUP INT TERM' "$file"
+          grep -q "Base module already exists; refusing overwrite" "$file"
+          grep -q 'SEO_DESCRIPTION_PENDING' "$file"
+          grep -q 'SEO_MODULE_LIVE_OK' "$file"
+          grep -q '/en/why-cut-potatoes-turn-black' "$file"
+          grep -q '/en/white-foam-when-cooking-meat' "$file"
+          grep -q '/en/yellow-broccoli' "$file"
+          grep -q '/en/red-liquid-in-meat' "$file"
+          grep -q '/cuanta-carne-calcular-por-persona' "$file"
+          ! grep -Eq 'rsync |wp cache flush|theme activate|rm -rf|wp plugin (activate|deactivate)' "$file"
 
       - name: Check required files
         shell: bash
