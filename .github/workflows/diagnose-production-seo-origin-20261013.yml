@@ -21,6 +21,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
       STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
     steps:
+      - uses: actions/checkout@v4
       - name: Validate SSH access inputs
         shell: bash
         run: |
@@ -48,9 +49,25 @@ jobs:
           ssh-keyscan -T 15 -p "$port" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           test -s ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$port" "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          # Expected hashes from the audited current main branch, never remote writes.
+          files=(
+            elmercadodeorigen-child/functions.php
+            elmercadodeorigen-child/single.php
+            elmercadodeorigen-child/category.php
+            elmercadodeorigen-child/inc/seo-gsc-batch-20-20261012.php
+            elmercadodeorigen-child/inc/seo-meta-descriptions-010265.php
+            elmercadodeorigen-child/inc/blog-category-english-copy-20261012.php
+            elmercadodeorigen-child/inc/blog-expired-special-20261012.php
+            elmercadodeorigen-child/inc/blog-product-category-more-010267.php
+            elmercadodeorigen-child/inc/blog-discovery-010263.php
+            elmercadodeorigen-child/inc/editorial-system.php
+          )
+          for file in "${files[@]}"; do test -f "$file"; done
+          manifest="$(sha256sum "${files[@]}" | base64 -w0)"
+          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$port" "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$manifest'" <<'REMOTE'
           set -eu
           raw="${1%/}"
+          manifest="$2"
           dev=""
           case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
           if [ ! -f "$dev/wp-config.php" ]; then
@@ -75,6 +92,22 @@ jobs:
           theme="$prod/wp-content/themes/elmercadodeorigen-child"
           if [ -f "$theme/inc/seo-gsc-batch-20-20261012.php" ]; then echo 'batch1_module_present=yes'; else echo 'batch1_module_present=no'; fi
           if [ -f "$theme/functions.php" ] && grep -q 'seo-gsc-batch-20-20261012.php' "$theme/functions.php"; then echo 'batch1_loader_present=yes'; else echo 'batch1_loader_present=no'; fi
+          echo '=== FILE PARITY VS MO/MAIN (READ-ONLY) ==='
+          printf '%s' "$manifest" | base64 -d | while read -r expected filepath; do
+            case "$filepath" in elmercadodeorigen-child/*) name="${filepath#elmercadodeorigen-child/}" ;; *) continue ;; esac
+            target="$theme/$name"
+            if [ ! -f "$target" ]; then
+              echo "FILE_MISSING $name"
+              continue
+            fi
+            actual="$(sha256sum "$target" | awk '{print $1}')"
+            if [ "$actual" = "$expected" ]; then
+              echo "FILE_MATCH $name"
+            else
+              echo "FILE_DIFFERENT $name"
+            fi
+          done
+
           echo '=== POSSIBLE CACHE COMPONENTS ==='
           "$php_bin" -i 2>/dev/null | grep -i '^opcache.validate_timestamps' | head -n 1 || true
           "$php_bin" -d memory_limit=512M "$wp_bin" plugin list --path="$prod" --skip-plugins --skip-themes --allow-root --status=active --field=name 2>/dev/null | grep -Ei 'cache|rocket|litespeed|cloudflare|redis|autoptimize|w3-|wp-optimize|speed' || true
