@@ -173,6 +173,11 @@ function elmercado_gsc_remove_repeated_heading_at_render_20261012( $content ) {
 	if ( ! $is_batch && ! $is_legacy && ! $is_candidate ) {
 		return $content;
 	}
+	// TEMPORARY QA: the template supplies the only primary H1, so demote H1 tags
+	// inside the body of a selected GSC article; never alter stored post content.
+	if ( $is_batch ) {
+		return preg_replace( '~<(/?)h1\\b([^>]*)>~iu', '<$1h2$2>', $content ) ?? $content;
+	}
 	$post_id = (int) get_queried_object_id();
 	if ( $post_id < 1 || ( get_the_ID() && (int) get_the_ID() !== $post_id ) ) {
 		return $content;
@@ -338,3 +343,6 @@ add_filter( 'the_content', static function ( $content ) {
 	// The single.php template already provides the page's only main H1.
 	return preg_replace( '~<(/?)h1\\b([^>]*)>~i', '<$1h2$2>', $content ) ?? $content;
 }, PHP_INT_MAX );
+
+/* TEMPORARY PR #260: ensure the AIOSEO description filter is last. */
+add_filter( 'aioseo_description', 'elmercado_gsc_batch_20_filter_description_20261012', PHP_INT_MAX );
