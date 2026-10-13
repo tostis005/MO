@@ -292,3 +292,25 @@ add_action( 'wp_head', static function (): void {
 	if ( ! is_singular( 'post' ) ) { return; }
 	echo '<style id="emo-gsc-batch-20-style">.emo-gsc-related-guides,.emo-gsc-product-link{margin:24px 0;padding:14px 18px;border-left:3px solid #54745b;background:#f5f7f3;border-radius:5px}.emo-gsc-related-guides p,.emo-gsc-product-link p{margin:0 0 8px}.emo-gsc-product-link p{margin:0}.emo-gsc-related-guides ul{margin:0;padding-left:20px}.emo-gsc-related-guides li+li{margin-top:6px}</style>' . "\n";
 }, 24 );
+
+
+/*
+ * TEMPORARY PR #260 DIAGNOSTIC ONLY — never merge this instrumentation.
+ * The file is installed for seconds by a guarded CI job, then removed.
+ * Output consists solely of non-sensitive yes/no flags for one public URL.
+ */
+add_action( 'wp_head', static function (): void {
+	$uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
+	if ( ! is_singular( 'post' ) || false === strpos( $uri, '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/' ) ) {
+		return;
+	}
+	$wanted = '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/';
+	$route  = function_exists( 'elmercado_gsc_current_path_010313' ) ? elmercado_gsc_current_path_010313() : '';
+	$target = elmercado_gsc_batch_20_target_20261012();
+	$hook   = has_filter( 'pre_get_document_title', 'elmercado_gsc_batch_20_filter_title_20261012' );
+	$plugin = defined( 'WPSEO_VERSION' ) ? 'yoast' : ( defined( 'RANK_MATH_VERSION' ) ? 'rankmath' : ( defined( 'AIOSEO_VERSION' ) ? 'aioseo' : ( defined( 'SEOPRESS_VERSION' ) ? 'seopress' : 'other' ) ) );
+	echo '<meta name="emo-seo-diag-20261013" content="pathmatch:' . ( $route === $wanted ? 'yes' : 'no' ) .
+		';target:' . ( ! empty( $target ) ? 'yes' : 'no' ) .
+		';title_hook:' . ( false !== $hook ? 'yes' : 'no' ) .
+		';plugin:' . esc_attr( $plugin ) . '">' . "\n";
+}, 1 );
