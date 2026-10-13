@@ -117,8 +117,14 @@ for mode in normal nocache_nonce; do
   [ -n "$code" ] || code=000
   count="$(grep -oEi '<h1([[:space:]>])' "$out" | wc -l | tr -d ' ' || true)"
   [ -n "$count" ] || count=0
-  expected=no
-  grep -Fq 'Why Cut Potatoes Turn Black: Causes' "$out" && expected=yes || true
+  # Inspect only the HTML <title>, never incidental text elsewhere in the body.
+  actual_title="$(grep -oEi '<title[^>]*>[^<]*</title>' "$out" | head -n 1 || true)"
+  title_status=other
+  case "$actual_title" in
+    *'Why Cut Potatoes Turn Black: Causes'*) title_status=target ;;
+    *'Why Cut Potatoes Turn Black and How to Stop It'*) title_status=old ;;
+    '') title_status=missing ;;
+  esac
   label=none
   if grep -Eiq '^(x-cache|cf-cache-status|x-litespeed-cache|x-rocket-cache|x-proxy-cache|x-el-mercado-cache):' "$hdr"; then
     if grep -Eiq '^(x-cache|cf-cache-status|x-litespeed-cache|x-rocket-cache|x-proxy-cache|x-el-mercado-cache):[[:space:]]*(hit|cached|stale)([[:space:];]|$)' "$hdr"; then label=hit
@@ -133,7 +139,7 @@ for mode in normal nocache_nonce; do
       if cmp -s "$out" "$cached"; then static_match=yes; break; fi
     done
   fi
-  echo "origin_${mode}=http:${code} h1:${count} expected_title:${expected} cache_header:${label} static_file_identical:${static_match}"
+  echo "origin_${mode}=http:${code} h1:${count} html_title:${title_status} cache_header:${label} static_file_identical:${static_match}"
   rm -f "$out" "$hdr"
 done
 REMOTE
