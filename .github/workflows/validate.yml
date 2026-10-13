@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   validate:
@@ -47,6 +48,18 @@ jobs:
       # Advisory only: GitHub-hosted runner provides an independent external
       # vantage point to check if first-cohort changes are live on WordPress.
       # Never gate unrelated tests on intermittent public HTTP failures.
+      - name: Inspect guarded production SEO deployment state
+        shell: bash
+        timeout-minutes: 1
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo "Recent production SEO deployment workflow runs (id, status, conclusion, SHA):"
+          gh api "repos/${{ github.repository }}/actions/workflows/production-seo-gsc-batch1-20261013.yml/runs?per_page=5" \
+            --jq '.workflow_runs[:5][] | [.id, .status, (.conclusion // "pending"), .head_sha] | @tsv'
+
       - name: Diagnose first SEO batch HTML on production
         shell: bash
         timeout-minutes: 3
