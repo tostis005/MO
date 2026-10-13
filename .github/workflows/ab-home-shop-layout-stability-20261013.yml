@@ -41,15 +41,15 @@ jobs:
                     let html=await response.text();
                     if(name==='shop'){
                       let n=0;
-                      html=html.replace(/<div\\b(?=[^>]*\\bwoostify-sorting\\b)[^>]*>/i,(tag)=>{
+                      html=html.replace(/<div\b(?=[^>]*\bwoostify-sorting\b)[^>]*>/i,(tag)=>{
                         if(tag.includes('emo-catalog-toolbar-shared-010229'))return tag;
                         n++;
-                        return tag.replace(/\\bclass=(["'])(.*?)\\1/i,(m,q,c)=>'class='+q+c+' emo-catalog-toolbar-shared-010229'+q);
+                        return tag.replace(/\bclass=(["'])(.*?)\1/i,(m,q,c)=>'class='+q+c+' emo-catalog-toolbar-shared-010229'+q);
                       });
-                      html=html.replace(/<button\\b(?=[^>]*\\bemo-mobile-filter-toggle\\b)[^>]*>/i,(tag)=>{
+                      html=html.replace(/<button\b(?=[^>]*\bemo-mobile-filter-toggle\b)[^>]*>/i,(tag)=>{
                         if(tag.includes('emo-filter-toggle-shared-010229'))return tag;
                         n++;
-                        return tag.replace(/\\bclass=(["'])(.*?)\\1/i,(m,q,c)=>'class='+q+c+' emo-filter-toggle-shared-010229'+q);
+                        return tag.replace(/\bclass=(["'])(.*?)\1/i,(m,q,c)=>'class='+q+c+' emo-filter-toggle-shared-010229'+q);
                       });
                       console.log('REWRITE shop classes='+n);
                     }else{
