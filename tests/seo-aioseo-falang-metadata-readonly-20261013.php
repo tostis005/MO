@@ -234,3 +234,29 @@ echo 'SEO_DIAG_STATIC_CACHE_SCAN=' . $checked .
 	' potato_desired_meta:' . $match_current_description .
 	' potato_old_meta:' . $match_old_description .
 	' potato_meta_tag:' . $match_exact_meta . "\n";
+
+
+/* Inspect TranslatePress early-return and buffer hook registrations read-only. */
+foreach ( array(
+	'trp_stop_translating_page', 'trp_before_translate_content',
+	'trp_translated_html', 'trp_allow_tp_to_run',
+	'trp_output_buffer_chunk_size', 'trp_start_output_buffer_priority',
+	'trp_no_translate_selectors'
+) as $trp_hook ) {
+	$total = 0;
+	$priorities = array();
+	if ( isset( $wp_filter[ $trp_hook ] ) ) {
+		foreach ( (array) $wp_filter[ $trp_hook ]->callbacks as $priority => $entries ) {
+			$total += count( $entries );
+			$priorities[] = (int) $priority;
+		}
+	}
+	echo 'SEO_DIAG_TRP_HOOK_' . strtoupper( $trp_hook ) .
+		'=callbacks:' . $total . ' priorities:' . implode( ',', array_slice( $priorities, 0, 8 ) ) . "\n";
+}
+/* Compare only the final SEO string and origin type, never echo text values. */
+echo 'SEO_DIAG_TRP_BUFFER_STARTED=' .
+	( ! empty( $GLOBALS['trp_output_buffer_started'] ) ? 'yes' : 'no' ) . "\n";
+echo 'SEO_DIAG_TRP_LANGUAGE_CLI=' .
+	( isset( $GLOBALS['TRP_LANGUAGE'] ) && preg_match( '/^[a-z]{2}_[A-Z]{2}$/', (string) $GLOBALS['TRP_LANGUAGE'] )
+		? $GLOBALS['TRP_LANGUAGE'] : 'unresolved' ) . "\n";
