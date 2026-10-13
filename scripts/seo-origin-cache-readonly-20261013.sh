@@ -83,6 +83,25 @@ if [ -f "$dropin" ]; then
     echo "advanced_cache_$flag=$state"
   done
 fi
+# Look for the single known article's old title only; never display cache contents.
+if [ -d "$cache_dir" ]; then
+  cached_old=no
+  for candidate in "$cache_dir"/*.html; do
+    [ -f "$candidate" ] || continue
+    if grep -Fq '<title>Why Cut Potatoes Turn Black and How to Stop It</title>' "$candidate"; then
+      cached_old=yes
+      break
+    fi
+  done
+  echo "blog_static_v2_known_old_title_present=$cached_old"
+fi
+if [ -f "$dropin" ]; then
+  for pair in 'bypass_headers:HTTP_CACHE_CONTROL|HTTP_PRAGMA|no-cache' 'bypass_query:QUERY_STRING|_GET|QUERY_VAR' 'skip_logged_in:wordpress_logged_in' 'html_cache_v2:elmercado-blog-static-v2'; do
+    flag="${pair%%:*}"; regex="${pair#*:}"
+    if grep -Eqi "$regex" "$dropin"; then state=yes; else state=no; fi
+    echo "advanced_cache_${flag}=$state"
+  done
+fi
 wp_cache="$("$php_bin" -d memory_limit=256M "$wp_bin" eval 'echo defined("WP_CACHE") && WP_CACHE ? "yes" : "no";' --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
 case "$wp_cache" in yes|no) ;; *) wp_cache=unknown ;; esac
 echo "wp_cache_enabled=$wp_cache"
@@ -106,7 +125,15 @@ for mode in normal nocache_nonce; do
     elif grep -Eiq '^(x-cache|cf-cache-status|x-litespeed-cache|x-rocket-cache|x-proxy-cache|x-el-mercado-cache):[[:space:]]*(miss|bypass|dynamic|expired)([[:space:];]|$)' "$hdr"; then label=miss
     else label=other; fi
   fi
-  echo "origin_${mode}=http:${code} h1:${count} expected_title:${expected} cache_header:${label}"
+  # cmp is read-only and prints a yes/no verdict without exposing filenames.
+  static_match=no
+  if [ -d "$cache_dir" ]; then
+    for cached in "$cache_dir"/*.html; do
+      [ -f "$cached" ] || continue
+      if cmp -s "$out" "$cached"; then static_match=yes; break; fi
+    done
+  fi
+  echo "origin_${mode}=http:${code} h1:${count} expected_title:${expected} cache_header:${label} static_file_identical:${static_match}"
   rm -f "$out" "$hdr"
 done
 REMOTE
