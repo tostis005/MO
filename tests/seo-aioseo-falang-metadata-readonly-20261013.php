@@ -20,6 +20,16 @@ foreach ( $plugin_ids as $plugin ) {
 		( is_plugin_active( $plugin ) ? 'active' : 'other' ) . "\n";
 }
 
+
+$active = (array) get_option( 'active_plugins', array() );
+foreach ( $active as $plugin_file ) {
+	if ( preg_match( '/(?:falang|translate|polylang|wpml|multi-language)/i', (string) $plugin_file ) ) {
+		$name = basename( dirname( (string) $plugin_file ) );
+		if ( preg_match( '/^[A-Za-z0-9_-]{2,70}$/', $name ) ) {
+			echo 'SEO_DIAG_TRANSLATION_PLUGIN_DIR=' . $name . "\n";
+		}
+	}
+}
 foreach ( array( 'aioseo_description', 'localization', 'get_post_metadata' ) as $hook ) {
 	$callbacks = isset( $wp_filter[ $hook ] ) ? (array) $wp_filter[ $hook ]->callbacks : array();
 	$total = 0;
@@ -45,6 +55,24 @@ foreach ( array( 'aioseo_description', 'localization', 'get_post_metadata' ) as 
 		}
 	}
 	printf( "SEO_DIAG_HOOK_%s=total:%d falang:%d aioseo:%d\n", $hook, $total, $falang, $aioseo );
+	if ( 'aioseo_description' === $hook ) {
+		foreach ( $callbacks as $priority => $items ) {
+			foreach ( $items as $entry ) {
+				$fn = $entry['function'] ?? '';
+				if ( is_string( $fn ) ) {
+					$name = $fn;
+				} elseif ( is_array( $fn ) ) {
+					$name = ( is_object( $fn[0] ) ? get_class( $fn[0] ) : (string) $fn[0] ) . '::' . (string) $fn[1];
+				} else {
+					$name = 'anonymous';
+				}
+				$name = preg_replace( '/[^A-Za-z0-9_:\\\\-]/', '', $name );
+				echo "SEO_DIAG_AIOSEO_DESC_CALLBACK=priority:" . (int) $priority .
+					" name:" . substr( $name, 0, 100 ) . "\n";
+			}
+		}
+	}
+
 }
 
 $seo_table = $wpdb->prefix . 'aioseo_posts';
