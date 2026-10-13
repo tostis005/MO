@@ -355,3 +355,13 @@ foreach ( ob_list_handlers() as $handler ) {
 	$handler = preg_replace( '/[^a-zA-Z0-9_:\\\\-]/', '', (string) $handler );
 	echo 'SEO_DIAG_ACTIVE_BUFFER_HANDLER=' . substr( $handler, 0, 110 ) . "\n";
 }
+
+/* Installed SEO translation addons only; no other plugin data shown. */
+if ( ! function_exists( 'get_plugins' ) ) {
+  require_once ABSPATH . 'wp-admin/includes/plugin.php';
+}
+foreach ( get_plugins() as $relative_file => $plugin_data ) {
+  if ( ! preg_match( '/(translatepress|seo[-_]?pack)/i', $relative_file ) ) { continue; }
+  if ( ! preg_match( '~^[A-Za-z0-9_.-]{2,90}/[A-Za-z0-9_.-]{2,90}\.php$~', $relative_file ) ) { continue; }
+  echo 'SEO_DIAG_TRANSLATION_PLUGIN_FILE=' . $relative_file . ' status:' . ( is_plugin_active( $relative_file ) ? 'active' : 'inactive' ) . "\n";
+}
