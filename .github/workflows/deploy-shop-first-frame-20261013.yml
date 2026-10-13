@@ -1,0 +1,80 @@
+name: Deploy shop first frame stability 20261013
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-shop-first-frame-20261013.php'
+      - '.github/workflows/deploy-shop-first-frame-20261013.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-shop-first-frame-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate PHP syntax
+        run: php -l mu-plugins/mdo-shop-first-frame-20261013.php
+      - name: Install SSH prerequisite
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Guarded deployment with automatic rollback and live verification
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$STAGING_HOST" && test -n "$STAGING_USER" && test -n "$SSHPASS"
+          port="${STAGING_PORT:-22}"
+          opts=(-o ConnectTimeout=20 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no)
+          sshpass -e scp "${opts[@]}" -P "$port" \
+            mu-plugins/mdo-shop-first-frame-20261013.php \
+            "$STAGING_USER@$STAGING_HOST:/tmp/mdo-shop-first-frame-${GITHUB_RUN_ID}.php"
+          sshpass -e ssh "${opts[@]}" -p "$port" "$STAGING_USER@$STAGING_HOST" "bash -s -- '${GITHUB_RUN_ID}'" <<'REMOTE'
+          set -Eeuo pipefail
+          RUN_ID="$1"
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          DEST="$ROOT/wp-content/mu-plugins/mdo-shop-first-frame-20261013.php"
+          IN="/tmp/mdo-shop-first-frame-$RUN_ID.php"
+          BACKUP="/tmp/mdo-shop-first-frame-$RUN_ID.bak"
+          HAD_FILE=no
+          test -s "$ROOT/wp-config.php" && test -s "$IN"
+          if test -e "$DEST"; then
+            cp -p "$DEST" "$BACKUP"
+            HAD_FILE=yes
+          fi
+          restore() {
+            echo "Verification failed; restoring previous shop plugin."
+            if test "$HAD_FILE" = yes; then cp -p "$BACKUP" "$DEST"; else rm -f "$DEST"; fi
+            rm -f "$IN"
+          }
+          trap restore ERR
+          install -m0644 "$IN" "$DEST"
+          php -l "$DEST"
+          for uri in '/tienda/' '/tienda/?orderby=popularity'; do
+            html="$(mktemp)"
+            status="$(curl -k -sS --connect-timeout 8 --max-time 55 \
+              -H 'Cookie: mdo_first_frame_verify=1' \
+              -o "$html" -w '%{http_code}' "https://www.elmercadodeorigen.com$uri")"
+            echo "SHOP VERIFY $uri status=$status bytes=$(wc -c < "$html")"
+            test "$status" = 200
+            grep -q 'woostify-sorting emo-catalog-toolbar-shared-010229' "$html"
+            grep -q 'woocommerce' "$html"
+            rm -f "$html"
+          done
+          trap - ERR
+          rm -f "$IN"
+          echo "PRODUCTION SHOP FIRST-FRAME FIX VERIFIED"
+          REMOTE
