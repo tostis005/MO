@@ -370,24 +370,26 @@ add_action( 'wp_footer', static function (): void {
 
 
 /* TEMPORARY PR #260: remove only the hidden Woostify page header H1 in SEO posts. */
-add_action( 'wp', static function (): void {
+add_action( 'wp_head', static function (): void {
 	if ( is_singular( 'post' ) && elmercado_gsc_batch_20_target_20261012() ) {
 		remove_action( 'woostify_after_header', 'woostify_page_header', 10 );
 	}
-}, 100 );
+}, -5000 );
 
 /* TEMPORARY PR #260: replace one SEO description in buffered wp_head only. */
-add_action( 'wp_head', static function (): void {
-	if ( elmercado_gsc_batch_20_target_20261012() ) {
+add_action( 'get_header', static function (): void {
+	if ( is_singular( 'post' ) && elmercado_gsc_batch_20_target_20261012() ) {
+		$GLOBALS['emo_seo_head_buffer_active_20261013'] = true;
 		ob_start();
 	}
-}, -1000 );
+}, PHP_INT_MAX );
 add_action( 'wp_head', static function (): void {
 	$target = elmercado_gsc_batch_20_target_20261012();
-	if ( empty( $target['description'] ) ) {
+	if ( empty( $GLOBALS['emo_seo_head_buffer_active_20261013'] ) ) {
 		return;
 	}
 	$head = ob_get_clean();
+	unset( $GLOBALS['emo_seo_head_buffer_active_20261013'] );
 	if ( ! is_string( $head ) ) {
 		return;
 	}
