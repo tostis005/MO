@@ -134,7 +134,7 @@ jobs:
 
   seo-falang-aioseo-readonly:
     # Same-repository PR only; no database writes or production theme changes.
-    if: github.event_name == 'pull_request' && github.head_ref == 'seo/aioseo-falang-metadata-readonly-20261013' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'pull_request' && github.head_ref == 'seo/verify-prod-sha-after-trp-20261013' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 8
     env:
