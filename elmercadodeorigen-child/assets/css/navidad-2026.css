@@ -1,0 +1,235 @@
+/* Campaña Navidad 2026. Scope estricto: nunca afecta al resto del tema. */
+.emdo-xmas{--x-ink:#17372c;--x-ink-2:#284a3b;--x-text:#24392f;--x-muted:#5f6b63;--x-gold:#c8a56a;--x-paper:#f7f4ed;--x-border:#deded4;color:var(--x-text);background:#fff;font-family:inherit}
+.emdo-xmas *, .emdo-xmas *::before,.emdo-xmas *::after{box-sizing:border-box}
+.emdo-xmas__wrap{width:min(1180px,calc(100% - 40px));margin-inline:auto}
+.emdo-xmas a{text-decoration:none}
+.emdo-xmas h1,.emdo-xmas h2,.emdo-xmas h3,.emdo-xmas p{margin-top:0}
+.emdo-xmas__topline{background:#122e24;color:#e8e7dc;font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+.emdo-xmas__topline .emdo-xmas__wrap{display:flex;justify-content:space-between;gap:15px;padding-block:12px}
+.emdo-xmas__eyebrow{display:block;color:#ad8650;letter-spacing:.14em;text-transform:uppercase;font-weight:700;font-size:12px;margin-bottom:17px}
+.emdo-xmas__hero{overflow:hidden;background:linear-gradient(130deg,#f8f7f2 0%,#f1efe6 100%)}
+.emdo-xmas__hero-grid{display:grid;grid-template-columns:1.03fr .97fr;gap:6vw;align-items:center;padding-block:90px}
+.emdo-xmas__hero h1{max-width:670px;font-size:clamp(42px,5.5vw,78px);line-height:1.075;letter-spacing:-.045em;color:var(--x-ink);font-weight:650;margin-bottom:25px}
+.emdo-xmas__hero h1 em{font-family:Georgia,serif;display:block;font-weight:400;color:#9b7749}
+.emdo-xmas__lead{max-width:570px;font-size:clamp(17px,1.55vw,21px);line-height:1.65;color:#3e5348;margin-bottom:30px}
+.emdo-xmas__actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.emdo-xmas__btn{display:inline-flex;align-items:center;justify-content:center;gap:18px;background:var(--x-ink);border:1px solid var(--x-ink);color:white!important;font-size:15px;font-weight:700;padding:16px 24px;min-height:53px;border-radius:5px;transition:background .2s,color .2s}
+.emdo-xmas__btn:hover{background:#365949;color:#fff}
+.emdo-xmas__btn--outline{color:var(--x-ink)!important;border-color:#95a49a;background:transparent}
+.emdo-xmas__btn--outline:hover{background:#e5e9e1;color:var(--x-ink)}
+.emdo-xmas__proof{list-style:none!important;margin:32px 0 0!important;padding:0!important;display:flex;flex-wrap:wrap;gap:13px 18px;color:#58665b;font-size:12px}
+.emdo-xmas__proof li{margin:0!important}
+.emdo-xmas__proof li::before{content:'✓';display:inline-block;color:#52735d;font-weight:800;margin-right:7px}
+.emdo-xmas__visual{min-height:485px;position:relative;display:grid;place-items:center;isolation:isolate;background:radial-gradient(circle at 45% 48%,#f6f3ea 0,#e7e5d7 58%,#d5d8c8 100%);border-radius:8px;overflow:hidden;box-shadow:0 20px 60px #24372a16}
+.emdo-xmas__visual:before{content:'';position:absolute;inset:14px;border:1px solid #ffffff9e;border-radius:3px;pointer-events:none}
+.emdo-xmas__visual-glow{position:absolute;width:430px;height:430px;border:1px solid #bcb8a8;border-radius:50%;box-shadow:0 0 0 22px #ffffff35,0 0 0 56px #ffffff1b;transform:translateY(-10px)}
+.emdo-xmas__pack{z-index:1;width:min(260px,63%);aspect-ratio:4/5;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;position:relative;transform:rotate(-8deg);color:#f4f0e5;border:8px solid #e6d9bf;outline:1px solid #8a7c63;background:linear-gradient(145deg,#294f3d,#143728);box-shadow:28px 36px 28px #2133293d}
+.emdo-xmas__pack-stamp{position:absolute;top:17px;font-size:10px;letter-spacing:.22em;color:#e7d6b5}
+.emdo-xmas__pack-icon{font-size:58px;line-height:1;color:#c8a56a;margin-bottom:15px}
+.emdo-xmas__pack strong{font:400 clamp(24px,3.5vw,39px)/1.15 Georgia,serif;letter-spacing:-.03em}
+.emdo-xmas__pack-bottom{font-size:9px;letter-spacing:.11em;text-transform:uppercase;position:absolute;bottom:15px}
+.emdo-xmas__roundel{position:absolute;z-index:2;right:5%;bottom:15%;border-radius:100%;width:134px;aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-size:12px;background:#f6eedb;transform:rotate(11deg);color:#735326;box-shadow:0 8px 30px #21332922}
+.emdo-xmas__roundel strong{font:400 17px/1.2 Georgia,serif}
+.emdo-xmas__visual-caption{position:absolute;bottom:12px;left:15px;right:15px;font-size:10px;text-align:center;color:#586457}
+.emdo-xmas__bar{background:#183b2b;color:#fff}
+.emdo-xmas__bar-grid{display:grid;grid-template-columns:repeat(3,1fr)}
+.emdo-xmas__bar-grid>div{padding:26px 30px;border-right:1px solid #ffffff29}
+.emdo-xmas__bar-grid>div:first-child{padding-left:0}
+.emdo-xmas__bar-grid>div:last-child{border-right:0}
+.emdo-xmas__bar-grid strong{display:block;font-weight:700;font-size:14px;margin-bottom:4px}
+.emdo-xmas__bar-grid span{color:#dae0d7;font-size:12px}
+.emdo-xmas__section{padding:90px 0}
+.emdo-xmas__section-head{display:flex;align-items:end;justify-content:space-between;gap:40px;margin-bottom:39px}
+.emdo-xmas__section-head h2,.emdo-xmas__section--ink h2,.emdo-xmas__form-intro h2{font-size:clamp(31px,3.6vw,48px);line-height:1.15;letter-spacing:-.034em;color:var(--x-ink);max-width:690px;margin:0}
+.emdo-xmas__section-head>p{font-size:15px;line-height:1.7;max-width:390px;color:var(--x-muted);margin:0}
+.emdo-xmas__cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}
+.emdo-xmas__card{border:1px solid var(--x-border);background:#fff;border-radius:7px;overflow:hidden;box-shadow:0 9px 22px #162d1f08}
+.emdo-xmas__card-visual{aspect-ratio:1.55;position:relative;overflow:hidden;padding:23px;display:flex;justify-content:end;flex-direction:column;color:#fff;background:radial-gradient(circle at 85% 20%,#bbbc9499,transparent 44%),linear-gradient(135deg,#5c7d61,#254a36)}
+.emdo-xmas__card-visual:after{content:'✦';position:absolute;right:-10px;top:-78px;font-size:200px;color:#ffffff19}
+.emdo-xmas__card-visual--two{background:radial-gradient(circle at 85% 20%,#ddb480,transparent 45%),linear-gradient(135deg,#70542e,#3f3b25)}
+.emdo-xmas__card-visual--three{background:radial-gradient(circle at 85% 20%,#a47853,transparent 45%),linear-gradient(135deg,#29332b,#111f1d)}
+.emdo-xmas__card-visual>span{position:absolute;top:22px;left:24px;color:#e6e2d5;font-size:12px}
+.emdo-xmas__card-visual>strong{position:relative;z-index:1;font:400 clamp(25px,2.5vw,35px)/1.1 Georgia,serif}
+.emdo-xmas__card-visual>small{position:absolute;right:22px;bottom:24px;text-transform:uppercase;font-size:10px;letter-spacing:.15em}
+.emdo-xmas__card-copy{padding:28px 26px}
+.emdo-xmas__tag{display:block;text-transform:uppercase;letter-spacing:.08em;color:#8a6b44;font-size:11px;font-weight:700;margin-bottom:9px}
+.emdo-xmas__card h3{font-size:24px;color:var(--x-ink);margin-bottom:11px}
+.emdo-xmas__card p{font-size:14px;line-height:1.65;color:#5e695d;margin-bottom:15px}
+.emdo-xmas__card .emdo-xmas__includes{color:#2d4337;border-top:1px solid #e7e9e2;padding-top:17px;min-height:92px}
+.emdo-xmas__card a{font-size:14px;color:#1d5039;font-weight:800;text-decoration:underline;text-underline-offset:4px}
+.emdo-xmas__note{margin:27px 0 0;color:#667067;font-size:13px;line-height:1.7}
+.emdo-xmas__section--ink{background:var(--x-ink);color:#e7eee6}
+.emdo-xmas__section--ink h2{color:#fff;max-width:520px;margin-bottom:22px}
+.emdo-xmas__section--ink p{color:#c7d6cc;line-height:1.7}
+.emdo-xmas__split{display:grid;grid-template-columns:1fr 1fr;gap:10%;align-items:center}
+.emdo-xmas__features>div{display:flex;gap:18px;border-bottom:1px solid #ffffff2d;padding:21px 0}
+.emdo-xmas__features>div:last-child{border-bottom:0}
+.emdo-xmas__features>div>span{font-size:32px;color:var(--x-gold);line-height:1}
+.emdo-xmas__features h3{color:#fff;font-size:19px;margin-bottom:8px}
+.emdo-xmas__features p{font-size:14px;margin:0}
+.emdo-xmas__form-layout{display:grid;grid-template-columns:.8fr 1.2fr;gap:9%;align-items:start}
+.emdo-xmas__form-intro h2{margin-bottom:20px}
+.emdo-xmas__form-intro>p{font-size:17px;line-height:1.7;color:#506357;max-width:460px}
+.emdo-xmas__form-facts{margin-top:39px;padding-top:22px;border-top:1px solid #ddd}
+.emdo-xmas__form-facts p{font-size:14px;color:#56695b;line-height:1.65}
+.emdo-xmas__form-facts strong{color:#193e2c}
+.emdo-xmas__form-card{background:var(--x-paper);border:1px solid #e6e3d8;border-radius:8px;padding:clamp(22px,3.5vw,42px)}
+.emdo-xmas__fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:19px}
+.emdo-xmas__fields label{display:block;color:#284638;font-size:13px;font-weight:700}
+.emdo-xmas__fields label>span,.emdo-xmas__check strong{color:#ac4a31}
+.emdo-xmas__fields input,.emdo-xmas__fields select,.emdo-xmas__fields textarea{width:100%;display:block;margin-top:8px;padding:12px 13px;background:#fff;color:#1c3a2b;border:1px solid #cbd2c8;border-radius:4px;min-height:45px;box-shadow:none;font-family:inherit;font-size:14px}
+.emdo-xmas__fields textarea{resize:vertical;min-height:105px}
+.emdo-xmas__fields input:focus,.emdo-xmas__fields select:focus,.emdo-xmas__fields textarea:focus{outline:2px solid #779e81;outline-offset:1px}
+.emdo-xmas__field-wide{grid-column:1/-1}
+.emdo-xmas__check{display:flex;align-items:flex-start;gap:12px;font-size:12px;font-weight:400;color:#506156;line-height:1.55;margin:25px 0}
+.emdo-xmas__check input{flex:0 0 18px;width:18px;height:18px;accent-color:#19402e;margin-top:2px}
+.emdo-xmas__check a{color:#194d35;text-decoration:underline}
+.emdo-xmas__submit{width:100%;cursor:pointer}
+.emdo-xmas__form-card small{display:block;color:#69766d;margin-top:13px;line-height:1.5}
+.emdo-xmas__trap{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.emdo-xmas__notice{background:#fff0dc;border-left:4px solid #b47928;padding:12px 14px;font-size:14px;line-height:1.5}
+.emdo-xmas__notice--ok{border-color:#35724a;background:#e6f1e8}
+.emdo-xmas__faq{background:#f8f8f4}
+.emdo-xmas__faq details{max-width:900px;padding:18px 0;border-bottom:1px solid #d8dcd5}
+.emdo-xmas__faq summary{cursor:pointer;font-weight:700;color:var(--x-ink);font-size:17px}
+.emdo-xmas__faq details p{max-width:780px;color:#59685d;line-height:1.7;margin:16px 0 0}
+.emdo-xmas__end{background:#122d23;color:#edf0e6;padding-block:30px}
+.emdo-xmas__end .emdo-xmas__wrap{display:flex;align-items:center;justify-content:space-between;gap:15px}
+.emdo-xmas__end strong{font:400 25px Georgia,serif}
+.emdo-xmas__end span{font-size:12px;color:#cbd7ce}
+.emdo-xmas__end a{color:#e9c590;text-decoration:underline;font-weight:700}
+/* Página separada de muestras */
+.emdo-xmas__demo-head{background:#f2f3eb;padding:75px 0}
+.emdo-xmas__demo-head h1{font-size:clamp(36px,4.5vw,61px);max-width:870px;line-height:1.12;letter-spacing:-.035em;color:var(--x-ink)}
+.emdo-xmas__demo-head p{max-width:780px;color:#506357;line-height:1.7;font-size:17px}
+.emdo-xmas__demo-section{padding:65px 0}
+.emdo-xmas__demo-section--warm{background:#f8f7f3}
+.emdo-xmas__demo-label{margin-bottom:22px}
+.emdo-xmas__demo-label>span{font-size:12px;letter-spacing:.1em;color:#9b754b;font-weight:800;display:block;margin-bottom:5px}
+.emdo-xmas__demo-label>strong{font-size:23px;color:#1c3f2c}
+.emdo-xmas__demo-label p{font-size:14px;line-height:1.6;margin:8px 0;max-width:800px;color:#627167}
+.emdo-xmas__banner--home{border-radius:8px;min-height:365px;background:linear-gradient(110deg,#234f3a,#122c21);display:grid;grid-template-columns:1.1fr .9fr;overflow:hidden;color:#fff}
+.emdo-xmas__banner--home .emdo-xmas__banner-copy{padding:clamp(30px,5vw,65px)}
+.emdo-xmas__banner--home h2{font:400 clamp(29px,3vw,46px)/1.13 Georgia,serif;color:#fff;max-width:440px;margin-bottom:16px}
+.emdo-xmas__banner--home p{font-size:16px;color:#e0e8db;line-height:1.6}
+.emdo-xmas__banner--home a{display:inline-block;margin-top:9px;padding:12px 21px;color:#172a1d;background:#e4c392;border-radius:4px;font-weight:800}
+.emdo-xmas__banner-art{display:grid;place-items:center;position:relative;background:radial-gradient(circle at 60% 40%,#ffffff25,transparent 66%)}
+.emdo-xmas__mini-pack{position:relative;transform:rotate(8deg);width:min(250px,66%);aspect-ratio:1;display:flex;flex-direction:column;justify-content:center;gap:20px;align-items:center;border:8px solid #efe0bb;background:linear-gradient(140deg,#eae1cf,#c8aa74);color:#294735;box-shadow:23px 21px 30px #0921168c}
+.emdo-xmas__mini-pack>span{font-size:10px;letter-spacing:.15em}
+.emdo-xmas__mini-pack strong{font:400 35px/1.1 Georgia,serif;text-align:center}
+.emdo-xmas__mini-pack i{font-size:32px;font-style:normal}
+.emdo-xmas__banner--shop{background:#f0e8d8;border:1px solid #e2d2b7;border-left:6px solid #b58a52;display:flex;gap:24px;align-items:center;border-radius:4px;padding:25px 30px}
+.emdo-xmas__shop-mark{font-size:45px;color:#ac824c}
+.emdo-xmas__banner--shop>div:nth-child(2){flex:1}
+.emdo-xmas__banner--shop span{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#85613e;font-weight:700}
+.emdo-xmas__banner--shop h2{font-size:22px;color:#264434;margin:4px 0}
+.emdo-xmas__banner--shop p{font-size:13px;margin:0;color:#5d6d5d}
+.emdo-xmas__banner--shop a{white-space:nowrap;font-size:13px;font-weight:800;color:#fff;background:#214b34;padding:13px 18px;border-radius:4px}
+.emdo-xmas__article-mock{border:1px solid #e5e9e2;background:#fff;padding:45px 20px;max-width:860px;margin:auto}
+.emdo-xmas__article-text{max-width:670px;margin:0 auto}
+.emdo-xmas__article-text>span{font-size:11px;letter-spacing:.11em;color:#5b6b60}
+.emdo-xmas__article-text h2{font-size:28px;line-height:1.2;color:#244532}
+.emdo-xmas__article-text p{font-size:16px;line-height:1.75;color:#526154}
+.emdo-xmas__banner--blog{margin:27px auto;max-width:670px;border-left:4px solid #bb9258;background:#f4f4ea;display:flex;justify-content:space-between;align-items:center;gap:15px;padding:24px}
+.emdo-xmas__banner--blog>div{max-width:520px}
+.emdo-xmas__banner--blog span{font-size:11px;font-weight:800;letter-spacing:.1em;color:#8d7048}
+.emdo-xmas__banner--blog h3{font-size:22px;margin:8px 0;color:#274633}
+.emdo-xmas__banner--blog p{font-size:14px;color:#5d6a5f;line-height:1.6;margin-bottom:12px}
+.emdo-xmas__banner--blog a{font-size:13px;font-weight:800;text-decoration:underline;color:#2d513b}
+.emdo-xmas__blog-symbol{font-size:80px!important;color:#c29a61!important;line-height:1}
+.emdo-xmas__demo-bottom{font-size:14px;line-height:1.6;background:#e5ede5;color:#31513c;padding:20px 0}
+@media(max-width:900px){
+ .emdo-xmas__hero-grid{grid-template-columns:1fr;gap:35px;padding-block:55px}
+ .emdo-xmas__visual{max-width:650px;width:100%;min-height:400px;margin:auto}
+ .emdo-xmas__section-head{display:block}
+ .emdo-xmas__section-head>p{margin-top:15px;max-width:700px}
+ .emdo-xmas__cards{gap:13px}
+ .emdo-xmas__card-copy{padding:22px 18px}
+ .emdo-xmas__form-layout{gap:5%;grid-template-columns:.75fr 1.25fr}
+}
+@media(max-width:700px){
+ .emdo-xmas__wrap{width:min(100% - 32px,1180px)}
+ .emdo-xmas__topline .emdo-xmas__wrap{display:block;font-size:10px;line-height:1.8}
+ .emdo-xmas__topline span+span{display:block}
+ .emdo-xmas__hero-grid{padding-block:45px}
+ .emdo-xmas__hero h1{font-size:45px}
+ .emdo-xmas__visual{min-height:330px}
+ .emdo-xmas__roundel{width:100px;font-size:10px}
+ .emdo-xmas__bar-grid{grid-template-columns:1fr}
+ .emdo-xmas__bar-grid>div,.emdo-xmas__bar-grid>div:first-child{padding:14px 0;border:0;border-bottom:1px solid #ffffff2a}
+ .emdo-xmas__section{padding:55px 0}
+ .emdo-xmas__cards{grid-template-columns:1fr;gap:20px}
+ .emdo-xmas__card-visual{aspect-ratio:1.9}
+ .emdo-xmas__card .emdo-xmas__includes{min-height:0}
+ .emdo-xmas__split,.emdo-xmas__form-layout{grid-template-columns:1fr;gap:28px}
+ .emdo-xmas__form-facts{display:none}
+ .emdo-xmas__form-card{padding:21px}
+ .emdo-xmas__end .emdo-xmas__wrap{align-items:start;flex-direction:column}
+ .emdo-xmas__banner--home{grid-template-columns:1fr}
+ .emdo-xmas__banner-art{min-height:210px}
+ .emdo-xmas__mini-pack{width:155px;min-height:155px}
+ .emdo-xmas__mini-pack strong{font-size:24px}
+ .emdo-xmas__banner--shop{padding:19px;flex-wrap:wrap;gap:13px}
+ .emdo-xmas__banner--shop>div:nth-child(2){flex-basis:calc(100% - 90px)}
+ .emdo-xmas__banner--shop a{margin-left:auto}
+ .emdo-xmas__blog-symbol{font-size:54px!important}
+}
+@media(max-width:420px){
+ .emdo-xmas__fields{grid-template-columns:1fr}
+ .emdo-xmas__fields label{grid-column:1/-1}
+ .emdo-xmas__hero h1{font-size:39px}
+ .emdo-xmas__actions{align-items:stretch;flex-direction:column}
+ .emdo-xmas__btn{width:100%}
+}
+@media(prefers-reduced-motion:reduce){.emdo-xmas *{scroll-behavior:auto!important;transition:none!important}}
+
+
+/* Landing 2026: versión directa. Estas reglas no afectan a la página demo. */
+.emdo-xmas--landing .emdo-xmas__hero{background:#f6f5f0}
+.emdo-xmas--landing .emdo-xmas__hero-grid{gap:6%;padding-block:70px}
+.emdo-xmas--landing .emdo-xmas__hero h1{font-size:clamp(39px,4.6vw,65px);line-height:1.10;max-width:675px;letter-spacing:-.036em;margin-bottom:23px}
+.emdo-xmas--landing .emdo-xmas__hero h1 em{display:inline}
+.emdo-xmas--landing .emdo-xmas__hero-note{margin:23px 0 0;color:#526255;font-size:13px;line-height:1.6}
+.emdo-xmas--landing .emdo-xmas__hero-product{position:relative;border-radius:8px;background:#e9e8e0;min-height:380px;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:20px}
+.emdo-xmas--landing .emdo-xmas__hero-product img{max-width:100%;max-height:390px;height:auto;width:auto;object-fit:contain;mix-blend-mode:multiply;display:block}
+.emdo-xmas--landing .emdo-xmas__photo-note{position:absolute;bottom:10px;left:10px;right:10px;text-align:center;background:#f3f1e9df;border-radius:4px;padding:6px 8px;color:#60675c;font-size:10px;line-height:1.4}
+.emdo-xmas--landing .emdo-xmas__photo-fallback{font:400 37px/1.3 Georgia,serif;text-align:center;color:#234630}
+.emdo-xmas--landing .emdo-xmas__photo-fallback strong{display:block;font-size:56px}
+.emdo-xmas--landing .emdo-xmas__section--examples{padding:78px 0}
+.emdo-xmas--landing .emdo-xmas__section-head{align-items:center;margin-bottom:25px}
+.emdo-xmas--landing .emdo-xmas__section-head h2{font-size:clamp(29px,3.2vw,43px)}
+.emdo-xmas--landing .emdo-xmas__section-head p{max-width:390px}
+.emdo-xmas--landing .emdo-xmas__cards{gap:20px}
+.emdo-xmas--landing .emdo-xmas__card-visual--photo{aspect-ratio:1.7;display:flex;align-items:center;justify-content:center;padding:17px;background:linear-gradient(140deg,#f6f4ed,#e7e6df)}
+.emdo-xmas--landing .emdo-xmas__card-visual--photo:after{content:none}
+.emdo-xmas--landing .emdo-xmas__card-visual--photo img{width:auto;max-width:100%;height:auto;max-height:210px;object-fit:contain;mix-blend-mode:multiply}
+.emdo-xmas--landing .emdo-xmas__card-copy{padding:25px}
+.emdo-xmas--landing .emdo-xmas__card-copy .emdo-xmas__price{font:600 clamp(29px,2.9vw,41px)/1.2 Georgia,serif;color:#17442f;margin:4px 0 16px}
+.emdo-xmas--landing .emdo-xmas__price small{font:400 13px/1.4 system-ui,sans-serif;color:#738077}
+.emdo-xmas--landing .emdo-xmas__card h3{font-size:20px;line-height:1.35}
+.emdo-xmas--landing .emdo-xmas__card .emdo-xmas__includes{min-height:154px}
+.emdo-xmas--landing .emdo-xmas__how{background:#1d4431;color:#fff;padding:40px 0}
+.emdo-xmas--landing .emdo-xmas__how h2{color:#fff;font-size:26px;margin-bottom:20px}
+.emdo-xmas--landing .emdo-xmas__how-items{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}
+.emdo-xmas--landing .emdo-xmas__how-items p{margin:0;color:#dbe7dd;font-size:14px;line-height:1.65}
+.emdo-xmas--landing .emdo-xmas__how-items strong{display:block;color:#fff;font-size:15px}
+.emdo-xmas--landing .emdo-xmas__section--form-last{padding:85px 0;background:#fff}
+.emdo-xmas--landing .emdo-xmas__form-intro p{font-size:15px}
+.emdo-xmas--landing .emdo-xmas__form-layout{gap:8%}
+.emdo-xmas--landing .emdo-xmas__form-card{padding:31px}
+@media(max-width:900px){
+ .emdo-xmas--landing .emdo-xmas__hero-grid{padding-block:46px}
+ .emdo-xmas--landing .emdo-xmas__hero-product{max-width:560px;min-height:300px}
+ .emdo-xmas--landing .emdo-xmas__hero-product img{max-height:340px}
+ .emdo-xmas--landing .emdo-xmas__card .emdo-xmas__includes{min-height:193px}
+}
+@media(max-width:700px){
+ .emdo-xmas--landing .emdo-xmas__hero h1{font-size:39px}
+ .emdo-xmas--landing .emdo-xmas__hero-product{min-height:250px}
+ .emdo-xmas--landing .emdo-xmas__hero-product img{max-height:275px}
+ .emdo-xmas--landing .emdo-xmas__section--examples{padding:45px 0}
+ .emdo-xmas--landing .emdo-xmas__card .emdo-xmas__includes{min-height:0}
+ .emdo-xmas--landing .emdo-xmas__how-items{grid-template-columns:1fr;gap:14px}
+ .emdo-xmas--landing .emdo-xmas__section--form-last{padding:45px 0}
+ .emdo-xmas--landing .emdo-xmas__form-card{padding:20px}
+}
