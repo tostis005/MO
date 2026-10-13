@@ -1,0 +1,154 @@
+name: Production install missing GSC batch 1 PHP module
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-install-gsc-batch1-module-20261013.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+
+jobs:
+  targeted-module-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate single-file release and inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          module=elmercadodeorigen-child/inc/seo-gsc-batch-20-20261012.php
+          test -f "$module"
+          grep -q 'seo-gsc-batch-20-20261012.php' elmercadodeorigen-child/functions.php
+          php -l "$module"
+          php tests/seo-gsc-batch-20-20261012.php
+          : "${STAGING_HOST:?Missing SSH host}"
+          : "${STAGING_USER:?Missing SSH user}"
+          : "${STAGING_PASSWORD:?Missing SSH password}"
+          : "${STAGING_REMOTE_PATH:?Missing SSH path}"
+          [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
+          [[ "$STAGING_REMOTE_PATH" =~ ^/[A-Za-z0-9._/-]+/?$ ]]
+
+      - name: Upload only the missing module to a temporary server path
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          port="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$port" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          remote_file="/tmp/elmercado-gsc-batch1-module-${GITHUB_RUN_ID}.php"
+          echo "REMOTE_MODULE_FILE=$remote_file" >> "$GITHUB_ENV"
+          echo "MODULE_SHA256=$(sha256sum elmercadodeorigen-child/inc/seo-gsc-batch-20-20261012.php | awk '{print $1}')" >> "$GITHUB_ENV"
+          sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P "$port" elmercadodeorigen-child/inc/seo-gsc-batch-20-20261012.php "$STAGING_USER@$STAGING_HOST:$remote_file"
+
+      - name: Install module atomically and verify public SEO or roll back
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          port="${STAGING_PORT:-22}"
+          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$port" "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$REMOTE_MODULE_FILE' '$MODULE_SHA256'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; incoming="$2"; checksum="$3"
+          dev=""
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            config="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n 1 || true)"
+            [ -n "$config" ] || { echo 'Cannot resolve Plesk reference path' >&2; exit 1; }
+            dev="$(dirname "$config")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] || { echo 'Production root missing' >&2; exit 1; }
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1)"
+          wp_bin="$(command -v wp || true)"
+          [ -n "$wp_bin" ] && [ -x "$php_bin" ] || { echo 'WP-CLI or PHP missing'; exit 1; }
+          siteurl="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+          case "$siteurl" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) ;;
+            *) echo 'Unexpected production site URL, refusing release' >&2; exit 1 ;;
+          esac
+          active="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null)"
+          [ "$active" = 'elmercadodeorigen-child' ] || { echo 'Unexpected active theme'; exit 1; }
+          theme="$prod/wp-content/themes/elmercadodeorigen-child"
+          target="$theme/inc/seo-gsc-batch-20-20261012.php"
+          test -f "$theme/functions.php"
+          grep -q 'seo-gsc-batch-20-20261012.php' "$theme/functions.php"
+          [ ! -e "$target" ] || { echo 'Module already exists; refusing overwrite'; exit 1; }
+          [ -f "$incoming" ] || { echo 'Temporary module missing'; exit 1; }
+          echo "$checksum  $incoming" | sha256sum -c -
+          "$php_bin" -l "$incoming" >/dev/null
+
+          installed=0
+          rollback() {
+            rc=$?
+            if [ "$installed" -eq 1 ] && [ "$rc" -ne 0 ]; then
+              echo 'SEO module verification failed; reverting only the added module.' >&2
+              rm -f "$target"
+              "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+            fi
+            rm -f "$incoming"
+            exit "$rc"
+          }
+          trap rollback EXIT HUP INT TERM
+          install -m 0644 "$incoming" "$target"
+          installed=1
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+
+          # Delete only generated ES blog HTML to avoid serving an obsolete title.
+          cachedir="$prod/wp-content/uploads/elmercado-blog-static-v2"
+          if [ -d "$cachedir" ]; then
+            find "$cachedir" -maxdepth 1 -type f -name '*.html' -delete
+          fi
+
+          base="${siteurl%/}"
+          verify() {
+            path="$1"; title="$2"; description="$3"
+            output="$(mktemp)"
+            http="$(curl -ksS -L --connect-timeout 10 --max-time 35 -o "$output" -w '%{http_code}' "$base$path?seo_module_release=$checksum" || true)"
+            [ "$http" = '200' ] || { echo "SEO_PATH_ERROR path=$path HTTP=$http" >&2; rm -f "$output"; return 1; }
+            if ! grep -Fq "$title" "$output"; then
+              actual="$(grep -oEi '<title[^>]*>[^<]*</title>' "$output" | head -n 1 || true)"
+              echo "SEO_TITLE_ERROR path=$path actual=$actual" >&2
+              rm -f "$output"
+              return 1
+            fi
+            if ! grep -Fq "$description" "$output"; then
+              echo "SEO_DESCRIPTION_ERROR path=$path" >&2
+              rm -f "$output"
+              return 1
+            fi
+            h1="$(grep -oEi '<h1([[:space:]>])' "$output" | wc -l | tr -d ' ' || true)"
+            [ "$h1" = 1 ] || { echo "SEO_H1_ERROR path=$path count=$h1" >&2; rm -f "$output"; return 1; }
+            ! grep -Eqi 'Fatal error:|Parse error:|Uncaught Error:|There has been a critical error on this website' "$output" || { echo "SEO_FATAL_ERROR path=$path" >&2; rm -f "$output"; return 1; }
+            echo "SEO_MODULE_LIVE_OK path=$path h1=$h1"
+            rm -f "$output"
+          }
+          verify '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/' 'Why Cut Potatoes Turn Black: Causes' 'Why do cut potatoes turn black? Learn how oxidation'
+          verify '/en/white-foam-when-cooking-meat-what-it-is-why-it-appears/' 'White Foam When Cooking Meat: Causes' 'What is the white foam that forms when you cook meat?'
+          verify '/cuanta-carne-calcular-por-persona-corte-receta/' 'Cuánta carne por persona: tabla y gramos' 'Calcula cuánta carne comprar por persona según el corte'
+          installed=0
+          rm -f "$incoming"
+          trap - EXIT HUP INT TERM
+          echo 'SEO_BATCH1_SINGLE_MODULE_RELEASE_OK'
+          REMOTE
