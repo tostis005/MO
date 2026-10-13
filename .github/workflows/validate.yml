@@ -98,3 +98,108 @@ jobs:
 
       - name: Check whitespace errors
         run: git diff --check HEAD~1 HEAD || git diff --check
+
+  seo-origin-readonly:
+    # Temporary, branch-specific probe. Never run with secrets from a fork.
+    if: github.event_name == 'pull_request' && github.head_ref == 'seo/ci-backed-origin-readonly-20261013' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - name: Check connection information
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?SSH host missing}"
+          : "${STAGING_USER:?SSH user missing}"
+          : "${STAGING_PASSWORD:?SSH password missing}"
+          : "${STAGING_REMOTE_PATH:?SSH remote path missing}"
+          [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
+          [[ "$STAGING_REMOTE_PATH" =~ ^/[A-Za-z0-9._/-]+/?$ ]]
+
+      - name: Collect read-only SEO cache signals from production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          port="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$port" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$port" "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$GITHUB_RUN_ID'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; nonce="$2"
+          case "$nonce" in *[!0-9]*|'') exit 1 ;; esac
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            config="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n 1 || true)"
+            [ -n "$config" ] || { echo 'root=unresolved'; exit 1; }
+            dev="$(dirname "$config")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] || { echo 'production=not_found'; exit 1; }
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1)"
+          wp_bin="$(command -v wp || true)"
+          [ -n "$wp_bin" ] && [ -x "$php_bin" ] || { echo 'wpcli=unavailable'; exit 1; }
+          site="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+          case "$site" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) ;;
+            *) echo 'siteurl=unexpected'; exit 1 ;;
+          esac
+          echo 'siteurl=expected_production'
+          theme="$prod/wp-content/themes/elmercadodeorigen-child"
+          if [ -f "$theme/inc/seo-gsc-batch-20-20261012.php" ]; then echo 'seo_batch1_module=present'; else echo 'seo_batch1_module=missing'; fi
+          if [ -f "$prod/wp-content/advanced-cache.php" ]; then echo 'advanced_cache=present'; else echo 'advanced_cache=missing'; fi
+          dropin="$prod/wp-content/advanced-cache.php"
+          for indicator in request_uri query_string early_exit english_route custom_code; do
+            found=no
+            if [ -f "$dropin" ]; then
+              case "$indicator" in
+                request_uri) grep -Eqi 'REQUEST_URI|SCRIPT_NAME|REQUEST_METHOD' "$dropin" && found=yes || true ;;
+                query_string) grep -Eqi 'QUERY_STRING|parse_str|_GET' "$dropin" && found=yes || true ;;
+                early_exit) grep -Eqi '(exit|die)[[:space:]]*[;(]' "$dropin" && found=yes || true ;;
+                english_route) grep -Eqi '/en/|english|is_english' "$dropin" && found=yes || true ;;
+                custom_code) grep -Eqi 'elmercado|emo[-_]|blog-static' "$dropin" && found=yes || true ;;
+              esac
+            fi
+            echo "dropin_${indicator}=$found"
+          done
+          if [ -d "$prod/wp-content/uploads/elmercado-blog-static-v2" ]; then echo 'blog_static_dir=present'; else echo 'blog_static_dir=missing'; fi
+          probe_ip="$(hostname -I 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {print $i;exit}}')"
+          [ -n "$probe_ip" ] || { echo 'http_origin_probe=no_ipv4'; exit 0; }
+          url='https://www.elmercadodeorigen.com/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/'
+          for variant in clean nonce; do
+            target="$url"
+            [ "$variant" != nonce ] || target="${url}?seo_ci_probe=${nonce}"
+            hdr="$(mktemp)"; body="$(mktemp)"
+            if [ "$variant" = nonce ]; then
+              code="$(curl -ksS --connect-timeout 5 --max-time 22 --max-redirs 0 -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' --resolve "www.elmercadodeorigen.com:443:$probe_ip" -D "$hdr" -o "$body" -w '%{http_code}' "$target" || true)"
+            else
+              code="$(curl -ksS --connect-timeout 5 --max-time 22 --max-redirs 0 --resolve "www.elmercadodeorigen.com:443:$probe_ip" -D "$hdr" -o "$body" -w '%{http_code}' "$target" || true)"
+            fi
+            [ -n "$code" ] || code=000
+            title=new_or_unknown
+            if grep -Fqi '<title>Why Cut Potatoes Turn Black and How to Stop It' "$body"; then title=old; fi
+            if grep -Fqi '<title>Why Cut Potatoes Turn Black: Causes' "$body"; then title=new; fi
+            h1="$(grep -oEi '<h1([[:space:]>])' "$body" | wc -l | tr -d ' ' || true)"
+            [ -n "$h1" ] || h1=0
+            header=none
+            if grep -Eqi '^(x-cache|cf-cache-status|x-litespeed-cache|x-rocket-cache|x-proxy-cache|x-el-mercado-cache):' "$hdr"; then
+              if grep -Eiq '^(x-cache|cf-cache-status|x-litespeed-cache|x-rocket-cache|x-proxy-cache|x-el-mercado-cache):[[:space:]]*(hit|cached|stale)([[:space:];]|$)' "$hdr"; then header=hit
+              elif grep -Eiq '^(x-cache|cf-cache-status|x-litespeed-cache|x-rocket-cache|x-proxy-cache|x-el-mercado-cache):[[:space:]]*(miss|bypass|dynamic|expired)([[:space:];]|$)' "$hdr"; then header=miss
+              else header=other; fi
+            fi
+            echo "http_${variant}=status:${code} title:${title} h1:${h1} cache_header:${header}"
+            rm -f "$hdr" "$body"
+          done
+          REMOTE
