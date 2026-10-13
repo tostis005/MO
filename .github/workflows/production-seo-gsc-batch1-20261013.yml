@@ -1,0 +1,189 @@
+name: Production SEO GSC batch 1 controlled release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-seo-gsc-batch1-20261013.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate SEO release
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f elmercadodeorigen-child/functions.php
+          test -f elmercadodeorigen-child/inc/seo-gsc-batch-20-20261012.php
+          grep -q 'seo-gsc-batch-20-20261012.php' elmercadodeorigen-child/functions.php
+          grep -q 'function elmercado_gsc_batch_20_20261012' elmercadodeorigen-child/inc/seo-gsc-batch-20-20261012.php
+          php tests/seo-gsc-batch-20-20261012.php
+          python3 tests/seo-html-audit.py --self-test
+          find elmercadodeorigen-child -type f -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
+          [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
+
+      - name: Install deployment tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends rsync sshpass
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Stage SEO child theme on SSH host
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          REMOTE_TMP="/tmp/elmercado-seo-batch1-20261013-${GITHUB_RUN_ID}"
+          echo "REMOTE_TMP=$REMOTE_TMP" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE_TMP' && mkdir -p '$REMOTE_TMP/theme'"
+          sshpass -e rsync -az --delete --exclude='.DS_Store' --exclude='*.map' -e "ssh $SSH_OPTIONS" elmercadodeorigen-child/ "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/theme/"
+
+      - name: Backup, deploy and verify SEO in production with rollback
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$REMOTE_TMP/theme' '$GITHUB_SHA'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; incoming="$2"; commit="$3"
+          dev=""
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || { echo 'Cannot resolve development WordPress root.' >&2; exit 1; }
+            dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] && [ -d "$prod/wp-content/themes" ] || { echo 'Production WordPress path invalid.' >&2; exit 1; }
+
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          [ -x "$php_bin" ] && [ -n "$wp_bin" ] || { echo 'PHP/WP-CLI unavailable.' >&2; exit 1; }
+
+          siteurl="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --allow-root 2>/dev/null || true)"
+          case "$siteurl" in https://elmercadodeorigen.com*|http://elmercadodeorigen.com*|https://www.elmercadodeorigen.com*|http://www.elmercadodeorigen.com*) ;; *) echo "Refusing production deploy: siteurl=$siteurl" >&2; exit 1 ;; esac
+
+          find "$incoming" -type f -name '*.php' -print0 | xargs -0 -n1 "$php_bin" -l >/dev/null
+          test -f "$incoming/inc/seo-gsc-batch-20-20261012.php"
+          grep -q 'seo-gsc-batch-20-20261012.php' "$incoming/functions.php"
+
+          parent="$prod/wp-content/themes"
+          target="$parent/elmercadodeorigen-child"
+          [ -d "$target" ] || { echo 'Existing production child theme missing.' >&2; exit 1; }
+          active_before="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root)"
+
+          rollback_root="$HOME/.elmercado-rollbacks/elmercadodeorigen.com"
+          short_commit="$(printf '%.10s' "$commit")"
+          backup_name="$(date -u +%Y%m%dT%H%M%SZ)-before-seo-batch1-20261013-$short_commit"
+          backup_dir="$rollback_root/$backup_name"
+          mkdir -p "$backup_dir"
+          tar -czf "$backup_dir/theme.tar.gz" -C "$parent" elmercadodeorigen-child
+          (cd "$backup_dir" && sha256sum theme.tar.gz > theme.tar.gz.sha256 && sha256sum -c theme.tar.gz.sha256)
+          printf '%s\n' "$active_before" > "$backup_dir/active-stylesheet.txt"
+          printf '%s\n' "$siteurl" > "$backup_dir/siteurl.txt"
+          printf '%s\n' "$commit" > "$backup_dir/release-sha.txt"
+
+          old="$parent/.elmercadodeorigen-child.predeploy-$commit"
+          rm -rf "$old"
+          swapped=0
+          rollback() {
+            code=$?
+            if [ "$swapped" -eq 1 ] && [ "$code" -ne 0 ]; then
+              echo 'Production verification failed; restoring prior theme.' >&2
+              rm -rf "$target"
+              [ ! -d "$old" ] || mv "$old" "$target"
+              "$php_bin" -d memory_limit=512M "$wp_bin" theme activate "$active_before" --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+              "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+            fi
+            rm -rf "$incoming"
+            exit "$code"
+          }
+          trap rollback EXIT HUP INT TERM
+
+          mv "$target" "$old"
+          mv "$incoming" "$target"
+          swapped=1
+          find "$target" -type f -name '*.php' -print0 | xargs -0 -n1 "$php_bin" -l >/dev/null
+          "$php_bin" -d memory_limit=512M "$wp_bin" theme activate elmercadodeorigen-child --path="$prod" --skip-plugins --allow-root >/dev/null
+          active_after="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root)"
+          [ "$active_after" = 'elmercadodeorigen-child' ]
+          test -f "$target/inc/seo-gsc-batch-20-20261012.php"
+          grep -q 'seo-gsc-batch-20-20261012.php' "$target/functions.php"
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+          # The ES blog early-cache is generated HTML, not durable content.
+          # Invalidate it after the new theme is installed.
+          static_blog_cache="$prod/wp-content/uploads/elmercado-blog-static-v2"
+          if [ -d "$static_blog_cache" ]; then
+            find "$static_blog_cache" -maxdepth 1 -type f -name '*.html' -delete
+            echo 'Invalidated generated Spanish article HTML cache.'
+          fi
+
+          base="${siteurl%/}"
+          # Verify ordinary pages still respond and contain no fatal markers.
+          for path in / /tienda/; do
+            code="$(curl -ksS -L -o /tmp/emo-seo-page -w '%{http_code}' --max-time 35 "$base$path?seo_release=$commit" || true)"
+            [ "$code" = '200' ] || { echo "$path HTTP $code" >&2; exit 1; }
+            ! grep -Eqi 'Fatal error:|Parse error:|Uncaught Error:|There has been a critical error on this website' /tmp/emo-seo-page || { echo "Fatal marker on $path" >&2; exit 1; }
+          done
+
+          # Confirm actual public rendering of SEO changes: first EN + ES posts.
+          # Any unexpected response causes the rollback trap to restore theme.
+          check_seo_post() {
+            path="$1"; expected="$2"
+            output="$(mktemp)"
+            code="$(curl -ksS -L --connect-timeout 12 --max-time 40 -o "$output" -w '%{http_code}' "$base$path?seo_release=$commit" || true)"
+            [ "$code" = '200' ] || { echo "SEO page $path HTTP $code" >&2; rm -f "$output"; return 1; }
+            grep -Fq "$expected" "$output" || { echo "Missing expected SEO title on $path" >&2; rm -f "$output"; return 1; }
+            h1_count="$(grep -oEi '<h1([[:space:]>])' "$output" | wc -l | tr -d ' ' || true)"
+            [ "$h1_count" = '1' ] || { echo "$path has $h1_count H1s, expected 1" >&2; rm -f "$output"; return 1; }
+            grep -Eiq '<meta[^>]+name="description"' "$output" || { echo "Missing description on $path" >&2; rm -f "$output"; return 1; }
+            ! grep -Eqi 'Fatal error:|Parse error:|Uncaught Error:|There has been a critical error on this website' "$output" || { echo "Fatal marker on $path" >&2; rm -f "$output"; return 1; }
+            echo "SEO_OK path=$path h1=$h1_count"
+            rm -f "$output"
+          }
+          check_seo_post '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/' 'Why Cut Potatoes Turn Black: Causes'
+          check_seo_post '/en/white-foam-when-cooking-meat-what-it-is-why-it-appears/' 'White Foam When Cooking Meat: Causes'
+          check_seo_post '/cuanta-carne-calcular-por-persona-corte-receta/' 'Cuánta carne por persona: tabla y gramos'
+
+          rm -rf "$old"
+          swapped=0
+          trap - EXIT HUP INT TERM
+          echo "PRODUCTION_SEO_BATCH1_OK site=$siteurl backup=$backup_name"
+          REMOTE
