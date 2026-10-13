@@ -25,10 +25,10 @@ jobs:
           import re,sys
           text=Path('/tmp/emo-home-icons/home.html').read_text(encoding='utf-8',errors='replace')
           raw=len(text.encode())
-          hit=re.search(r'<script\\b[^>]*\\bid=["\\\']woostify-general-js-extra["\\\'][^>]*>',text,re.I)
+          hit=re.search(r'<script[^>]*id=.woostify-general-js-extra.[^>]*>',text,re.I)
           if hit is None:raise SystemExit('Missing Woostify config script')
           tag=hit.group(0)
-          src=re.search(r'\\bsrc=["\\\'](https://www\\.elmercadodeorigen\\.com/wp-content/uploads/elmercado-home-static/woostify-icons-([0-9a-f]{20})\\.js)["\\\']',tag)
+          src=re.search(r'src=.?(https://www[.]elmercadodeorigen[.]com/wp-content/uploads/elmercado-home-static/woostify-icons-([0-9a-f]{20})[.]js)',tag)
           if src is None:raise SystemExit('External config JS missing or not versioned')
           if 'woostify_svg_icons' in tag:raise SystemExit('Config unexpectedly inlined')
           if raw>=650000:raise SystemExit(f'Home HTML regression: {raw} bytes')
