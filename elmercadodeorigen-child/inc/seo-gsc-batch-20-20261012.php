@@ -367,3 +367,39 @@ add_action( 'wp_footer', static function (): void {
 	echo '<span id="emo-qa-content" data-calls="' . (int) $GLOBALS['emo_seo_qa_content_calls'] .
 		'" data-h1seen="' . (int) $GLOBALS['emo_seo_qa_content_h1'] . '" hidden></span>';
 }, PHP_INT_MAX );
+
+
+/* TEMPORARY PR #260: remove only the hidden Woostify page header H1 in SEO posts. */
+add_action( 'wp', static function (): void {
+	if ( is_singular( 'post' ) && elmercado_gsc_batch_20_target_20261012() ) {
+		remove_action( 'woostify_after_header', 'woostify_page_header', 10 );
+	}
+}, 100 );
+
+/* TEMPORARY PR #260: replace one SEO description in buffered wp_head only. */
+add_action( 'wp_head', static function (): void {
+	if ( elmercado_gsc_batch_20_target_20261012() ) {
+		ob_start();
+	}
+}, -1000 );
+add_action( 'wp_head', static function (): void {
+	$target = elmercado_gsc_batch_20_target_20261012();
+	if ( empty( $target['description'] ) ) {
+		return;
+	}
+	$head = ob_get_clean();
+	if ( ! is_string( $head ) ) {
+		return;
+	}
+	$hits = 0;
+	$head = preg_replace_callback(
+		'~<meta\\b[^>]*\\bname\\s*=\\s*["\\x27]description["\\x27][^>]*>~iu',
+		static function ( array $match ) use ( $target, &$hits ): string {
+			$hits++;
+			return '<meta name="description" content="' . esc_attr( $target['description'] ) . '">';
+		},
+		$head,
+		1
+	) ?? $head;
+	echo $head; // Output remains unchanged except for the single description meta.
+}, PHP_INT_MAX );
