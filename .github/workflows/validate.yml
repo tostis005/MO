@@ -76,6 +76,9 @@ jobs:
           echo "Recent production SEO deployment workflow runs (id, status, conclusion, SHA):"
           gh api "repos/${{ github.repository }}/actions/workflows/production-seo-gsc-batch1-20261013.yml/runs?per_page=5" \
             --jq '.workflow_runs[:5][] | [.id, .status, (.conclusion // "pending"), .head_sha] | @tsv'
+          echo "Recent targeted GSC module repair runs:"
+          gh api "repos/${{ github.repository }}/actions/workflows/production-install-gsc-batch1-module-20261013.yml/runs?per_page=3" \
+            --jq '.workflow_runs[:3][] | [.id, .status, (.conclusion // "pending"), .head_sha] | @tsv'
           echo "Recent read-only production origin diagnostics:"
           gh api "repos/${{ github.repository }}/actions/workflows/diagnose-production-seo-origin-20261013.yml/runs?per_page=3" \
             --jq '.workflow_runs[:3][] | [.id, .status, (.conclusion // "pending"), .head_sha] | @tsv'
