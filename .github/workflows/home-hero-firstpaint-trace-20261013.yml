@@ -1,0 +1,54 @@
+name: Trace Home hero layout shifts 20261013
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/home-hero-firstpaint-trace-20261013.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - run: npm install --no-save --no-audit --no-fund playwright-core@1.56.1 >/dev/null
+      - name: Identify Home hero layout changes on 4G mobile
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat >/tmp/home-trace.cjs <<'JS'
+          const {chromium}=require(process.cwd()+'/node_modules/playwright-core');
+          (async()=>{const b=await chromium.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            for(const [mode,w,h] of [['mobile',390,844],['desktop',1365,900]]){
+              const p=await b.newPage({viewport:{width:w,height:h}});
+              const c=await p.context().newCDPSession(p);await c.send('Network.enable');
+              if(mode==='mobile')await c.send('Network.emulateNetworkConditions',{offline:false,latency:120,downloadThroughput:500000,uploadThroughput:125000,connectionType:'cellular4g'});
+              await p.addInitScript(()=>{
+                window.__t={moves:[],shifts:[],loading:[]};let prev='';
+                const snap=()=>{
+                  const box=s=>{const e=document.querySelector(s);if(!e)return null;const r=e.getBoundingClientRect(),cs=getComputedStyle(e);return {x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),display:cs.display,position:cs.position,aspect:cs.aspectRatio}};
+                  const z={hero:box('.emo-hero'),grid:box('.emo-hero__grid'),copy:box('.emo-hero__copy'),visual:box('.emo-hero__visual'),
+                    c1:box('.emo-hero-card--1'),c2:box('.emo-hero-card--2'),c3:box('.emo-hero-card--3'),trust:box('.emo-trust'),
+                    images:[...document.querySelectorAll('.emo-hero img')].slice(0,5).map(e=>({src:e.currentSrc.slice(-100),w:e.naturalWidth,h:e.naturalHeight,loading:e.loading,complete:e.complete,rect:(()=>{const r=e.getBoundingClientRect();return [Math.round(r.y),Math.round(r.height)]})()})),
+                    ready:document.readyState};
+                  const sig=JSON.stringify(z);
+                  if(sig!==prev){prev=sig;window.__t.moves.push({at:Math.round(performance.now()),...z});}
+                };
+                setInterval(snap,30);
+                new PerformanceObserver(l=>{for(const e of l.getEntries()){if(e.hadRecentInput)continue;window.__t.shifts.push({time:Math.round(e.startTime),value:+e.value.toFixed(4),sources:e.sources?.slice(0,5).map(x=>({name:x.node?.className?.toString().slice(0,80),old:x.previousRect?.toJSON?.(),now:x.currentRect?.toJSON?.()}))});snap();}}).observe({type:'layout-shift',buffered:true});
+                document.addEventListener('load',e=>{if(e.target?.tagName==='LINK'||e.target?.tagName==='IMG')window.__t.loading.push({at:Math.round(performance.now()),tag:e.target.tagName,id:e.target.id,src:(e.target.href||e.target.src||'').slice(-120)})},true);
+              });
+              const response=await p.goto('https://www.elmercadodeorigen.com/',{waitUntil:'domcontentloaded',timeout:65000});
+              await p.waitForTimeout(1200);
+              const data=await p.evaluate(()=>window.__t);
+              const filtered=data.moves.filter((x,i,a)=>i===0||i===a.length-1||Math.abs((x.c2?.y||0)-(a[i-1]?.c2?.y||0))>2||Math.abs((x.visual?.h||0)-(a[i-1]?.visual?.h||0))>2);
+              console.log('HOME '+mode+' http='+response.status()+' changes='+data.moves.length);
+              console.log('HOME_MOVES '+mode+' '+JSON.stringify(filtered.slice(-22)));
+              console.log('HOME_SHIFTS '+mode+' '+JSON.stringify(data.shifts));
+              console.log('HOME_LOADED '+mode+' '+JSON.stringify(data.loading.slice(-30)));
+              await p.close();
+            }await b.close();
+          })().catch(e=>{console.error(e.stack);process.exit(1)});
+          JS
+          export CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          node /tmp/home-trace.cjs
