@@ -96,6 +96,15 @@ printf '%s' "$loaded" | grep -Fq 'NAVIDAD_ACTIVE'
 banners="$("$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo function_exists("emdo_navidad_promo_markup_2026") ? "BANNERS_ACTIVE" : "BANNERS_MISSING";' --path="$prod" --allow-root 2>/dev/null || true)"
 printf 'WP_CLI_BANNERS_CHECK=%s\n' "$banners"
 printf '%s' "$banners" | grep -Fq 'BANNERS_ACTIVE'
+# Purgar la caché PROPIA de portada: transitorio en BD + HTML/CSS estáticos.
+# La caché continúa habilitada y se recalienta con la siguiente visita.
+"$php_bin" -d memory_limit=512M "$wp_bin" eval '
+  if ( ! function_exists("elmercado_flush_home_cache") ) {
+    throw new RuntimeException("Falta la función de invalidación de portada");
+  }
+  elmercado_flush_home_cache();
+  echo "EMDO_HOME_CACHE_INVALIDATED\\n";
+' --path="$prod" --allow-root
 "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
 "$php_bin" -d memory_limit=512M "$wp_bin" rocket clean --confirm --path="$prod" --allow-root >/dev/null 2>&1 || true
 # Regenerar versiones cacheadas de portada y blog sin tocar contenido/SEO.
