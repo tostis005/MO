@@ -182,3 +182,54 @@
  .emdo-xmas__btn{width:100%}
 }
 @media(prefers-reduced-motion:reduce){.emdo-xmas *{scroll-behavior:auto!important;transition:none!important}}
+
+
+/* Landing 2026: versión directa. Estas reglas no afectan a la página demo. */
+.emdo-xmas--landing .emdo-xmas__hero{background:#f6f5f0}
+.emdo-xmas--landing .emdo-xmas__hero-grid{gap:6%;padding-block:70px}
+.emdo-xmas--landing .emdo-xmas__hero h1{font-size:clamp(39px,4.6vw,65px);line-height:1.10;max-width:675px;letter-spacing:-.036em;margin-bottom:23px}
+.emdo-xmas--landing .emdo-xmas__hero h1 em{display:inline}
+.emdo-xmas--landing .emdo-xmas__hero-note{margin:23px 0 0;color:#526255;font-size:13px;line-height:1.6}
+.emdo-xmas--landing .emdo-xmas__hero-product{position:relative;border-radius:8px;background:#e9e8e0;min-height:380px;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:20px}
+.emdo-xmas--landing .emdo-xmas__hero-product img{max-width:100%;max-height:390px;height:auto;width:auto;object-fit:contain;mix-blend-mode:multiply;display:block}
+.emdo-xmas--landing .emdo-xmas__photo-note{position:absolute;bottom:10px;left:10px;right:10px;text-align:center;background:#f3f1e9df;border-radius:4px;padding:6px 8px;color:#60675c;font-size:10px;line-height:1.4}
+.emdo-xmas--landing .emdo-xmas__photo-fallback{font:400 37px/1.3 Georgia,serif;text-align:center;color:#234630}
+.emdo-xmas--landing .emdo-xmas__photo-fallback strong{display:block;font-size:56px}
+.emdo-xmas--landing .emdo-xmas__section--examples{padding:78px 0}
+.emdo-xmas--landing .emdo-xmas__section-head{align-items:center;margin-bottom:25px}
+.emdo-xmas--landing .emdo-xmas__section-head h2{font-size:clamp(29px,3.2vw,43px)}
+.emdo-xmas--landing .emdo-xmas__section-head p{max-width:390px}
+.emdo-xmas--landing .emdo-xmas__cards{gap:20px}
+.emdo-xmas--landing .emdo-xmas__card-visual--photo{aspect-ratio:1.7;display:flex;align-items:center;justify-content:center;padding:17px;background:linear-gradient(140deg,#f6f4ed,#e7e6df)}
+.emdo-xmas--landing .emdo-xmas__card-visual--photo:after{content:none}
+.emdo-xmas--landing .emdo-xmas__card-visual--photo img{width:auto;max-width:100%;height:auto;max-height:210px;object-fit:contain;mix-blend-mode:multiply}
+.emdo-xmas--landing .emdo-xmas__card-copy{padding:25px}
+.emdo-xmas--landing .emdo-xmas__card-copy .emdo-xmas__price{font:600 clamp(29px,2.9vw,41px)/1.2 Georgia,serif;color:#17442f;margin:4px 0 16px}
+.emdo-xmas--landing .emdo-xmas__price small{font:400 13px/1.4 system-ui,sans-serif;color:#738077}
+.emdo-xmas--landing .emdo-xmas__card h3{font-size:20px;line-height:1.35}
+.emdo-xmas--landing .emdo-xmas__card .emdo-xmas__includes{min-height:154px}
+.emdo-xmas--landing .emdo-xmas__how{background:#1d4431;color:#fff;padding:40px 0}
+.emdo-xmas--landing .emdo-xmas__how h2{color:#fff;font-size:26px;margin-bottom:20px}
+.emdo-xmas--landing .emdo-xmas__how-items{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}
+.emdo-xmas--landing .emdo-xmas__how-items p{margin:0;color:#dbe7dd;font-size:14px;line-height:1.65}
+.emdo-xmas--landing .emdo-xmas__how-items strong{display:block;color:#fff;font-size:15px}
+.emdo-xmas--landing .emdo-xmas__section--form-last{padding:85px 0;background:#fff}
+.emdo-xmas--landing .emdo-xmas__form-intro p{font-size:15px}
+.emdo-xmas--landing .emdo-xmas__form-layout{gap:8%}
+.emdo-xmas--landing .emdo-xmas__form-card{padding:31px}
+@media(max-width:900px){
+ .emdo-xmas--landing .emdo-xmas__hero-grid{padding-block:46px}
+ .emdo-xmas--landing .emdo-xmas__hero-product{max-width:560px;min-height:300px}
+ .emdo-xmas--landing .emdo-xmas__hero-product img{max-height:340px}
+ .emdo-xmas--landing .emdo-xmas__card .emdo-xmas__includes{min-height:193px}
+}
+@media(max-width:700px){
+ .emdo-xmas--landing .emdo-xmas__hero h1{font-size:39px}
+ .emdo-xmas--landing .emdo-xmas__hero-product{min-height:250px}
+ .emdo-xmas--landing .emdo-xmas__hero-product img{max-height:275px}
+ .emdo-xmas--landing .emdo-xmas__section--examples{padding:45px 0}
+ .emdo-xmas--landing .emdo-xmas__card .emdo-xmas__includes{min-height:0}
+ .emdo-xmas--landing .emdo-xmas__how-items{grid-template-columns:1fr;gap:14px}
+ .emdo-xmas--landing .emdo-xmas__section--form-last{padding:45px 0}
+ .emdo-xmas--landing .emdo-xmas__form-card{padding:20px}
+}
