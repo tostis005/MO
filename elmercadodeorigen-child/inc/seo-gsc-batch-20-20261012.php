@@ -371,20 +371,27 @@ add_action(
 		}
 
 		// One English article ONLY. Expand after proving real HTML and rollback.
-		if ( '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/' !== $path ) {
+		// TranslatePress can normalize the public /en/ path later than init.
+		// Match just this unambiguous slug early; require the exact EN path in the final callback.
+		if ( false === strpos( $path, 'why-cut-potatoes-turn-black-oxidation-how-to-prevent-it' ) ) {
 			return;
 		}
+		$public_path = '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/';
 		$targets = elmercado_gsc_batch_20_20261012();
-		if ( empty( $targets[ $path ]['description'] ) ) {
+		if ( empty( $targets[ $public_path ]['description'] ) ) {
 			return;
 		}
-		$description = (string) $targets[ $path ]['description'];
+		$description = (string) $targets[ $public_path ]['description'];
 		$GLOBALS['emo_gsc_outer_buffer_started_20261014'] = true;
 
 		// TranslatePress starts its inner buffer on init:0; Trustindex on init:10.
 		// PHP flushes the inner buffers first; this callback receives final HTML.
 		ob_start(
-			static function ( $html ) use ( $description ) {
+			static function ( $html ) use ( $description, $public_path ) {
+				$final_path = (string) wp_parse_url( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), PHP_URL_PATH );
+				if ( $final_path !== $public_path ) {
+					return $html;
+				}
 				$modified = elmercado_gsc_meta_outer_replace_20261014( $html, $description );
 				return $modified . '<!-- seo-gsc-outer-final-probe-20261014 changed:' . ( $modified === $html ? 'no' : 'yes' ) . ' -->';
 			}
@@ -403,6 +410,8 @@ add_action( 'wp_head', static function (): void {
 	$uri_path = (string) wp_parse_url( $uri, PHP_URL_PATH );
 	echo '<!-- emo-gsc-outer-context-20261014'
 		. ' init:' . ( ! empty( $GLOBALS['emo_gsc_outer_init_fired_20261014'] ) ? 'yes' : 'no' )
+		. ' init_slug:' . ( false !== strpos( (string) ( $GLOBALS['emo_gsc_outer_path_20261014'] ?? '' ), 'why-cut-potatoes-turn-black' ) ? 'yes' : 'no' )
+		. ' init_exact:' . ( '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/' === (string) ( $GLOBALS['emo_gsc_outer_path_20261014'] ?? '' ) ? 'yes' : 'no' )
 		. ' uri_exact:' . ( '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/' === $uri_path ? 'yes' : 'no' )
 		. ' http_get:' . ( 'GET' === strtoupper( (string) ( $_SERVER['REQUEST_METHOD'] ?? '' ) ) ? 'yes' : 'no' )
 		. ' in_admin:' . ( is_admin() ? 'yes' : 'no' )
