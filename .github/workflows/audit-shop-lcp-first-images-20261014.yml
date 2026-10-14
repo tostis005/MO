@@ -1,0 +1,55 @@
+name: Audit shop LCP and above-fold product images 20261014
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/audit-shop-lcp-first-images-20261014.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - run: npm install --no-save --no-audit --no-fund playwright-core@1.56.1 >/dev/null
+      - name: Compare Chrome mobile LCP for first product image priority
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat >/tmp/shop-lcp.cjs <<'JS'
+          const {chromium}=require(process.cwd()+'/node_modules/playwright-core');
+          (async()=>{
+            const browser=await chromium.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            for(const [variant,priority] of [['baseline',false],['image-eager',true],['baseline-2',false],['image-eager-2',true]]){
+              const page=await browser.newPage({viewport:{width:390,height:844}});
+              const cdp=await page.context().newCDPSession(page);await cdp.send('Network.enable');
+              await cdp.send('Network.emulateNetworkConditions',{offline:false,latency:120,downloadThroughput:500000,uploadThroughput:125000,connectionType:'cellular4g'});
+              await page.addInitScript(()=>{
+                window.__lcp=[];
+                new PerformanceObserver(l=>{for(const e of l.getEntries())window.__lcp.push({at:Math.round(e.startTime),element:e.element?.outerHTML?.slice(0,280),url:e.url?.slice(0,160),size:e.size});}).observe({type:'largest-contentful-paint',buffered:true});
+              });
+              if(priority)await page.route('https://www.elmercadodeorigen.com/tienda/',async route=>{
+                const original=await route.fetch({timeout:60000});let html=await original.text(),changes=0;
+                html=html.replace(/(<ul\b[^>]*class=["'][^"']*\bproducts\b[^"']*["'][^>]*>[\s\S]*?<img\b)([^>]*>)/i,(whole,start,end)=>{
+                  changes++;
+                  let attrs=end.replace(/\sloading=(["'])[^"']*\1/i,'').replace(/\sfetchpriority=(["'])[^"']*\1/i,'');
+                  return start+' loading="eager" fetchpriority="high"'+attrs;
+                });
+                console.log('REWRITE '+variant+' firstProductImage='+changes);
+                await route.fulfill({response:original,body:html,headers:{...original.headers(),'content-type':'text/html;charset=UTF-8'}});
+              });
+              const response=await page.goto('https://www.elmercadodeorigen.com/tienda/',{waitUntil:'domcontentloaded',timeout:65000});
+              await page.waitForTimeout(2200);
+              const d=await page.evaluate(()=>{
+                const nav=performance.getEntriesByType('navigation')[0];
+                const imgs=[...document.querySelectorAll('ul.products li.product img')].slice(0,3).map(img=>({loading:img.loading,fetchPriority:img.fetchPriority,complete:img.complete,naturalWidth:img.naturalWidth,rectY:Math.round(img.getBoundingClientRect().y),src:img.currentSrc.slice(-100)}));
+                return {ttfb:Math.round(nav.responseStart),dcl:Math.round(nav.domContentLoadedEventEnd),lcp:window.__lcp.slice(-3),images:imgs};
+              });
+              console.log('SHOP_LCP '+variant+' HTTP='+response.status()+' '+JSON.stringify(d));
+              await page.close();
+            }
+            await browser.close();
+          })().catch(e=>{console.error(e.stack);process.exit(1)});
+          JS
+          export CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          node /tmp/shop-lcp.cjs
