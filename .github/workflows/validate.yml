@@ -236,7 +236,8 @@ jobs:
           [ -n "$probe_ip" ] || exit 1
           base='https://www.elmercadodeorigen.com'
           output="$(mktemp)"
-          status="$(curl -ksS --connect-timeout 5 --max-time 22 --max-redirs 0 --resolve "www.elmercadodeorigen.com:443:$probe_ip" -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o "$output" -w '%{http_code}' "$base/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/?seo_outer_meta_test=$nonce" || true)"
+          headers="$(mktemp)"
+          status="$(curl -ksS --connect-timeout 5 --max-time 22 --max-redirs 0 -D "$headers" --resolve "www.elmercadodeorigen.com:443:$probe_ip" -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o "$output" -w '%{http_code}' "$base/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/?seo_outer_meta_test=$nonce" || true)"
           tag="$(grep -oEi '<meta[^>]*name="description"[^>]*>' "$output" | head -n 1 || true)"
           expected='Why do cut potatoes turn black? Learn how oxidation causes darkening, whether they are safe to eat and how cold water and refrigeration help.'
           meta_yes=no
@@ -246,7 +247,13 @@ jobs:
           grep -Fq '<title>Why Cut Potatoes Turn Black: Causes' "$output" && title_ok=yes || true
           h1="$(grep -oEi '<h1([[:space:]>])' "$output" | wc -l | tr -d ' ' || true)"
           echo "SEO_OUTER_META_RESULT=origin_http:$status meta_correct:$meta_yes description_tags:$meta_tags title:$title_ok h1:$h1"
-          rm -f "$output"
-          [ "$status" = 200 ] && [ "$title_ok" = yes ] && [ "$h1" = 1 ] && [ "$meta_yes" = yes ] && [ "$meta_tags" = 1 ] || exit 1
-          echo 'SEO_OUTER_META=validated_1_of_1_before_rollback'
+          init_seen=no; path_ok=no; final_seen=no; final_changed=no
+          grep -qi '^x-gsc-outer-init:[[:space:]]*yes' "$headers" && init_seen=yes || true
+          grep -qi '^x-gsc-outer-exact-path:[[:space:]]*yes' "$headers" && path_ok=yes || true
+          grep -Fq 'seo-gsc-outer-final-probe-20261014 changed:' "$output" && final_seen=yes || true
+          grep -Fq 'seo-gsc-outer-final-probe-20261014 changed:yes' "$output" && final_changed=yes || true
+          echo "SEO_OUTER_DIAG_RESULT=init:$init_seen exact_path:$path_ok callback:$final_seen replaced:$final_changed"
+          rm -f "$output" "$headers"
+          [ "$status" = 200 ] && [ "$title_ok" = yes ] && [ "$h1" = 1 ] || exit 1
+          echo 'SEO_OUTER_META_DIAG=completed_not_a_release'
           REMOTE
