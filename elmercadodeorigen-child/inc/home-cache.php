@@ -219,11 +219,11 @@ function elmercado_optimize_home_document_for_first_paint( string $html ): strin
 	/* Match the existing footer's exact six-vendor mobile collage contract at
 	 * first paint. The footer still prints its original CSS unchanged. */
 	$vendor_grid_firstpaint_css = '@media(max-width:599px){'
-		. 'html body.home.elmercado-child-theme .emo-home .emo-hero__grid > .emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-6{'
+		. 'html body.home.elmercado-child-theme .emo-home .emo-hero__grid > .emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-6.emo-vendor-count-6.emo-vendor-count-6{'
 		. 'display:grid!important;width:100%!important;height:auto!important;min-height:0!important;max-height:none!important;'
 		. 'margin:.15rem auto 0!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;'
 		. 'grid-template-rows:repeat(3,clamp(132px,35vw,158px))!important;grid-auto-rows:auto!important;gap:10px!important;transform:none!important}'
-		. 'html body.home.elmercado-child-theme .emo-home .emo-hero__grid > .emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-6 > .emo-hero-card{'
+		. 'html body.home.elmercado-child-theme .emo-home .emo-hero__grid > .emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-6.emo-vendor-count-6.emo-vendor-count-6 > .emo-hero-card{'
 		. 'grid-column:auto!important;grid-row:auto!important;width:auto!important;height:auto!important;'
 		. 'min-width:0!important;min-height:0!important;border-radius:14px!important;transform:none!important}'
 		. '}';
