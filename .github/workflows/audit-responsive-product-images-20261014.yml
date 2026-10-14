@@ -1,0 +1,106 @@
+name: Audit product cards and responsive images 20261014
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-responsive-product-images-20261014.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-browser-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install headless Chromium
+        run: |
+          python -m pip install --quiet playwright
+          python -m playwright install --with-deps chromium >/dev/null
+      - name: Check loaded product images, dimensions and 4-column recommendations
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from playwright.sync_api import sync_playwright
+
+          base = 'https://www.elmercadodeorigen.com'
+          routes = [
+            ('home', '/'),
+            ('shop', '/tienda/'),
+            ('producer', '/tienda/1957/'),
+            ('article', '/jamon-iberico/'),
+            ('product', '/producto/jamon-cebo-de-campo-iberico-50-montjam/'),
+          ]
+          errors = []
+          results = []
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+              for mode, width, height in [('desktop', 1440, 1000), ('mobile', 390, 844)]:
+                  context = browser.new_context(viewport={'width':width, 'height':height}, device_scale_factor=1,
+                                                is_mobile=(mode == 'mobile'), has_touch=(mode == 'mobile'))
+                  for name, route in routes:
+                      page = context.new_page()
+                      try:
+                          response = page.goto(base + route, wait_until='domcontentloaded', timeout=85000)
+                          status = response.status if response else 0
+                          page.wait_for_timeout(1200)
+                          cards = page.locator('ul.products li.product')
+                          card_count = cards.count()
+                          sampled = min(card_count, 6)
+                          visible = 0
+                          oversized = 0
+                          undersized = 0
+                          examples = []
+                          for i in range(sampled):
+                              card = cards.nth(i)
+                              card.scroll_into_view_if_needed(timeout=12000)
+                              img = card.locator('.product-loop-image-wrapper img, img.product-loop-image, img.attachment-woocommerce_thumbnail, img.wp-post-image').first
+                              if img.count() == 0:
+                                  img = card.locator('a.woocommerce-loop-product__link img').first
+                              if img.count() == 0:
+                                  continue
+                              data = img.evaluate('''async (im) => {
+                                try { await Promise.race([im.decode(), new Promise(r=>setTimeout(r,3000))]); } catch(e) {}
+                                const r=im.getBoundingClientRect();
+                                return { loaded: im.naturalWidth>40 && im.naturalHeight>40 && r.width>55 && r.height>55,
+                                  natural:im.naturalWidth, display:Math.round(r.width), current:im.currentSrc,
+                                  srcset:!!im.getAttribute('srcset'), sizes:im.getAttribute('sizes')||'' };
+                              }''')
+                              if data['loaded']:
+                                  visible += 1
+                                  if data['natural'] > data['display'] * 2.8: oversized += 1
+                                  if data['natural'] < data['display'] * .83: undersized += 1
+                              if len(examples) < 2:
+                                  examples.append({'display': data['display'], 'natural': data['natural'],
+                                                   'srcset':data['srcset'], 'sizes':data['sizes'],
+                                                   'current':data['current'].split('/')[-1][:100]})
+                          col_count = None
+                          if name == 'article':
+                              col_count = page.evaluate('''() => {
+                                const grid = document.querySelector('main#primary .emo-article-content ul.products');
+                                return grid ? getComputedStyle(grid).gridTemplateColumns.split(/\s+/).filter(Boolean).length : null;
+                              }''')
+                          result = {'page':name,'mode':mode,'status':status,'cards':card_count,
+                                    'tested':sampled,'visible':visible,'over':oversized,'under':undersized,
+                                    'columns':col_count,'examples':examples}
+                          results.append(result)
+                          print('IMAGE_AUDIT ' + json.dumps(result,ensure_ascii=False),flush=True)
+                          if status != 200: errors.append(name + '/' + mode + ': HTTP ' + str(status))
+                          if sampled > 0 and visible != sampled:
+                              errors.append(name + '/' + mode + ': '+str(sampled-visible)+' card images missing')
+                          if name == 'article' and mode == 'desktop' and col_count is not None and col_count < 4:
+                              errors.append('article desktop: fewer than four recommendation columns')
+                      except Exception as exc:
+                          errors.append(name + '/' + mode + ': ' + str(exc))
+                          print('IMAGE_AUDIT_EXCEPTION '+name+'/'+mode+': '+str(exc),flush=True)
+                      finally:
+                          page.close()
+                  context.close()
+              browser.close()
+          print('IMAGE_AUDIT_SUMMARY ' + json.dumps({'checks':len(results),'errors':errors},ensure_ascii=False),flush=True)
+          if errors:
+              raise SystemExit(1)
+          PY
