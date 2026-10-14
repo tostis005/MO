@@ -17,6 +17,8 @@ function add_filter( $tag, $callback, $priority = 10, $args = 1 ) { $GLOBALS['se
 function add_action( $tag, $callback, $priority = 10, $args = 1 ) { $GLOBALS['seo_registered_actions'][ $tag ][] = array( $callback, $priority ); }
 function remove_action( $tag, $callback, $priority = 10 ) { $GLOBALS['seo_removed_actions'][] = array( $tag, $callback, $priority ); return true; }
 function is_admin(): bool { return false; }
+function esc_attr( $s ): string { return htmlspecialchars( (string) $s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' ); }
+function wp_parse_url( $url, $component = -1 ) { return parse_url( $url, $component ); }
 function is_feed(): bool { return false; }
 function is_singular( $type ): bool { return 'post' === $type; }
 function in_the_loop(): bool { return true; }
@@ -129,6 +131,56 @@ $GLOBALS['seo_removed_actions'] = array();
 $GLOBALS['seo_test_path'] = '/blog/';
 $remove_header();
 check( empty( $GLOBALS['seo_removed_actions'] ), 'Do not remove Woostify title outside the cohort' );
+
+
+$approved = $batch['/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/']['description'];
+$fixture = '<!doctype html><html lang="en"><head><title>Existing title</title><meta name="description" content="Old translated description"><meta name="robots" content="index,follow"></head><body><h1>Keep article heading</h1><p>Body intact.</p></body></html>';
+$updated = elmercado_gsc_meta_outer_replace_20261014( $fixture, $approved );
+check( $updated !== $fixture, 'Outer buffer must update one meta tag' );
+check( substr_count( $updated, 'name="description"' ) === 1, 'Exactly one meta description' );
+check( str_contains( $updated, esc_attr( $approved ) ), 'EN meta must match target' );
+check( str_contains( $updated, '<title>Existing title</title>' ), 'Must preserve title' );
+check( str_contains( $updated, '<h1>Keep article heading</h1><p>Body intact.</p>' ), 'Must preserve body H1/content' );
+check( str_contains( $updated, '<meta name="robots" content="index,follow">' ), 'Must preserve robots' );
+check( $updated === elmercado_gsc_meta_outer_replace_20261014( $updated, $approved ), 'Idempotent EN metadata' );
+check( $fixture === elmercado_gsc_meta_outer_replace_20261014( $fixture, '' ), 'Empty target must be no-op' );
+check( $fixture === elmercado_gsc_meta_outer_replace_20261014( $fixture, null ), 'Non-string target no-op' );
+
+$two = str_replace( '</head>', '<meta name="description" content="Second"></head>', $fixture );
+check( $two === elmercado_gsc_meta_outer_replace_20261014( $two, $approved ), 'Duplicate descriptions must not be altered' );
+$bad = str_replace( '</head>', '', $fixture );
+check( $bad === elmercado_gsc_meta_outer_replace_20261014( $bad, $approved ), 'Malformed head preserved' );
+
+$init_callbacks = array_filter(
+	$GLOBALS['seo_registered_actions']['init'] ?? array(),
+	static fn( $entry ) => -1000 === $entry[1]
+);
+check( count( $init_callbacks ) === 1, 'Exactly one early outer-buffer callback' );
+$starter = reset( $init_callbacks )[0];
+$_SERVER['REQUEST_METHOD'] = 'GET';
+$_SERVER['REQUEST_URI'] = '/en/unrelated-article/';
+$depth_before = ob_get_level();
+$starter();
+check( ob_get_level() === $depth_before, 'Do not start buffer on unrelated EN page' );
+$_SERVER['REQUEST_URI'] = '/cuanta-carne-calcular-por-persona-corte-receta/';
+$starter();
+check( ob_get_level() === $depth_before, 'Do not start buffer on Spanish article' );
+$_SERVER['REQUEST_URI'] = '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/';
+$_SERVER['REQUEST_METHOD'] = 'POST';
+$starter();
+check( ob_get_level() === $depth_before, 'Do not buffer POST' );
+$_SERVER['REQUEST_METHOD'] = 'GET';
+$_SERVER['REQUEST_URI'] = '/en/patata-cortada-se-pone-negra-por-que-oxidacion-como-evitarla/';
+ob_start(); // Capture the output of the outer-buffer handler.
+$starter();
+check( ob_get_level() === $depth_before + 2, 'Start one buffer on the exact TRP original-slug route' );
+echo $fixture;
+$_SERVER['REQUEST_URI'] = '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/';
+ob_end_flush(); // Apply the SEO callback into the test capture buffer.
+$captured = ob_get_clean();
+check( str_contains( $captured, esc_attr( $approved ) ), 'Output buffer must transform real printed HTML' );
+check( ob_get_level() === $depth_before, 'Buffer cleanup should restore stack depth' );
+
 
 echo "OK: 20 URL, 16 EN, 4 ES, title priorities, article H1 only, link and metadata scope.\n";
 

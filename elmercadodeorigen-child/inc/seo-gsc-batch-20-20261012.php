@@ -314,3 +314,114 @@ add_action(
 	},
 	-5000
 );
+
+
+/**
+ * GSC EN metadata after translation. AIOSEO prepares its meta description
+ * before TranslatePress translates the document, so an outer output buffer
+ * must run after the inner translation/Trustindex buffers finish.
+ *
+ * A single public EN URL is enabled during the guarded production pilot.
+ * Does not touch the database, other metadata, page body or any non-target.
+ */
+function elmercado_gsc_meta_outer_replace_20261014( $html, $description ) {
+	if ( ! is_string( $html ) || ! is_string( $description ) || '' === $description || strlen( $html ) > 25000000 ) {
+		return $html;
+	}
+	if ( ! preg_match( '~<head\b[^>]*>~i', $html, $head_open, PREG_OFFSET_CAPTURE ) ) {
+		return $html;
+	}
+	$head_start = $head_open[0][1] + strlen( $head_open[0][0] );
+	$head_end   = stripos( $html, '</head>', $head_start );
+	if ( false === $head_end ) {
+		return $html;
+	}
+	$head = substr( $html, $head_start, $head_end - $head_start );
+	preg_match_all( '~<meta\b[^>]*>~i', $head, $tags, PREG_OFFSET_CAPTURE );
+	$found = array();
+	foreach ( $tags[0] as $item ) {
+		if ( preg_match( '~\bname\s*=\s*(?:"description"|\'description\')~i', $item[0] ) ) {
+			$found[] = $item;
+		}
+	}
+	// Do not insert a new tag or silently choose between duplicate descriptions.
+	if ( 1 !== count( $found ) ) {
+		return $html;
+	}
+	$replacement = '<meta name="description" content="' . esc_attr( $description ) . '">';
+	$existing    = $found[0][0];
+	if ( $existing === $replacement ) {
+		return $html;
+	}
+	return substr_replace( $html, $replacement, $head_start + $found[0][1], strlen( $existing ) );
+}
+
+add_action(
+	'init',
+	static function (): void {
+		if ( is_admin() || 'GET' !== strtoupper( (string) ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) ) ) {
+			return;
+		}
+		$GLOBALS['emo_gsc_outer_init_fired_20261014'] = true;
+		$path = (string) wp_parse_url( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), PHP_URL_PATH );
+		$GLOBALS['emo_gsc_outer_path_20261014'] = $path;
+		if ( false !== strpos( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), 'why-cut-potatoes-turn-black' ) ) {
+			header( 'X-GSC-Outer-Init: yes' );
+			header( 'X-GSC-Outer-Exact-Path: ' . ( '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/' === $path ? 'yes' : 'no' ) );
+		}
+
+		// One English article ONLY. Expand after proving real HTML and rollback.
+		// TranslatePress starts with the Spanish source slug under /en/ and
+		// later transforms it to the translated English permalink.
+		// Restrict the outer buffer to the exact verified source permalink.
+		if ( '/en/patata-cortada-se-pone-negra-por-que-oxidacion-como-evitarla/' !== $path ) {
+			return;
+		}
+		$public_path = '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/';
+		$targets = elmercado_gsc_batch_20_20261012();
+		if ( empty( $targets[ $public_path ]['description'] ) ) {
+			return;
+		}
+		$description = (string) $targets[ $public_path ]['description'];
+		$GLOBALS['emo_gsc_outer_depth_before_20261014'] = ob_get_level();
+		$GLOBALS['emo_gsc_outer_handlers_before_20261014'] = ob_list_handlers();
+		$GLOBALS['emo_gsc_outer_buffer_started_20261014'] = true;
+
+		// TranslatePress starts its inner buffer on init:0; Trustindex on init:10.
+		// PHP flushes the inner buffers first; this callback receives final HTML.
+		ob_start(
+			static function ( $html ) use ( $description, $public_path ) {
+				$final_path = (string) wp_parse_url( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), PHP_URL_PATH );
+				if ( $final_path !== $public_path ) {
+					return $html;
+				}
+				$modified = elmercado_gsc_meta_outer_replace_20261014( $html, $description );
+				return $modified . '<!-- seo-gsc-outer-final-probe-20261014 changed:' . ( $modified === $html ? 'no' : 'yes' ) . ' -->';
+			}
+		);
+	},
+	-1000
+);
+
+
+/* TEMPORARY, ONE-URL DIAGNOSTIC: exposes booleans only, no paths or secrets. */
+add_action( 'wp_head', static function (): void {
+	$uri = (string) ( $_SERVER['REQUEST_URI'] ?? '' );
+	if ( false === strpos( $uri, 'why-cut-potatoes-turn-black' ) ) {
+		return;
+	}
+	$uri_path = (string) wp_parse_url( $uri, PHP_URL_PATH );
+	echo '<!-- emo-gsc-outer-context-20261014'
+		. ' init:' . ( ! empty( $GLOBALS['emo_gsc_outer_init_fired_20261014'] ) ? 'yes' : 'no' )
+		. ' init_slug:' . ( false !== strpos( (string) ( $GLOBALS['emo_gsc_outer_path_20261014'] ?? '' ), 'why-cut-potatoes-turn-black' ) ? 'yes' : 'no' )
+		. ' init_exact:' . ( '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/' === (string) ( $GLOBALS['emo_gsc_outer_path_20261014'] ?? '' ) ? 'yes' : 'no' )
+		. ' init_path:' . ( preg_match( '~^/[a-z0-9/_-]{0,165}$~', (string) ( $GLOBALS['emo_gsc_outer_path_20261014'] ?? '' ) ) ? (string) $GLOBALS['emo_gsc_outer_path_20261014'] : 'other' )
+		. ' uri_exact:' . ( '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/' === $uri_path ? 'yes' : 'no' )
+		. ' http_get:' . ( 'GET' === strtoupper( (string) ( $_SERVER['REQUEST_METHOD'] ?? '' ) ) ? 'yes' : 'no' )
+		. ' in_admin:' . ( is_admin() ? 'yes' : 'no' )
+		. ' init_done:' . ( did_action( 'init' ) ? 'yes' : 'no' )
+		. ' buffer:' . ( ! empty( $GLOBALS['emo_gsc_outer_buffer_started_20261014'] ) ? 'yes' : 'no' )
+		. ' prior_buffers:' . (int) ( $GLOBALS['emo_gsc_outer_depth_before_20261014'] ?? 0 )
+		. ' prior_handlers:' . implode( ',', array_map( static function( $handler ) { return substr( (string) preg_replace( '/[^A-Za-z0-9_\\\\:-]/', '', $handler ), 0, 55 ); }, array_slice( (array) ( $GLOBALS['emo_gsc_outer_handlers_before_20261014'] ?? array() ), 0, 7 ) ) )
+		. ' -->';
+}, 25 );

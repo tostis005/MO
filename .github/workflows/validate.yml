@@ -131,3 +131,131 @@ jobs:
 
       - name: Check whitespace errors
         run: git diff --check HEAD~1 HEAD || git diff --check
+
+  seo-outer-meta-one-page-transient:
+    # Same-repo PR only. Replaces exactly one PHP module for <=1 minute and
+    # ALWAYS restores its prior exact SHA256 on the production server.
+    if: github.event_name == 'pull_request' && github.head_ref == 'seo/gsc-meta-outer-buffer-single-url-20261014' && github.event.pull_request.head.repo.full_name == github.repository
+    concurrency:
+      group: elmercado-production-theme
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify scope and code before transient upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/seo-gsc-batch-20-20261012.php
+          php tests/seo-gsc-batch-20-20261012.php
+          : "${STAGING_HOST:?Missing SSH host}"
+          : "${STAGING_USER:?Missing SSH user}"
+          : "${STAGING_PASSWORD:?Missing SSH password}"
+          : "${STAGING_REMOTE_PATH:?Missing SSH path}"
+          [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
+          [[ "$STAGING_REMOTE_PATH" =~ ^/[A-Za-z0-9._/-]+/?$ ]]
+      - name: Test 1 EN meta final buffer against origin and restore module SHA
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          port="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$port" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          file=elmercadodeorigen-child/inc/seo-gsc-batch-20-20261012.php
+          git fetch --quiet --depth=1 origin main
+          git show "origin/main:$file" > "$RUNNER_TEMP/seo-module-before.php"
+          old_sha="$(sha256sum "$RUNNER_TEMP/seo-module-before.php" | awk '{print $1}')"
+          new_sha="$(sha256sum "$file" | awk '{print $1}')"
+          [ "$old_sha" != "$new_sha" ] || { echo 'No PHP change to test'; exit 1; }
+          remote="/tmp/seo-translatepress-transient-$GITHUB_RUN_ID.php"
+          sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P "$port" "$file" "$STAGING_USER@$STAGING_HOST:$remote"
+          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$port" "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$remote' '$old_sha' '$new_sha' '$GITHUB_RUN_ID'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; incoming="$2"; old_sha="$3"; new_sha="$4"; nonce="$5"
+          target=''; installed=0; backup=''
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            if [ "$installed" -eq 1 ] && [ -n "$backup" ] && [ -f "$backup" ]; then
+              cp -p "$backup" "$target" || rc=1
+              restored="$(sha256sum "$target" | awk '{print $1}' || true)"
+              if [ "$restored" = "$old_sha" ]; then echo 'SEO_OUTER_META_ROLLBACK=restored_checksum_ok'
+              else echo 'SEO_OUTER_META_ROLLBACK=CHECKSUM_MISMATCH' >&2; rc=1; fi
+            fi
+            rm -f "$incoming"
+            [ -z "$backup" ] || rm -f "$backup"
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          case "$nonce" in *[!0-9]*|'') exit 1 ;; esac
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            config="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n 1 || true)"
+            [ -n "$config" ] || exit 1
+            dev="$(dirname "$config")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] || exit 1
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1)"
+          wp_bin="$(command -v wp || true)"
+          [ -n "$wp_bin" ] && [ -x "$php_bin" ] || exit 1
+          site="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+          case "$site" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) ;;
+            *) echo 'Unexpected target WordPress'; exit 1 ;;
+          esac
+          active="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+          [ "$active" = elmercadodeorigen-child ] || exit 1
+          target="$prod/wp-content/themes/elmercadodeorigen-child/inc/seo-gsc-batch-20-20261012.php"
+          [ -f "$target" ] && [ -f "$incoming" ] || exit 1
+          current="$(sha256sum "$target" | awk '{print $1}')"
+          [ "$current" = "$old_sha" ] || { echo 'Existing live module hash changed; abort'; exit 1; }
+          echo "$new_sha  $incoming" | sha256sum -c - >/dev/null
+          "$php_bin" -l "$incoming" >/dev/null
+          backup="/tmp/seo-translatepress-backup-${nonce}.php"
+          cp -p "$target" "$backup"
+          echo "$old_sha  $backup" | sha256sum -c - >/dev/null
+          installed=1
+          install -m 0644 "$incoming" "$target"
+          echo 'SEO_OUTER_META_TEST=module_temporarily_updated'
+          probe_ip="$(hostname -I 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {print $i;exit}}')"
+          [ -n "$probe_ip" ] || exit 1
+          base='https://www.elmercadodeorigen.com'
+          output="$(mktemp)"
+          headers="$(mktemp)"
+          status="$(curl -ksS --connect-timeout 5 --max-time 22 --max-redirs 0 -D "$headers" --resolve "www.elmercadodeorigen.com:443:$probe_ip" -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o "$output" -w '%{http_code}' "$base/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/?seo_outer_meta_test=$nonce" || true)"
+          tag="$(grep -oEi '<meta[^>]*name="description"[^>]*>' "$output" | head -n 1 || true)"
+          expected='Why do cut potatoes turn black? Learn how oxidation causes darkening, whether they are safe to eat and how cold water and refrigeration help.'
+          meta_yes=no
+          printf '%s' "$tag" | grep -Fq "$expected" && meta_yes=yes || true
+          meta_tags="$(grep -oEi '<meta[^>]*name="description"[^>]*>' "$output" | wc -l | tr -d ' ')"
+          title_ok=no
+          grep -Fq '<title>Why Cut Potatoes Turn Black: Causes' "$output" && title_ok=yes || true
+          h1="$(grep -oEi '<h1([[:space:]>])' "$output" | wc -l | tr -d ' ' || true)"
+          echo "SEO_OUTER_META_RESULT=origin_http:$status meta_correct:$meta_yes description_tags:$meta_tags title:$title_ok h1:$h1"
+          init_seen=no; path_ok=no; final_seen=no; final_changed=no
+          grep -qi '^x-gsc-outer-init:[[:space:]]*yes' "$headers" && init_seen=yes || true
+          grep -qi '^x-gsc-outer-exact-path:[[:space:]]*yes' "$headers" && path_ok=yes || true
+          grep -Fq 'seo-gsc-outer-final-probe-20261014 changed:' "$output" && final_seen=yes || true
+          grep -Fq 'seo-gsc-outer-final-probe-20261014 changed:yes' "$output" && final_changed=yes || true
+          echo "SEO_OUTER_DIAG_RESULT=init:$init_seen exact_path:$path_ok callback:$final_seen replaced:$final_changed"
+          context="$(grep -oE 'emo-gsc-outer-context-20261014[^>]{0,480}' "$output" | head -n 1 || true)"
+          if [ -n "$context" ]; then echo "SEO_OUTER_INIT_CONTEXT=$context"; else echo 'SEO_OUTER_INIT_CONTEXT=not_found'; fi
+          rm -f "$output" "$headers"
+          [ "$status" = 200 ] && [ "$title_ok" = yes ] && [ "$h1" = 1 ] || exit 1
+          echo 'SEO_OUTER_META_DIAG=completed_not_a_release'
+          REMOTE
