@@ -314,3 +314,73 @@ add_action(
 	},
 	-5000
 );
+
+
+/**
+ * GSC EN metadata after translation. AIOSEO prepares its meta description
+ * before TranslatePress translates the document, so an outer output buffer
+ * must run after the inner translation/Trustindex buffers finish.
+ *
+ * A single public EN URL is enabled during the guarded production pilot.
+ * Does not touch the database, other metadata, page body or any non-target.
+ */
+function elmercado_gsc_meta_outer_replace_20261014( $html, $description ) {
+	if ( ! is_string( $html ) || ! is_string( $description ) || '' === $description || strlen( $html ) > 25000000 ) {
+		return $html;
+	}
+	if ( ! preg_match( '~<head\b[^>]*>~i', $html, $head_open, PREG_OFFSET_CAPTURE ) ) {
+		return $html;
+	}
+	$head_start = $head_open[0][1] + strlen( $head_open[0][0] );
+	$head_end   = stripos( $html, '</head>', $head_start );
+	if ( false === $head_end ) {
+		return $html;
+	}
+	$head = substr( $html, $head_start, $head_end - $head_start );
+	preg_match_all( '~<meta\b[^>]*>~i', $head, $tags, PREG_OFFSET_CAPTURE );
+	$found = array();
+	foreach ( $tags[0] as $item ) {
+		if ( preg_match( '~\bname\s*=\s*(?:"description"|\'description\')~i', $item[0] ) ) {
+			$found[] = $item;
+		}
+	}
+	// Do not insert a new tag or silently choose between duplicate descriptions.
+	if ( 1 !== count( $found ) ) {
+		return $html;
+	}
+	$replacement = '<meta name="description" content="' . esc_attr( $description ) . '">';
+	$existing    = $found[0][0];
+	if ( $existing === $replacement ) {
+		return $html;
+	}
+	return substr_replace( $html, $replacement, $head_start + $found[0][1], strlen( $existing ) );
+}
+
+add_action(
+	'init',
+	static function (): void {
+		if ( is_admin() || 'GET' !== strtoupper( (string) ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) ) ) {
+			return;
+		}
+		$path = (string) wp_parse_url( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), PHP_URL_PATH );
+
+		// One English article ONLY. Expand after proving real HTML and rollback.
+		if ( '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/' !== $path ) {
+			return;
+		}
+		$targets = elmercado_gsc_batch_20_20261012();
+		if ( empty( $targets[ $path ]['description'] ) ) {
+			return;
+		}
+		$description = (string) $targets[ $path ]['description'];
+
+		// TranslatePress starts its inner buffer on init:0; Trustindex on init:10.
+		// PHP flushes the inner buffers first; this callback receives final HTML.
+		ob_start(
+			static function ( $html ) use ( $description ) {
+				return elmercado_gsc_meta_outer_replace_20261014( $html, $description );
+			}
+		);
+	},
+	-1000
+);
