@@ -184,6 +184,21 @@ add_filter( 'aioseo_title', static function( $title ) {
     }
     return $title;
 }, PHP_INT_MAX );
+/**
+ * Combine only explicit, audited GSC article metadata targets. If the new
+ * modules have not been deployed, this returns the original 20 safely.
+ */
+function mdoer_gsc_approved_targets_20261014(): array {
+    $all = function_exists( 'elmercado_gsc_batch_20_20261012' ) ? elmercado_gsc_batch_20_20261012() : array();
+    if ( function_exists( 'elmercado_gsc_en_second_batch_20261012' ) ) {
+        $all += elmercado_gsc_en_second_batch_20261012();
+    }
+    if ( function_exists( 'elmercado_gsc_en_third_batch_20261012' ) ) {
+        $all += elmercado_gsc_en_third_batch_20261012();
+    }
+    return $all;
+}
+
 add_filter( 'aioseo_description', static function( $description ) {
     if ( ! mdoer_en() ) { return $description; }
 
@@ -201,10 +216,10 @@ add_filter( 'aioseo_description', static function( $description ) {
         $post instanceof WP_Post
         && 'post' === $post->post_type
         && 'publish' === $post->post_status
-        && function_exists( 'elmercado_gsc_batch_20_20261012' )
+        && function_exists( 'mdoer_gsc_approved_targets_20261014' )
     ) {
         $public_path = trailingslashit( mdoer_public_path() );
-        $approved = elmercado_gsc_batch_20_20261012();
+        $approved = mdoer_gsc_approved_targets_20261014();
         if ( ! empty( $approved[ $public_path ]['description'] ) ) {
             return $approved[ $public_path ]['description'];
         }
@@ -260,7 +275,7 @@ function mdoer_rewrite_url( string $url ): string {
 function mdoer_gsc_final_description_20261014( $html ) {
     if (
         ! is_string( $html ) || ! mdoer_en()
-        || ! function_exists( 'elmercado_gsc_batch_20_20261012' )
+        || ! function_exists( 'mdoer_gsc_approved_targets_20261014' )
     ) { return $html; }
     $post = get_queried_object();
     if (
@@ -268,7 +283,7 @@ function mdoer_gsc_final_description_20261014( $html ) {
         || 'publish' !== $post->post_status
     ) { return $html; }
     $path = trailingslashit( mdoer_public_path() );
-    $approved = elmercado_gsc_batch_20_20261012();
+    $approved = mdoer_gsc_approved_targets_20261014();
     $value = (string) ( $approved[ $path ]['description'] ?? '' );
     if ( '' === $value || strlen( $html ) > 25000000 ) { return $html; }
     if ( ! preg_match( '~<head\b[^>]*>~i', $html, $head_match, PREG_OFFSET_CAPTURE ) ) { return $html; }
@@ -291,6 +306,52 @@ function mdoer_gsc_final_description_20261014( $html ) {
     return substr_replace( $html, $replacement, $begin + $found[0][1], strlen( $current ) );
 }
 
+
+/**
+ * Protect approved title tags of the 40 EN articles without changing
+ * first-cohort HTML, other metadata, WooCommerce, URLs or CMS content.
+ */
+function mdoer_gsc_final_title_20261014( $html ) {
+    if ( ! is_string( $html ) || ! mdoer_en() ) { return $html; }
+    $post = get_queried_object();
+    if ( ! $post instanceof WP_Post || 'post' !== $post->post_type || 'publish' !== $post->post_status ) { return $html; }
+    $path = trailingslashit( mdoer_public_path() );
+    $target = array();
+    if ( function_exists( 'elmercado_gsc_en_second_batch_20261012' ) ) {
+        $batch2 = elmercado_gsc_en_second_batch_20261012();
+        $target = $batch2[ $path ] ?? array();
+    }
+    if ( ! $target && function_exists( 'elmercado_gsc_en_third_batch_20261012' ) ) {
+        $batch3 = elmercado_gsc_en_third_batch_20261012();
+        $target = $batch3[ $path ] ?? array();
+    }
+    if ( empty( $target['title'] ) || strlen( $html ) > 25000000 ) { return $html; }
+    if ( ! preg_match( '~<head\b[^>]*>~i', $html, $head_match, PREG_OFFSET_CAPTURE ) ) { return $html; }
+    $begin = $head_match[0][1] + strlen( $head_match[0][0] );
+    $end = stripos( $html, '</head>', $begin );
+    if ( false === $end ) { return $html; }
+    $head = substr( $html, $begin, $end - $begin );
+    if ( 1 !== preg_match_all( '~<title\b[^>]*>.*?</title>~is', $head, $titles, PREG_OFFSET_CAPTURE ) ) { return $html; }
+    $replacement = '<title>' . esc_html( $target['title'] . ' | El Mercado de Origen' ) . '</title>';
+    $current = $titles[0][0][0];
+    if ( $replacement === $current ) { return $html; }
+    return substr_replace( $html, $replacement, $begin + $titles[0][0][1], strlen( $current ) );
+}
+
+
+/**
+ * Activate only the two independent English SEO modules if their deployment
+ * files exist. PHP require_once prevents duplicate definitions when the
+ * child theme later deploys an updated functions.php loader.
+ */
+add_action( 'after_setup_theme', static function(): void {
+    if ( ! function_exists( 'get_stylesheet_directory' ) ) { return; }
+    $dir = rtrim( get_stylesheet_directory(), '/' ) . '/inc/';
+    foreach ( array( 'seo-gsc-english-batch2-20261012.php', 'seo-gsc-english-batch3-20261012.php' ) as $module ) {
+        if ( is_readable( $dir . $module ) ) { require_once $dir . $module; }
+    }
+}, PHP_INT_MAX );
+
 /* Outermost buffer: started while MU plugins load, so it runs AFTER TranslatePress. */
 function mdoer_html( string $html ): string {
     if ( ! mdoer_prod() || '' === $html ) { return $html; }
@@ -307,7 +368,7 @@ function mdoer_html( string $html ): string {
         if ( mdoer_en() ) { $tags .= '<link rel="canonical" href="' . esc_url( $x['en'] ) . '" data-mdo-canonical="1">' . "\n"; }
         $html = str_ireplace( '</head>', $tags . '</head>', $html );
     }
-    return mdoer_gsc_final_description_20261014( $html );
+    return mdoer_gsc_final_title_20261014( mdoer_gsc_final_description_20261014( $html ) );
 }
 
 /*
