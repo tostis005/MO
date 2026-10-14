@@ -1,0 +1,65 @@
+name: Audit shop image LCP and loading priority 20261014
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/audit-shop-product-image-lcp-20261014.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - run: npm install --no-save --no-audit --no-fund playwright-core@1.56.1 >/dev/null
+      - name: Compare first product image loading priorities over 4G without production changes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat >/tmp/lcp.cjs <<'JS'
+          const {chromium}=require(process.cwd()+'/node_modules/playwright-core');
+          (async()=>{
+            const b=await chromium.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            for(const [mode,patch] of [['baseline',false],['first-eager',true]]){
+              const p=await b.newPage({viewport:{width:390,height:844},deviceScaleFactor:1});
+              const c=await p.context().newCDPSession(p);await c.send('Network.enable');await c.send('Network.emulateNetworkConditions',{offline:false,latency:120,downloadThroughput:500000,uploadThroughput:125000,connectionType:'cellular4g'});
+              const requests=[];p.on('request',r=>{if(r.resourceType()==='image')requests.push({at:Date.now(),name:r.url().slice(-115)})});
+              await p.addInitScript(()=>{
+                window.__m={lcp:0,element:'',cls:0,lcpEntries:[],images:[]};
+                try{new PerformanceObserver(l=>{for(const e of l.getEntries()){window.__m.lcp=Math.round(e.startTime);window.__m.element=e.element?.outerHTML?.slice(0,560)||'';window.__m.lcpEntries.push({t:Math.round(e.startTime),size:e.size,el:e.element?.tagName,url:e.url?.slice(-140),class:e.element?.className?.toString().slice(0,100)})}}).observe({type:'largest-contentful-paint',buffered:true})}catch(e){}
+                try{new PerformanceObserver(l=>{for(const e of l.getEntries())if(!e.hadRecentInput)window.__m.cls+=e.value;}).observe({type:'layout-shift',buffered:true})}catch(e){}
+                if(window.MutationObserver)new MutationObserver(()=>{}); 
+              });
+              if(patch){
+                await p.route('https://www.elmercadodeorigen.com/tienda/',async route=>{
+                  const r=await route.fetch({timeout:60000});
+                  let html=await r.text();
+                  let k=0;
+                  html=html.replace(/(<li\b[^>]*\bproduct\b[^>]*>)([\s\S]*?)(?=<li\b|<\/ul\b)/gi,(m,open,body)=>{
+                    if(k++>1)return m;
+                    const out=body.replace(/<img\b[^>]*>/i,im=>{
+                      im=im.replace(/\sloading=(["'])lazy\1/i,' loading="eager"');
+                      if(/\sfetchpriority=/i.test(im))return im.replace(/\sfetchpriority=(["'])[^"']+\1/i,' fetchpriority="high"');
+                      return im.replace(/<img\b/i,'<img fetchpriority="high"');
+                    });
+                    return open+out;
+                  });
+                  console.log('REWRITE image cards='+Math.min(k,2));
+                  await route.fulfill({response:r,body:html,headers:{...r.headers(),'content-type':'text/html;charset=UTF-8'}});
+                });
+              }
+              const res=await p.goto('https://www.elmercadodeorigen.com/tienda/',{waitUntil:'domcontentloaded',timeout:60000});
+              await p.waitForTimeout(2100);
+              const out=await p.evaluate(()=>{
+                const nav=performance.getEntriesByType('navigation')[0];
+                const im=[...document.querySelectorAll('ul.products li.product')].slice(0,4).map(li=>({top:Math.round(li.getBoundingClientRect().top),title:li.querySelector('h2,.woocommerce-loop-product__title')?.textContent?.trim().slice(0,45),images:[...li.querySelectorAll('img')].slice(0,2).map(i=>({tag:i.outerHTML.slice(0,640),top:Math.round(i.getBoundingClientRect().top),loading:i.loading,fetchpriority:i.fetchPriority,complete:i.complete,natural:i.naturalWidth,src:i.currentSrc?.slice(-125)}))}));
+                return {lcp:window.__m.lcp,entries:window.__m.lcpEntries,element:window.__m.element,cls:+window.__m.cls.toFixed(4),ttfb:Math.round(nav.responseStart),dcl:Math.round(nav.domContentLoadedEventEnd),images:im};
+              });
+              console.log('RESULT '+mode+' HTTP='+res.status()+' '+JSON.stringify(out).slice(0,8500));
+              await p.close();
+            }
+            await b.close();
+          })().catch(e=>{console.error(e.stack);process.exit(1)});
+          JS
+          export CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          node /tmp/lcp.cjs
