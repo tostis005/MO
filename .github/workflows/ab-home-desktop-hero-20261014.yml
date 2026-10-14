@@ -21,7 +21,7 @@ jobs:
           const sleep=t=>new Promise(r=>setTimeout(r,t));
           (async()=>{
             const b=await chromium.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
-            for(const width of [1280,1600]){ for(const [variant,css] of [['baseline',''],['specific-final','html body.home.elmercado-child-theme .emo-home > .emo-hero{min-height:0!important;padding-top:clamp(2.75rem,4vw,4rem)!important;padding-bottom:2.4vw!important}']]){
+            for(const width of [1280,1365,1600]){ for(const [variant,css] of [['baseline',''],['specific-final','html body.home.elmercado-child-theme .emo-home > .emo-hero{min-height:0!important;padding-top:clamp(2.75rem,4vw,3.5rem)!important;padding-bottom:min(2.4vw,2.1rem)!important}']]){
               const p=await b.newPage({viewport:{width,height:900}});
               await p.addInitScript(()=>{
                 window.__audit={cls:0,layout:[],shifts:[]};
