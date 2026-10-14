@@ -144,3 +144,28 @@ jobs:
 
       - name: Check whitespace errors
         run: git diff --check HEAD~1 HEAD || git diff --check
+
+  verify-seo-gsc20-public-postrelease:
+    # One-time read-only diagnostic branch. Does not touch WordPress or cache.
+    if: github.event_name == 'pull_request' && github.head_ref == 'seo/verify-20-live-after-mu-release-20261014'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify all 20 GSC articles in actual public HTML
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tests/seo-batch1-public-audit-20261013.py | tee "$RUNNER_TEMP/seo-gsc20-qa.log"
+          python3 - "$RUNNER_TEMP/seo-gsc20-qa.log" <<'PY'
+          import json, sys
+          lines = open(sys.argv[1], encoding='utf-8').read().splitlines()
+          summaries = [json.loads(x.split('GSC_BATCH1_PUBLIC_SUMMARY ',1)[1]) for x in lines if x.startswith('GSC_BATCH1_PUBLIC_SUMMARY ')]
+          assert len(summaries) == 1, 'No unambiguous summary'
+          s = summaries[0]
+          expected = {'total':20,'http_200':20,'title_ok':20,'h1_one':20,'description_ok':20,'english_total':16,'english_description_ok':16}
+          for key, value in expected.items():
+              if s.get(key) != value: raise SystemExit(f'GSC postrelease incomplete: {key}={s.get(key)}, expected={value}')
+          print('SEO_GSC20_PRODUCTION_AUDIT=20_of_20_all_metatags_titles_h1_verified')
+          PY
