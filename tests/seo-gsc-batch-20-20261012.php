@@ -170,10 +170,12 @@ $_SERVER['REQUEST_METHOD'] = 'POST';
 $starter();
 check( ob_get_level() === $depth_before, 'Do not buffer POST' );
 $_SERVER['REQUEST_METHOD'] = 'GET';
+$_SERVER['REQUEST_URI'] = '/en/patata-cortada-se-pone-negra-por-que-oxidacion-como-evitarla/';
 ob_start(); // Capture the output of the outer-buffer handler.
 $starter();
-check( ob_get_level() === $depth_before + 2, 'Start one buffer on sole approved EN page' );
+check( ob_get_level() === $depth_before + 2, 'Start one buffer on the exact TRP original-slug route' );
 echo $fixture;
+$_SERVER['REQUEST_URI'] = '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/';
 ob_end_flush(); // Apply the SEO callback into the test capture buffer.
 $captured = ob_get_clean();
 check( str_contains( $captured, esc_attr( $approved ) ), 'Output buffer must transform real printed HTML' );
