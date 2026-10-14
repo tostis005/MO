@@ -16,6 +16,9 @@ function add_action( $name, $callback, $priority = 10, $args = 1 ) {}
 function get_option( $name ) { return 'https://unmatched.invalid'; }
 function wp_parse_url( $url, $component = -1 ) { return parse_url( $url, $component ); }
 function is_admin(): bool { return false; }
+function is_front_page(): bool { return false; }
+function is_singular(): bool { return false; }
+function esc_attr( $value ): string { return htmlspecialchars( (string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' ); }
 function is_shop(): bool { return false; }
 function get_queried_object() { return $GLOBALS['test_post']; }
 function trailingslashit( $path ): string { return rtrim( (string) $path, '/' ) . '/'; }
@@ -67,4 +70,40 @@ $GLOBALS['test_post']->post_status = 'draft';
 ensure_meta( str_starts_with( $callback( 'Original' ), 'Previously translated excerpt from WordPress' ), 'Draft content must not get approved production metadata' );
 $_SERVER['HTTP_HOST'] = 'unmatched.invalid';
 ensure_meta( $callback( 'Original' ) === 'Original', 'Unrelated host must not be changed' );
+
+// Final HTML may be rewritten after the AIOSEO hook by TranslatePress.
+// Verify the outermost native MU buffer restores exactly one meta description
+// without disturbing title, canonical, robots, H1 or other body HTML.
+$_SERVER['HTTP_HOST'] = 'www.elmercadodeorigen.com';
+$GLOBALS['test_post']->post_type = 'post';
+$GLOBALS['test_post']->post_status = 'publish';
+$GLOBALS['mdoer_public_request_uri'] = '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/';
+$html = '<!doctype html><html lang="en"><head><title>Original SEO title</title><meta name="description" content="Old translated excerpt"><meta name="robots" content="index,follow"><link rel="canonical" href="https://www.elmercadodeorigen.com/en/example/"></head><body><h1>Keep article heading</h1><p>Keep content as is</p></body></html>';
+$fixed = mdoer_gsc_final_description_20261014( $html );
+$approved = $targets['/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/']['description'];
+ensure_meta( $fixed !== $html, 'Final HTML must change the selected description' );
+ensure_meta( str_contains( $fixed, esc_attr( $approved ) ), 'Approved description must be in final HTML' );
+ensure_meta( substr_count( $fixed, 'name="description"' ) === 1, 'One meta description only' );
+ensure_meta( str_contains( $fixed, '<title>Original SEO title</title>' ), 'Title untouched' );
+ensure_meta( str_contains( $fixed, '<meta name="robots" content="index,follow">' ), 'Robots untouched' );
+ensure_meta( str_contains( $fixed, '<link rel="canonical" href="https://www.elmercadodeorigen.com/en/example/">' ), 'Canonical untouched' );
+ensure_meta( str_contains( $fixed, '<h1>Keep article heading</h1><p>Keep content as is</p>' ), 'Body untouched' );
+ensure_meta( $fixed === mdoer_gsc_final_description_20261014( $fixed ), 'Idempotent final HTML' );
+$second_tag = str_replace( '</head>', '<meta name="description" content="duplicate"></head>', $html );
+ensure_meta( $second_tag === mdoer_gsc_final_description_20261014( $second_tag ), 'Duplicates untouched' );
+$nohead = str_replace( '</head>', '', $html );
+ensure_meta( $nohead === mdoer_gsc_final_description_20261014( $nohead ), 'Malformed HTML untouched' );
+$no_description = str_replace( '<meta name="description" content="Old translated excerpt">', '', $html );
+ensure_meta( $no_description === mdoer_gsc_final_description_20261014( $no_description ), 'No injected description' );
+$GLOBALS['mdoer_public_request_uri'] = '/en/not-selected/';
+ensure_meta( $html === mdoer_gsc_final_description_20261014( $html ), 'Other EN HTML untouched' );
+$GLOBALS['mdoer_public_request_uri'] = '/cuanta-carne-calcular-por-persona-corte-receta/';
+ensure_meta( $html === mdoer_gsc_final_description_20261014( $html ), 'Spanish HTML untouched' );
+$GLOBALS['mdoer_public_request_uri'] = '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/';
+$GLOBALS['test_post']->post_type = 'product';
+ensure_meta( $html === mdoer_gsc_final_description_20261014( $html ), 'Product HTML untouched' );
+$GLOBALS['test_post']->post_type = 'post';
+$_SERVER['HTTP_HOST'] = 'unmatched.invalid';
+ensure_meta( $html === mdoer_gsc_final_description_20261014( $html ), 'Other domain HTML untouched' );
+
 echo "OK: 16 approved EN descriptions, 4 ES unaffected; other pages, product, draft and host protected.\n";
