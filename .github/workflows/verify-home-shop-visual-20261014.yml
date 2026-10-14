@@ -16,6 +16,9 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          curl -fsSL --max-time 50 https://www.elmercadodeorigen.com/tienda/ -o /tmp/shop-ssr-audit.html
+          grep -Fq 'data-emo-early-filter="1"' /tmp/shop-ssr-audit.html
+          echo 'SHOP_SSR_TRIGGER_RAW_HTML_PASS'
           cat >/tmp/measure.cjs <<'JS'
           const {chromium}=require(process.cwd()+'/node_modules/playwright-core');
           const wait=t=>new Promise(r=>setTimeout(r,t));
@@ -55,10 +58,10 @@ jobs:
                     if(device==='mobile'&&d.cls>0.055)fail=true;
                   }
                   if(type==='shop'){
-                    if(d.bannerReal!==1||d.filters!==1||!d.filterSsr||!d.products||!d.productsBox)fail=true;
+                    if(d.bannerReal!==1||d.filters!==1||!d.products||!d.productsBox)fail=true;
                     if(device==='mobile'&&d.cls>0.10)fail=true;
                     if(device==='desktop'&&d.productsBox.w<500)fail=true;
-                    if(pass===1&&device==='mobile'&&d.filterSsr){
+                    if(pass===1&&device==='mobile'){
                       const filter=p.locator('.emo-mobile-filter-toggle');
                       await filter.click();
                       const shown=await p.locator('.emo-mobile-filter-shell').first().isVisible();
