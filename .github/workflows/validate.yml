@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'elmercadodeorigen-child/**'
+      - 'mu-plugins/mdo-production-english-seo-routes.php'
       - 'tests/seo-*.php'
       - 'tests/seo-*.py'
       - '.github/workflows/validate.yml'
@@ -102,6 +103,13 @@ jobs:
       - name: Validate GSC SEO batch invariants
         shell: bash
         run: php tests/seo-gsc-batch-20-20261012.php
+
+      - name: Verify approved English AIOSEO descriptions override native excerpt
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-production-english-seo-routes.php
+          php tests/seo-english-approved-descriptions-20261014.php
 
       - name: Validate fallback category translation without Falang overrides
         shell: bash
