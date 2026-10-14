@@ -236,6 +236,12 @@ function elmercado_shop_early_filter_markup_20261013( string $html ): string {
 		return $html;
 	}
 
+	// The public shop has the exact same 285,255-byte SVG configuration as Home.
+	// Reuse its content-addressed file without changing script order or icon code.
+	if ( function_exists( 'elmercado_externalize_home_woostify_icons_20261013' ) ) {
+		$html = elmercado_externalize_home_woostify_icons_20261013( $html );
+	}
+
 	// Do not create a second trigger if another template already renders it.
 	if ( preg_match( '~<button\b[^>]*class=(["\'])[^"\']*\bemo-mobile-filter-toggle\b[^"\']*\1~i', $html ) ) {
 		return $html;
