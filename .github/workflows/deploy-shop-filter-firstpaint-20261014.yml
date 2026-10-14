@@ -125,6 +125,8 @@ jobs:
                     bannerInHeader:banner?.parentElement?.classList.contains('emo-shop-title-block')&&banner.parentElement.firstElementChild===banner,
                     filterCount:document.querySelectorAll('.emo-mobile-filter-toggle').length,
                     filterSSR:!!document.querySelector('.emo-mobile-filter-toggle[data-emo-early-filter="1"]'),
+                    svgScript:document.getElementById('woostify-general-js-extra')?.src||'',
+                    hasIcons:typeof window.woostify_svg_icons==='object',
                     products:rows?.querySelectorAll('li.product').length,productGridWidth:Math.round(rows?.getBoundingClientRect().width||0),
                     viewport:innerWidth,documentWidth:document.documentElement.scrollWidth};
                 });
@@ -163,7 +165,9 @@ jobs:
           TARGET="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/mobile-catalog-interactions-final.php"
           if [ -s "$BACKUP" ]; then
             cp -p "$BACKUP" "$TARGET"
-            php -l "$TARGET"
+            PHP="$(command -v php || true)"
+            [ -n "$PHP" ] || PHP="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+            "$PHP" -l "$TARGET"
             echo "ROLLBACK_FILTER_SOURCE_RESTORED"
           else
             echo "No deployment backup for this run, so no restoration needed"
