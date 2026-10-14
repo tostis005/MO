@@ -19,6 +19,7 @@ function is_admin(): bool { return false; }
 function is_front_page(): bool { return false; }
 function is_singular(): bool { return false; }
 function esc_attr( $value ): string { return htmlspecialchars( (string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' ); }
+function esc_html( $value ): string { return htmlspecialchars( (string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' ); }
 function is_shop(): bool { return false; }
 function get_queried_object() { return $GLOBALS['test_post']; }
 function trailingslashit( $path ): string { return rtrim( (string) $path, '/' ) . '/'; }
@@ -34,6 +35,8 @@ class WP_Post {
     public string $post_status = 'publish';
 }
 require __DIR__ . '/../elmercadodeorigen-child/inc/seo-gsc-batch-20-20261012.php';
+require __DIR__ . '/../elmercadodeorigen-child/inc/seo-gsc-english-batch2-20261012.php';
+require __DIR__ . '/../elmercadodeorigen-child/inc/seo-gsc-english-batch3-20261012.php';
 require __DIR__ . '/../mu-plugins/mdo-production-english-seo-routes.php';
 
 function ensure_meta( $good, $message ): void {
@@ -105,5 +108,44 @@ ensure_meta( $html === mdoer_gsc_final_description_20261014( $html ), 'Product H
 $GLOBALS['test_post']->post_type = 'post';
 $_SERVER['HTTP_HOST'] = 'unmatched.invalid';
 ensure_meta( $html === mdoer_gsc_final_description_20261014( $html ), 'Other domain HTML untouched' );
+
+
+// 40 additional English articles must be isolated and approved in the same
+// native MU final HTML layer, without overwriting existing 20 titles or ES.
+$_SERVER['HTTP_HOST'] = 'www.elmercadodeorigen.com';
+$GLOBALS['test_post']->post_type = 'post';
+$GLOBALS['test_post']->post_status = 'publish';
+$cohort2 = elmercado_gsc_en_second_batch_20261012();
+$cohort3 = elmercado_gsc_en_third_batch_20261012();
+$more = $cohort2 + $cohort3;
+ensure_meta( count( $cohort2 ) === 20 && count( $cohort3 ) === 20, 'Second and third cohorts each have 20' );
+ensure_meta( count( $more ) === 40 && ! array_intersect_key( $more, $targets ), '40 distinct EN articles do not overlap first 20' );
+$all = mdoer_gsc_approved_targets_20261014();
+ensure_meta( count( $all ) === 60, '60 approved GSC targets including the four Spanish' );
+
+$sample_head = '<html><head><title>Old SEO title</title><meta name="description" content="Old description"><meta name="robots" content="index"><link rel="canonical" href="/en/canonical/"></head><body><h1>Keep H1</h1><p>Body content</p></body></html>';
+foreach ( $more as $path => $item ) {
+    ensure_meta( str_starts_with( $path, '/en/' ), 'No Spanish URLs in new cohorts' );
+    $GLOBALS['mdoer_public_request_uri'] = $path;
+    ensure_meta( $callback( 'Old' ) === $item['description'], 'Native AIOSEO hook returns approved description ' . $path );
+    $html = mdoer_gsc_final_description_20261014( $sample_head );
+    ensure_meta( str_contains( $html, esc_attr( $item['description'] ) ), 'Final HTML description ' . $path );
+    $html = mdoer_gsc_final_title_20261014( $html );
+    ensure_meta( str_contains( $html, '<title>' . esc_html( $item['title'] . ' | El Mercado de Origen' ) . '</title>' ), 'Final HTML title ' . $path );
+    ensure_meta( substr_count( $html, 'name="description"' ) === 1, 'Exactly one final description' );
+    ensure_meta( str_contains( $html, '<h1>Keep H1</h1><p>Body content</p>' ), 'Body untouched on new EN article' );
+    ensure_meta( str_contains( $html, '<meta name="robots" content="index">' ), 'Robots untouched' );
+    ensure_meta( str_contains( $html, '<link rel="canonical" href="/en/canonical/">' ), 'Canonical untouched' );
+}
+$GLOBALS['mdoer_public_request_uri'] = '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/';
+ensure_meta( mdoer_gsc_final_title_20261014( $sample_head ) === $sample_head, 'First 20 title unaffected by new finalizer' );
+$GLOBALS['mdoer_public_request_uri'] = '/en/unselected/';
+ensure_meta( mdoer_gsc_final_title_20261014( $sample_head ) === $sample_head, 'Unrelated English title unaffected' );
+$GLOBALS['mdoer_public_request_uri'] = '/en/how-much-iron-in-beef/';
+$GLOBALS['test_post']->post_type = 'product';
+ensure_meta( mdoer_gsc_final_title_20261014( $sample_head ) === $sample_head, 'Product titles unchanged' );
+$GLOBALS['test_post']->post_type = 'post';
+$_SERVER['HTTP_HOST'] = 'unmatched.invalid';
+ensure_meta( mdoer_gsc_final_title_20261014( $sample_head ) === $sample_head, 'Other domain unaffected' );
 
 echo "OK: 16 approved EN descriptions, 4 ES unaffected; other pages, product, draft and host protected.\n";
