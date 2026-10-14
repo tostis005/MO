@@ -186,6 +186,30 @@ add_filter( 'aioseo_title', static function( $title ) {
 }, PHP_INT_MAX );
 add_filter( 'aioseo_description', static function( $description ) {
     if ( ! mdoer_en() ) { return $description; }
+
+    /*
+     * On the public EN route TranslatePress internally rewrites REQUEST_URI
+     * to the source-language slug. The MU plugin retains the original public
+     * path in mdoer_public_path(). Respect GSC-approved descriptions before
+     * falling back to the translated excerpt in _en_US_post_excerpt.
+     *
+     * Restricted to explicitly selected, published blog posts. No product,
+     * Spanish, shop or unrelated metadata changes.
+     */
+    $post = get_queried_object();
+    if (
+        $post instanceof WP_Post
+        && 'post' === $post->post_type
+        && 'publish' === $post->post_status
+        && function_exists( 'elmercado_gsc_batch_20_20261012' )
+    ) {
+        $public_path = trailingslashit( mdoer_public_path() );
+        $approved = elmercado_gsc_batch_20_20261012();
+        if ( ! empty( $approved[ $public_path ]['description'] ) ) {
+            return $approved[ $public_path ]['description'];
+        }
+    }
+
     if ( function_exists( 'is_shop' ) && is_shop() ) { return 'Shop products selected for their origin, quality and the producers behind them at El Mercado de Origen.'; }
     $object = get_queried_object();
     if ( $object instanceof WP_Post ) {
