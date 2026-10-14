@@ -1,0 +1,82 @@
+name: Verify home and shop visual stability 20261014
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/verify-home-shop-visual-20261014.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - run: npm install --no-save --no-audit --no-fund playwright-core@1.56.1 >/dev/null
+      - name: Fresh Chrome mobile and desktop performance measurements
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat >/tmp/measure.cjs <<'JS'
+          const {chromium}=require(process.cwd()+'/node_modules/playwright-core');
+          const wait=t=>new Promise(r=>setTimeout(r,t));
+          (async()=>{
+            const b=await chromium.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            let fail=false;
+            for(const [type,path] of [['home','/'],['shop','/tienda/']]){
+              for(const [device,vp,slow] of [['mobile',{width:390,height:844},true],['desktop',{width:1365,height:900},false]]){
+                for(let pass=1;pass<=2;pass++){
+                  const p=await b.newPage({viewport:vp});
+                  const errors=[];p.on('pageerror',e=>errors.push(String(e).slice(0,130)));
+                  await p.addInitScript(()=>{
+                    window.__m={cls:0,lcp:0,fcp:0,shifts:[]};
+                    new PerformanceObserver(list=>{for(const e of list.getEntries())if(!e.hadRecentInput){window.__m.cls+=e.value;window.__m.shifts.push({ms:Math.round(e.startTime),v:+e.value.toFixed(4)});}}).observe({type:'layout-shift',buffered:true});
+                    try{new PerformanceObserver(list=>{const e=list.getEntries().at(-1);if(e)window.__m.lcp=Math.round(e.startTime);}).observe({type:'largest-contentful-paint',buffered:true})}catch(e){}
+                    try{new PerformanceObserver(list=>{const e=list.getEntries().find(x=>x.name==='first-contentful-paint');if(e)window.__m.fcp=Math.round(e.startTime);}).observe({type:'paint',buffered:true})}catch(e){}
+                  });
+                  if(slow){const c=await p.context().newCDPSession(p);await c.send('Network.enable');await c.send('Network.emulateNetworkConditions',{offline:false,latency:120,downloadThroughput:500000,uploadThroughput:125000,connectionType:'cellular4g'});}
+                  const url='https://www.elmercadodeorigen.com'+path;
+                  let res;
+                  try{res=await p.goto(url,{waitUntil:'domcontentloaded',timeout:65000});}catch(e){console.error('NAV_FAIL',type,device,pass,String(e));fail=true;await p.close();continue;}
+                  await wait(2000);
+                  const d=await p.evaluate(()=>{
+                    const nav=performance.getEntriesByType('navigation')[0],x=window.__m;
+                    const box=s=>{const e=document.querySelector(s);if(!e)return null;const r=e.getBoundingClientRect();return {w:Math.round(r.width),y:Math.round(r.y),h:Math.round(r.height)}};
+                    const grid=document.querySelector('.emo-hero__visual.emo-vendor-count-6');
+                    return {cls:+x.cls.toFixed(4),fcp:x.fcp,lcp:x.lcp,ttfb:Math.round(nav?.responseStart||0),dcl:Math.round(nav?.domContentLoadedEventEnd||0),htmlBytes:nav?.decodedBodySize,shifts:x.shifts.filter(x=>x.v>0.005),
+                    banner:box('.emdo-navidad-promo'),bannerReal:document.querySelectorAll('aside.emdo-navidad-promo--shop').length,
+                    filterSsr:!!document.querySelector('.emo-mobile-filter-toggle[data-emo-early-filter="1"]'),filters:document.querySelectorAll('.emo-mobile-filter-toggle').length,products:document.querySelectorAll('ul.products li.product').length,productsBox:box('ul.products'),
+                    hero:box('.emo-hero'),heroGridCols:grid?getComputedStyle(grid).gridTemplateColumns:null,heroVendorCards:document.querySelectorAll('.emo-hero-card').length,
+                    criticalHomeCss:!!document.getElementById('elmercado-home-vendor-grid-firstpaint-20261013'),width:document.documentElement.scrollWidth,viewport:innerWidth};
+                  });
+                  console.log('VERIFIED '+type+' '+device+' run='+pass+' HTTP='+res.status()+' '+JSON.stringify(d)+' JS_ERRORS='+JSON.stringify(errors.slice(0,2)));
+                  if(res.status()!==200||errors.length||d.width>d.viewport+2)fail=true;
+                  if(type==='home'){
+                    if(!d.hero||!d.criticalHomeCss||d.heroVendorCards<6)fail=true;
+                    if(device==='mobile'&&d.cls>0.055)fail=true;
+                  }
+                  if(type==='shop'){
+                    if(d.bannerReal!==1||d.filters!==1||!d.filterSsr||!d.products||!d.productsBox)fail=true;
+                    if(device==='mobile'&&d.cls>0.10)fail=true;
+                    if(device==='desktop'&&d.productsBox.w<500)fail=true;
+                    if(pass===1&&device==='mobile'&&d.filterSsr){
+                      const filter=p.locator('.emo-mobile-filter-toggle');
+                      await filter.click();
+                      const shown=await p.locator('.emo-mobile-filter-shell').first().isVisible();
+                      const expanded=await filter.getAttribute('aria-expanded');
+                      console.log('FILTER_INTERACTION visible='+shown+' expanded='+expanded);
+                      if(!shown||expanded!=='true')fail=true;
+                      await p.locator('.emo-mobile-filter-close').first().click();
+                      if(await filter.getAttribute('aria-expanded')!=='false')fail=true;
+                    }
+                  }
+                  await p.close();
+                }
+              }
+            }
+            await b.close();
+            if(fail)throw Error('First paint visual consistency or functional regression; inspect measurements');
+            console.log('FIRSTPAINT_HOME_SHOP_MOBILE_DESKTOP_ALL_PASS');
+          })().catch(e=>{console.error(e.stack||e);process.exit(1)});
+          JS
+          export CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          node /tmp/measure.cjs
