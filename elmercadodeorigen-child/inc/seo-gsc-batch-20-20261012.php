@@ -362,7 +362,9 @@ add_action(
 		if ( is_admin() || 'GET' !== strtoupper( (string) ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) ) ) {
 			return;
 		}
+		$GLOBALS['emo_gsc_outer_init_fired_20261014'] = true;
 		$path = (string) wp_parse_url( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), PHP_URL_PATH );
+		$GLOBALS['emo_gsc_outer_path_20261014'] = $path;
 		if ( false !== strpos( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), 'why-cut-potatoes-turn-black' ) ) {
 			header( 'X-GSC-Outer-Init: yes' );
 			header( 'X-GSC-Outer-Exact-Path: ' . ( '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/' === $path ? 'yes' : 'no' ) );
@@ -377,6 +379,7 @@ add_action(
 			return;
 		}
 		$description = (string) $targets[ $path ]['description'];
+		$GLOBALS['emo_gsc_outer_buffer_started_20261014'] = true;
 
 		// TranslatePress starts its inner buffer on init:0; Trustindex on init:10.
 		// PHP flushes the inner buffers first; this callback receives final HTML.
@@ -389,3 +392,21 @@ add_action(
 	},
 	-1000
 );
+
+
+/* TEMPORARY, ONE-URL DIAGNOSTIC: exposes booleans only, no paths or secrets. */
+add_action( 'wp_head', static function (): void {
+	$uri = (string) ( $_SERVER['REQUEST_URI'] ?? '' );
+	if ( false === strpos( $uri, 'why-cut-potatoes-turn-black' ) ) {
+		return;
+	}
+	$uri_path = (string) wp_parse_url( $uri, PHP_URL_PATH );
+	echo '<!-- emo-gsc-outer-context-20261014'
+		. ' init:' . ( ! empty( $GLOBALS['emo_gsc_outer_init_fired_20261014'] ) ? 'yes' : 'no' )
+		. ' uri_exact:' . ( '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/' === $uri_path ? 'yes' : 'no' )
+		. ' http_get:' . ( 'GET' === strtoupper( (string) ( $_SERVER['REQUEST_METHOD'] ?? '' ) ) ? 'yes' : 'no' )
+		. ' in_admin:' . ( is_admin() ? 'yes' : 'no' )
+		. ' init_done:' . ( did_action( 'init' ) ? 'yes' : 'no' )
+		. ' buffer:' . ( ! empty( $GLOBALS['emo_gsc_outer_buffer_started_20261014'] ) ? 'yes' : 'no' )
+		. ' -->';
+}, 25 );
