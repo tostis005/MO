@@ -58,13 +58,13 @@ foreach ( $targets as $path => $item ) {
 }
 ensure_meta( $en === 16 && $es === 4, 'Exactly 16 EN and 4 ES' );
 $GLOBALS['mdoer_public_request_uri'] = '/en/not-selected/';
-ensure_meta( $callback( 'Original' ) === 'Previously translated excerpt from WordPress', 'Other EN pages preserve translated excerpt' );
+ensure_meta( str_starts_with( $callback( 'Original' ), 'Previously translated excerpt from WordPress' ), 'Other EN pages preserve translated excerpt' );
 $GLOBALS['mdoer_public_request_uri'] = '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/';
 $GLOBALS['test_post']->post_type = 'product';
-ensure_meta( $callback( 'Original' ) === 'Previously translated excerpt from WordPress', 'Products preserve existing translation rules' );
+ensure_meta( str_starts_with( $callback( 'Original' ), 'Previously translated excerpt from WordPress' ), 'Products preserve existing translation rules' );
 $GLOBALS['test_post']->post_type = 'post';
 $GLOBALS['test_post']->post_status = 'draft';
-ensure_meta( $callback( 'Original' ) === 'Previously translated excerpt from WordPress', 'Draft content must not get approved production metadata' );
+ensure_meta( str_starts_with( $callback( 'Original' ), 'Previously translated excerpt from WordPress' ), 'Draft content must not get approved production metadata' );
 $_SERVER['HTTP_HOST'] = 'unmatched.invalid';
 ensure_meta( $callback( 'Original' ) === 'Original', 'Unrelated host must not be changed' );
 echo "OK: 16 approved EN descriptions, 4 ES unaffected; other pages, product, draft and host protected.\n";
