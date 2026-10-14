@@ -53,25 +53,35 @@ function mdo_blog_product_image_url_20260831( WC_Product $product ): string {
  * The browser chooses an existing WP/WooCommerce thumbnail, including WebP
  * candidates provided by the image plugin, instead of assuming 720px everywhere.
  */
-add_filter(
-	'wp_get_attachment_image_attributes',
-	static function ( array $attr, WP_Post $attachment, $size ): array {
-		if ( is_admin() || 'woocommerce_thumbnail' !== $size ) {
+/* Woostify's card image source filter runs at PHP_INT_MAX. Register
+ * after the child theme so that our sizes hint survives its final pass,
+ * while preserving its optimized 480/800px src/srcset candidates. */
+add_action(
+	'after_setup_theme',
+	static function (): void {
+	add_filter(
+		'wp_get_attachment_image_attributes',
+		static function ( array $attr, WP_Post $attachment, $size ): array {
+			if ( is_admin() || 'woocommerce_thumbnail' !== $size ) {
+				return $attr;
+			}
+			if ( is_singular( 'post' ) ) {
+				$attr['sizes'] = '(max-width: 620px) 92vw, (max-width: 1100px) 46vw, 250px';
+			} elseif ( function_exists( 'is_product' ) && is_product() ) {
+				$attr['sizes'] = '(max-width: 599px) 46vw, (max-width: 991px) 30vw, 190px';
+			} elseif ( is_front_page() ) {
+				$attr['sizes'] = '(max-width: 767px) 75vw, (max-width: 1100px) 44vw, 260px';
+			} else {
+				$attr['sizes'] = '(max-width: 599px) 46vw, (max-width: 991px) 31vw, (max-width: 1400px) 24vw, 310px';
+			}
 			return $attr;
-		}
-		if ( is_singular( 'post' ) ) {
-			$attr['sizes'] = '(max-width: 620px) 92vw, (max-width: 1100px) 46vw, 250px';
-		} elseif ( function_exists( 'is_product' ) && is_product() ) {
-			$attr['sizes'] = '(max-width: 599px) 46vw, (max-width: 991px) 30vw, 190px';
-		} elseif ( is_front_page() ) {
-			$attr['sizes'] = '(max-width: 767px) 75vw, (max-width: 1100px) 44vw, 260px';
-		} else {
-			$attr['sizes'] = '(max-width: 599px) 46vw, (max-width: 991px) 31vw, (max-width: 1400px) 24vw, 310px';
-		}
-		return $attr;
+		},
+		PHP_INT_MAX,
+		3
+	);
+	
 	},
-	90,
-	3
+	PHP_INT_MAX
 );
 
 add_action(
