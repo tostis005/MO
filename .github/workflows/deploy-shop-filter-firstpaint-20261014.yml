@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/deploy-shop-filter-firstpaint-20261014.yml'
+      - 'elmercadodeorigen-child/inc/mobile-catalog-interactions-final.php'
   workflow_dispatch:
 permissions:
   contents: read
@@ -27,6 +28,7 @@ jobs:
           php -l elmercadodeorigen-child/inc/mobile-catalog-interactions-final.php
           grep -Fq 'elmercado_shop_early_filter_markup_20261013' elmercadodeorigen-child/inc/mobile-catalog-interactions-final.php
           grep -Fq 'earlyToggle || document.createElement' elmercadodeorigen-child/inc/mobile-catalog-interactions-final.php
+          grep -Fq 'elmercado_externalize_home_woostify_icons_20261013' elmercadodeorigen-child/inc/mobile-catalog-interactions-final.php
       - name: Discover and verify production then install with backup
         shell: bash
         env:
@@ -95,6 +97,8 @@ jobs:
           done
           grep -Fq 'data-emo-early-filter="1"' /tmp/emdo-shop.html
           grep -Fq 'data-emdo-navidad-promo="2026"' /tmp/emdo-shop.html
+          grep -Fq 'woostify-icons-a7b249ce30434f961196.js' /tmp/emdo-shop.html
+          grep -Fq 'id="woostify-general-js-extra"' /tmp/emdo-shop.html
           echo 'PASS initial shop HTML has real banner and first-paint filter'
           npm install --no-save --no-audit --no-fund playwright-core@1.56.1 >/dev/null
           cat >/tmp/verify.cjs <<'JS'
@@ -125,7 +129,7 @@ jobs:
                     viewport:innerWidth,documentWidth:document.documentElement.scrollWidth};
                 });
                 console.log('SHOP_VALIDATION '+label+' HTTP='+response.status()+' '+JSON.stringify(data)+' errors='+JSON.stringify(errors));
-                if(response.status()!==200||!data.bannerInHeader||data.bannerCount!==1||data.filterCount!==1||!data.filterSSR||!data.products||errors.length)throw Error('Shop visible functionality regression '+label);
+                if(response.status()!==200||!data.bannerInHeader||data.bannerCount!==1||data.filterCount!==1||!data.svgScript.includes('woostify-icons-a7b249ce30434f961196.js')||!data.hasIcons||!data.products||errors.length)throw Error('Shop visible functionality regression '+label);
                 if(data.documentWidth>data.viewport+3)throw Error('Unexpected overflow '+label);
                 if(slow){
                   if(data.cls>0.10)throw Error('Mobile CLS above threshold: '+data.cls);
@@ -144,3 +148,24 @@ jobs:
           JS
           export CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
           node /tmp/verify.cjs
+      - name: Restore PHP file automatically if a production verification failed
+        if: failure()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          [[ "$PORT" =~ ^[0-9]{1,5}$ ]]
+          sshpass -e ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" "bash -s -- '$GITHUB_RUN_ID'" <<'REMOTE'
+          set -Eeuo pipefail
+          BACKUP="/tmp/emdo-filter-firstpaint-backup-$1.php"
+          TARGET="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/mobile-catalog-interactions-final.php"
+          if [ -s "$BACKUP" ]; then
+            cp -p "$BACKUP" "$TARGET"
+            php -l "$TARGET"
+            echo "ROLLBACK_FILTER_SOURCE_RESTORED"
+          else
+            echo "No deployment backup for this run, so no restoration needed"
+          fi
+          REMOTE
