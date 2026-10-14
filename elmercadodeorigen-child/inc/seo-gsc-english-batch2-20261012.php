@@ -56,5 +56,25 @@ add_filter( 'aioseo_title', 'elmercado_gsc_en_second_title_20261012', 100001 );
 add_filter( 'seopress_titles_title', 'elmercado_gsc_en_second_title_20261012', 125 );
 add_filter( 'wpseo_metadesc', 'elmercado_gsc_en_second_description_20261012', 125 );
 add_filter( 'rank_math/frontend/description', 'elmercado_gsc_en_second_description_20261012', 125 );
-add_filter( 'aioseo_description', 'elmercado_gsc_en_second_description_20261012', 125 );
+add_filter( 'aioseo_description', 'elmercado_gsc_en_second_description_20261012', PHP_INT_MAX );
+add_filter( 'wp_title', 'elmercado_gsc_en_second_title_20261012', 100001 );
 add_filter( 'seopress_titles_desc', 'elmercado_gsc_en_second_description_20261012', 125 );
+
+
+/**
+ * Each single.php article already renders its own H1. The parent Woostify
+ * theme adds an additional hidden page-header H1. Remove ONLY that extra
+ * parent header for the 40 distinct GSC English URLs in cohorts 2+3.
+ */
+add_action( 'wp_head', static function (): void {
+	if ( is_admin() || ! is_singular( 'post' ) || ! function_exists( 'elmercado_gsc_current_path_010313' ) ) {
+		return;
+	}
+	$path = elmercado_gsc_current_path_010313();
+	$cohort2 = elmercado_gsc_en_second_batch_20261012();
+	$cohort3 = function_exists( 'elmercado_gsc_en_third_batch_20261012' )
+		? elmercado_gsc_en_third_batch_20261012() : array();
+	if ( isset( $cohort2[ $path ] ) || isset( $cohort3[ $path ] ) ) {
+		remove_action( 'woostify_after_header', 'woostify_page_header', 10 );
+	}
+}, -5000 );
