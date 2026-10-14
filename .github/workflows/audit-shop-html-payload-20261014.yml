@@ -1,0 +1,64 @@
+name: Audit shop HTML payload 20261014
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/audit-shop-html-payload-20261014.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Analyze exact HTML download and CSS/script payload, no production mutations
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p /tmp/emo-payload
+          for page in shop home; do
+            if [ "$page" = shop ]; then url='https://www.elmercadodeorigen.com/tienda/'; else url='https://www.elmercadodeorigen.com/'; fi
+            curl -fLsS --compressed --retry 2 --max-time 60 -D "/tmp/emo-payload/$page.h" -o "/tmp/emo-payload/$page.html" -w "$page HTTP=%{http_code} TTFB=%{time_starttransfer} TOTAL=%{time_total} RESPONSE_BYTES=%{size_download}\n" "$url"
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          from html.parser import HTMLParser
+          from collections import Counter
+          import re, json, gzip, zlib
+          class Analyzer(HTMLParser):
+            def __init__(self): super().__init__(convert_charrefs=False); self.blocks=[];self.stack=[];self.links=[];self.scripts=[];self.images=[]
+            def handle_starttag(self,tag,attrs):
+              d=dict(attrs)
+              if tag in ('style','script'):self.stack.append((tag,self.getpos()[0],d))
+              if tag=='link' and d.get('rel') in ('stylesheet','preload'):self.links.append(d)
+              if tag=='img':self.images.append(d)
+            def handle_endtag(self,tag):
+              if tag in ('style','script') and self.stack:
+                for i in range(len(self.stack)-1,-1,-1):
+                  if self.stack[i][0]==tag:
+                    kind,line,attrs=self.stack.pop(i)
+                    self.blocks.append((kind,line,attrs))
+                    break
+          for page in ('home','shop'):
+            s=Path('/tmp/emo-payload/'+page+'.html').read_text(errors='replace')
+            tags=[]
+            for tag in ['style','script','link','img','li','div','span','header']:
+              tags.append((tag,len(re.findall(r'<'+tag+r'\b',s,re.I))))
+            blocks=[]
+            for type in ['style','script']:
+              for m in re.finditer(r'<'+type+r'\b([^>]*)>(.*?)</'+type+r'\s*>',s,re.I|re.S):
+                attrs=m.group(1);body=m.group(2)
+                blocks.append({'type':type,'id':(re.search(r'\bid=["\']([^"\']+)',attrs) or [None,''])[1], 'bytes':len(body.encode()),'head':m.start()<s.find('</head>'),'src':(re.search(r'\bsrc=["\']([^"\']+)',attrs) or [None,''])[1][:130]})
+            inline=sorted((b for b in blocks if not b['src']),key=lambda x:-x['bytes'])
+            css=sum(b['bytes'] for b in inline if b['type']=='style');js=sum(b['bytes'] for b in inline if b['type']=='script')
+            headend=s.find('</head>')
+            print('PAGE',page,'RAW',len(s.encode()),'GZIP',len(gzip.compress(s.encode(),compresslevel=6)),'HEAD_BYTES',len(s[:headend].encode()),'INLINE_CSS',css,'INLINE_JS',js,'BLOCK_COUNTS',json.dumps(tags))
+            print('TOP_INLINE',page,json.dumps(inline[:25],ensure_ascii=False))
+            print('TOP_EXTERNAL_SCRIPTS',page,json.dumps([b for b in blocks if b['src']][:25],ensure_ascii=False))
+            for x in ['woostify-parent-style-inline-css','elmercado-home-first-view-css','elmercado-home-deferred-css','emdo-navidad-promo--shop']:
+              print('MARKER',page,x,s.count(x))
+            if page=='shop':
+              print('REPEAT_PRODUCT_SECTION',json.dumps({'product_list_item_count':len(re.findall(r'<li\b[^>]*\bproduct\b',s,re.I)),'svg_inline_bytes':sum(len(m.group(0)) for m in re.finditer(r'<svg\b[^>]*>.*?</svg\s*>',s,re.I|re.S)), 'data_uri_bytes':sum(len(m.group(0)) for m in re.finditer(r'data:image/[a-z0-9+.-]+;base64,[^"\'\s]+',s,re.I))}))
+              print('SHOP_HEAD_TAIL',repr(s[:500]),'BODY_END',repr(s[-300:]))
+          PY
+          echo 'HEADERS' && grep -Ei '^(HTTP/|cache-control:|content-encoding:|x-el-mercado|x-emdo|server:)' /tmp/emo-payload/{home,shop}.h || true
