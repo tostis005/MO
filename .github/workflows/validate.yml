@@ -139,3 +139,66 @@ jobs:
 
       - name: Check whitespace errors
         run: git diff --check HEAD~1 HEAD || git diff --check
+
+  seo-native-mu-live-readonly:
+    # Existing SSH secrets target production. Do not write to the WordPress tree.
+    if: github.event_name == 'pull_request' && github.head_ref == 'seo/english-aioseo-approved-descriptions-20261014' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare exact deployed English routing MU plugin to MO main
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?Missing host}"
+          : "${STAGING_USER:?Missing user}"
+          : "${STAGING_PASSWORD:?Missing password}"
+          : "${STAGING_REMOTE_PATH:?Missing path}"
+          [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
+          [[ "$STAGING_REMOTE_PATH" =~ ^/[A-Za-z0-9._/-]+/?$ ]]
+          git fetch --quiet --depth=1 origin main
+          git show origin/main:mu-plugins/mdo-production-english-seo-routes.php > "$RUNNER_TEMP/mu-main.php"
+          mainsha="$(sha256sum "$RUNNER_TEMP/mu-main.php" | awk '{print $1}')"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          port="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$port" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$port" "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$mainsha'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; expected_sha="$2"
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            config="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n 1 || true)"
+            [ -n "$config" ] || exit 1
+            dev="$(dirname "$config")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] || exit 1
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1)"
+          wp_bin="$(command -v wp || true)"
+          [ -n "$wp_bin" ] && [ -x "$php_bin" ] || exit 1
+          site="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+          case "$site" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) ;;
+            *) echo 'SEO_MU_SITE=unexpected'; exit 1 ;;
+          esac
+          echo 'SEO_MU_SITE=verified'
+          mu="$prod/wp-content/mu-plugins/mdo-production-english-seo-routes.php"
+          [ -f "$mu" ] && [ -r "$mu" ] || { echo 'SEO_MU_NATIVE=missing'; exit 1; }
+          current="$(sha256sum "$mu" | awk '{print $1}')"
+          if [ "$current" = "$expected_sha" ]; then echo 'SEO_MU_NATIVE_MATCH_MAIN=yes'; else echo 'SEO_MU_NATIVE_MATCH_MAIN=no'; fi
+          [ "$current" = "$expected_sha" ]
+          REMOTE
