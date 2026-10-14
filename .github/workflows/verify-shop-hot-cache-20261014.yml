@@ -1,0 +1,36 @@
+name: Verify shop hot cache 20261014
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/verify-shop-hot-cache-20261014.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Cache hit and cookie gates
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          url=https://www.elmercadodeorigen.com/tienda/
+          for i in $(seq 1 35); do
+            curl -ksSL --compressed --max-time 55 -D /tmp/emdo-shop.h -o /tmp/emdo-shop.html -w 'SHOP_HTTP=%{http_code} SHOP_TTFB=%{time_starttransfer} SHOP_TOTAL=%{time_total}\n' "$url" || true
+            if grep -qi '^X-El-Mercado-Hot-Early-Cache: HIT' /tmp/emdo-shop.h; then break; fi
+            sleep 8
+          done
+          grep -qi '^X-El-Mercado-Hot-Early-Cache: HIT' /tmp/emdo-shop.h
+          grep -Fq 'data-emo-early-filter="1"' /tmp/emdo-shop.html
+          grep -Fq 'emdo-navidad-promo--shop' /tmp/emdo-shop.html
+          echo 'SHOP_EARLY_CACHE_HIT_AND_CONTENT_PASS'
+          for cookie in 'wordpress_logged_in_probe=1' 'woocommerce_items_in_cart=1' 'wp_woocommerce_session_probe=1' 'shipping_probe=DE'; do
+            curl -ksSL --compressed --max-time 55 -H "Cookie: $cookie" -D /tmp/emdo-bypass.h -o /dev/null -w 'BYPASS_HTTP=%{http_code} TTFB=%{time_starttransfer}\n' "$url"
+            ! grep -qi '^X-El-Mercado-Hot-Early-Cache: HIT' /tmp/emdo-bypass.h
+          done
+          curl -ksSL --compressed --max-time 55 -D /tmp/emdo-query.h -o /dev/null -w 'QUERY_HTTP=%{http_code}\n' 'https://www.elmercadodeorigen.com/tienda/?orderby=price'
+          ! grep -qi '^X-El-Mercado-Hot-Early-Cache: HIT' /tmp/emdo-query.h
+          curl -ksSL --compressed --max-time 55 -H 'Cookie: _ga=GA1.1.probe' -D /tmp/emdo-safe.h -o /dev/null -w 'ANALYTICS_HTTP=%{http_code}\n' "$url"
+          grep -qi '^X-El-Mercado-Hot-Early-Cache: HIT' /tmp/emdo-safe.h
+          echo SHOP_CACHE_SAFE_GATES_ALL_PASS
