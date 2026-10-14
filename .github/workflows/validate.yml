@@ -253,6 +253,8 @@ jobs:
           grep -Fq 'seo-gsc-outer-final-probe-20261014 changed:' "$output" && final_seen=yes || true
           grep -Fq 'seo-gsc-outer-final-probe-20261014 changed:yes' "$output" && final_changed=yes || true
           echo "SEO_OUTER_DIAG_RESULT=init:$init_seen exact_path:$path_ok callback:$final_seen replaced:$final_changed"
+          context="$(grep -oE 'emo-gsc-outer-context-20261014[^>]{0,220}' "$output" | head -n 1 || true)"
+          if [ -n "$context" ]; then echo "SEO_OUTER_INIT_CONTEXT=$context"; else echo 'SEO_OUTER_INIT_CONTEXT=not_found'; fi
           rm -f "$output" "$headers"
           [ "$status" = 200 ] && [ "$title_ok" = yes ] && [ "$h1" = 1 ] || exit 1
           echo 'SEO_OUTER_META_DIAG=completed_not_a_release'
