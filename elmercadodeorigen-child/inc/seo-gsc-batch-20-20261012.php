@@ -363,6 +363,10 @@ add_action(
 			return;
 		}
 		$path = (string) wp_parse_url( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), PHP_URL_PATH );
+		if ( false !== strpos( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), 'why-cut-potatoes-turn-black' ) ) {
+			header( 'X-GSC-Outer-Init: yes' );
+			header( 'X-GSC-Outer-Exact-Path: ' . ( '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/' === $path ? 'yes' : 'no' ) );
+		}
 
 		// One English article ONLY. Expand after proving real HTML and rollback.
 		if ( '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/' !== $path ) {
@@ -378,7 +382,8 @@ add_action(
 		// PHP flushes the inner buffers first; this callback receives final HTML.
 		ob_start(
 			static function ( $html ) use ( $description ) {
-				return elmercado_gsc_meta_outer_replace_20261014( $html, $description );
+				$modified = elmercado_gsc_meta_outer_replace_20261014( $html, $description );
+				return $modified . '<!-- seo-gsc-outer-final-probe-20261014 changed:' . ( $modified === $html ? 'no' : 'yes' ) . ' -->';
 			}
 		);
 	},
