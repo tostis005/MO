@@ -201,4 +201,6 @@ jobs:
           current="$(sha256sum "$mu" | awk '{print $1}')"
           if [ "$current" = "$expected_sha" ]; then echo 'SEO_MU_NATIVE_MATCH_MAIN=yes'; else echo 'SEO_MU_NATIVE_MATCH_MAIN=no'; fi
           [ "$current" = "$expected_sha" ]
+          # Read-only: inspect already loaded MU HTML rewriters; no credentials or content output.
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval 'foreach(array("emdo_task3_final_html","mdo_native_bridge_final_html","mdo_mentta_home_final_html_filter","mdoer_html") as $name){if(!function_exists($name)){echo "SEO_REWRITE_FUNCTION=".$name." absent\n";continue;} $r=new ReflectionFunction($name);$source=@file($r->getFileName());$matched=0;if(!is_array($source)){echo "SEO_REWRITE_FUNCTION=".$name." unreadable\n";continue;} for($i=$r->getStartLine()-1;$i<$r->getEndLine()&&$matched<35;$i++){ $line=trim($source[$i]??"");if(!preg_match("/meta|description|seo|head|preg_replace|str_replace|html|callback/i",$line)||preg_match("/secret|password|token|credential|private_key/i",$line))continue;$line=substr(preg_replace("/[^\x20-\x7E]/","",$line),0,180);echo "SEO_REWRITE_SOURCE ".$name." L".($i+1)." ".$line."\n";$matched++;}}' --path="$prod" --allow-root
           REMOTE
