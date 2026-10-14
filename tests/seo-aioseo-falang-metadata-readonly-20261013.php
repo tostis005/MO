@@ -295,3 +295,43 @@ foreach ( $stop_callbacks as $priority => $entries ) {
 			' source_basename:' . substr( (string) $source, 0, 85 ) . "\n";
 	}
 }
+
+
+/* Read-only source-family diagnostics for pre-init HTML output handlers. */
+foreach ( array(
+	'emdo_task3_final_html', 'mdo_mentta_home_final_html_filter',
+	'mdoer_html', 'mdo_native_bridge_final_html'
+) as $function_name ) {
+	if ( ! function_exists( $function_name ) ) {
+		echo 'SEO_DIAG_HTML_WRAPPER_' . $function_name . '=undefined_in_cli' . "\n";
+		continue;
+	}
+	try {
+		$reflection = new ReflectionFunction( $function_name );
+		$file = (string) $reflection->getFileName();
+		$source = @file( $file );
+		$code = ( is_array( $source ) )
+			? implode( '', array_slice( $source, max( 0, $reflection->getStartLine() - 1 ),
+				min( 900, $reflection->getEndLine() - $reflection->getStartLine() + 1 ) ) )
+			: '';
+		$family = strpos( $file, '/mu-plugins/' ) !== false ? 'mu_plugin'
+			: ( strpos( $file, '/themes/' ) !== false ? 'theme'
+			: ( strpos( $file, '/plugins/' ) !== false ? 'plugin' : 'other' ) );
+		$basename = preg_replace( '/[^a-zA-Z0-9_.-]/', '', basename( $file ) );
+		$signals = array();
+		foreach ( array(
+			'meta' => '/(?:meta|description|seo|head)/i',
+			'html_replace' => '/(?:preg_replace|str_replace|substr_replace)/',
+			'cache' => '/(?:cache|transient|readfile|file_get_contents)/i',
+			'translate' => '/(?:translate|language|locale|english)/i',
+			'ob' => '/(?:ob_start|ob_get|ob_end)/',
+		) as $indicator => $pattern ) {
+			$signals[] = $indicator . ':' . ( preg_match( $pattern, $code ) ? 'yes' : 'no' );
+		}
+		echo 'SEO_DIAG_HTML_WRAPPER_' . $function_name . '=source:' . $family .
+			' file:' . substr( (string) $basename, 0, 85 ) .
+			' ' . implode( ' ', $signals ) . "\n";
+	} catch ( Throwable $ignored ) {
+		echo 'SEO_DIAG_HTML_WRAPPER_' . $function_name . '=reflection_unavailable' . "\n";
+	}
+}
