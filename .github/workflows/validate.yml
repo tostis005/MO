@@ -103,6 +103,17 @@ jobs:
         shell: bash
         run: php tests/seo-gsc-batch-20-20261012.php
 
+      - name: Validate GSC SEO English cohorts 2 and 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/seo-gsc-english-batch2-20261012.php
+          php -l elmercadodeorigen-child/inc/seo-gsc-english-batch3-20261012.php
+          php tests/seo-gsc-english-batch2-20261012.php
+          php tests/seo-gsc-english-batch3-20261012.php
+          php tests/seo-gsc-all-60-integration-20261012.php
+
+
       - name: Validate fallback category translation without Falang overrides
         shell: bash
         run: php tests/seo-blog-category-english-20261012.php
