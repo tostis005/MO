@@ -383,6 +383,8 @@ add_action(
 			return;
 		}
 		$description = (string) $targets[ $public_path ]['description'];
+		$GLOBALS['emo_gsc_outer_depth_before_20261014'] = ob_get_level();
+		$GLOBALS['emo_gsc_outer_handlers_before_20261014'] = ob_list_handlers();
 		$GLOBALS['emo_gsc_outer_buffer_started_20261014'] = true;
 
 		// TranslatePress starts its inner buffer on init:0; Trustindex on init:10.
@@ -419,5 +421,7 @@ add_action( 'wp_head', static function (): void {
 		. ' in_admin:' . ( is_admin() ? 'yes' : 'no' )
 		. ' init_done:' . ( did_action( 'init' ) ? 'yes' : 'no' )
 		. ' buffer:' . ( ! empty( $GLOBALS['emo_gsc_outer_buffer_started_20261014'] ) ? 'yes' : 'no' )
+		. ' prior_buffers:' . (int) ( $GLOBALS['emo_gsc_outer_depth_before_20261014'] ?? 0 )
+		. ' prior_handlers:' . implode( ',', array_map( static function( $handler ) { return substr( (string) preg_replace( '/[^A-Za-z0-9_\\\\:-]/', '', $handler ), 0, 55 ); }, array_slice( (array) ( $GLOBALS['emo_gsc_outer_handlers_before_20261014'] ?? array() ), 0, 7 ) ) )
 		. ' -->';
 }, 25 );
