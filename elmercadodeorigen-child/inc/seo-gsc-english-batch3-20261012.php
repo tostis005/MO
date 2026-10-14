@@ -57,5 +57,6 @@ add_filter( 'aioseo_title', 'elmercado_gsc_en_third_title_20261012', 100001 );
 add_filter( 'seopress_titles_title', 'elmercado_gsc_en_third_title_20261012', 125 );
 add_filter( 'wpseo_metadesc', 'elmercado_gsc_en_third_description_20261012', 125 );
 add_filter( 'rank_math/frontend/description', 'elmercado_gsc_en_third_description_20261012', 125 );
-add_filter( 'aioseo_description', 'elmercado_gsc_en_third_description_20261012', 125 );
+add_filter( 'aioseo_description', 'elmercado_gsc_en_third_description_20261012', PHP_INT_MAX );
+add_filter( 'wp_title', 'elmercado_gsc_en_third_title_20261012', 100001 );
 add_filter( 'seopress_titles_desc', 'elmercado_gsc_en_third_description_20261012', 125 );
