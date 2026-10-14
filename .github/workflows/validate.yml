@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'elmercadodeorigen-child/**'
+      - 'mu-plugins/mdo-production-english-seo-routes.php'
       - 'tests/seo-*.php'
       - 'tests/seo-*.py'
       - '.github/workflows/validate.yml'
@@ -13,6 +14,7 @@ on:
       - '.github/workflows/production-install-gsc-batch1-module-20261013.yml'
       - '.github/workflows/production-install-gsc-batch1-two-modules-20261013.yml'
       - '.github/workflows/seo-batch1-public-html-audit-20261013.yml'
+      - '.github/workflows/release-gsc-native-meta-20261014.yml'
   workflow_dispatch:
 
 permissions:
@@ -102,6 +104,17 @@ jobs:
       - name: Validate GSC SEO batch invariants
         shell: bash
         run: php tests/seo-gsc-batch-20-20261012.php
+
+      - name: Verify approved English AIOSEO descriptions override native excerpt
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-production-english-seo-routes.php
+          php tests/seo-english-approved-descriptions-20261014.php
+          php -l tests/seo-native-mu-html-verify-20261014.php
+          test -f .github/workflows/release-gsc-native-meta-20261014.yml
+          grep -q 'SEO_MU_RELEASE_ROLLBACK=restored_checksum_ok' .github/workflows/release-gsc-native-meta-20261014.yml
+          grep -q 'SEO_MU_RELEASE_VERIFIED=20_of_20_title_h1_description' .github/workflows/release-gsc-native-meta-20261014.yml
 
       - name: Validate fallback category translation without Falang overrides
         shell: bash

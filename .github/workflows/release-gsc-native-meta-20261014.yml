@@ -1,0 +1,165 @@
+name: Protected production release of native GSC English meta
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-production-english-seo-routes.php'
+      - '.github/workflows/release-gsc-native-meta-20261014.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+
+jobs:
+  release-native-meta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Local PHP scope and syntax verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-production-english-seo-routes.php
+          php -l tests/seo-native-mu-html-verify-20261014.php
+          php tests/seo-english-approved-descriptions-20261014.php
+          php tests/seo-gsc-batch-20-20261012.php
+          : "${STAGING_HOST:?No SSH host}"
+          : "${STAGING_USER:?No SSH user}"
+          : "${STAGING_PASSWORD:?No SSH password}"
+          : "${STAGING_REMOTE_PATH:?No SSH target path}"
+          [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
+          [[ "$STAGING_REMOTE_PATH" =~ ^/[A-Za-z0-9._/-]+/?$ ]]
+
+      - name: Build exact old/new checksums and approved 20-page manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          file=mu-plugins/mdo-production-english-seo-routes.php
+          git show "HEAD^:$file" > "$RUNNER_TEMP/seo-mu-before.php"
+          sha256sum "$RUNNER_TEMP/seo-mu-before.php" | awk '{print $1}' > "$RUNNER_TEMP/old-mu.sha"
+          sha256sum "$file" | awk '{print $1}' > "$RUNNER_TEMP/new-mu.sha"
+          php -r 'define("ABSPATH",getcwd());function add_filter($a,$b,$c=10,$d=1){} function add_action($a,$b,$c=10,$d=1){} require "elmercadodeorigen-child/inc/seo-gsc-batch-20-20261012.php";echo json_encode(elmercado_gsc_batch_20_20261012(),JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);' > "$RUNNER_TEMP/seo-gsc-20.json"
+          php -r '$m=json_decode(file_get_contents($argv[1]),true);$es=0;$en=0;foreach(array_keys($m) as $p){if(str_starts_with($p,"/en/"))$en++;else$es++;}if(count($m)!==20||$en!==16||$es!==4)exit(1);echo "SEO_RELEASE_MANIFEST=20 URLs (16 EN, 4 ES)\n";' "$RUNNER_TEMP/seo-gsc-20.json"
+
+      - name: Guarded one-file production deploy and real HTML verification
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          port="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$port" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          old_sha="$(cat "$RUNNER_TEMP/old-mu.sha")"
+          new_sha="$(cat "$RUNNER_TEMP/new-mu.sha")"
+          script_sha="$(sha256sum tests/seo-native-mu-html-verify-20261014.php | awk '{print $1}')"
+          manifest_sha="$(sha256sum "$RUNNER_TEMP/seo-gsc-20.json" | awk '{print $1}')"
+          remote_file="/tmp/seo-gsc-native-mu-$GITHUB_RUN_ID.php"
+          remote_manifest="/tmp/seo-gsc-native-manifest-$GITHUB_RUN_ID.json"
+          remote_verify="/tmp/seo-gsc-native-verify-$GITHUB_RUN_ID.php"
+          ssh_opts=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes)
+          sshpass -e scp "${ssh_opts[@]}" -P "$port" mu-plugins/mdo-production-english-seo-routes.php "$STAGING_USER@$STAGING_HOST:$remote_file"
+          sshpass -e scp "${ssh_opts[@]}" -P "$port" "$RUNNER_TEMP/seo-gsc-20.json" "$STAGING_USER@$STAGING_HOST:$remote_manifest"
+          sshpass -e scp "${ssh_opts[@]}" -P "$port" tests/seo-native-mu-html-verify-20261014.php "$STAGING_USER@$STAGING_HOST:$remote_verify"
+          sshpass -e ssh "${ssh_opts[@]}" -p "$port" "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$remote_file' '$remote_manifest' '$remote_verify' '$old_sha' '$new_sha' '$manifest_sha' '$script_sha' '$GITHUB_RUN_ID'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; incoming="$2"; manifest="$3"; verifier="$4"; old_sha="$5"; new_sha="$6"; manifest_sha="$7"; verify_sha="$8"; nonce="$9"
+          backup=''; target=''; installed=0; approved=0; htmlfile=''; pathsfile=''
+          cleanup() {
+            rc=$?
+            trap - EXIT HUP INT TERM
+            if [ "$installed" -eq 1 ] && [ "$approved" -ne 1 ]; then
+              if [ -n "$backup" ] && [ -f "$backup" ] && cp -p "$backup" "$target" && echo "$old_sha  $target" | sha256sum -c - >/dev/null 2>&1; then
+                echo 'SEO_MU_RELEASE_ROLLBACK=restored_checksum_ok'
+              else
+                echo 'SEO_MU_RELEASE_ROLLBACK=CHECKSUM_MISMATCH' >&2
+                rc=1
+              fi
+            fi
+            if [ "$approved" -eq 1 ]; then echo 'SEO_MU_RELEASE=COMMITTED_AFTER_20_HTML_CHECKS'; fi
+            [ -z "$htmlfile" ] || rm -f "$htmlfile"
+            [ -z "$pathsfile" ] || rm -f "$pathsfile"
+            rm -f "$incoming" "$manifest" "$verifier"
+            [ -z "$backup" ] || rm -f "$backup"
+            exit "$rc"
+          }
+          trap cleanup EXIT HUP INT TERM
+          case "$nonce" in ''|*[!0-9]*) exit 1 ;; esac
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            config="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n 1 || true)"
+            [ -n "$config" ] || exit 1
+            dev="$(dirname "$config")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] || exit 1
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1)"
+          wp_bin="$(command -v wp || true)"
+          [ -n "$wp_bin" ] && [ -x "$php_bin" ] || exit 1
+          site="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+          case "$site" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) ;;
+            *) echo 'SEO_MU_RELEASE=WRONG_SITE'; exit 1 ;;
+          esac
+          active="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+          [ "$active" = 'elmercadodeorigen-child' ] || exit 1
+          target="$prod/wp-content/mu-plugins/mdo-production-english-seo-routes.php"
+          [ -f "$target" ] && [ -f "$incoming" ] && [ -f "$manifest" ] && [ -f "$verifier" ] || exit 1
+          echo "$new_sha  $incoming" | sha256sum -c - >/dev/null
+          echo "$manifest_sha  $manifest" | sha256sum -c - >/dev/null
+          echo "$verify_sha  $verifier" | sha256sum -c - >/dev/null
+          "$php_bin" -l "$incoming" >/dev/null
+          "$php_bin" -l "$verifier" >/dev/null
+          current="$(sha256sum "$target" | awk '{print $1}')"
+          if [ "$current" = "$new_sha" ]; then
+            echo 'SEO_MU_RELEASE_FILE=already_new_checksum'
+          elif [ "$current" = "$old_sha" ] && [ "$old_sha" != "$new_sha" ]; then
+            backup="/tmp/seo-gsc-native-backup-$nonce.php"
+            cp -p "$target" "$backup"
+            echo "$old_sha  $backup" | sha256sum -c - >/dev/null
+            installed=1
+            install -m 0644 "$incoming" "$target"
+            echo "$new_sha  $target" | sha256sum -c - >/dev/null
+            echo 'SEO_MU_RELEASE_FILE=installed_pending_html_verification'
+          else
+            echo 'SEO_MU_RELEASE=UNEXPECTED_LIVE_CHECKSUM_ABORT' >&2
+            exit 1
+          fi
+          probe_ip="$(hostname -I 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {print $i;exit}}')"
+          [ -n "$probe_ip" ] || exit 1
+          pathsfile="$(mktemp)"; htmlfile="$(mktemp)"
+          "$php_bin" -r '$d=json_decode(file_get_contents($argv[1]),true);if(count($d)!==20)exit(1);foreach(array_keys($d) as $p)echo $p."\n";' "$manifest" > "$pathsfile"
+          total=0; en=0; es=0
+          while IFS= read -r url_path; do
+            [ -n "$url_path" ] || continue
+            total=$((total + 1))
+            case "$url_path" in /en/*) en=$((en + 1)) ;; *) es=$((es + 1)) ;; esac
+            status="$(curl -ksS --connect-timeout 6 --max-time 30 --max-redirs 0 --resolve "www.elmercadodeorigen.com:443:$probe_ip" -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o "$htmlfile" -w '%{http_code}' "https://www.elmercadodeorigen.com$url_path?seo_gsc_native_release=$nonce-$total" || true)"
+            if "$php_bin" "$verifier" "$manifest" "$url_path" "$htmlfile" "$status"; then :; else
+              echo "SEO_MU_RELEASE_HTML_FAILED=index:$total" >&2
+              exit 1
+            fi
+          done < "$pathsfile"
+          [ "$total" -eq 20 ] && [ "$en" -eq 16 ] && [ "$es" -eq 4 ] || exit 1
+          echo 'SEO_MU_RELEASE_VERIFIED=20_of_20_title_h1_description'
+          approved=1
+          REMOTE
