@@ -105,6 +105,16 @@ jobs:
         shell: bash
         run: php tests/seo-gsc-batch-20-20261012.php
 
+      - name: Validate SEO English cohorts 2+3 and complete set of 60
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/seo-gsc-english-batch2-20261012.php
+          php -l elmercadodeorigen-child/inc/seo-gsc-english-batch3-20261012.php
+          php tests/seo-gsc-english-batch2-20261012.php
+          php tests/seo-gsc-english-batch3-20261012.php
+          php tests/seo-gsc-all-60-integration-20261012.php
+
       - name: Verify approved English AIOSEO descriptions override native excerpt
         shell: bash
         run: |
