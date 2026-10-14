@@ -251,6 +251,46 @@ function mdoer_rewrite_url( string $url ): string {
     return $out;
 }
 
+
+/**
+ * Reassert only approved GSC meta descriptions on the final English HTML.
+ * This MU-plugin's outer buffer runs after the TranslatePress inner buffer
+ * and after the native rendering bridge. No extra ob_start or database writes.
+ */
+function mdoer_gsc_final_description_20261014( $html ) {
+    if (
+        ! is_string( $html ) || ! mdoer_en()
+        || ! function_exists( 'elmercado_gsc_batch_20_20261012' )
+    ) { return $html; }
+    $post = get_queried_object();
+    if (
+        ! $post instanceof WP_Post || 'post' !== $post->post_type
+        || 'publish' !== $post->post_status
+    ) { return $html; }
+    $path = trailingslashit( mdoer_public_path() );
+    $approved = elmercado_gsc_batch_20_20261012();
+    $value = (string) ( $approved[ $path ]['description'] ?? '' );
+    if ( '' === $value || strlen( $html ) > 25000000 ) { return $html; }
+    if ( ! preg_match( '~<head\b[^>]*>~i', $html, $head_match, PREG_OFFSET_CAPTURE ) ) { return $html; }
+    $begin = $head_match[0][1] + strlen( $head_match[0][0] );
+    $end = stripos( $html, '</head>', $begin );
+    if ( false === $end ) { return $html; }
+    $head = substr( $html, $begin, $end - $begin );
+    preg_match_all( '~<meta\b[^>]*>~i', $head, $matches, PREG_OFFSET_CAPTURE );
+    $found = array();
+    foreach ( $matches[0] as $tag ) {
+        if ( preg_match( '~\bname\s*=\s*(?:"description"|\'description\')~i', $tag[0] ) ) {
+            $found[] = $tag;
+        }
+    }
+    // Do not create missing tags or silently select from duplicate tags.
+    if ( 1 !== count( $found ) ) { return $html; }
+    $replacement = '<meta name="description" content="' . esc_attr( $value ) . '">';
+    $current = $found[0][0];
+    if ( $replacement === $current ) { return $html; }
+    return substr_replace( $html, $replacement, $begin + $found[0][1], strlen( $current ) );
+}
+
 /* Outermost buffer: started while MU plugins load, so it runs AFTER TranslatePress. */
 function mdoer_html( string $html ): string {
     if ( ! mdoer_prod() || '' === $html ) { return $html; }
@@ -267,7 +307,7 @@ function mdoer_html( string $html ): string {
         if ( mdoer_en() ) { $tags .= '<link rel="canonical" href="' . esc_url( $x['en'] ) . '" data-mdo-canonical="1">' . "\n"; }
         $html = str_ireplace( '</head>', $tags . '</head>', $html );
     }
-    return $html;
+    return mdoer_gsc_final_description_20261014( $html );
 }
 
 /*
