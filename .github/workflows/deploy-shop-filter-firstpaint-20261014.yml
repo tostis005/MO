@@ -1,0 +1,146 @@
+name: Deploy shop filter first-paint 20261014
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-shop-filter-firstpaint-20261014.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP syntax and guarded source assertions
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/mobile-catalog-interactions-final.php
+          grep -Fq 'elmercado_shop_early_filter_markup_20261013' elmercadodeorigen-child/inc/mobile-catalog-interactions-final.php
+          grep -Fq 'earlyToggle || document.createElement' elmercadodeorigen-child/inc/mobile-catalog-interactions-final.php
+      - name: Discover and verify production then install with backup
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$STAGING_HOST" && test -n "$STAGING_USER" && test -n "$STAGING_PASSWORD"
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          [[ "$PORT" =~ ^[0-9]{1,5}$ ]]
+          SSH_ARGS=(-o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o ConnectTimeout=20 -p "$PORT")
+          REMOTE="/tmp/emdo-filter-fp-${GITHUB_RUN_ID}"
+          sshpass -e ssh "${SSH_ARGS[@]}" "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE'"
+          sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no elmercadodeorigen-child/inc/mobile-catalog-interactions-final.php "$STAGING_USER@$STAGING_HOST:$REMOTE/mobile-catalog-interactions-final.php"
+          sshpass -e ssh "${SSH_ARGS[@]}" "$STAGING_USER@$STAGING_HOST" "bash -s -- '$REMOTE' '${GITHUB_RUN_ID}'" <<'REMOTE'
+          set -Eeuo pipefail
+          INCOMING="$1"; ID="$2"
+          ROOT="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          if [ ! -f "$ROOT/wp-config.php" ]; then
+            for candidate in /var/www/vhosts/*/httpdocs; do
+              if [ -f "$candidate/wp-config.php" ]; then
+                ROOT="$candidate"
+                break
+              fi
+            done
+          fi
+          test -f "$ROOT/wp-config.php"
+          PHP="$(command -v php || true)"
+          [ -n "$PHP" ] || PHP="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          WP="$(command -v wp)"
+          [ -x "$PHP" ] && [ -n "$WP" ]
+          SITEURL="$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)"
+          case "$SITEURL" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) ;;
+            *) echo "Refusing to install on an unverified website" >&2; exit 5 ;;
+          esac
+          TARGET="$ROOT/wp-content/themes/elmercadodeorigen-child/inc/mobile-catalog-interactions-final.php"
+          test -s "$TARGET" && test -s "$INCOMING/mobile-catalog-interactions-final.php"
+          "$PHP" -l "$INCOMING/mobile-catalog-interactions-final.php"
+          BACKUP="/tmp/emdo-filter-firstpaint-backup-$ID.php"
+          cp -p "$TARGET" "$BACKUP"
+          rollback() {
+            cp -p "$BACKUP" "$TARGET"
+            echo "DEPLOY_INSTALL_ROLLBACK_COMPLETE"
+          }
+          trap rollback ERR
+          install -m 0644 "$INCOMING/mobile-catalog-interactions-final.php" "$TARGET"
+          "$PHP" -l "$TARGET"
+          grep -Fq 'elmercado_shop_early_filter_markup_20261013' "$TARGET"
+          trap - ERR
+          BLOGCACHE="$ROOT/wp-content/uploads/elmercado-blog-static-v2"
+          HASH="$(printf '%s' 'www.elmercadodeorigen.com|/tienda/' | sha256sum | awk '{print $1}')"
+          [ ! -f "$BLOGCACHE/$HASH.html" ] || rm -f "$BLOGCACHE/$HASH.html"
+          echo 'PRODUCTION_FILTER_FIRSTPAINT_INSTALLED'
+          echo "RESTORE_BACKUP=$BACKUP"
+          REMOTE
+      - name: Verify public HTML and shop interaction mobile and desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SHOP='https://www.elmercadodeorigen.com/tienda/'
+          for i in 1 2 3; do
+            curl -fsSL --connect-timeout 12 --max-time 50 "$SHOP" -o /tmp/emdo-shop.html
+            if grep -Fq 'data-emo-early-filter="1"' /tmp/emdo-shop.html; then break; fi
+            sleep 3
+          done
+          grep -Fq 'data-emo-early-filter="1"' /tmp/emdo-shop.html
+          grep -Fq 'data-emdo-navidad-promo="2026"' /tmp/emdo-shop.html
+          echo 'PASS initial shop HTML has real banner and first-paint filter'
+          npm install --no-save --no-audit --no-fund playwright-core@1.56.1 >/dev/null
+          cat >/tmp/verify.cjs <<'JS'
+          const {chromium}=require(process.cwd()+'/node_modules/playwright-core');
+          (async()=>{
+            const b=await chromium.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            try{
+              for(const [label,vp,slow] of [['mobile',{width:390,height:844},true],['desktop',{width:1365,height:900},false]]){
+                const p=await b.newPage({viewport:vp});
+                const errors=[];p.on('pageerror',e=>errors.push(String(e).slice(0,200)));
+                await p.addInitScript(()=>{
+                  window.__cls=0;new PerformanceObserver(l=>{for(const e of l.getEntries())if(!e.hadRecentInput)window.__cls+=e.value;}).observe({type:'layout-shift',buffered:true});
+                });
+                if(slow){
+                  const c=await p.context().newCDPSession(p);await c.send('Network.enable');
+                  await c.send('Network.emulateNetworkConditions',{offline:false,latency:120,downloadThroughput:500000,uploadThroughput:125000,connectionType:'cellular4g'});
+                }
+                const response=await p.goto('https://www.elmercadodeorigen.com/tienda/',{waitUntil:'domcontentloaded',timeout:65000});
+                await p.waitForTimeout(1700);
+                const data=await p.evaluate(()=>{
+                  const banner=document.querySelector('aside.emdo-navidad-promo--shop');
+                  const rows=document.querySelector('ul.products');
+                  return {cls:+window.__cls.toFixed(4),bannerCount:document.querySelectorAll('aside.emdo-navidad-promo--shop').length,
+                    bannerInHeader:banner?.parentElement?.classList.contains('emo-shop-title-block')&&banner.parentElement.firstElementChild===banner,
+                    filterCount:document.querySelectorAll('.emo-mobile-filter-toggle').length,
+                    filterSSR:!!document.querySelector('.emo-mobile-filter-toggle[data-emo-early-filter="1"]'),
+                    products:rows?.querySelectorAll('li.product').length,productGridWidth:Math.round(rows?.getBoundingClientRect().width||0),
+                    viewport:innerWidth,documentWidth:document.documentElement.scrollWidth};
+                });
+                console.log('SHOP_VALIDATION '+label+' HTTP='+response.status()+' '+JSON.stringify(data)+' errors='+JSON.stringify(errors));
+                if(response.status()!==200||!data.bannerInHeader||data.bannerCount!==1||data.filterCount!==1||!data.filterSSR||!data.products||errors.length)throw Error('Shop visible functionality regression '+label);
+                if(data.documentWidth>data.viewport+3)throw Error('Unexpected overflow '+label);
+                if(slow){
+                  if(data.cls>0.10)throw Error('Mobile CLS above threshold: '+data.cls);
+                  const trigger=p.locator('.emo-mobile-filter-toggle');
+                  await trigger.click();
+                  if(await trigger.getAttribute('aria-expanded')!=='true'||!await p.locator('.emo-mobile-filter-shell').first().isVisible())throw Error('Filter open failed');
+                  await p.locator('.emo-mobile-filter-close').first().click();
+                  if(await trigger.getAttribute('aria-expanded')!=='false')throw Error('Filter close failed');
+                  console.log('FILTER_OPEN_CLOSE_OK');
+                }else if(data.productGridWidth<500)throw Error('Desktop products compressed');
+                await p.close();
+              }
+            }finally{await b.close()}
+            console.log('PASS all shop checks');
+          })().catch(e=>{console.error(e.stack||e);process.exit(1)});
+          JS
+          export CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          node /tmp/verify.cjs
