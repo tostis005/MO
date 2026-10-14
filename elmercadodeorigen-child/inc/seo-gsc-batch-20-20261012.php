@@ -412,6 +412,7 @@ add_action( 'wp_head', static function (): void {
 		. ' init:' . ( ! empty( $GLOBALS['emo_gsc_outer_init_fired_20261014'] ) ? 'yes' : 'no' )
 		. ' init_slug:' . ( false !== strpos( (string) ( $GLOBALS['emo_gsc_outer_path_20261014'] ?? '' ), 'why-cut-potatoes-turn-black' ) ? 'yes' : 'no' )
 		. ' init_exact:' . ( '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/' === (string) ( $GLOBALS['emo_gsc_outer_path_20261014'] ?? '' ) ? 'yes' : 'no' )
+		. ' init_path:' . ( preg_match( '~^/[a-z0-9/_-]{0,165}$~', (string) ( $GLOBALS['emo_gsc_outer_path_20261014'] ?? '' ) ) ? (string) $GLOBALS['emo_gsc_outer_path_20261014'] : 'other' )
 		. ' uri_exact:' . ( '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/' === $uri_path ? 'yes' : 'no' )
 		. ' http_get:' . ( 'GET' === strtoupper( (string) ( $_SERVER['REQUEST_METHOD'] ?? '' ) ) ? 'yes' : 'no' )
 		. ' in_admin:' . ( is_admin() ? 'yes' : 'no' )
