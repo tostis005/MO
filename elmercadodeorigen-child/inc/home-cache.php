@@ -228,6 +228,13 @@ function elmercado_optimize_home_document_for_first_paint( string $html ): strin
 		. 'min-width:0!important;min-height:0!important;border-radius:14px!important;transform:none!important}'
 		. '}';
 	$vendor_grid_firstpaint_tag = '<style id="elmercado-home-vendor-grid-firstpaint-20261013">' . $vendor_grid_firstpaint_css . '</style>';
+	/* Pixel-capped values reproduce the final desktop hero geometry from the
+	 * first paint. Tested at 1280, 1365 and 1600px; mobile is unchanged. */
+	$desktop_hero_firstpaint_css = '@media(min-width:1200px){html body.home.elmercado-child-theme .emo-home > .emo-hero{'
+		. 'min-height:0!important;padding-top:clamp(44px,4vw,56px)!important;'
+		. 'padding-bottom:min(2.4vw,33.6px)!important}}';
+	$desktop_hero_firstpaint_tag = '<style id="elmercado-home-desktop-hero-firstpaint-20261014">' . $desktop_hero_firstpaint_css . '</style>';
+
 	$critical_tag      = '<style id="elmercado-home-first-view-css">' . $mobile_nav_guard . $critical . '</style>' . $mobile_nav_intent;
 	$css_url           = esc_url( elmercado_home_deferred_css_url() );
 	$deferred_tag      = '<link id="elmercado-home-deferred-css" rel="preload" as="style" href="' . $css_url . '" onload="this.onload=null;this.rel=\'stylesheet\'">'
@@ -239,7 +246,7 @@ function elmercado_optimize_home_document_for_first_paint( string $html ): strin
 		$head_protected,
 		1
 	) ?? $head_protected;
-	$head_protected = preg_replace( '~</head>~i', $vendor_grid_firstpaint_tag . $deferred_tag . '</head>', $head_protected, 1 ) ?? $head_protected;
+	$head_protected = preg_replace( '~</head>~i', $vendor_grid_firstpaint_tag . $desktop_hero_firstpaint_tag . $deferred_tag . '</head>', $head_protected, 1 ) ?? $head_protected;
 	$optimized_head = strtr( $head_protected, $scripts );
 	$html           = substr_replace( $html, $optimized_head, $head_start, $head_end - $head_start );
 
