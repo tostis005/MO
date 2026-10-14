@@ -231,6 +231,48 @@ add_action(
  * the entire product grid. Keep exactly the same label and position; the
  * original drawer script below only hydrates this pre-rendered button.
  */
+/**
+ * Prioritize only the first visible catalogue photo (mobile LCP) and correct
+ * legacy Smush sizes hints that still assume a two-column narrow-phone grid.
+ * Changes HTML attributes only, not image URLs, product selection or CSS.
+ */
+function elmercado_shop_catalog_photo_priority_20261014( string $html ): string {
+	if ( ! preg_match( '~<ul\b[^>]*\bclass=(["\'])[^"\']*\bproducts\b[^"\']*\1[^>]*>~i', $html, $loop, PREG_OFFSET_CAPTURE ) ) {
+		return $html;
+	}
+	$start  = (int) $loop[0][1];
+	$before = substr( $html, 0, $start );
+	$after  = substr( $html, $start );
+	$first  = true;
+	$edited = preg_replace_callback(
+		'~<img\b(?=[^>]*\bproduct-loop-image\b)[^>]*>~i',
+		static function ( array $match ) use ( &$first ): string {
+			$tag = $match[0];
+			if ( $first ) {
+				$first = false;
+				if ( preg_match( '~\sfetchpriority=(["\'])[^"\']*\1~i', $tag ) ) {
+					$tag = preg_replace( '~\sfetchpriority=(["\'])[^"\']*\1~i', ' fetchpriority="high"', $tag, 1 ) ?? $tag;
+				} else {
+					$tag = preg_replace( '~<img\b~i', '<img fetchpriority="high"', $tag, 1 ) ?? $tag;
+				}
+				$tag = preg_replace( '~\sloading=(["\'])lazy\1~i', ' loading="eager"', $tag, 1 ) ?? $tag;
+			}
+			// Existing WooCommerce CSS renders one product per row at <=599px.
+			// Retain the original sources/format; only correct the browser hint.
+			return preg_replace_callback(
+				'~\b(data-sizes|sizes)=(["\'])([^"\']*)\2~i',
+				static function ( array $attr ): string {
+					$value = str_replace( '(max-width: 599px) 46vw', '(max-width: 599px) calc(100vw - 32px)', $attr[3] );
+					return $attr[1] . '=' . $attr[2] . $value . $attr[2];
+				},
+				$tag
+			) ?? $tag;
+		},
+		$after
+	);
+	return is_string( $edited ) ? $before . $edited : $html;
+}
+
 function elmercado_shop_early_filter_markup_20261013( string $html ): string {
 	if ( '' === $html || false === stripos( $html, 'woostify-sorting' ) ) {
 		return $html;
@@ -241,6 +283,9 @@ function elmercado_shop_early_filter_markup_20261013( string $html ): string {
 	if ( function_exists( 'elmercado_externalize_home_woostify_icons_20261013' ) ) {
 		$html = elmercado_externalize_home_woostify_icons_20261013( $html );
 	}
+
+	// Deliver the first catalogue image early and keep narrow-phone srcset sharp.
+	$html = elmercado_shop_catalog_photo_priority_20261014( $html );
 
 	// Do not create a second trigger if another template already renders it.
 	if ( preg_match( '~<button\b[^>]*class=(["\'])[^"\']*\bemo-mobile-filter-toggle\b[^"\']*\1~i', $html ) ) {
