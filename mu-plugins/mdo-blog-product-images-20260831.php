@@ -206,7 +206,12 @@ add_action(
 			const fallback = (card, img) => {
 				const data = products[productId(card)];
 				if (!data?.url || img?.dataset.mdoImageTried === '1') return;
-				if (img instanceof HTMLImageElement && img.complete && img.naturalWidth > 40) return;
+				// Smush and other lazy loaders can use a correctly sized SVG
+				// placeholder (naturalWidth > 40). It is still not a product image.
+				const currentSrc = img instanceof HTMLImageElement ? (img.getAttribute('src') || '') : '';
+				const isPlaceholder = !currentSrc || /^data:image\//i.test(currentSrc) ||
+					/(?:smush|lazy)[-_]?placeholder|blank\.gif/i.test(currentSrc);
+				if (img instanceof HTMLImageElement && img.complete && img.naturalWidth > 40 && !isPlaceholder) return;
 				if (!(img instanceof HTMLImageElement)) {
 					if (card.querySelector('.mdo-blog-related-product-media-20260831')) return;
 					const link = document.createElement('a');
@@ -247,7 +252,7 @@ add_action(
 							fallback(card, null);
 						} else if (img.complete && img.naturalWidth < 40) {
 							fallback(card, img);
-						} else if (!img.getAttribute('src') || /^data:image\//i.test(img.getAttribute('src'))) {
+						} else if (!img.getAttribute('src') || /^data:image\//i.test(img.getAttribute('src')) || /(?:smush|lazy)[-_]?placeholder|blank\.gif/i.test(img.getAttribute('src'))) {
 							fallback(card, img);
 						} else if (img.loading === 'lazy') {
 							// Restore native loading if a third-party lazy loader never starts.
