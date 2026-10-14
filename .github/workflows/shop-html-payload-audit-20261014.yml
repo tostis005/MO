@@ -1,0 +1,33 @@
+name: Audit shop large HTML payload 20261014
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/shop-html-payload-audit-20261014.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Measure inline CSS JS scripts with unchanged production markup
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl -fLsS --compressed --connect-timeout 15 --max-time 55 'https://www.elmercadodeorigen.com/tienda/' -o /tmp/shop.html
+          curl -fLsS --compressed --connect-timeout 15 --max-time 55 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          python3 - <<'PY'
+          import pathlib,re,hashlib,collections
+          for label in ('shop','home'):
+            h=pathlib.Path('/tmp/'+label+'.html').read_text(errors='replace')
+            css=[(len(m.group(2).encode()),m.group(1)[:150],m.group(2)[:100]) for m in re.finditer(r'<style\b([^>]*)>(.*?)</style>',h,re.I|re.S)]
+            js=[(len(m.group(2).encode()),m.group(1)[:150],m.group(2)[:100]) for m in re.finditer(r'<script\b([^>]*)>(.*?)</script>',h,re.I|re.S)]
+            print('PAGE',label,'htmlBytes',len(h.encode()),'inlineCSS',sum(x[0] for x in css),'inlineJS',sum(x[0] for x in js),'CSSblocks',len(css),'JSblocks',len(js))
+            for kind,blocks in [('CSS',css),('JS',js)]:
+              for size,attr,pre in sorted(blocks,reverse=True)[:15]:
+                print('TOP',label,kind,size,attr.replace('\n',' ')[:120],'sourceSample',pre.replace('\n',' ')[:45])
+            match=re.search(r'<script\b[^>]*\bid=["\']woostify-general-js-extra["\'][^>]*>(.*?)</script>',h,re.I|re.S)
+            print('ICONS',label,'inline',bool(match),'bytes',len(match.group(1).encode()) if match else 'external','SHA256',hashlib.sha256(match.group(1).encode()).hexdigest() if match else '')
+            print('PRODUCTS',label,h.count('class="product type-product'),'SSR_FILTER',h.count('data-emo-early-filter="1"'))
+          PY
