@@ -20,8 +20,8 @@ jobs:
           const {chromium}=require(process.cwd()+'/node_modules/playwright-core');
           (async()=>{
             const b=await chromium.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
-            for(const [mode,patch] of [['baseline',false],['first-eager',true]]){
-              const p=await b.newPage({viewport:{width:390,height:844},deviceScaleFactor:1});
+            for(const [mode,patch] of [['baseline',false],['first-eager',true],['first-eager-correct-sizes',true]]){
+              const p=await b.newPage({viewport:{width:390,height:844},deviceScaleFactor:2});
               const c=await p.context().newCDPSession(p);await c.send('Network.enable');await c.send('Network.emulateNetworkConditions',{offline:false,latency:120,downloadThroughput:500000,uploadThroughput:125000,connectionType:'cellular4g'});
               const requests=[];p.on('request',r=>{if(r.resourceType()==='image')requests.push({at:Date.now(),name:r.url().slice(-115)})});
               await p.addInitScript(()=>{
@@ -39,6 +39,7 @@ jobs:
                     if(k++>1)return m;
                     const out=body.replace(/<img\b[^>]*>/i,im=>{
                       im=im.replace(/\sloading=(["'])lazy\1/i,' loading="eager"');
+                      if(mode==='first-eager-correct-sizes')im=im.replace(/(data-sizes|sizes)=(['"])([^'"]+)\2/g,(full,key,quote,val)=>key+'='+quote+val.replace('(max-width: 599px) 46vw','(max-width: 599px) calc(100vw - 32px)').replace('(max-width: 991px) 31vw','(max-width: 991px) calc(50vw - 32px)')+quote);
                       if(/\sfetchpriority=/i.test(im))return im.replace(/\sfetchpriority=(["'])[^"']+\1/i,' fetchpriority="high"');
                       return im.replace(/<img\b/i,'<img fetchpriority="high"');
                     });
@@ -55,7 +56,7 @@ jobs:
                 const im=[...document.querySelectorAll('ul.products li.product')].slice(0,4).map(li=>({top:Math.round(li.getBoundingClientRect().top),title:li.querySelector('h2,.woocommerce-loop-product__title')?.textContent?.trim().slice(0,45),images:[...li.querySelectorAll('img')].slice(0,2).map(i=>({tag:i.outerHTML.slice(0,640),top:Math.round(i.getBoundingClientRect().top),loading:i.loading,fetchpriority:i.fetchPriority,complete:i.complete,natural:i.naturalWidth,src:i.currentSrc?.slice(-125)}))}));
                 return {lcp:window.__m.lcp,entries:window.__m.lcpEntries,element:window.__m.element,cls:+window.__m.cls.toFixed(4),ttfb:Math.round(nav.responseStart),dcl:Math.round(nav.domContentLoadedEventEnd),images:im};
               });
-              console.log('RESULT '+mode+' HTTP='+res.status()+' '+JSON.stringify(out).slice(0,8500));
+              console.log('RESULT_DPR2 '+mode+' HTTP='+res.status()+' '+JSON.stringify(out).slice(0,8500));
               await p.close();
             }
             await b.close();
