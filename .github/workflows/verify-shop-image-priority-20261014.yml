@@ -1,0 +1,78 @@
+name: Verify live shop image priority 20261014
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/verify-shop-image-priority-20261014.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - name: Confirm new code in live uncacheable response without touching caches
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          URL="https://www.elmercadodeorigen.com/tienda/?emdo_photo_audit=${GITHUB_RUN_ID}"
+          curl -fsSL --compressed --max-time 65 --retry 2 -D /tmp/shop.h -o /tmp/shop.html "$URL"
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          s=Path('/tmp/shop.html').read_text(errors='replace')
+          m=re.search(r'<ul\b[^>]*\bclass=(["\'])[^"\']*\bproducts\b[^"\']*\1[^>]*>',s,re.I)
+          assert m, 'Shop product list missing'
+          imgs=re.findall(r'<img\b[^>]*\bproduct-loop-image\b[^>]*>',s[m.start():],re.I)
+          print('CATALOG_PRODUCT_IMAGE_COUNT',len(imgs))
+          assert len(imgs)>=10, 'Incomplete shop image loop'
+          first=imgs[0]
+          assert re.search(r'fetchpriority=["\']high["\']',first,re.I),'First product image must have high priority'
+          assert 'calc(100vw - 32px)' in first,'First product sizes must reflect one mobile column'
+          assert all('calc(100vw - 32px)' in i for i in imgs[:10]),'All product card size hints must be corrected'
+          assert not any('fetchpriority="high"' in i for i in imgs[1:10]),'Only first image should receive high fetch priority'
+          print('PHOTO_PRIORITY_FIRST_ONLY_PASS',first[:450])
+          assert 'data-emo-early-filter="1"' in s and 'emdo-navidad-promo--shop' in s
+          print('PUBLIC_SHOP_HTML_AND_VISUAL_CONTENT_PRESERVED_PASS')
+          PY
+      - name: Browser verify mobile 2x photo clarity and desktop/filters
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm install --no-save --no-audit --no-fund playwright-core@1.56.1 >/dev/null
+          cat >/tmp/shop-images.cjs <<'JS'
+          const {chromium}=require(process.cwd()+'/node_modules/playwright-core');
+          (async()=>{
+            const browser=await chromium.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            try{
+              for(const [mode,vp,dpr] of [['mobile',{width:390,height:844},2],['desktop',{width:1365,height:900},1]]){
+                const page=await browser.newPage({viewport:vp,deviceScaleFactor:dpr});
+                const errs=[];page.on('pageerror',e=>errs.push(String(e).slice(0,200)));
+                await page.addInitScript(()=>{window.__cls=0;try{new PerformanceObserver(l=>{for(const e of l.getEntries())if(!e.hadRecentInput)window.__cls+=e.value}).observe({type:'layout-shift',buffered:true})}catch(e){}});
+                const res=await page.goto('https://www.elmercadodeorigen.com/tienda/?image_qa=1',{waitUntil:'domcontentloaded',timeout:70000});
+                await page.waitForTimeout(1500);
+                const data=await page.evaluate(()=>{
+                  const first=document.querySelector('ul.products li.product img.product-loop-image');
+                  const grid=document.querySelector('ul.products');
+                  return{cls:+window.__cls.toFixed(4),img:!!first,src:first?.currentSrc?.slice(-160),naturalWidth:first?.naturalWidth,width:Math.round(first?.getBoundingClientRect().width||0),priority:first?.fetchPriority,
+                    sizes:first?.getAttribute('data-sizes')||first?.getAttribute('sizes'),gridWidth:Math.round(grid?.getBoundingClientRect().width||0),
+                    banner:document.querySelectorAll('aside.emdo-navidad-promo--shop').length,
+                    filters:document.querySelectorAll('.emo-mobile-filter-toggle').length,overflow:document.documentElement.scrollWidth>innerWidth+3};
+                });
+                console.log('LIVE_IMAGE_QA '+mode+' HTTP='+res.status()+' '+JSON.stringify(data)+' errors='+JSON.stringify(errs));
+                if(res.status()!==200||!data.img||data.priority!=='high'||data.banner!==1||data.filters!==1||data.overflow||errs.length)throw Error('Visual shop regression');
+                if(mode==='mobile'){
+                  if(data.cls>0.11)throw Error('Mobile CLS regression '+data.cls);
+                  if(!data.sizes?.includes('calc(100vw - 32px)'))throw Error('Smush mobile size hint not applied');
+                  await page.locator('.emo-mobile-filter-toggle').click();
+                  if(!await page.locator('.emo-mobile-filter-shell').first().isVisible())throw Error('Mobile filter drawer failed to open');
+                  await page.locator('.emo-mobile-filter-close').first().click();
+                }else if(data.gridWidth<500)throw Error('Desktop grid compressed');
+                await page.close();
+              }
+              console.log('PRODUCTION_CATALOG_IMAGE_PRIORITY_AND_RESPONSIVE_QA_PASS');
+            }finally{await browser.close()}
+          })().catch(e=>{console.error(e.stack||e);process.exit(1)});
+          JS
+          export CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          node /tmp/shop-images.cjs
