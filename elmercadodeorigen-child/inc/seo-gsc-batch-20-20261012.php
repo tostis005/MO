@@ -371,9 +371,10 @@ add_action(
 		}
 
 		// One English article ONLY. Expand after proving real HTML and rollback.
-		// TranslatePress can normalize the public /en/ path later than init.
-		// Match just this unambiguous slug early; require the exact EN path in the final callback.
-		if ( false === strpos( $path, 'why-cut-potatoes-turn-black-oxidation-how-to-prevent-it' ) ) {
+		// TranslatePress starts with the Spanish source slug under /en/ and
+		// later transforms it to the translated English permalink.
+		// Restrict the outer buffer to the exact verified source permalink.
+		if ( '/en/patata-cortada-se-pone-negra-por-que-oxidacion-como-evitarla/' !== $path ) {
 			return;
 		}
 		$public_path = '/en/why-cut-potatoes-turn-black-oxidation-how-to-prevent-it/';
