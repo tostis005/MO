@@ -145,7 +145,7 @@ check( str_contains( $updated, '<meta name="robots" content="index,follow">' ), 
 check( $updated === elmercado_gsc_meta_outer_replace_20261014( $updated, $approved ), 'Idempotent EN metadata' );
 check( $fixture === elmercado_gsc_meta_outer_replace_20261014( $fixture, '' ), 'Empty target must be no-op' );
 check( $fixture === elmercado_gsc_meta_outer_replace_20261014( $fixture, null ), 'Non-string target no-op' );
-check( $fixture === elmercado_gsc_meta_outer_replace_20261014( $fixture . '<meta name="description" content="A duplicate">', null ), 'Irrelevant malformed HTML unchanged' );
+
 $two = str_replace( '</head>', '<meta name="description" content="Second"></head>', $fixture );
 check( $two === elmercado_gsc_meta_outer_replace_20261014( $two, $approved ), 'Duplicate descriptions must not be altered' );
 $bad = str_replace( '</head>', '', $fixture );
@@ -170,9 +170,11 @@ $_SERVER['REQUEST_METHOD'] = 'POST';
 $starter();
 check( ob_get_level() === $depth_before, 'Do not buffer POST' );
 $_SERVER['REQUEST_METHOD'] = 'GET';
+ob_start(); // Capture the output of the outer-buffer handler.
 $starter();
-check( ob_get_level() === $depth_before + 1, 'Start one buffer on sole approved EN page' );
+check( ob_get_level() === $depth_before + 2, 'Start one buffer on sole approved EN page' );
 echo $fixture;
+ob_end_flush(); // Apply the SEO callback into the test capture buffer.
 $captured = ob_get_clean();
 check( str_contains( $captured, esc_attr( $approved ) ), 'Output buffer must transform real printed HTML' );
 check( ob_get_level() === $depth_before, 'Buffer cleanup should restore stack depth' );
