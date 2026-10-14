@@ -3,6 +3,8 @@
 declare( strict_types=1 );
 define( 'ABSPATH', __DIR__ );
 function add_filter( $name, $callback, $priority = 10, $accepted_args = 1 ) {}
+function add_action( $tag, $callback, $priority = 10, $args = 1 ) {}
+function remove_action( $tag, $callback, $priority = 10 ) {}
 function is_admin(): bool { return false; }
 function is_singular( $type ): bool { return 'post' === $type; }
 function wp_unslash( $value ) { return stripslashes( (string) $value ); }
