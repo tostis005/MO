@@ -2,7 +2,9 @@ name: Audit shop large HTML payload 20261014
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/shop-html-payload-audit-20261014.yml']
+    paths:
+      - '.github/workflows/shop-html-payload-audit-20261014.yml'
+      - 'elmercadodeorigen-child/inc/mobile-catalog-interactions-final.php'
   workflow_dispatch:
 permissions:
   contents: read
@@ -24,6 +26,10 @@ jobs:
             css=[(len(m.group(2).encode()),m.group(1)[:150],m.group(2)[:100]) for m in re.finditer(r'<style\b([^>]*)>(.*?)</style>',h,re.I|re.S)]
             js=[(len(m.group(2).encode()),m.group(1)[:150],m.group(2)[:100]) for m in re.finditer(r'<script\b([^>]*)>(.*?)</script>',h,re.I|re.S)]
             print('PAGE',label,'htmlBytes',len(h.encode()),'inlineCSS',sum(x[0] for x in css),'inlineJS',sum(x[0] for x in js),'CSSblocks',len(css),'JSblocks',len(js))
+            if label=='shop':
+              print('SHOP_PRIOR_HTML_BYTES=1440870 CURRENT_BYTES='+str(len(h.encode()))+' SAVED_BYTES='+str(1440870-len(h.encode())))
+              assert 900000<len(h.encode())<1250000, 'Unexpected HTML payload size after safe Woostify icon externalization'
+              assert 'woostify-icons-a7b249ce30434f961196.js' in h, 'Fingerprint of exact icon data absent'
             for kind,blocks in [('CSS',css),('JS',js)]:
               for size,attr,pre in sorted(blocks,reverse=True)[:15]:
                 print('TOP',label,kind,size,attr.replace('\n',' ')[:120],'sourceSample',pre.replace('\n',' ')[:45])
