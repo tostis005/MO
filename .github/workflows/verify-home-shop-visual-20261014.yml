@@ -49,6 +49,7 @@ jobs:
                     banner:box('.emdo-navidad-promo'),bannerReal:document.querySelectorAll('aside.emdo-navidad-promo--shop').length,
                     filterSsr:!!document.querySelector('.emo-mobile-filter-toggle[data-emo-early-filter="1"]'),filters:document.querySelectorAll('.emo-mobile-filter-toggle').length,products:document.querySelectorAll('ul.products li.product').length,productsBox:box('ul.products'),
                     hero:box('.emo-hero'),heroGridCols:grid?getComputedStyle(grid).gridTemplateColumns:null,heroVendorCards:document.querySelectorAll('.emo-hero-card').length,
+                    desktopHeroFirstpaint:!!document.getElementById('elmercado-home-desktop-hero-firstpaint-20261014'),
                     criticalHomeCss:!!document.getElementById('elmercado-home-vendor-grid-firstpaint-20261013'),width:document.documentElement.scrollWidth,viewport:innerWidth};
                   });
                   console.log('VERIFIED '+type+' '+device+' run='+pass+' HTTP='+res.status()+' '+JSON.stringify(d)+' JS_ERRORS='+JSON.stringify(errors.slice(0,2)));
@@ -56,6 +57,7 @@ jobs:
                   if(type==='home'){
                     if(!d.hero||!d.criticalHomeCss||d.heroVendorCards<6)fail=true;
                     if(device==='mobile'&&d.cls>0.055)fail=true;
+                    if(device==='desktop'&&(!d.desktopHeroFirstpaint||d.cls>0.08))fail=true;
                   }
                   if(type==='shop'){
                     if(d.bannerReal!==1||d.filters!==1||!d.products||!d.productsBox)fail=true;
