@@ -103,6 +103,7 @@ $hot_cache_paths = array(
 	'/en/product-category/cured-meats/'                     => 'en-cat-cured-meats',
 	'/categoria-producto/jamones-paletas/'                  => 'es-cat-jamones-paletas',
 	'/categoria-producto/embutidos-y-curados/'              => 'es-cat-embutidos-curados',
+	'/tienda/'                                               => 'es-shop-root',
 );
 
 if ( isset( $hot_cache_paths[ $path ] ) ) {
@@ -162,7 +163,7 @@ if ( isset( $hot_cache_paths[ $path ] ) ) {
 	}
 
 	ob_start(
-		static function ( $html ) use ( $hot_cache_dir, $hot_cache_file, $hot_lock_handle, $hot_have_lock ) {
+		static function ( $html ) use ( $hot_cache_dir, $hot_cache_file, $hot_lock_handle, $hot_have_lock, $path ) {
 			$can_store =
 				$hot_have_lock &&
 				is_string( $html ) &&
@@ -170,6 +171,13 @@ if ( isset( $hot_cache_paths[ $path ] ) ) {
 				false !== stripos( $html, '</html>' ) &&
 				false === stripos( $html, 'WordPress database error' ) &&
 				false === stripos( $html, 'There has been a critical error' );
+
+			// Cache only the complete anonymous canonical shop, never partial markup.
+			if ( $can_store && '/tienda/' === $path ) {
+				$can_store = false !== strpos( $html, 'emo-shop-title-block' )
+					&& false !== strpos( $html, 'data-emo-early-filter="1"' )
+					&& false !== strpos( $html, 'emdo-navidad-promo--shop' );
+			}
 
 			if ( $can_store && is_dir( $hot_cache_dir ) && is_writable( $hot_cache_dir ) ) {
 				$tmp = $hot_cache_file . '.tmp-' . getmypid();
