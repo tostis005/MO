@@ -1,11 +1,11 @@
 <?php
 /**
- * Publicación puntual de borradores de Latitudes desde GitHub Actions / WP-CLI.
+ * Lanzamiento acotado de Latitudes en el WordPress REAL desde GitHub Actions.
  *
- * Ejecución: LATITUDES_MODE=dry-run|publish wp eval-file <file> --skip-themes
+ * LATITUDES_MODE=dry-run|publish wp eval-file <ruta>
  *
- * No requiere modificar el tema ni los ajustes de otros vendedores.
- * Es idempotente: nunca publica artículos que ya no estén en borrador.
+ * 138 referencias importadas expresamente como drafts con catalog_visibility
+ * hidden y el vendedor WCFM desactivado. Nunca tocar otros proveedores.
  */
 if ( ! defined( 'ABSPATH' ) || ! defined( 'WP_CLI' ) || ! WP_CLI ) {
 	exit( 1 );
@@ -13,149 +13,205 @@ if ( ! defined( 'ABSPATH' ) || ! defined( 'WP_CLI' ) || ! WP_CLI ) {
 
 $mode = (string) getenv( 'LATITUDES_MODE' );
 if ( ! in_array( $mode, array( 'dry-run', 'publish' ), true ) ) {
-	WP_CLI::error( 'Modo inválido; usa dry-run o publish.' );
+	WP_CLI::error( 'LATITUDES_MODE solo permite dry-run o publish.' );
 }
-$home_host = strtolower( (string) wp_parse_url( home_url( '/' ), PHP_URL_HOST ) );
-if ( ! in_array( $home_host, array( 'elmercadodeorigen.com', 'www.elmercadodeorigen.com' ), true ) ) {
-	WP_CLI::error( 'El servidor no corresponde a producción de El Mercado de Origen.' );
+$home = untrailingslashit( home_url( '/' ) );
+$site = untrailingslashit( site_url( '/' ) );
+$allowed = array( 'https://www.elmercadodeorigen.com', 'https://elmercadodeorigen.com' );
+if ( ! in_array( $home, $allowed, true ) || ! in_array( $site, $allowed, true ) ) {
+	WP_CLI::error( 'No es producción: home=' . $home . ', siteurl=' . $site );
 }
-if ( ! function_exists( 'wc_get_product' ) || ! post_type_exists( 'product' ) ) {
-	WP_CLI::error( 'WooCommerce no está activo.' );
-}
-$vendors = get_users(
-	array(
-		'role__in' => array( 'wcfm_vendor', 'vendor', 'dc_vendor', 'seller' ),
-		'number' => 1000,
-	)
-);
-$candidates = array();
-foreach ( $vendors as $vendor ) {
-	$profile = get_user_meta( (int) $vendor->ID, 'wcfmmp_profile_settings', true );
-	$store_name = is_array( $profile ) ? (string) ( $profile['store_name'] ?? '' ) : '';
-	$store_url = function_exists( 'wcfmmp_get_store_url' ) ? (string) wcfmmp_get_store_url( $vendor->ID ) : '';
-	$path = (string) wp_parse_url( $store_url, PHP_URL_PATH );
-	$parts = array_values( array_filter( explode( '/', trim( $path, '/' ) ) ) );
-	$store_slug = sanitize_title( (string) end( $parts ) );
-	if ( 'latitudes' === sanitize_title( (string) $vendor->user_nicename )
-		|| 'latitudes' === sanitize_title( (string) $vendor->user_login )
-		|| 'latitudes' === sanitize_title( $store_name )
-		|| 'latitudes' === $store_slug ) {
-		$candidates[ (int) $vendor->ID ] = $vendor;
-	}
-}
-if ( 1 !== count( $candidates ) ) {
-	WP_CLI::error( 'Se esperaba exactamente un vendedor WCFM Latitudes; encontrados: ' . count( $candidates ) );
-}
-$vendor_id = (int) key( $candidates );
-WP_CLI::log( 'Proveedor Latitudes: #' . $vendor_id . ' | modo: ' . $mode );
-
-if ( function_exists( 'elmercado_wcfm_vendor_is_disabled_010210' )
-	&& elmercado_wcfm_vendor_is_disabled_010210( $vendor_id ) ) {
-	WP_CLI::error( 'El productor está desactivado. No se publica ningún artículo.' );
+if ( ! class_exists( 'MDO_Database' ) || ! function_exists( 'wc_get_product' ) ) {
+	WP_CLI::error( 'EMDO o WooCommerce no están cargados en producción.' );
 }
 
-$draft_ids = get_posts(
-	array(
-		'post_type' => 'product',
-		'post_status' => 'draft',
-		'author' => $vendor_id,
-		'posts_per_page' => -1,
-		'fields' => 'ids',
-		'no_found_rows' => true,
-		'suppress_filters' => true,
-	)
+global $wpdb;
+$supplier_table = MDO_Database::table( 'suppliers' );
+$source_table   = MDO_Database::table( 'source_products' );
+$supplier = $wpdb->get_row(
+	$wpdb->prepare( "SELECT id, code, connector, vendor_user_id FROM {$supplier_table} WHERE code=%s LIMIT 1", 'latitudes' ),
+	ARRAY_A
 );
-$counts = array( 'drafts' => count( $draft_ids ), 'eligible' => 0, 'published' => 0, 'skipped' => 0, 'failed' => 0 );
-$errors = array();
-foreach ( $draft_ids as $product_id ) {
-	$product_id = (int) $product_id;
-	$product = wc_get_product( $product_id );
+if ( ! $supplier || 'latitudes' !== $supplier['connector'] || (int) $supplier['vendor_user_id'] <= 0 ) {
+	WP_CLI::error( 'Latitudes no está vinculado al conector y vendedor esperados en EMDO.' );
+}
+$vendor_id = (int) $supplier['vendor_user_id'];
+$user = get_userdata( $vendor_id );
+if ( ! $user instanceof WP_User ) {
+	WP_CLI::error( 'No existe el vendedor vinculado a Latitudes.' );
+}
+$profile = get_user_meta( $vendor_id, 'wcfmmp_profile_settings', true );
+$store_name = is_array( $profile ) ? (string) ( $profile['store_name'] ?? '' ) : '';
+$store_url = function_exists( 'wcfmmp_get_store_url' ) ? (string) wcfmmp_get_store_url( $vendor_id ) : '';
+$path = (string) wp_parse_url( $store_url, PHP_URL_PATH );
+$parts = array_values( array_filter( explode( '/', trim( $path, '/' ) ) ) );
+$store_slug = sanitize_title( (string) end( $parts ) );
+if ( ! in_array( 'latitudes', array(
+	sanitize_title( $user->user_nicename ),
+	sanitize_title( $user->user_login ),
+	sanitize_title( $store_name ),
+	$store_slug,
+), true ) ) {
+	WP_CLI::error( 'El usuario vinculado a EMDO no corresponde inequívocamente a la tienda Latitudes.' );
+}
+
+$rows = $wpdb->get_results(
+	$wpdb->prepare(
+		"SELECT id, status, wc_product_id, title, source_price, source_stock_status
+		   FROM {$source_table} WHERE supplier_id=%d ORDER BY id",
+		(int) $supplier['id']
+	),
+	ARRAY_A
+);
+if ( 138 !== count( $rows ) ) {
+	WP_CLI::error( 'El lote de Latitudes no coincide con las 138 referencias esperadas; hay ' . count( $rows ) );
+}
+
+$bad = array();
+$ready = array();
+$already_public = 0;
+foreach ( $rows as $row ) {
+	$source_id = (int) $row['id'];
+	$product_id = (int) $row['wc_product_id'];
+	$product = $product_id > 0 ? wc_get_product( $product_id ) : false;
 	$reason = '';
-	if ( ! $product ) {
-		$reason = 'producto inválido';
-	} elseif ( '' === trim( (string) $product->get_name() ) ) {
-		$reason = 'sin nombre';
-	} elseif ( '' === (string) $product->get_price() ) {
-		$reason = 'sin precio';
-	} elseif ( ! $product->get_image_id() ) {
-		$reason = 'sin imagen principal';
-	} elseif ( ! $product->is_in_stock() ) {
-		$reason = 'sin stock';
-	} elseif ( in_array( $product->get_catalog_visibility(), array( 'hidden', 'search' ), true ) ) {
-		$reason = 'oculto del catálogo';
-	} elseif ( function_exists( 'wcfm_get_vendor_id_by_post' ) ) {
-		$owner = (int) wcfm_get_vendor_id_by_post( $product_id );
-		if ( $owner > 0 && $owner !== $vendor_id ) {
-			$reason = 'otro propietario WCFM #' . $owner;
-		}
+	if ( 'active' !== $row['status'] || ! $product ) {
+		$reason = 'origen no activo o producto ausente';
+	} elseif ( (int) get_post_field( 'post_author', $product_id ) !== $vendor_id
+		|| (int) get_post_meta( $product_id, '_emdo_source_product_id', true ) !== $source_id
+		|| (int) get_post_meta( $product_id, '_emdo_supplier_id', true ) !== (int) $supplier['id'] ) {
+		$reason = 'el producto no pertenece inequívocamente al origen/vendedor Latitudes';
+	} elseif ( function_exists( 'wcfm_get_vendor_id_by_post' )
+		&& (int) wcfm_get_vendor_id_by_post( $product_id ) !== $vendor_id ) {
+		$reason = 'WCFM atribuye el producto a otro usuario';
+	} elseif ( ! in_array( $product->get_status(), array( 'draft', 'publish' ), true ) ) {
+		$reason = 'estado inesperado: ' . $product->get_status();
+	} elseif ( ! in_array( $product->get_catalog_visibility(), array( 'hidden', 'visible' ), true ) ) {
+		$reason = 'visibilidad inesperada';
+	} elseif ( '' === trim( (string) $product->get_name() )
+		|| ! $product->get_image_id()
+		|| mb_strlen( trim( wp_strip_all_tags( (string) $product->get_description() ) ) ) < 35 ) {
+		$reason = 'nombre, imagen o descripción incompletos';
+	} elseif ( ! is_numeric( $product->get_price() )
+		|| (float) $product->get_price() <= 0
+		|| abs( (float) $product->get_price() - (float) $row['source_price'] ) > 0.02 ) {
+		$reason = 'precio incorrecto o diferente del origen';
+	} elseif ( ! in_array( (string) $row['source_stock_status'], array( 'instock', 'outofstock' ), true )
+		|| $product->get_stock_status() !== $row['source_stock_status'] ) {
+		$reason = 'stock no verificado o distinto del origen';
 	}
+
 	if ( '' !== $reason ) {
-		++$counts['skipped'];
-		WP_CLI::log( 'OMITIR #' . $product_id . ': ' . $reason );
+		$bad[] = array( 'source' => $source_id, 'product' => $product_id, 'error' => $reason );
 		continue;
 	}
-	++$counts['eligible'];
-	if ( 'dry-run' === $mode ) {
-		WP_CLI::log( 'APTO #' . $product_id . ': ' . $product->get_name() );
-		continue;
+	if ( 'publish' === $product->get_status() && 'visible' === $product->get_catalog_visibility() ) {
+		++$already_public;
+	} else {
+		$ready[] = $product_id;
 	}
-	// Evitar que otra importación cambie estado/autor antes de publicar.
-	if ( 'draft' !== get_post_status( $product_id )
-		|| $vendor_id !== (int) get_post_field( 'post_author', $product_id ) ) {
-		++$counts['failed'];
-		$errors[] = $product_id;
-		continue;
-	}
-	$updated = wp_update_post(
-		array( 'ID' => $product_id, 'post_status' => 'publish' ),
-		true
-	);
-	clean_post_cache( $product_id );
-	if ( is_wp_error( $updated ) || 'publish' !== get_post_status( $product_id ) ) {
-		++$counts['failed'];
-		$errors[] = $product_id;
-		WP_CLI::warning( 'No se pudo publicar #' . $product_id );
-		continue;
-	}
-	++$counts['published'];
-	WP_CLI::log( 'PUBLICADO #' . $product_id );
 }
 
-if ( 'publish' === $mode && $counts['published'] > 0 ) {
-	if ( function_exists( 'wc_delete_product_transients' ) ) {
-		wc_delete_product_transients();
+$shipping = get_user_meta( $vendor_id, '_wcfmmp_shipping', true );
+$shipping_enabled = is_array( $shipping ) ? (string) ( $shipping['_wcfmmp_user_shipping_enable'] ?? '' ) : '';
+$shipping_type = is_array( $shipping ) ? (string) ( $shipping['_wcfmmp_user_shipping_type'] ?? '' ) : '';
+$destination_checks = array();
+if ( class_exists( 'MDO_Shipping_Destinations' ) ) {
+	foreach ( array( 'Península' => array( 'ES', '28001' ), 'Baleares' => array( 'ES', '07001' ), 'Portugal' => array( 'PT', '1000-001' ) ) as $label => $dest ) {
+		$destination_checks[ $label ] = MDO_Shipping_Destinations::vendor_can_ship_to( $vendor_id, $dest[0], $dest[1] );
 	}
-	if ( class_exists( 'WC_Cache_Helper' ) ) {
-		WC_Cache_Helper::incr_cache_prefix( 'product' );
-	}
-	// El tema usa un drop-in de caché que sirve /tienda/ antes de WordPress.
-	foreach ( array(
-		WP_CONTENT_DIR . '/uploads/elmercado-hot-static-v1/es-shop-root.html',
-		WP_CONTENT_DIR . '/uploads/elmercado-home-static/index.html',
-		WP_CONTENT_DIR . '/cache/elmercado-home-static/index.html',
-	) as $file ) {
-		if ( is_file( $file ) ) {
-			if ( @unlink( $file ) ) {
-				WP_CLI::log( 'Caché HTML purgada: ' . basename( $file ) );
-			} else {
-				WP_CLI::warning( 'No se pudo borrar un archivo de caché: ' . basename( $file ) );
-			}
-		}
-	}
-	if ( function_exists( 'rocket_clean_domain' ) ) {
-		rocket_clean_domain();
-	}
-	if ( function_exists( 'w3tc_flush_all' ) ) {
-		w3tc_flush_all();
-	}
-	if ( has_action( 'litespeed_purge_all' ) ) {
-		do_action( 'litespeed_purge_all' );
-	}
-	wp_cache_flush();
-	WP_CLI::log( 'Transitorios y caché de catálogo invalidados.' );
 }
 
-WP_CLI::log( 'RESUMEN=' . wp_json_encode( $counts ) );
-if ( $errors ) {
-	WP_CLI::error( 'Algunos borradores aptos fallaron al publicar. IDs: ' . implode( ', ', $errors ) );
+$shipping_ok = 'yes' === $shipping_enabled && 'by_zone' === $shipping_type
+	&& count( $destination_checks ) === 3
+	&& ! in_array( false, $destination_checks, true );
+if ( ! $shipping_ok ) {
+	$bad[] = array( 'shipping' => 'WCFM no tiene envíos por zonas habilitados para Península, Baleares y Portugal.' );
 }
+
+$vendor_roles = (array) $user->roles;
+if ( ! in_array( 'wcfm_vendor', $vendor_roles, true ) && ! in_array( 'disable_vendor', $vendor_roles, true ) ) {
+	$bad[] = array( 'vendor_roles' => 'Roles de vendedor inesperados: ' . implode( ',', $vendor_roles ) );
+}
+$summary = array(
+	'supplier_id' => (int) $supplier['id'],
+	'vendor_id' => $vendor_id,
+	'expected' => 138,
+	'ready_to_publish' => count( $ready ),
+	'already_public' => $already_public,
+	'blocked' => count( $bad ),
+	'shipping_type' => $shipping_type,
+	'shipping_enabled' => $shipping_enabled,
+	'destinations' => $destination_checks,
+	'disabled_flag' => (string) get_user_meta( $vendor_id, '_disable_vendor', true ),
+	'offline_flag' => (string) get_user_meta( $vendor_id, '_wcfm_store_offline', true ),
+	'vendor_roles' => $vendor_roles,
+	'bad_sample' => array_slice( $bad, 0, 15 ),
+	'mode' => $mode,
+);
+WP_CLI::log( 'LATITUDES_PREFLIGHT=' . wp_json_encode( $summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) );
+if ( $bad ) {
+	WP_CLI::error( 'No se activa Latitudes: ' . count( $bad ) . ' comprobaciones pendientes. No se ha modificado ningún producto.' );
+}
+if ( 'dry-run' === $mode ) {
+	WP_CLI::success( 'Latitudes validado, sin cambios. Productos a actualizar: ' . count( $ready ) );
+	exit;
+}
+
+// Primero hacer visibles las fichas mientras el productor sigue deshabilitado.
+// El cambio de vendedor a activo es el ÚLTIMO paso de la publicación.
+$published = 0;
+foreach ( $ready as $product_id ) {
+	$product = wc_get_product( $product_id );
+	if ( ! $product || (int) get_post_field( 'post_author', $product_id ) !== $vendor_id ) {
+		WP_CLI::error( 'Producto inesperado durante publicación #' . $product_id . '; se mantiene bloqueado el vendedor.' );
+	}
+	$product->set_catalog_visibility( 'visible' );
+	$product->set_status( 'publish' );
+	$product->save();
+	if ( 'publish' !== get_post_status( $product_id )
+		|| 'visible' !== wc_get_product( $product_id )->get_catalog_visibility() ) {
+		WP_CLI::error( 'Error al publicar #' . $product_id . '; vendedor todavía bloqueado.' );
+	}
+	++$published;
+}
+
+if ( in_array( 'disable_vendor', $vendor_roles, true ) ) {
+	$user->remove_role( 'disable_vendor' );
+	if ( ! in_array( 'wcfm_vendor', (array) $user->roles, true ) ) {
+		$user->add_role( 'wcfm_vendor' );
+	}
+}
+delete_user_meta( $vendor_id, '_disable_vendor' );
+delete_user_meta( $vendor_id, '_wcfm_store_offline' );
+clean_user_cache( $vendor_id );
+if ( function_exists( 'wc_delete_product_transients' ) ) {
+	wc_delete_product_transients();
+}
+if ( class_exists( 'WC_Cache_Helper' ) ) {
+	WC_Cache_Helper::incr_cache_prefix( 'product' );
+}
+foreach ( array(
+	WP_CONTENT_DIR . '/uploads/elmercado-hot-static-v1/es-shop-root.html',
+	WP_CONTENT_DIR . '/cache/elmercado-home-static/index.html',
+	WP_CONTENT_DIR . '/uploads/elmercado-home-static/index.html',
+) as $file ) {
+	if ( is_file( $file ) && ! @unlink( $file ) ) {
+		WP_CLI::warning( 'No se pudo limpiar un archivo de caché: ' . $file );
+	}
+}
+if ( function_exists( 'rocket_clean_domain' ) ) {
+	rocket_clean_domain();
+}
+if ( function_exists( 'w3tc_flush_all' ) ) {
+	w3tc_flush_all();
+}
+do_action( 'litespeed_purge_all' );
+wp_cache_flush();
+
+WP_CLI::success( 'LATITUDES_PUBLISHED=' . wp_json_encode( array(
+	'published' => $published,
+	'previously_public' => $already_public,
+	'vendor_id' => $vendor_id,
+	'vendor_active' => ! get_user_meta( $vendor_id, '_disable_vendor', true ),
+), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) );
