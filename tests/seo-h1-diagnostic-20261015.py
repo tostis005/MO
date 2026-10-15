@@ -25,6 +25,9 @@ for path in routes:
       ancestry.append({"tag":el.name,"id":el.get("id",""),"classes":el.get("class",[])[:5]})
       el=el.parent
     hits.append({"text":h.get_text(" ",strip=True)[:150],"ancestors":ancestry})
+  header=soup.select_one("div.page-header")
+  header_markup=str(header)[:1350] if header else ""
+  print("PARENT_PAGE_HEADER "+json.dumps({"path":path,"html_prefix":header_markup},ensure_ascii=False),flush=True)
   item={"path":path,"h1":hits}
   out.append(item)
   print("H1_DIAGNOSTIC "+json.dumps(item,ensure_ascii=False),flush=True)
