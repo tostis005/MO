@@ -56,6 +56,7 @@ jobs:
           [ -n "$INFO" ] || exit 3
           PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
           echo "PROD_PATH=$PROD" >> "$GITHUB_ENV"
+          echo "EV_WP=$WP" >> "$GITHUB_ENV"
           RDIR="/tmp/mdo-evergreen-$GITHUB_RUN_ID"
           TARGET="$PROD/wp-content/mu-plugins/mdo-commercial-vegetables-dedupe-20261015.php"
           BACKUP="/tmp/mdo-commercial-vegetables-dedupe-backup-$GITHUB_RUN_ID.php"
