@@ -29,6 +29,19 @@ foreach($files as $file){
 }
 if(count(array_unique(array_column($articles,'slug')))!==3 || count(array_unique(array_column($articles,'en_slug')))!==3) throw new RuntimeException('Duplicate slugs in batch');
 
+
+if(getenv('MDO_NEW_GUIDES_ROLLBACK')==='1'){
+  $affected=array();
+  foreach($articles as $a){
+    $p=get_page_by_path($a['slug'],OBJECT,'post');
+    if(!$p instanceof WP_Post || (string)get_post_meta($p->ID,'_mdo_commercial_guide_20261015',true)!==$a['key'])continue;
+    wp_update_post(array('ID'=>$p->ID,'post_status'=>'draft'));
+    update_post_meta($p->ID,'_en_US_published','0');
+    $affected[]=$a['slug'];
+  }
+  echo 'MDO_NEW_EVERGREEN_ROLLBACK '.wp_json_encode($affected)."\n";
+  return;
+}
 // Use existing, relevant editorial categories; do NOT add new taxonomies.
 $veg=get_term_by('slug','hortalizas-y-verduras','category');
 $meat=get_term_by('slug','carnes','category');
