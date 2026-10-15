@@ -88,7 +88,7 @@ foreach ( $rows as $row ) {
     $src = trim( wp_strip_all_tags( (string) ( $p['description'] ?? '' ) ) );
     if ( preg_match( '/Al[eé]rgenos?\s*:/iu', $src ) ) {
         $summary['source_allergen_declarations']++;
-        if ( preg_match( '/Al[eé]rgenos?\s*:/iu', $clean ) ) {
+        if ( preg_match( '/al[eé]rgenos?/iu', $clean ) ) {
             $summary['allergen_declarations_preserved']++;
         } else { $flags[] = 'source_allergen_information_lost'; }
     }
