@@ -137,12 +137,18 @@ add_filter(
 			}
 		}
 		$rate = $existing instanceof WC_Shipping_Rate ? $existing : new WC_Shipping_Rate();
-		$id   = $free ? 'emo_latitudes_free_20261015' : 'emo_latitudes_flat_20261015';
+		/* Si existe un método WCFM, conservar método/instancia/metadatos
+		 * para que el marketplace atribuya correctamente el importe al vendedor. */
+		$id   = $existing instanceof WC_Shipping_Rate
+			? $existing->get_id()
+			: ( $free ? 'emo_latitudes_free_20261015' : 'emo_latitudes_flat_20261015' );
 		$rate->set_id( $id );
 		$rate->set_label( $free ? 'Envío gratuito · Latitudes' : 'Envío Latitudes' );
 		$rate->set_cost( wc_format_decimal( $net ) );
 		$rate->set_taxes( $taxes );
-		$rate->set_method_id( $free ? 'free_shipping' : 'flat_rate' );
+		if ( ! $existing instanceof WC_Shipping_Rate ) {
+			$rate->set_method_id( $free ? 'free_shipping' : 'flat_rate' );
+		}
 		if ( is_callable( array( $rate, 'set_tax_status' ) ) ) {
 			$rate->set_tax_status( $taxes ? 'taxable' : 'none' );
 		}
