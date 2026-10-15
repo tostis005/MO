@@ -76,7 +76,7 @@ jobs:
           base=https://www.elmercadodeorigen.com
           urls=(
             "$base/jamon-iberico-o-paleta-iberica-diferencias-cual-elegir/"
-            "$base/en/iberian-ham-vs-iberian-shoulder-differences-which-to-choose/"
+            "$base/en/ostrich-meat-taste-nutrition-how-to-cook/"
             "$base/wagyu-kobe-diferencias/"
           )
           for url in "${urls[@]}"; do
@@ -84,6 +84,7 @@ jobs:
             http=$(curl -L -sS --retry 3 --connect-timeout 12 --max-time 45 -A 'Mozilla/5.0 EMDO editorial image verifier' -H 'Cache-Control: no-cache' -o "$file" -w '%{http_code}' "$url?image_meta=${GITHUB_RUN_ID}")
             [ "$http" = 200 ] && [ "$(wc -c < "$file")" -gt 5000 ] || { echo "HTTP invalid $url: $http" >&2; exit 1; }
             ! grep -qiE 'alt="Imagen provisional del blog de El Mercado de Origen"|alt="Temporary editorial image for El Mercado de Origen blog"' "$file" || { echo "Old provisional image alt still visible in $url" >&2; exit 1; }
+            if [[ "$url" == *"/jamon-iberico-o-paleta-iberica-diferencias-cual-elegir/"* ]]; then grep -Fq 'alt="El Mercado de Origen"' "$file" || { echo "Branded alt absent $url" >&2; exit 1; }; fi
             echo "IMAGE_METADATA_PUBLIC_OK $url"
           done
           echo "IMAGE_METADATA_PRODUCTION_VERIFIED"
