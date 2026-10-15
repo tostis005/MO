@@ -55,6 +55,57 @@ function elmercado_latitudes_purge_page_cache_20261015( array $urls ): array {
 	return $purged;
 }
 
+/**
+ * El drop-in wp-content/advanced-cache.php sirve /tienda/ antes de iniciar
+ * WordPress desde este archivo propio, no desde transitorios/Redis/plugins:
+ * wp-content/uploads/elmercado-hot-static-v1/es-shop-root.html.
+ *
+ * También conserva los HTML individuales de productos en otra carpeta.
+ * Hay que borrarlos explícitamente: limpiar transitorios no alcanza el drop-in.
+ *
+ * @return string[] Identificadores de ficheros realmente borrados.
+ */
+function elmercado_latitudes_flush_early_static_20261015(): array {
+	$purged = array();
+	$root   = wp_normalize_path( WP_CONTENT_DIR . '/uploads/' );
+	$shop   = $root . 'elmercado-hot-static-v1/es-shop-root.html';
+	if ( is_file( $shop ) && @unlink( $shop ) ) {
+		$purged[] = 'hot-static:/tienda/';
+	}
+
+	$vendor_id = function_exists( 'elmercado_latitudes_vendor_id_20261015' )
+		? absint( elmercado_latitudes_vendor_id_20261015() ) : 0;
+	if ( $vendor_id <= 0 ) {
+		return $purged;
+	}
+	/* Limpia solo productos propios del vendedor, no los de todo el catálogo. */
+	$product_ids = get_posts(
+		array(
+			'post_type'        => 'product',
+			'post_status'      => 'any',
+			'author'           => $vendor_id,
+			'fields'           => 'ids',
+			'posts_per_page'   => -1,
+			'no_found_rows'    => true,
+			'suppress_filters' => true,
+		)
+	);
+	$cache_dir = $root . 'elmercado-product-static-v1/';
+	foreach ( $product_ids as $product_id ) {
+		$url  = get_permalink( (int) $product_id );
+		$path = (string) wp_parse_url( $url, PHP_URL_PATH );
+		if ( ! preg_match( '#^/(?:producto|en/product)/[^/]+/?$#i', $path ) ) {
+			continue;
+		}
+		$path = trailingslashit( $path );
+		$file = $cache_dir . hash( 'sha256', $path ) . '.html';
+		if ( is_file( $file ) && @unlink( $file ) ) {
+			$purged[] = 'product:' . (int) $product_id;
+		}
+	}
+	return $purged;
+}
+
 /** Invalida la portada estática personalizada creada por el tema hijo. */
 function elmercado_latitudes_flush_home_file_cache_20261015(): void {
 	if ( function_exists( 'elmercado_flush_home_cache' ) ) {
@@ -84,6 +135,7 @@ add_action(
 	'elmercado_latitudes_delayed_purge_20261015',
 	static function (): void {
 		elmercado_latitudes_flush_home_file_cache_20261015();
+		elmercado_latitudes_flush_early_static_20261015();
 		elmercado_latitudes_purge_page_cache_20261015( elmercado_latitudes_cache_urls_20261015() );
 		if ( function_exists( 'wc_delete_product_transients' ) ) {
 			wc_delete_product_transients();
@@ -112,6 +164,7 @@ add_action(
 			++$count;
 		}
 		elmercado_latitudes_flush_home_file_cache_20261015();
+		$early_purged = elmercado_latitudes_flush_early_static_20261015();
 		$page_purged = elmercado_latitudes_purge_page_cache_20261015( elmercado_latitudes_cache_urls_20261015() );
 		$vendor_id = function_exists( 'elmercado_latitudes_vendor_id_20261015' )
 			? elmercado_latitudes_vendor_id_20261015() : 0;
@@ -156,6 +209,7 @@ add_action(
 				'mode'  => $deep ? 'global' : 'catalogo',
 				'count' => $count,
 				'page_purged' => $page_purged,
+				'early_purged' => $early_purged,
 			),
 			false
 		);
@@ -185,6 +239,7 @@ function elmercado_latitudes_cache_actions_20261015(): void {
 	<?php if ( ! empty( $last['time'] ) ) : ?>
 		<p><strong>Última invalidación:</strong> <?php echo esc_html( $last['time'] . ' (' . ( $last['mode'] ?? '' ) . ')' ); ?></p>
 		<p><?php echo esc_html( ! empty( $last['page_purged'] ) ? implode( ' · ', (array) $last['page_purged'] ) : 'Sin motor de caché de páginas reconocido; revisa CDN/hosting.' ); ?></p>
+		<p><?php echo esc_html( ! empty( $last['early_purged'] ) ? 'Caché HTML temprana eliminada: ' . implode( ', ', (array) $last['early_purged'] ) : 'No existían archivos de caché temprana de Latitudes o ya habían expirado.' ); ?></p>
 	<?php endif; ?>
 	<form action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="post">
 		<input type="hidden" name="action" value="elmercado_latitudes_clear_cache_20261015">
