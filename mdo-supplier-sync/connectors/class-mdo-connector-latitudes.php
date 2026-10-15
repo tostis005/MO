@@ -50,7 +50,32 @@ final class MDO_Connector_Latitudes {
         if ( ! in_array( strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) ), array( 'latitudes.es', 'www.latitudes.es' ), true ) ) {
             throw new RuntimeException( 'URL ajena a Latitudes.' );
         }
-        return MDO_Connector_Tolecarnes::scrape_product( $url );
+        $product = MDO_Connector_Tolecarnes::scrape_product( $url );
+        // Latitudes sometimes has SEO-formatted JSON-LD names instead of the
+        // actual WooCommerce product heading. Keep the commercial name.
+        $xpath = self::xpath( self::fetch( $url ) );
+        $heading = $xpath->query( "//h1[contains(concat(' ', normalize-space(@class), ' '), ' product_title ')] | //h1[contains(concat(' ', normalize-space(@class), ' '), ' entry-title ')]" );
+        if ( $heading && $heading->length ) {
+            $title = trim( preg_replace( '/\\s+/u', ' ', (string) $heading->item( 0 )->textContent ) );
+            if ( '' !== $title ) { $product['title'] = sanitize_text_field( $title ); }
+        }
+        // Prefer the complete ingredients, allergens and preparation guidance
+        // over the short schema.org teaser found in some product JSON-LD.
+        $description = $xpath->query( "//*[@id='tab-description']" );
+        if ( $description && $description->length ) {
+            $node = $description->item( 0 );
+            $html = '';
+            foreach ( $node->childNodes as $child ) { $html .= $node->ownerDocument->saveHTML( $child ); }
+            $html = wp_kses_post( trim( $html ) );
+            if ( strlen( wp_strip_all_tags( $html ) ) > strlen( wp_strip_all_tags( (string) ( $product['description'] ?? '' ) ) ) ) {
+                $product['description'] = $html;
+            }
+        }
+        $hash_payload = $product;
+        unset( $hash_payload['description'], $hash_payload['source_hash'] );
+        $hash_payload['description_hash'] = hash( 'sha256', wp_strip_all_tags( (string) $product['description'] ) );
+        $product['source_hash'] = hash( 'sha256', wp_json_encode( $hash_payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) );
+        return $product;
     }
 
     public static function upsert_product( int $supplier_id, array $product ): string {
