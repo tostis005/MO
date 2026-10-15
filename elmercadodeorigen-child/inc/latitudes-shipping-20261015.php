@@ -2,7 +2,8 @@
 /**
  * Tarifas pactadas de Latitudes (por paquete exclusivo del vendedor).
  *
- * Hasta 199,99 €: 13,45 €; desde 200 €: envío gratis.
+ * Península: hasta 199,99 € 13,45 €; Baleares: hasta 199,99 € 29 €.
+ * Desde 200 €: envío gratis en ambos destinos.
  * El umbral se calcula sobre subtotal después de descuento e impuestos de
  * productos del propio vendedor, no sobre el total de vendedores del carrito.
  *
@@ -67,6 +68,19 @@ function elmercado_latitudes_shipping_destination_allowed_20261015( array $packa
 	return false;
 }
 
+/** Identifica la zona Baleares usando CP y, si falta, provincia WooCommerce. */
+function elmercado_latitudes_is_balearics_20261015( array $package ): bool {
+	$destination = isset( $package['destination'] ) && is_array( $package['destination'] )
+		? $package['destination'] : array();
+	if ( strtoupper( (string) ( $destination['country'] ?? '' ) ) !== 'ES' ) {
+		return false;
+	}
+	$postcode = preg_replace( '/\\s+/', '', (string) ( $destination['postcode'] ?? '' ) );
+	$state = strtoupper( (string) ( $destination['state'] ?? '' ) );
+	/* Código postal 07xxx y provincia PM (WooCommerce), IB en integraciones externas. */
+	return 1 === preg_match( '/^07\\d{3}$/', $postcode ) || in_array( $state, array( 'PM', 'IB' ), true );
+}
+
 /** Total final visible de las líneas del vendedor, con IVA y después de cupones. */
 function elmercado_latitudes_shipping_items_total_20261015( array $package ): float {
 	$total = 0.0;
@@ -88,7 +102,7 @@ add_filter(
 		}
 		foreach ( $packages as &$package ) {
 			if ( is_array( $package ) && elmercado_latitudes_is_shipping_package_20261015( $package ) ) {
-				$package['elmercado_latitudes_shipping_version'] = '20261015-fixed-1345-200';
+				$package['elmercado_latitudes_shipping_version'] = '20261015-zones-1345-2900-200';
 			}
 		}
 		unset( $package );
@@ -112,11 +126,11 @@ add_filter(
 		}
 		$total = elmercado_latitudes_shipping_items_total_20261015( $package );
 		$free  = $total >= 200.0;
-		$gross = $free ? 0.0 : 13.45;
+		$gross = $free ? 0.0 : ( elmercado_latitudes_is_balearics_20261015( $package ) ? 29.0 : 13.45 );
 		$net   = $gross;
 		$taxes = array();
 
-		/* Conserva 13,45 € como coste final, incluso con impuestos de envío activados. */
+		/* Conserva el importe pactado como precio final con los impuestos aplicables. */
 		if ( ! $free && function_exists( 'wc_tax_enabled' ) && wc_tax_enabled()
 			&& class_exists( 'WC_Tax' ) ) {
 			$tax_rates = WC_Tax::get_shipping_tax_rates();
