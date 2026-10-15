@@ -66,6 +66,18 @@ final class MDO_Woo_Importer {
 		}
 
 		self::apply_common_fields( $product, $payload );
+		// Independently edited supplier descriptions must survive nightly syncs.
+		// Price, images, title, variations and stock still come exclusively from
+		// the live supplier feed. The editorial override is limited to Latitudes
+		// and only applies to a locally approved, existing product.
+		if ( 'latitudes' === (string) $supplier['code'] && $existing_id ) {
+			$editorial_description = (string) get_post_meta( $existing_id, '_emdo_latitudes_editorial_description', true );
+			if ( '1' === (string) get_post_meta( $existing_id, '_emdo_latitudes_editorial_approved', true ) &&
+				'' !== trim( wp_strip_all_tags( $editorial_description ) ) ) {
+				$product->set_description( wp_kses_post( $editorial_description ) );
+			}
+		}
+
 		// Prelaunch products from Latitudes must never become public while its
 		// WCFM vendor is hard-disabled, including after nightly updates.
 		if ( 'latitudes' === (string) $supplier['code'] && get_user_meta( $vendor_id, '_disable_vendor', true ) ) {
