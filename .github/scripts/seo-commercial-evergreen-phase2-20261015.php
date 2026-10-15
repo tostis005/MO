@@ -29,6 +29,29 @@ function mdo_ev_insert_before_end(string $html, string $new, string $marker): st
     if (strpos($html,$marker) !== false) return $html;
     return rtrim($html) . "\n\n" . $new;
 }
+
+if (getenv('MDO_EV_ROLLBACK')==='1') {
+    $report=array('rolled_back'=>array());
+    $t=get_term_by('slug','hortalizas-verduras','product_cat');
+    if($t instanceof WP_Term){
+        $original=get_term_meta($t->term_id,'_mdo_ev_original_description_20261015',true);
+        if(is_string($original)&&$original!=='') wp_update_term($t->term_id,'product_cat',array('description'=>$original));
+        $original_en=get_term_meta($t->term_id,'_mdo_ev_original_en_description_20261015',true);
+        if(is_string($original_en)&&$original_en!=='') update_term_meta($t->term_id,'_en_US_description',$original_en);
+        $report['rolled_back'][]='hortalizas-verduras';
+    }
+    foreach(array('comprar-carne-online-que-mirar-antes-elegir-corte','como-comprar-alimentos-gourmet-online-que-mirar-ademas-precio','verduras-temporada-espana-calendario-meses-que-comprar','que-significa-aceite-oliva-virgen-extra') as $slug){
+        $p=get_page_by_path($slug,OBJECT,'post');
+        if(!$p instanceof WP_Post) continue;
+        $es=get_post_meta($p->ID,'_mdo_ev_original_es_20261015',true);
+        if(is_string($es)&&$es!=='') wp_update_post(wp_slash(array('ID'=>$p->ID,'post_content'=>$es)));
+        $en=get_post_meta($p->ID,'_mdo_ev_original_en_20261015',true);
+        if(is_string($en)&&$en!=='') update_post_meta($p->ID,'_en_US_post_content',$en);
+        $report['rolled_back'][]=$slug;
+    }
+    echo 'MDO_EVERGREEN_ROLLBACK '.wp_json_encode($report)."\n";
+    return;
+}
 $shop = array(
     'verduras' => mdo_ev_term('hortalizas-verduras', 'product_cat'),
     'carnes' => mdo_ev_term('carnes', 'product_cat'),
