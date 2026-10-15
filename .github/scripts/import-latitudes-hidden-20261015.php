@@ -40,7 +40,7 @@ if ( 'preflight' === $phase ) {
 }
 if ( 'batch' === $phase ) {
     $rows = $wpdb->get_results( $wpdb->prepare(
-        "SELECT id,title,source_price,source_stock_status FROM {$sources} WHERE supplier_id=%d AND status='pending' AND (last_error IS NULL OR last_error='') ORDER BY id ASC LIMIT 15", $id
+        "SELECT id,title,source_price,source_stock_status FROM {$sources} WHERE supplier_id=%d AND status='pending' AND (last_error IS NULL OR last_error='') ORDER BY id ASC LIMIT 5", $id
     ), ARRAY_A );
     $ok = array();
     $errors = array();
