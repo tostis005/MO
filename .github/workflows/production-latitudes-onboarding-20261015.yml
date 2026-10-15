@@ -50,13 +50,13 @@ jobs:
             done
           ')"
           test -n "$PROD_PATH"
-          DEPLOYED=""
-          for i in $(seq 1 120); do
-            DEPLOYED="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cat '$PROD_PATH/wp-content/plugins/mdo-supplier-sync/.emdo-deployed-sha' 2>/dev/null || true" | tr -d '\r\n')"
-            [ "$DEPLOYED" = "$GITHUB_SHA" ] && break
-            sleep 10
-          done
-          test "$DEPLOYED" = "$GITHUB_SHA"
+          EXPECTED_PLUGIN_HASH="$(sha256sum mdo-supplier-sync/mdo-supplier-sync.php | cut -d " " -f1)"
+          ACTUAL_PLUGIN_HASH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sha256sum '$PROD_PATH/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php' | cut -d ' ' -f1" | tr -d "\r\n")"
+          test "$EXPECTED_PLUGIN_HASH" = "$ACTUAL_PLUGIN_HASH"
+          EXPECTED_CONNECTOR_HASH="$(sha256sum mdo-supplier-sync/connectors/class-mdo-connector-latitudes.php | cut -d " " -f1)"
+          ACTUAL_CONNECTOR_HASH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sha256sum '$PROD_PATH/wp-content/plugins/mdo-supplier-sync/connectors/class-mdo-connector-latitudes.php' | cut -d ' ' -f1" | tr -d "\r\n")"
+          test "$EXPECTED_CONNECTOR_HASH" = "$ACTUAL_CONNECTOR_HASH"
+          echo "LATITUDES_PLUGIN_MATCH_OK"
           REMOTE_SCRIPT="/tmp/onboard-latitudes-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP .github/scripts/onboard-latitudes-20261015.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
           remote_wp() {

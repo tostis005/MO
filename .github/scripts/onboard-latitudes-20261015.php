@@ -129,7 +129,57 @@ if ( 'setup' === $phase ) {
         if ( $logo ) { $profile['gravatar'] = (string) $logo; }
     }
     if ( empty( $profile['banner'] ) ) {
-        $banner = $media( $candidate_images['banner'], 'Latitudes - imagen de cabecera', 900 );
+        // Verified homepage promo images are only 635x402; use a native-resolution triptych instead.
+        $banner = 0;
+        if ( ! $banner && function_exists( 'imagecreatefromstring' ) ) {
+            $photo_urls = array(
+                'https://latitudes.es/wp-content/uploads/2020/04/Pollo.jpg',
+                'https://latitudes.es/wp-content/uploads/2020/04/Ternera.jpg',
+                'https://latitudes.es/wp-content/uploads/2020/04/Cerdo.jpg',
+            );
+            $photos = array();
+            foreach ( $photo_urls as $photo_url ) {
+                $response = wp_safe_remote_get( $photo_url, array( 'timeout' => 20 ) );
+                $bytes = ! is_wp_error( $response ) ? (string) wp_remote_retrieve_body( $response ) : '';
+                $photo = $bytes ? @imagecreatefromstring( $bytes ) : false;
+                if ( ! $photo ) { break; }
+                $photos[] = $photo;
+            }
+            if ( count( $photos ) === 3 ) {
+                $canvas = imagecreatetruecolor( 1800, 400 );
+                foreach ( $photos as $n => $photo ) {
+                    $width = imagesx( $photo );
+                    $height = imagesy( $photo );
+                    $crop_width = min( $width, (int) round( $height * 1.5 ) );
+                    $crop_height = min( $height, (int) round( $width / 1.5 ) );
+                    imagecopyresampled(
+                        $canvas, $photo, $n * 600, 0,
+                        max( 0, (int) floor( ( $width - $crop_width ) / 2 ) ),
+                        max( 0, (int) floor( ( $height - $crop_height ) / 2 ) ),
+                        600, 400, $crop_width, $crop_height
+                    );
+                }
+                $uploads = wp_upload_dir();
+                if ( empty( $uploads['error'] ) ) {
+                    $name = wp_unique_filename( $uploads['path'], 'latitudes-banner.jpg' );
+                    $file = trailingslashit( $uploads['path'] ) . $name;
+                    if ( imagejpeg( $canvas, $file, 90 ) ) {
+                        $created = wp_insert_attachment( array(
+                            'post_title' => 'Latitudes - selección de carnes',
+                            'post_mime_type' => 'image/jpeg',
+                            'post_status' => 'inherit',
+                        ), $file );
+                        if ( ! is_wp_error( $created ) && $created > 0 ) {
+                            wp_update_attachment_metadata( $created, wp_generate_attachment_metadata( $created, $file ) );
+                            update_post_meta( $created, '_mdo_latitudes_asset', 'banner' );
+                            $banner = (int) $created;
+                        }
+                    }
+                }
+                imagedestroy( $canvas );
+            }
+            foreach ( $photos as $photo ) { imagedestroy( $photo ); }
+        }
         if ( $banner ) {
             $profile['banner_type'] = 'image';
             $profile['banner'] = (string) $banner;
