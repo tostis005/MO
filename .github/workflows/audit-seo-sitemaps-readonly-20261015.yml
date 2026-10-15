@@ -1,0 +1,41 @@
+name: SEO sitemaps public audit (read-only)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/audit-seo-sitemaps-readonly-20261015.py'
+      - '.github/workflows/audit-seo-sitemaps-readonly-20261015.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  sitemap-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Validate Python syntax
+        run: python3 -m py_compile scripts/audit-seo-sitemaps-readonly-20261015.py
+      - name: Audit production sitemaps and sampled HTML (no writes)
+        run: python3 scripts/audit-seo-sitemaps-readonly-20261015.py
+      - name: Publish Markdown summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f seo-sitemap-summary.md ]; then
+            cat seo-sitemap-summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Audit failed before producing a summary' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Save detailed JSON report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seo-sitemap-public-report
+          path: |
+            seo-sitemap-audit.json
+            seo-sitemap-summary.md
+          if-no-files-found: warn
