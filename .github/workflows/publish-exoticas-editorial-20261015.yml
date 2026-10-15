@@ -1,0 +1,129 @@
+name: Publish exotic meats SEO blog batch 2026-10-15
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/data/editorial-exoticas-20261015.json'
+      - '.github/scripts/publish-exoticas-editorial-20261015.php'
+      - '.github/workflows/publish-exoticas-editorial-20261015.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emdo-editorial-exoticas-20261015-production
+  cancel-in-progress: false
+
+jobs:
+  production-blog:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate PHP and editorial package
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/publish-exoticas-editorial-20261015.php
+          python3 - <<'PY'
+          import json,re
+          p=json.load(open('.github/data/editorial-exoticas-20261015.json'))
+          assert p['release']=='blog-carnes-exoticas-20261015-01'
+          assert len(p['posts'])==5 and len(p['updates'])==4
+          slugs=[x['slug'] for x in p['posts']]
+          assert len(set(slugs))==5
+          for x in p['posts']:
+              assert x['slug'] != x['en_slug']
+              assert len(re.findall(r"\b\w+\b",re.sub('<[^>]+>',' ',x['content']))) >= 490, x['slug']
+              assert len(re.findall(r"\b\w+\b",re.sub('<[^>]+>',' ',x['en_content']))) >= 200, x['en_slug']
+              assert len(x['seo_title']) < 80 and len(x['seo_desc']) < 190
+          for x in p['updates']:
+              assert x['slug'] not in slugs
+              assert 'href=' in x['es'] or len(x['es']) > 280
+          print('EDITORIAL_PREFLIGHT_OK=5+4')
+          PY
+          : "${STAGING_HOST:?Missing host}"
+          : "${STAGING_USER:?Missing user}"
+          : "${STAGING_PASSWORD:?Missing password}"
+
+      - name: Publish blog posts and verify live
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          base='https://www.elmercadodeorigen.com'
+          health() {
+            url="$1"
+            code=$(curl -L -sS --retry 2 -A 'Mozilla/5.0 EMDO editorial verifier' --connect-timeout 12 --max-time 40 -o /tmp/emdo-health.html -w '%{http_code}' "$url?exo_check=${GITHUB_RUN_ID}" || true)
+            [ "$code" = 200 ] && [ "$(wc -c < /tmp/emdo-health.html)" -gt 5000 ] && grep -qi '</html>' /tmp/emdo-health.html || {
+              echo "Health failed $url: $code" >&2; return 1;
+            }
+            echo "HEALTH_OK $url"
+          }
+          health "$base/"
+          health "$base/tienda/"
+          health "$base/blog/"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true)
+            php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -n1)
+            [ -n "$wp" ] && [ -n "$php" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              path=$(dirname "$cfg")
+              site=$("$php" -d memory_limit=256M "$wp" option get siteurl --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$site" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s|%s|%s" "$path" "$php" "$wp"; break ;;
+              esac
+            done
+          ')"
+          [ -n "$INFO" ] || { echo 'Production WordPress not found' >&2; exit 3; }
+          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
+          DIR="/tmp/emdo-exoticas-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$DIR'"
+          sshpass -e scp $SCP .github/data/editorial-exoticas-20261015.json .github/scripts/publish-exoticas-editorial-20261015.php "$STAGING_USER@$STAGING_HOST:$DIR/"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '\''$DIR'\''" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_EXO_PAYLOAD='$DIR/editorial-exoticas-20261015.json' '$PHP' -d memory_limit=768M '$WP' eval-file '$DIR/publish-exoticas-editorial-20261015.php' --path='$PROD' --allow-root" | tee /tmp/exoticas.log
+          grep -q '^EMDO_EXO_RELEASE ' /tmp/exoticas.log
+          sed -n 's/^EMDO_EXO_RELEASE //p' /tmp/exoticas.log | tail -n1 > /tmp/exoticas-result.json
+          jq -e '.verified == true and .created_or_upserted == 5 and .existing_updated == 4 and .blog_category_slug == "carnes-exoticas"' /tmp/exoticas-result.json >/dev/null
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+          verify_page() {
+            slug="$1"; marker="$2"; prefix="$3"
+            url="$base/$prefix$slug/"
+            code=$(curl -L -sS --retry 2 -A 'Mozilla/5.0 EMDO editorial verifier' --connect-timeout 12 --max-time 45 -o /tmp/emdo-post.html -w '%{http_code}' "$url?emdo_exo=${GITHUB_RUN_ID}" || true)
+            if [ "$code" != 200 ] || [ "$(wc -c < /tmp/emdo-post.html)" -lt 5000 ]; then
+              echo "Verification failed HTTP $code $url" >&2; return 1;
+            fi
+            if [ "$marker" != none ] && ! grep -q "$marker" /tmp/emdo-post.html; then
+              echo "Verification missing text $marker $url" >&2; return 1;
+            fi
+            echo "PUBLISHED_OK $url"
+          }
+          jq -r '.posts[] | [.slug,.en_slug] | @tsv' .github/data/editorial-exoticas-20261015.json |
+          while IFS=$'\t' read -r es en; do
+            verify_page "$es" 'carnes' ''
+            verify_page "$en" 'meat' 'en/'
+          done
+          jq -r '.updates[].slug' .github/data/editorial-exoticas-20261015.json |
+          while IFS= read -r es; do
+            verify_page "$es" 'EMDO_EXO_20261015' ''
+          done
+          health "$base/category/carnes-exoticas/"
+          health "$base/"
+          health "$base/tienda/"
+          health "$base/blog/"
+          echo 'EMDO_EXOTICAS_PRODUCTION_VERIFIED 5 new + 4 updates'
