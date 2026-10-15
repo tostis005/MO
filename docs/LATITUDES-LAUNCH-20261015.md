@@ -90,3 +90,26 @@ En WordPress/WCFM debe constar:
 **Estado técnico a 15/10/2026:** Cambios disponibles únicamente en la PR en borrador. Sin acceso a sesión administradora ni a las zonas reales de WooCommerce/WCFM no se ha pulsado el botón de purga, no se han escrito zonas ni se puede dar por resuelto el catálogo. 
 
 Fuentes: [WCFM Store Shipping](https://docs.wclovers.com/store-shipping/), [Condiciones Latitudes](https://latitudes.es/condiciones-de-venta/).
+
+## Comparativa Latitudes vs vendedores que funcionan (15/10/2026)
+
+Comprobación pública: los productores Montjam (15 productos) y Selectos de Castilla (77 productos) muestran sus catálogos para visitantes. Latitudes figura como productor en `/productores/`, pero `/tienda/` continúa con **208 resultados** y solo seis vendedores con artículos. El rastreador externo no puede abrir la URL de Latitudes; el propietario sí la abre en incógnito, por lo que un 404 del rastreador no sirve para determinar el estado real.
+
+La función `elmercado_vendor_store_product_ids_010225` exige `post_status=publish`, `post_author=ID del usuario vendedor` y términos de visibilidad válidos. `elmercado_catalog_counts_excluded_authors_010217` también excluye proveedores por estado Offline/Disabled y destino de envío. Diferencias **posibles pero aún no confirmadas en la base de datos**:
+1. Productos importados con `post_author` administrador/u otro vendedor.
+2. Propiedad detectada por WCFM distinta de `post_author`.
+3. Productos no publicados, sin stock o con `exclude-from-catalog`.
+4. Sin zonas habilitadas en WCFM para España y, por tanto, excluido por `MDO_Catalog_Destination_Frontend`.
+5. Slug WCFM `latitudes` personalizado sin usuario con `user_nicename=latitudes`. La resolución del tema se ha reforzado validando la URL canónica de WCFM.
+
+**Herramientas → Diagnóstico Latitudes** incluye ahora una tabla comparativa con productores activos y una búsqueda de artículos especializados por título para detectar propiedad incorrecta. Si WCFM identifica explícitamente un producto como suyo pero su autor WordPress es diferente, muestra un botón manual con nonce para corregir **únicamente esos autores** y limpiar caché. No modifica publicaciones, stock, precios ni artículos atribuidos a otros productores por WCFM.
+
+## Banner específico de Latitudes
+
+- Nueva ilustración vectorial original en `assets/images/latitudes-premium-banner.svg`, oscura y ligera, con temática gourmet/premium.
+- Nuevo módulo `inc/latitudes-store-banner-20261015.php` con alcance exclusivo a Latitudes. Oculta la antigua fotografía/texto WCFM de esa tienda y presenta `Latitudes · Carnes exóticas y cortes premium`, subtítulo contextual y versión inglesa. Mantiene el logo del productor y el diseño responsive general del marketplace.
+- También se ha generado una **versión fotográfica optimizada** independiente `banner_latitudes_carnes_premium_1920x576.webp` para subir cuando se disponga del acceso a medios de WordPress. No está incorporada a GitHub y no se le debe atribuir presencia en producción.
+- Probar cabecera a 375, 768 y 1440 px, visibilidad del logo, texto legible y posibles banners antiguos de caché.
+
+**Estado:** la PR contiene los cambios de código. No está fusionada; tampoco hay confirmación de que el importador o los métodos nativos WCFM hayan sido corregidos en producción. Para completar se requiere la pantalla de diagnóstico real y prueba de carrito con zonas.
+
