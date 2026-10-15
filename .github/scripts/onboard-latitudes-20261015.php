@@ -219,6 +219,10 @@ if ( 'smoke' === $phase ) {
         if ( 'draft' !== $product->get_status() || 'hidden' !== $product->get_catalog_visibility() ) {
             throw new RuntimeException( 'Prueba fallida: producto publicado o visible.' );
         }
+        if ( ! $product->get_image_id() || ! is_numeric( $product->get_price() ) ||
+            strlen( wp_strip_all_tags( $product->get_description() ) ) < 30 ) {
+            throw new RuntimeException( 'Producto de muestra incompleto: falta imagen, precio o descripción.' );
+        }
     }
     echo 'LATITUDES_SMOKE=' . wp_json_encode( $out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
     exit;
