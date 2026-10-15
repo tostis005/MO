@@ -35,6 +35,19 @@ function mdo_gsc_commerce_path_20260929(): string {
  */
 function mdo_gsc_commerce_map_20260929(): array {
     return array(
+        // Commercial-intent pages: broad, evergreen wording, no prices or product-specific promises.
+        '/' => array(
+            'title' => 'Comprar directamente al productor | El Mercado de Origen',
+            'description' => 'Compra alimentos de productores españoles en El Mercado de Origen. Explora carnes, hortalizas, aceites y productos artesanos con procedencia clara.',
+        ),
+        '/categoria-producto/hortalizas-verduras/' => array(
+            'title' => 'Comprar verduras online al productor | El Mercado de Origen',
+            'description' => 'Compra hortalizas y verduras frescas online con origen y productor identificados. Descubre la selección disponible y las condiciones de envío de cada producto.',
+        ),
+        '/categoria-producto/carnes/' => array(
+            'title' => 'Comprar carne online a productores | El Mercado de Origen',
+            'description' => 'Compra carne online de productores y especialistas seleccionados. Consulta la procedencia, los cortes, las condiciones de entrega y la disponibilidad actual.',
+        ),
         '/categoria-producto/aceites/' => array(
             'title' => 'Comprar Aceite de Oliva Virgen Extra | El Mercado de Origen',
             'description' => 'Compra aceite de oliva virgen extra directamente a productores seleccionados. Compara formatos, precios y opciones disponibles con origen claro.',
