@@ -191,6 +191,82 @@ function elmercado_latitudes_render_audit_20261015(): void {
 			<?php if ( ! $products ) : ?><tr><td colspan="5">No hay productos atribuidos a este usuario.</td></tr><?php endif; ?>
 			</tbody></table>
 		<?php endforeach; ?>
+		<h2>Comparación con productores que sí venden</h2>
+		<p>Esta tabla contrasta las mismas reglas que afectan a Latitudes. Si Latitudes tiene cero productos publicados bajo su usuario mientras los otros sí los tienen, el importador probablemente no está asignando el <code>post_author</code> correcto. Si tiene productos publicados pero cero vendibles, comprobar stock, visibilidad, estado y destino.</p>
+		<table class="widefat striped">
+			<thead><tr><th>Productor</th><th>Publicados (autor WP)</th><th>Borradores y otros</th><th>Visibles + en stock</th><th>Excluido por destino</th><th>Offline/Disabled</th></tr></thead>
+			<tbody>
+			<?php
+			$baseline = get_users( array( 'role__in' => array( 'wcfm_vendor', 'vendor', 'dc_vendor', 'seller' ), 'number' => 200 ) );
+			foreach ( $baseline as $comparison_vendor ) :
+				$compare_id = (int) $comparison_vendor->ID;
+				$comparison_settings = get_user_meta( $compare_id, 'wcfmmp_profile_settings', true );
+				$comparison_name = is_array( $comparison_settings ) && ! empty( $comparison_settings['store_name'] )
+					? (string) $comparison_settings['store_name'] : (string) $comparison_vendor->display_name;
+				if ( ! in_array( sanitize_title( $comparison_name ), array(
+					'latitudes', 'montjam', 'selectos-de-castilla', 'tolecarnes',
+					'la-huerta-de-ana-mary', 'hidalgo-de-la-jara', '1957',
+				), true ) ) {
+					continue;
+				}
+				$comparison_stats = elmercado_latitudes_product_stats_20261015( $compare_id );
+				$published_count = (int) ( $comparison_stats['publish'] ?? 0 );
+				$other_count = array_sum( $comparison_stats ) - $published_count;
+				$visible_count = 0;
+				$comparison_products = get_posts( array(
+					'post_type' => 'product', 'post_status' => 'publish',
+					'author' => $compare_id, 'fields' => 'ids', 'posts_per_page' => -1,
+					'no_found_rows' => true, 'suppress_filters' => true,
+				) );
+				foreach ( $comparison_products as $comparison_product_id ) {
+					$p = wc_get_product( $comparison_product_id );
+					if ( $p && $p->is_visible() && $p->is_in_stock() ) {
+						++$visible_count;
+					}
+				}
+				$comparison_excluded = class_exists( 'MDO_Catalog_Destination_Frontend' )
+					&& in_array( $compare_id, array_map( 'absint', MDO_Catalog_Destination_Frontend::excluded_vendor_ids() ), true );
+				$comparison_hidden = function_exists( 'elmercado_wcfm_vendor_is_hidden_010210' )
+					&& elmercado_wcfm_vendor_is_hidden_010210( $compare_id );
+				?>
+				<tr><td><?php echo esc_html( $comparison_name . ' (#' . $compare_id . ')' ); ?></td>
+					<td><?php echo esc_html( (string) $published_count ); ?></td>
+					<td><?php echo esc_html( (string) $other_count ); ?></td>
+					<td><?php echo esc_html( (string) $visible_count ); ?></td>
+					<td><?php echo esc_html( $comparison_excluded ? 'SÍ' : 'No' ); ?></td>
+					<td><?php echo esc_html( $comparison_hidden ? 'SÍ' : 'No' ); ?></td>
+				</tr>
+			<?php endforeach; ?>
+			</tbody>
+		</table>
+		<h2>Productos importados con nombre de carnes especiales, por propietario</h2>
+		<p>La búsqueda no corrige ni reasigna nada. Señala artículos que podrían haberse importado por error bajo el administrador u otro usuario. La coincidencia del nombre no demuestra su procedencia.</p>
+		<table class="widefat striped"><thead><tr><th>Producto / ID</th><th>Estado</th><th>Autor de WordPress</th><th>Vendedor WCFM</th></tr></thead><tbody>
+		<?php
+		$suspect_rows = $wpdb->get_results(
+			"SELECT ID, post_title, post_author, post_status FROM {$wpdb->posts}
+			 WHERE post_type = 'product'
+			   AND (post_title LIKE '%Wagyu%' OR post_title LIKE '%bisonte%'
+			   OR post_title LIKE '%avestruz%' OR post_title LIKE '%canguro%'
+			   OR post_title LIKE '%cocodrilo%' OR post_title LIKE '%cebra%'
+			   OR post_title LIKE '%gamo%' OR post_title LIKE '%corzo%')
+			 ORDER BY post_modified DESC LIMIT 60"
+		);
+		foreach ( (array) $suspect_rows as $suspect ) :
+			$author = get_userdata( (int) $suspect->post_author );
+			$real_vendor = function_exists( 'wcfm_get_vendor_id_by_post' )
+				? absint( wcfm_get_vendor_id_by_post( (int) $suspect->ID ) )
+				: (int) $suspect->post_author;
+			$real_vendor_user = $real_vendor ? get_userdata( $real_vendor ) : false;
+			?>
+			<tr><td><a href="<?php echo esc_url( get_edit_post_link( $suspect->ID ) ); ?>"><?php echo esc_html( $suspect->ID . ' · ' . $suspect->post_title ); ?></a></td>
+				<td><?php echo esc_html( $suspect->post_status ); ?></td>
+				<td><?php echo esc_html( $author ? $author->display_name . ' #' . $author->ID : '#' . $suspect->post_author ); ?></td>
+				<td><?php echo esc_html( $real_vendor_user ? $real_vendor_user->display_name . ' #' . $real_vendor : '#' . $real_vendor ); ?></td>
+			</tr>
+		<?php endforeach; ?>
+		<?php if ( ! $suspect_rows ) : ?><tr><td colspan="4">Sin coincidencias entre los productos importados.</td></tr><?php endif; ?>
+		</tbody></table>
 		<h2>Autores de productos creados los últimos 7 días</h2>
 		<p>Útil para detectar si el importador está creando productos con el administrador u otro usuario en lugar de Latitudes.</p>
 		<table class="widefat striped"><thead><tr><th>Usuario</th><th>Estado</th><th>Cantidad</th></tr></thead><tbody>
