@@ -274,7 +274,7 @@ function elmercado_latitudes_render_audit_20261015(): void {
 		<h2>Comparación con productores que sí venden</h2>
 		<p>Esta tabla contrasta las mismas reglas que afectan a Latitudes. Si Latitudes tiene cero productos publicados bajo su usuario mientras los otros sí los tienen, el importador probablemente no está asignando el <code>post_author</code> correcto. Si tiene productos publicados pero cero vendibles, comprobar stock, visibilidad, estado y destino.</p>
 		<table class="widefat striped">
-			<thead><tr><th>Productor</th><th>Publicados (autor WP)</th><th>Borradores y otros</th><th>Visibles + en stock</th><th>Excluido por destino</th><th>Offline/Disabled</th></tr></thead>
+			<thead><tr><th>Productor</th><th>Publicados (autor WP)</th><th>Borradores y otros</th><th>Visibles + en stock</th><th>Envíos WCFM</th><th>Excluido por destino</th><th>Offline/Disabled</th></tr></thead>
 			<tbody>
 			<?php
 			$baseline = get_users( array( 'role__in' => array( 'wcfm_vendor', 'vendor', 'dc_vendor', 'seller' ), 'number' => 200 ) );
@@ -304,6 +304,12 @@ function elmercado_latitudes_render_audit_20261015(): void {
 						++$visible_count;
 					}
 				}
+				$shipping_settings = get_user_meta( $compare_id, '_wcfmmp_shipping', true );
+				$shipping_mode = is_array( $shipping_settings )
+					? (string) ( $shipping_settings['_wcfmmp_user_shipping_type'] ?? '' ) : '';
+				$shipping_on = is_array( $shipping_settings )
+					? (string) ( $shipping_settings['_wcfmmp_user_shipping_enable'] ?? '' ) : '';
+				$shipping_short = ( 'yes' === $shipping_on ? 'Activo' : 'Sin activar' ) . ' / ' . ( $shipping_mode ?: 'sin tipo' );
 				$comparison_excluded = class_exists( 'MDO_Catalog_Destination_Frontend' )
 					&& in_array( $compare_id, array_map( 'absint', MDO_Catalog_Destination_Frontend::excluded_vendor_ids() ), true );
 				$comparison_hidden = function_exists( 'elmercado_wcfm_vendor_is_hidden_010210' )
@@ -313,6 +319,7 @@ function elmercado_latitudes_render_audit_20261015(): void {
 					<td><?php echo esc_html( (string) $published_count ); ?></td>
 					<td><?php echo esc_html( (string) $other_count ); ?></td>
 					<td><?php echo esc_html( (string) $visible_count ); ?></td>
+					<td><?php echo esc_html( $shipping_short ); ?></td>
 					<td><?php echo esc_html( $comparison_excluded ? 'SÍ' : 'No' ); ?></td>
 					<td><?php echo esc_html( $comparison_hidden ? 'SÍ' : 'No' ); ?></td>
 				</tr>
