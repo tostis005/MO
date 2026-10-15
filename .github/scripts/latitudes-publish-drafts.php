@@ -129,6 +129,51 @@ if ( ! $shipping_ok ) {
 	$bad[] = array( 'shipping' => 'WCFM no tiene envíos por zonas habilitados para Península, Baleares y Portugal.' );
 }
 
+// Datos no sensibles del esquema WCFM para poder preparar las zonas NATIVAS.
+$native_zone_debug = array();
+if ( function_exists( 'wcfmmp_get_shipping_zone' ) ) {
+	$native = wcfmmp_get_shipping_zone( '', $vendor_id );
+	$native_zone_debug['latitudes_zone_count'] = is_array( $native ) ? count( $native ) : 0;
+}
+if ( class_exists( 'WC_Shipping_Zones' ) ) {
+	$global_zones = WC_Shipping_Zones::get_zones();
+	$native_zone_debug['woocommerce_zones'] = array();
+	foreach ( $global_zones as $zid => $zone ) {
+		$locs = array();
+		foreach ( (array) ( $zone['zone_locations'] ?? array() ) as $loc ) {
+			$locs[] = (string) ( $loc->type ?? '' ) . ':' . (string) ( $loc->code ?? '' );
+		}
+		$native_zone_debug['woocommerce_zones'][] = array(
+			'id' => (int) $zid,
+			'name' => (string) ( $zone['zone_name'] ?? '' ),
+			'locations' => array_slice( $locs, 0, 16 ),
+		);
+	}
+}
+$native_zone_debug['working_vendor_example'] = null;
+if ( function_exists( 'wcfmmp_get_shipping_zone' ) ) {
+	foreach ( get_users( array( 'role' => 'wcfm_vendor', 'number' => 50 ) ) as $other_vendor ) {
+		if ( (int) $other_vendor->ID === $vendor_id ) {
+			continue;
+		}
+		$other_shipping = get_user_meta( $other_vendor->ID, '_wcfmmp_shipping', true );
+		if ( ! is_array( $other_shipping ) || ( $other_shipping['_wcfmmp_user_shipping_type'] ?? '' ) !== 'by_zone' ) {
+			continue;
+		}
+		$other_zones = wcfmmp_get_shipping_zone( '', (int) $other_vendor->ID );
+		if ( ! is_array( $other_zones ) || ! $other_zones ) {
+			continue;
+		}
+		$sample = reset( $other_zones );
+		$native_zone_debug['working_vendor_example'] = array(
+			'shipping_settings_keys' => array_keys( $other_shipping ),
+			'shipping_enabled' => (string) ( $other_shipping['_wcfmmp_user_shipping_enable'] ?? '' ),
+			'zone_fields' => is_array( $sample ) ? array_keys( $sample ) : ( is_object( $sample ) ? array_keys( get_object_vars( $sample ) ) : array() ),
+			'zone_count' => count( $other_zones ),
+		);
+		break;
+	}
+}
 $vendor_roles = (array) $user->roles;
 if ( ! in_array( 'wcfm_vendor', $vendor_roles, true ) && ! in_array( 'disable_vendor', $vendor_roles, true ) ) {
 	$bad[] = array( 'vendor_roles' => 'Roles de vendedor inesperados: ' . implode( ',', $vendor_roles ) );
@@ -147,6 +192,7 @@ $summary = array(
 	'offline_flag' => (string) get_user_meta( $vendor_id, '_wcfm_store_offline', true ),
 	'vendor_roles' => $vendor_roles,
 	'bad_sample' => array_slice( $bad, 0, 15 ),
+	'zone_debug' => $native_zone_debug,
 	'mode' => $mode,
 );
 WP_CLI::log( 'LATITUDES_PREFLIGHT=' . wp_json_encode( $summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) );
