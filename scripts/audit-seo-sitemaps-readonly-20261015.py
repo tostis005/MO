@@ -86,6 +86,7 @@ def main():
     except Exception as exc:
         findings["errors"].append("robots.txt failed: " + str(exc))
     indexed = []
+    origins = {}
     try:
         kind, child = entries(ROOT + "/sitemap_index.xml")
         if kind != "sitemapindex":
@@ -98,7 +99,10 @@ def main():
             for item in child[:30]:
                 try:
                     typ, urls = entries(item["loc"])
-                    if typ == "urlset": indexed.extend(e["loc"] for e in urls)
+                    if typ == "urlset":
+                        for row in urls:
+                            indexed.append(row["loc"])
+                            origins.setdefault(row["loc"], []).append(item["loc"])
                 except Exception as exc:
                     findings["errors"].append("Child failed: " + str(exc))
     except Exception as exc:
@@ -113,6 +117,8 @@ def main():
         else:
             en_urls = [row["loc"] for row in en]
             indexed.extend(en_urls)
+            for url in en_urls:
+                origins.setdefault(url, []).append(ROOT + "/english-sitemap.xml/")
             findings["english_alias"] = "serves separate English urlset"
         findings["english_urls"] = len(en_urls)
         if ROOT + "/en/shop/" not in en_urls:
@@ -122,7 +128,7 @@ def main():
     except Exception as exc:
         en_urls = []
         findings["errors"].append("English sitemap failed: " + str(exc))
-    dupe = [(url, n) for url, n in Counter(indexed).items() if n > 1]
+    dupe = [(url, n, origins.get(url, [])) for url, n in Counter(indexed).items() if n > 1]
     findings["duplicate_urls"] = dupe[:25]
     if dupe:
         findings["warnings"].append(str(len(dupe)) + " overlapping sitemap entries, review canonical index")
@@ -135,9 +141,19 @@ def main():
     articles = sorted(u for u in en_urls if "/en/" in u and
                       u not in categories and u not in products and
                       urlparse(u).path not in ("/en/", "/en/shop/"))
-    selected = [ROOT + "/en/shop/"] + categories[:8] + products[:4] + articles[:8]
+    gsc_priority = [ROOT + p for p in (
+        "/en/why-cut-fruit-vegetables-turn-brown-enzymatic-browning/",
+        "/garbanzos-tiempo-remojo-cuanto-tardan-cocerse/",
+        "/hay-que-poner-lentejas-en-remojo-cuanto-tiempo/",
+        "/en/how-much-protein-in-beef/",
+        "/cuanta-proteina-tiene-carne-ternera/",
+    )]
+    findings["gsc_priority_in_sitemap"] = {u: u in indexed for u in gsc_priority}
+    if not all(findings["gsc_priority_in_sitemap"].values()):
+        findings["warnings"].append("A GSC high-click page is not present in audited canonical sitemaps")
+    selected = [ROOT + "/en/shop/"] + categories[:8] + products[:4] + articles[:8] + gsc_priority
     for url in dict.fromkeys(selected):
-        if url in en_urls: sample_page(url)
+        if url in indexed: sample_page(url)
     with open("seo-sitemap-audit.json", "w", encoding="utf-8") as f:
         json.dump(findings, f, ensure_ascii=False, indent=2)
     with open("seo-sitemap-summary.md", "w", encoding="utf-8") as f:
