@@ -233,8 +233,24 @@ function elmercado_latitudes_cache_actions_20261015(): void {
 		return;
 	}
 	$last = get_option( 'elmercado_latitudes_cache_last_purge_20261015', array() );
+	$dropin = WP_CONTENT_DIR . '/advanced-cache.php';
+	$hot_shop = WP_CONTENT_DIR . '/uploads/elmercado-hot-static-v1/es-shop-root.html';
+	$dropin_installed = is_readable( $dropin )
+		&& false !== strpos( (string) @file_get_contents( $dropin, false, null, 0, 12000 ), 'elmercado-hot-static-v1' );
+	$early_shop_exists = is_readable( $hot_shop );
+	$early_shop_age = $early_shop_exists ? max( 0, time() - (int) filemtime( $hot_shop ) ) : null;
+
 	?>
 	<h2>Caché y diagnóstico de publicación</h2>
+	<table class="widefat striped">
+		<tbody>
+			<tr><th>Drop-in de caché temprana</th><td><?php echo esc_html( $dropin_installed ? 'Archivo de caché del catálogo detectado' : 'No detectado o diferente del proyecto' ); ?></td></tr>
+			<tr><th>Caché temprana activada en WordPress</th><td><?php echo esc_html( defined( 'WP_CACHE' ) && WP_CACHE ? 'Sí' : 'No / no detectada' ); ?></td></tr>
+			<tr><th>Copia de /tienda/</th><td><?php echo esc_html( $early_shop_exists ? 'Existe; antigüedad ' . $early_shop_age . ' segundos' : 'No existe copia estática' ); ?></td></tr>
+			<tr><th>Tamaño del HTML estático de /tienda/</th><td><?php echo esc_html( $early_shop_exists ? size_format( (int) filesize( $hot_shop ) ) : '—' ); ?></td></tr>
+		</tbody>
+	</table>
+
 	<p>Vacía primero el catálogo, recarga la tienda en incógnito y vuelve a revisar el informe. Si los productos siguen ausentes, comprueba su autor, estado, stock, destino y permisos: ninguna caché corrige esos problemas.</p>
 	<?php if ( ! empty( $last['time'] ) ) : ?>
 		<p><strong>Última invalidación:</strong> <?php echo esc_html( $last['time'] . ' (' . ( $last['mode'] ?? '' ) . ')' ); ?></p>
