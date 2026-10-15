@@ -123,6 +123,8 @@ function elmercado_latitudes_render_audit_20261015(): void {
 			$all_excluded = function_exists( 'elmercado_catalog_counts_excluded_authors_010217' )
 				? in_array( $id, elmercado_catalog_counts_excluded_authors_010217(), true ) : null;
 			$wcfm_shipping = get_user_meta( $id, '_wcfmmp_shipping', true );
+			$shipping_enabled = is_array( $wcfm_shipping )
+				? (string) ( $wcfm_shipping['_wcfmmp_user_shipping_enable'] ?? '' ) : '';
 			$shipping_type = is_array( $wcfm_shipping )
 				? (string) ( $wcfm_shipping['_wcfmmp_user_shipping_type'] ?? '' ) : '';
 			$shipping_zone_data = function_exists( 'wcfmmp_get_shipping_zone' )
@@ -161,8 +163,10 @@ function elmercado_latitudes_render_audit_20261015(): void {
 				<tr><th>URL de tienda devuelta por WCFM</th><td><?php if ( $wcfm_store_url ) : ?><a href="<?php echo esc_url( $wcfm_store_url ); ?>" target="_blank" rel="noopener"><?php echo esc_html( $wcfm_store_url ); ?></a><?php else : ?>Sin URL<?php endif; ?></td></tr>
 				<tr><th>Slug de la tienda resuelve al usuario correcto</th><td><?php echo esc_html( $store_user_matches ? 'Sí' : 'NO: posible causa de página 404 o catálogo vacío' ); ?></td></tr>
 				<tr><th>Configuración WCFM de envíos</th><td><?php echo esc_html( is_array( $wcfm_shipping ) && $wcfm_shipping ? 'Existe' : 'NO: falta configurar' ); ?></td></tr>
+				<tr><th>Envíos habilitados en WCFM</th><td><?php echo esc_html( 'yes' === $shipping_enabled ? 'Sí' : 'NO (revisar _wcfmmp_user_shipping_enable)' ); ?></td></tr>
 				<tr><th>Tipo de envío del vendedor</th><td><?php echo esc_html( $shipping_type ?: 'NO DEFINIDO' ); ?><?php echo 'by_zone' === $shipping_type ? ' (correcto si utiliza zonas)' : ''; ?></td></tr>
 				<tr><th>Zonas del vendedor WCFM</th><td><?php echo esc_html( function_exists( 'wcfmmp_get_shipping_zone' ) ? (string) $shipping_zone_count : 'Función no disponible' ); ?><?php echo 0 === $shipping_zone_count && 'by_zone' === $shipping_type ? ' ⚠ Sin zonas asignadas' : ''; ?></td></tr>
+				<tr><th>Reglas de zona del vendedor</th><td><code style="white-space:pre-wrap;overflow-wrap:anywhere"><?php echo esc_html( $shipping_zone_data && is_array( $shipping_zone_data ) ? substr( wp_json_encode( $shipping_zone_data ), 0, 3500 ) : 'No hay reglas WCFM para este vendedor' ); ?></code></td></tr>
 				<tr><th>Flag WCFM Offline</th><td><code><?php echo esc_html( var_export( $offline, true ) ); ?></code></td></tr>
 				<tr><th>Flag WCFM Disabled</th><td><code><?php echo esc_html( var_export( $disabled, true ) ); ?></code></td></tr>
 				<tr><th>Oculto por la política del tema (para esta sesión)</th><td><?php echo esc_html( null === $is_hidden ? 'Función no disponible' : ( $is_hidden ? 'Sí' : 'No' ) ); ?></td></tr>
@@ -198,15 +202,21 @@ function elmercado_latitudes_render_audit_20261015(): void {
 		<?php if ( class_exists( 'WC_Shipping_Zones' ) ) : ?>
 			<h2>Zonas globales de WooCommerce (compartidas con los demás vendedores)</h2>
 			<p>Los métodos deben configurarse individualmente en WCFM para Latitudes, sin modificar las tarifas del resto de vendedores.</p>
-			<table class="widefat striped"><thead><tr><th>Zona / ID</th><th>Métodos globales</th></tr></thead><tbody>
+			<table class="widefat striped"><thead><tr><th>Zona / ID</th><th>Regiones o códigos postales</th><th>Métodos globales</th></tr></thead><tbody>
 			<?php foreach ( WC_Shipping_Zones::get_zones() as $zone ) : ?>
 				<?php
+				$locations = array();
+				foreach ( (array) ( $zone['zone_locations'] ?? array() ) as $location ) {
+					if ( is_object( $location ) ) {
+						$locations[] = (string) ( $location->type ?? '' ) . ':' . (string) ( $location->code ?? '' );
+					}
+				}
 				$methods = array();
 				foreach ( (array) ( $zone['shipping_methods'] ?? array() ) as $method ) {
 					$methods[] = is_object( $method ) ? (string) ( $method->id ?? get_class( $method ) ) : 'Desconocido';
 				}
 				?>
-				<tr><td><?php echo esc_html( (string) ( $zone['zone_name'] ?? '' ) . ' (#' . ( $zone['zone_id'] ?? '0' ) . ')' ); ?></td><td><?php echo esc_html( implode( ', ', $methods ) ?: 'Sin métodos' ); ?></td></tr>
+				<tr><td><?php echo esc_html( (string) ( $zone['zone_name'] ?? '' ) . ' (#' . ( $zone['zone_id'] ?? '0' ) . ')' ); ?></td><td><?php echo esc_html( implode( ', ', $locations ) ?: 'Resto del mundo' ); ?></td><td><?php echo esc_html( implode( ', ', $methods ) ?: 'Sin métodos' ); ?></td></tr>
 			<?php endforeach; ?>
 			</tbody></table>
 		<?php endif; ?>
