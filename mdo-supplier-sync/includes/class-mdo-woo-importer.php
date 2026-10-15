@@ -61,6 +61,12 @@ final class MDO_Woo_Importer {
 		}
 
 		self::apply_common_fields( $product, $payload );
+		// Prelaunch products from Latitudes must never become public while its
+		// WCFM vendor is hard-disabled, including after nightly updates.
+		if ( 'latitudes' === (string) $supplier['code'] && get_user_meta( $vendor_id, '_disable_vendor', true ) ) {
+			$product->set_status( 'draft' );
+			$product->set_catalog_visibility( 'hidden' );
+		}
 		$category_result = class_exists( 'MDO_Auto_Categorizer' )
 			? MDO_Auto_Categorizer::maybe_assign( $product, $payload, $row )
 			: array();
