@@ -54,6 +54,18 @@ final class MDO_Connector_Latitudes {
         // Latitudes sometimes has SEO-formatted JSON-LD names instead of the
         // actual WooCommerce product heading. Keep the commercial name.
         $xpath = self::xpath( self::fetch( $url ) );
+        // Confirm source availability against the visible product page, not
+        // only schema.org. Never turn an unknown stock into an in-stock item.
+        $visible_stock = self::visible_stock( $xpath );
+        $schema_stock = (string) ( $product['stock_status'] ?? 'unknown' );
+        if ( $visible_stock !== 'unknown' && $schema_stock !== 'unknown' && $visible_stock !== $schema_stock ) {
+            throw new RuntimeException( 'Latitudes muestra stock contradictorio (schema=' . $schema_stock . ', html=' . $visible_stock . ') en ' . $url );
+        }
+        $product['stock_status'] = $visible_stock !== 'unknown' ? $visible_stock : $schema_stock;
+        if ( ! in_array( $product['stock_status'], array( 'instock', 'outofstock' ), true ) ) {
+            throw new RuntimeException( 'Stock de Latitudes no verificable: ' . $url );
+        }
+
         $heading = $xpath->query( "//h1[contains(concat(' ', normalize-space(@class), ' '), ' product_title ')] | //h1[contains(concat(' ', normalize-space(@class), ' '), ' entry-title ')]" );
         if ( $heading && $heading->length ) {
             $title = trim( preg_replace( '/\\s+/u', ' ', (string) $heading->item( 0 )->textContent ) );
@@ -80,6 +92,37 @@ final class MDO_Connector_Latitudes {
 
     public static function upsert_product( int $supplier_id, array $product ): string {
         return MDO_Connector_Tolecarnes::upsert_product( $supplier_id, $product );
+    }
+
+
+    private static function visible_stock( DOMXPath $xpath ): string {
+        // The Porto/WooCommerce theme shows a product-level availability
+        // indicator and a second detailed stock label. Neither the cart
+        // button nor related-product thumbnails are evidence of stock.
+        $nodes = $xpath->query(
+            "//div[contains(concat(' ', normalize-space(@class), ' '), ' availability ')]" .
+            " | //div[contains(concat(' ', normalize-space(@class), ' '), ' stock ')]" .
+            " | //p[contains(concat(' ', normalize-space(@class), ' '), ' stock ')]"
+        );
+        $states = array();
+        foreach ( $nodes ?: array() as $node ) {
+            $class = strtolower( trim( (string) $node->getAttribute( 'class' ) ) );
+            $text = mb_strtolower( trim( preg_replace( '/\\s+/u', ' ', (string) $node->textContent ) ), 'UTF-8' );
+            $state = 'unknown';
+            if ( preg_match( '/\\bout.of.stock\\b|agotado|sin existencias|pr[oó]ximamente|proximamente/u', $text ) ||
+                preg_match( '/\\bout-of-stock\\b/', $class ) ) {
+                $state = 'outofstock';
+            } elseif ( preg_match( '/\\bin.stock\\b|\\bdisponibles?\\b|hay existencias/u', $text ) ||
+                preg_match( '/\\bin-stock\\b/', $class ) ) {
+                $state = 'instock';
+            }
+            if ( $state !== 'unknown' ) { $states[ $state ] = true; }
+        }
+        // Contradictory visual indicators require review, never guess.
+        if ( count( $states ) > 1 ) {
+            throw new RuntimeException( 'Indicadores HTML de stock contradictorios en la ficha Latitudes.' );
+        }
+        return $states ? (string) array_key_first( $states ) : 'unknown';
     }
 
     private static function fetch( string $url ): string {
