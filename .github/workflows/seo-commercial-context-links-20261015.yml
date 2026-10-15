@@ -1,0 +1,109 @@
+name: SEO commercial internal links production
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/seo-commercial-context-links-20261015.php'
+      - '.github/workflows/seo-commercial-context-links-20261015.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mdo-commercial-context-links-20261015
+  cancel-in-progress: false
+jobs:
+  update-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate and apply editorial links
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/seo-commercial-context-links-20261015.php
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] && [ -n "$php" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              path=$(dirname "$cfg")
+              site=$("$php" "$wp" option get siteurl --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$site" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s|%s|%s" "$path" "$php" "$wp"; break;;
+              esac
+            done
+          ')"
+          [ -n "$INFO" ] || exit 3
+          PROD="${INFO%%|*}";REST="${INFO#*|}";PHP="${REST%%|*}";WP="${REST#*|}"
+          DIR="/tmp/mdo-context-$GITHUB_RUN_ID"
+          echo "EV_PROD=$PROD" >> "$GITHUB_ENV"
+          echo "EV_PHP=$PHP" >> "$GITHUB_ENV"
+          echo "EV_WP=$WP" >> "$GITHUB_ENV"
+          echo "EV_DIR=$DIR" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$DIR'"
+          sshpass -e scp $SCP .github/scripts/seo-commercial-context-links-20261015.php "$STAGING_USER@$STAGING_HOST:$DIR/apply.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$DIR/apply.php' --path='$PROD' --allow-root" | tee /tmp/context-apply.log
+          sed -n 's/^MDO_CONTEXT_RESULT //p' /tmp/context-apply.log | tail -n1 > /tmp/context-apply.json
+          jq -e '(length == 4) and all(.[]; .en_updated == true or .en_updated == false)' /tmp/context-apply.json >/dev/null
+          jq -r '.[] | [.slug,.id,.en_updated] | @tsv' /tmp/context-apply.json
+          echo "FOUR_RELATED_GUIDES_LINKED"
+      - name: Verify inbound and outbound context links publicly
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends python3-bs4 >/dev/null
+          /usr/bin/python3 - <<'PY'
+          from urllib.request import Request,urlopen
+          from bs4 import BeautifulSoup
+          from urllib.parse import urlsplit
+          from time import time
+          routes={
+           '/comprar-carne-online-que-mirar-antes-elegir-corte/':'/comprar-directamente-al-productor-como-funciona/',
+           '/como-comprar-alimentos-gourmet-online-que-mirar-ademas-precio/':'/productos-proximidad-que-son-como-reconocerlos-comprarlos/',
+           '/verduras-temporada-espana-calendario-meses-que-comprar/':'/comprar-verduras-hortalizas-online-elegir-frescas-temporada/',
+           '/que-significa-aceite-oliva-virgen-extra/':'/productos-proximidad-que-son-como-reconocerlos-comprarlos/'
+          }
+          for src,dest in routes.items():
+            url="https://www.elmercadodeorigen.com"+src+"?mdo_commercial_link_qa="+str(int(time()))
+            with urlopen(Request(url,headers={'Cache-Control':'no-cache','User-Agent':'MDO-Link-QA'}),timeout=90) as r:
+              assert r.status==200,(src,r.status)
+              html=r.read().decode('utf-8','replace')
+            soup=BeautifulSoup(html,'html.parser')
+            links=[a for a in soup.find_all('a',href=True) if urlsplit(a['href']).path==dest]
+            marker='mdo-context-commerce-'
+            print(src,'destination',dest,'links',len(links),'has-context',marker in html)
+            assert links and marker in html,(src,'missing contextual link')
+          print('EDITORIAL_CONTEXT_LINKS_PUBLIC_OK')
+          PY
+      - name: Revert changed paragraphs if verification failed
+        if: failure() && env.EV_DIR != ''
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set +e
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p ${STAGING_PORT:-22}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export MDO_CONTEXT_ROLLBACK=1; '$EV_PHP' '$EV_WP' eval-file '$EV_DIR/apply.php' --path='$EV_PROD' --allow-root" || true
+      - name: Clean temporary files
+        if: always() && env.EV_DIR != ''
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p ${STAGING_PORT:-22}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$EV_DIR'" || true
