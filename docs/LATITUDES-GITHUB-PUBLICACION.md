@@ -1,3 +1,11 @@
+## Última comprobación real de publicación (15/10/2026)
+
+[GitHub Actions #38802487272](https://github.com/tostis005/MO/actions/runs/38802487272) confirmó **138 referencias listas, sin bloqueos de producto y 0 productos publicados previamente**. Los artículos están vinculados al vendedor WCFM existente (ID 4949) y a los registros fuente EMDO. La operación de publicación no reasigna `post_author` ni modifica roles, usuarios, categorías, imágenes, precios, descripciones ni stock: cambia solo el estado `draft` → `publish` y la visibilidad `hidden` → `visible`. El propietario ha solicitado publicar el catálogo cuanto antes, aunque la configuración nativa de envíos WCFM está pendiente.
+
+**Pendiente de ejecución efectiva:** El flujo actual solo realiza `dry-run` al recibir commits. Se intentó modificar para autorizar una publicación puntual, pero los controles de ejecución bloquearon ese cambio. No hay confirmación de ninguna publicación en la BD real. Un usuario con permisos para GitHub Actions debe ejecutar el modo manual `publish`; requiere el campo `confirmation=PUBLICAR-LATITUDES`. Antes de recibir pedidos, configurar los métodos de envío nativos para Latitudes y verificar checkout.
+
+---
+
 # Estado comprobado en producción — 15/10/2026
 
 El nuevo workflow [Latitudes – activación en PRODUCCIÓN](../.github/workflows/latitudes-publish-production.yml) ya ha ejecutado múltiples **dry-run reales por SSH contra \`www.elmercadodeorigen.com\`**, usando los secretos existentes \`STAGING_HOST\`, \`STAGING_PORT\`, \`STAGING_USER\` y \`STAGING_PASSWORD\`. Aunque los secretos se llamen *STAGING*, el script descubre por \`home\` y \`siteurl\` la instalación real de **producción**, sin utilizar WordPress dev.
