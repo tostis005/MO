@@ -1,0 +1,98 @@
+name: Editorial image covers batch 03 with licensed sources
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/data/editorial-exoticas-photos-20261015-03.json'
+      - '.github/scripts/publish-exoticas-photos-20261015-03.php'
+      - '.github/workflows/publish-exoticas-photos-20261015-03.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emdo-photo-editorial-20261015-03
+  cancel-in-progress: false
+
+jobs:
+  publish-production:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint and review manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/publish-exoticas-photos-20261015-03.php
+          python3 - <<'PY'
+          import json
+          p=json.load(open('.github/data/editorial-exoticas-photos-20261015-03.json'))
+          assert p['release']=='exoticas-photos-20261015-03'
+          assert len(p['photos'])==5
+          assert len({x['slug'] for x in p['photos']})==5
+          for x in p['photos']:
+              assert x['url'].startswith(('https://thumb.wikimedia.org/','https://upload.wikimedia.org/'))
+              assert x['page'].startswith('https://commons.wikimedia.org/wiki/File:')
+              assert x['license_url'].startswith(('https://creativecommons.org/licenses/by-sa/','https://creativecommons.org/licenses/by/'))
+              assert x['author'] and x['alt_es'] and x['alt_en'] and x['caption_es'] and x['caption_en'] and x['expected_quality_release']
+          print('LICENSED_PHOTO_PREFLIGHT=5')
+          PY
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+      - name: Update WordPress and verify both languages
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          BASE='https://www.elmercadodeorigen.com'
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] && [ -n "$php" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              path=$(dirname "$cfg")
+              site=$("$php" "$wp" option get siteurl --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$site" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s|%s|%s" "$path" "$php" "$wp"; break ;;
+              esac
+            done
+          ')"
+          [ -n "$INFO" ] || exit 3
+          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
+          DIR="/tmp/emdo-quality-v2-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$DIR'"
+          sshpass -e scp $SCP .github/data/editorial-exoticas-photos-20261015-03.json .github/scripts/publish-exoticas-photos-20261015-03.php "$STAGING_USER@$STAGING_HOST:$DIR/"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf $DIR" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_PHOTO_PAYLOAD='$DIR/editorial-exoticas-photos-20261015-03.json' '$PHP' -d memory_limit=768M '$WP' eval-file '$DIR/publish-exoticas-photos-20261015-03.php' --path='$PROD' --allow-root" | tee /tmp/emdo-quality-v2.log
+          sed -n 's/^EMDO_PHOTO_BATCH //p' /tmp/emdo-quality-v2.log | tail -n1 > /tmp/emdo-quality-v2.json
+          jq -e '.verified == true and .count == 5 and all(.posts[]; .attachment_id>0)' /tmp/emdo-quality-v2.json >/dev/null
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+          validate(){
+            slug="$1";file=/tmp/emdo-photo-public.html
+            url="$BASE/$slug/"
+            status=$(curl -L -sS --retry 2 --connect-timeout 12 --max-time 50 -A 'Mozilla/5.0 editorial photo verifier' -H 'Cache-Control: no-cache' -o "$file" -w '%{http_code}' "$url?photo_check=${GITHUB_RUN_ID}")
+            [ "$status" = 200 ] && grep -q 'EMDO_PHOTO_CREDIT_20261015' "$file" && grep -q 'emdo-' "$file" || {
+              echo "Photo render/credit verification failed: $url HTTP $status" >&2; exit 1;
+            }
+            echo "EDITORIAL_PHOTO_PUBLIC_OK $url"
+          }
+          while IFS= read -r es; do validate "$es"; done < <(jq -r '.photos[].slug' .github/data/editorial-exoticas-photos-20261015-03.json)
+          for url in "$BASE/" "$BASE/blog/" "$BASE/tienda/" "$BASE/category/carnes-exoticas/"; do
+            s=$(curl -sSL --max-time 35 -o /dev/null -w '%{http_code}' "$url?editorial_v2=${GITHUB_RUN_ID}")
+            [ "$s" = 200 ] || { echo "Health failure: $url HTTP $s" >&2; exit 1; }
+          done
+          echo 'EMDO_EDITORIAL_PHOTO_02_PRODUCTION_VERIFIED=5'
