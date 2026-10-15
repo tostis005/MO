@@ -96,7 +96,7 @@ if ( 'setup' === $phase ) {
             $src = trim( (string) $img->getAttribute( 'data-src' ) );
             if ( ! $src ) { $src = trim( (string) $img->getAttribute( 'src' ) ); }
             if ( preg_match( '/logo|latitudes/i', $hint ) ) { $candidate_images['logo'][] = $src; }
-            if ( preg_match( '/banner|slider|hero|cabecera/i', $hint ) ) { $candidate_images['banner'][] = $src; }
+            if ( preg_match( '/banner|slider|hero|cabecera|porto-ibanner-img/i', $hint ) ) { $candidate_images['banner'][] = $src; }
         }
         foreach ( $xp->query( '//*[@style]' ) ?: array() as $el ) {
             $style = (string) $el->getAttribute( 'style' );
@@ -107,7 +107,8 @@ if ( 'setup' === $phase ) {
     }
     $media = static function ( array $urls, string $label, int $min_width ) {
         foreach ( array_unique( $urls ) as $url ) {
-            if ( str_starts_with( $url, '/' ) ) { $url = 'https://latitudes.es' . $url; }
+            if ( str_starts_with( $url, '//' ) ) { $url = 'https:' . $url; }
+            elseif ( str_starts_with( $url, '/' ) ) { $url = 'https://latitudes.es' . $url; }
             $host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
             $path = (string) wp_parse_url( $url, PHP_URL_PATH );
             if ( ! in_array( $host, array( 'latitudes.es', 'www.latitudes.es' ), true ) ||
