@@ -147,6 +147,7 @@ if ( 'setup' === $phase ) {
         'vendor_user_id' => $vendor_id,
         'connector' => 'latitudes',
         'commercial_rule' => 'percentage',
+        'fixed_fee_scope' => 'order',
         'currency' => 'EUR',
         'sync_frequency' => 'daily',
         'notification_email' => (string) get_option( 'admin_email' ),

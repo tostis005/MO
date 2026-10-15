@@ -38,7 +38,7 @@ final class MDO_Supplier_Repository {
 			'commercial_rule'         => sanitize_key( (string) ( $data['commercial_rule'] ?? 'percentage' ) ),
 			'commission_percent'      => self::nullable_decimal( $data['commission_percent'] ?? null ),
 			'fixed_fee'               => self::nullable_decimal( $data['fixed_fee'] ?? null ),
-			'fixed_fee_scope'         => in_array( ( $data['fixed_fee_scope'] ?? 'order' ), array( 'order', 'line' ), true ) ? $data['fixed_fee_scope'] : 'order',
+			'fixed_fee_scope'         => in_array( ( $data['fixed_fee_scope'] ?? 'order' ), array( 'order', 'line' ), true ) ? ( $data['fixed_fee_scope'] ?? 'order' ) : 'order',
 			'minimum_order_amount'    => self::nullable_decimal( $data['minimum_order_amount'] ?? null ),
 			'currency'                => strtoupper( substr( sanitize_text_field( (string) ( $data['currency'] ?? 'EUR' ) ), 0, 3 ) ),
 			'sync_frequency'          => in_array( ( $data['sync_frequency'] ?? 'weekly' ), array( 'manual', 'daily', 'weekly' ), true ) ? $data['sync_frequency'] : 'weekly',
