@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.316' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.318' );
 /* 0.10.316 evita bloqueos de Woostify al navegar entre productos agotados/ocultos. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
 	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsense' ); // Adsterra queda conservado pero inactivo.
@@ -180,6 +180,8 @@ $elmercado_modules = array(
 	'inc/adsterra-blog-010290.php',
 	'inc/cart-cross-sells-layout-010314.php',
 	'inc/montjam-dop-attributes-010317.php',
+	'inc/latitudes-launch-audit-20261015.php',
+	'inc/latitudes-seo-links-20261015.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
