@@ -74,6 +74,19 @@ if ( ! is_wp_error( $home ) ) {
         $dimensions[] = array( 'url' => $u, 'size' => $meta ? array( $meta[0], $meta[1] ) : null );
     }
     echo 'LATITUDES_ASSET_DIMENSIONS=' . wp_json_encode( $dimensions, JSON_UNESCAPED_SLASHES ) . PHP_EOL;
+
+    $hero_candidates = array();
+    if ( preg_match_all( '~(?:src|data-src|data-lazyload|data-bg|data-bgsrc|data-thumb|data-background)=["\\x27]([^"\\x27]+)["\\x27]~i', $home_html, $matches ) ) {
+        foreach ( $matches[1] as $candidate ) {
+            $candidate = html_entity_decode( (string) $candidate, ENT_QUOTES | ENT_HTML5 );
+            if ( preg_match( '~(?:slider|banner|hero|latitudes|carnes|exoticas?|revslider|home|portada|cabecera)~i', $candidate ) &&
+                preg_match( '~\\.(?:jpe?g|png|webp)(?:\\?|$)~i', $candidate ) ) {
+                $hero_candidates[ $candidate ] = $candidate;
+            }
+        }
+    }
+    echo 'LATITUDES_HERO_CANDIDATES=' . wp_json_encode( array_slice( array_values( $hero_candidates ), 0, 35 ), JSON_UNESCAPED_SLASHES ) . PHP_EOL;
+
     echo 'LATITUDES_ASSETS=' . wp_json_encode( array( 'images' => array_slice( $img_list, 0, 25 ), 'backgrounds' => array_slice( array_unique( $backgrounds ), 0, 15 ) ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) . PHP_EOL;
 }
 
