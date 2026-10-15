@@ -55,7 +55,7 @@ HTML,
 
 <h2>Seasonality depends on the growing region</h2>
 <p>Spain has varied climates and altitudes. The familiar harvest window for a crop in one region may not be the same elsewhere. Protected cultivation, different varieties and storage add further complexity. A seasonal calendar is a useful planning aid, not a guarantee that a specific item is available from every seller today.</p>
-<p>Start with our <a href="/en/vegetables-in-season-spain-month-by-month/">month-by-month guide to Spanish seasonal vegetables</a>, then compare it with the <a href="/en/product-category/vegetables/">vegetables currently listed for sale</a>. A product can be seasonally appropriate yet temporarily out of stock or unavailable for your destination.</p>
+<p>Start with our <a href="/en/category/vegetables/">month-by-month guide to Spanish seasonal vegetables</a>, then compare it with the <a href="/en/product-category/vegetables/">vegetables currently listed for sale</a>. A product can be seasonally appropriate yet temporarily out of stock or unavailable for your destination.</p>
 
 <h2>Varieties matter in the kitchen</h2>
 <p>“Potato”, “tomato” and “pepper” cover numerous varieties, each with potentially different textures and culinary uses. One potato may keep its shape well when boiled; another may be more suitable for mashing. A firm tomato and a fully ripe tomato can both be excellent, but for different preparations.</p>
