@@ -13,10 +13,10 @@
 
 ## Contadores independientes — 72 unidades
 
-- **E. Revisión profunda de español:** **8/18**.
-- **I. Redacción editorial completa en inglés:** **8/18**.
-- **F. Fotografía/ilustración específica comprobada y publicada:** **4/18**.
-- **V. Verificación final bilingüe de cada entrada:** **8/18**.
+- **E. Revisión profunda de español:** **18/18**.
+- **I. Redacción editorial completa en inglés:** **18/18**.
+- **F. Fotografía/ilustración específica comprobada y publicada:** **18/18**.
+- **V. Verificación final bilingüe de cada entrada:** **18/18**.
 
 Una intervención no se cuenta por preparar código: E/I/V se completan solo tras publicación y QA de la URL pública; F solo si la imagen distintiva está asignada y verificable.
 
@@ -49,7 +49,7 @@ Una intervención no se cuenta por preparar código: E/I/V se completan solo tra
 - Auditoría de calidad previa en `docs/AUDITORIA_CALIDAD_BLOG_LATITUDES_2026-10-15.md`: inglés resumido y 18/18 entradas sin imagen destacada.
 - Primera ejecución de calidad prevista: entradas 01–04; el contador se actualizará solo tras la verificación en vivo.
 
-## Progreso publicado en producción — 15/10/2026
+## Hito intermedio histórico — 15/10/2026
 
 **28/72 unidades verificadas (38,9 %).** E 8/18 · I 8/18 · F 4/18 · V 8/18.
 
@@ -58,4 +58,26 @@ Una intervención no se cuenta por preparar código: E/I/V se completan solo tra
 - **Textos 05–08:** venado, estofado de jabalí, hamburguesas exóticas y búfalo/bisonte, reescritos ES/EN. Se han contrastado temperatura de triquina con AESAN y seguridad de carne picada con FSANZ/USDA. [Ocho URLs verificadas](https://github.com/tostis005/MO/actions/runs/38717829012).
 - **Limpieza de presentación:** reejecución de créditos fotográficos para sustituir saltos de línea literales y facilitar repetición idempotente, mediante `.github/scripts/publish-exoticas-photos-20261015-01.php` (verificar workflow antes de cerrar la tarea técnica).
 
-**Pendiente del roadmap:** 10 revisiones ES, 10 desarrollos EN, 14 fotografías y 10 verificaciones finales = **44/72**. Siguiente lote editorial: guías 09–12 (solomillo de avestruz, ancas de rana, huevo de avestruz, ragout de caza). Las imágenes 05–08 siguen pendientes de selección y licencia.
+**Nota histórica:** este párrafo describía el estado intermedio de la ejecución y está superado por el cierre que aparece a continuación.
+
+## Cierre de las 72 tareas — ejecutado y verificado
+
+**72/72 = 100 %**. Español 18/18, inglés 18/18, imágenes editoriales 18/18, publicación bilingüe comprobada 18/18.
+
+| Tanda | Alcance | Verificación |
+|---|---|---|
+| Textos 01–04 | Avestruz, canguro, cocodrilo, bisonte · 8 idiomas | https://github.com/tostis005/MO/actions/runs/38715992996 |
+| Fotos 01–04 | 4 adjuntos individuales, créditos ES/EN | https://github.com/tostis005/MO/actions/runs/38716747245 |
+| Textos 05–08 | Venado, jabalí, hamburguesas exóticas, búfalo/bisonte · 8 idiomas | https://github.com/tostis005/MO/actions/runs/38717829012 |
+| Fotos 05–08 | 4 adjuntos individuales, créditos ES/EN | https://github.com/tostis005/MO/actions/runs/38719568232 |
+| Textos 09–12 | Solomillo de avestruz, ancas de rana, huevo de avestruz, ragout · 8 idiomas | https://github.com/tostis005/MO/actions/runs/38719158663 |
+| Textos 13–16 | Cebra, alce, corzo/gamo/venado, hamburguesa Wagyu · 8 idiomas | https://github.com/tostis005/MO/actions/runs/38720431612 |
+| Textos 17–18 | Entrecot Black Angus, barbacoa exótica · 4 idiomas | https://github.com/tostis005/MO/actions/runs/38721051185 |
+| Fotos 09–13 | 5 fotografías con licencia, autor y ALT ES/EN | https://github.com/tostis005/MO/actions/runs/38721383358 |
+| Fotos 14–18 | 5 fotografías con licencia, autor y ALT ES/EN | https://github.com/tostis005/MO/actions/runs/38721598521 |
+
+**Decisiones editoriales:** cada artículo se ha reescrito con intención y estructura propias, sin bloque de preguntas frecuentes obligatorio y con una versión en inglés desarrollada, no resumida. Se han conservado los slugs y añadido fuentes técnicas cuando procede. Para fotos de animales vivos o carnes ilustrativas, los pies distinguen explícitamente lo que muestran de un plato exacto o producto comercial. Todo el alcance ha sido exclusivamente editorial; sin modificaciones de productos o `product_cat` de WooCommerce.
+
+### Control complementario de integridad (fuera de las 72 unidades)
+
+Se ha añadido la auditoría `.github/workflows/audit-editorial-v2-final-18-20261015.yml` que comprueba directamente la base de datos de WordPress: 18 publicaciones bilingües completas, 18 imágenes únicas, títulos ALT y créditos, y enlaces internos canónicos. La primera ejecución identificó un enlace inglés antiguo de Black Angus a Wagyu y una aserción demasiado restrictiva sobre el estado `inherit` de los adjuntos de WordPress. El enlace incorrecto se corrigió mediante [GitHub Actions #38722356965](https://github.com/tostis005/MO/actions/runs/38722356965). Se ajustó la comprobación de adjuntos para usar su tipo WordPress, no el estado de publicación heredado. La [auditoría final reejecutada #38722536745](https://github.com/tostis005/MO/actions/runs/38722536745) terminó con **SUCCESS**: 18 artículos ES/EN completos, 18 imágenes destacadas distintas, 64 enlaces internos revisados y **0 errores**. Esta comprobación complementaria queda cerrada.
