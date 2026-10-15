@@ -74,6 +74,26 @@ function elmercado_vendor_store_vendor_id_010225(): int {
 	if ( ! $user instanceof WP_User ) {
 		$user = get_user_by( 'login', $slug );
 	}
+
+	/*
+	 * WCFM permite personalizar el slug comercial de la tienda; ese slug
+	 * puede no coincidir con user_nicename ni user_login. No asociamos jamás
+	 * un vendedor solo por el nombre: verificamos su URL canónica WCFM.
+	 * Esta búsqueda extra está limitada a Latitudes para no penalizar el resto.
+	 */
+	if ( ! $user instanceof WP_User && 'latitudes' === $slug
+		&& function_exists( 'elmercado_latitudes_vendor_candidates_20261015' )
+		&& function_exists( 'wcfmmp_get_store_url' ) ) {
+		foreach ( elmercado_latitudes_vendor_candidates_20261015() as $candidate ) {
+			$canonical_path = (string) wp_parse_url( wcfmmp_get_store_url( (int) $candidate->ID ), PHP_URL_PATH );
+			$canonical_parts = array_values( array_filter( explode( '/', trim( $canonical_path, '/' ) ) ) );
+			$canonical_slug = sanitize_title( (string) end( $canonical_parts ) );
+			if ( 'latitudes' === $canonical_slug ) {
+				$user = $candidate;
+				break;
+			}
+		}
+	}
 	if ( $user instanceof WP_User ) {
 		$vendor_id = (int) $user->ID;
 	}
