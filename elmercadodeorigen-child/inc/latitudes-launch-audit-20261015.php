@@ -366,6 +366,9 @@ function elmercado_latitudes_render_audit_20261015(): void {
 		<?php endforeach; ?>
 		<?php if ( ! $suspect_rows ) : ?><tr><td colspan="4">Sin coincidencias entre los productos importados.</td></tr><?php endif; ?>
 		</tbody></table>
+		<?php if ( function_exists( 'elmercado_latitudes_draft_publish_admin_panel_20261015' ) ) : ?>
+			<?php elmercado_latitudes_draft_publish_admin_panel_20261015(); ?>
+		<?php endif; ?>
 		<h2>Autores de productos creados los últimos 7 días</h2>
 		<p>Útil para detectar si el importador está creando productos con el administrador u otro usuario en lugar de Latitudes.</p>
 		<table class="widefat striped"><thead><tr><th>Usuario</th><th>Estado</th><th>Cantidad</th></tr></thead><tbody>
