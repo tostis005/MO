@@ -17,7 +17,7 @@ Tras instalar la rama **en staging**, abrir `Herramientas → Diagnóstico Latit
 5. Contar productos por `post_status`. Deben ser `publish`, estar visibles en catálogo y `instock`, sin exclusión taxonómica.
 6. Comparar `post_author` con `wcfm_get_vendor_id_by_post()` para una selección de productos reales.
 7. Revisar también el listado de autores de productos recientes: permite detectar si el importador los crea bajo el usuario administrador u otro proveedor. Corregir el origen en el importador, luego probar reimportación controlada.
-8. **Después**, botón «Invalidar caché de productos»: transitorios WooCommerce, prefijo de caché y objetos de productos. Si el admin refleja productos válidos y la vista anónima sigue antigua, botón de borrado de cachés globales de plugins (WP Rocket, LiteSpeed, W3TC, WordPress, si están disponibles). Verificar por separado caché CDN (no existe integración directa aquí).
+8. **Después**, botón «Invalidar caché de productos, tienda y vendedor»: limpia transitorios y objetos de WooCommerce, archivo estático de Home y URLs de la portada, la Tienda, Productores y Latitudes con los motores WP Rocket/LiteSpeed/W3TC, si están instalados. Si el admin refleja productos válidos y la vista anónima sigue antigua, botón explícito de borrado global. Verificar por separado caché del CDN/hosting (no existe integración directa aquí). El código también agrupa la invalidación tras `save_post_product` del vendedor mediante WP-Cron; puede no cubrir importadores que escriban SQL directamente.
 9. Abrir en incógnito `/tienda/`, `/productores/`, tienda WCFM de Latitudes y una ficha de producto; comparar recuentos y filtros. Limpiar las tablas de búsqueda WooCommerce si es preciso.
 
 **No desactivar globalmente los filtros de catálogo para "forzar" a mostrar Latitudes**: las exclusiones protegen stock, vendedores desactivados y destinos no admitidos.
@@ -28,10 +28,11 @@ Regla comercial solicitada por el administrador, que **sustituye** los tramos de
 
 | Importe final de los productos de Latitudes (después de cupones, IVA incluido) | Envío |
 |---|---:|
-| Desde 0 hasta 199,99 € | 13,45 € |
-| Desde 200,00 € | Gratis |
+| Península, hasta 199,99 € | 13,45 € |
+| Baleares, hasta 199,99 € | 29,00 € |
+| Península y Baleares, desde 200,00 € | Gratis |
 
-- Sin tramos ni recargos por peso; **200 € exactos dan envío gratis**.
+- Sin tramos ni recargos por peso; **200 € exactos dan envío gratis** tanto en Península como en Baleares.
 - Solo para envíos de Latitudes en España peninsular, Portugal continental o Baleares.
 - No se habilita Canarias, Ceuta, Melilla, Azores o Madeira: la web del productor los excluye.
 - Sin cambios para los demás vendedores. Un carrito mixto debe estar **separado por paquetes por vendedor** para que se aplique esta tarifa únicamente al paquete Latitudes. El código evita sobrescribir un paquete mixto; si la separación falla, se necesita corregir WCFM antes del lanzamiento.
@@ -45,7 +46,7 @@ Regla comercial solicitada por el administrador, que **sustituye** los tramos de
 2. Madrid, Latitudes 200,00 € → gratis.
 3. Madrid, Latitudes 200,01 € → gratis.
 4. Madrid, Latitudes 210 € con cupón de 20,01 € → 13,45 € (si el umbral se calcula tras descuentos).
-5. Baleares, Latitudes 50 € → 13,45 €.
+5. Baleares, Latitudes 50 € → 29,00 €; 200 € → gratis.
 6. Portugal continental, Latitudes 50 € → 13,45 €.
 7. Canarias, Ceuta, Melilla, Azores y Madeira → no se ofrece el envío de Latitudes.
 8. Carrito combinado Latitudes 80 € + otro vendedor 150 € → Latitudes 13,45 € y otro vendedor según su propia política (no enviar gratis Latitudes por sumar 230 €).
@@ -58,3 +59,21 @@ Regla comercial solicitada por el administrador, que **sustituye** los tramos de
 - Creatividad disponible fuera de GitHub; cargarla como medio en WordPress/WCFM y cambiar el mensaje `pollo, ternera, cerdo` por `Carnes exóticas y cortes premium`.
 - Los módulos están sujetos a revisión en staging: el hook de portada de WCFM puede variar; revisar ES/EN, cachés y semántica SEO.
 - Se recomienda no fusionar a producción antes de comprobar el informe y los diez casos de checkout. El tema hijo solo despliega código: no cambia datos de la base de datos, páginas multimedia ni configuraciones WCFM.
+
+
+## Cómo configurar realmente WCFM por zonas
+
+Las tarifas propuestas en `inc/latitudes-shipping-20261015.php` son una salvaguarda de cálculo de checkout para **paquetes de Latitudes**. **No escriben las reglas en la base de datos** y no sustituyen los requisitos de visibilidad de la capa `MDO_Catalog_Destination_Frontend` del plugin externo.
+
+En WordPress/WCFM debe constar:
+1. `WooCommerce > Ajustes > Envío > Zonas de envío`: zonas globales existentes de **Península** y **Baleares**, con método **Store shipping**, sin cambiar las zonas utilizadas por otros productores. La pantalla de diagnóstico enumera las zonas y sus geografías.
+2. `WCFM > Vendedores > Latitudes > Ajustes > Envíos`: habilitado `_wcfmmp_user_shipping_enable = yes`, tipo `by_zone`, zonas configuradas para el vendedor. La pantalla de diagnóstico muestra los flags y las zonas reales.
+3. Aplicar dentro de las zonas de Latitudes la tarifa plana **13,45 € Península / 29 € Baleares** y el umbral de gratuidad **200 €**; evitar sumar dos opciones o generar tasas globales del carrito.
+4. Confirmar en el diagnóstico que Latitudes **ya no se encuentra en `MDO_Catalog_Destination_Frontend::excluded_vendor_ids()`**. En caso contrario revisar la lógica de destinos del plugin externo; un filtro tardío de tasas de envío no puede resolver la exclusión de catálogo.
+5. Verificar categorías, estatus de vendedor, autor del producto y ocultación por `stock` antes de purgar.
+6. Invalidar las cachés de páginas y abrir el directorio y la tienda en una ventana anónima. La ausencia de 404 en un navegador es válida; el 404 visto desde algún rastreador externo no prueba un error real del sitio.
+7. Probar los casos de checkout anteriores y documentar tarifas finales.
+
+**Estado técnico a 15/10/2026:** Cambios disponibles únicamente en la PR en borrador. Sin acceso a sesión administradora ni a las zonas reales de WooCommerce/WCFM no se ha pulsado el botón de purga, no se han escrito zonas ni se puede dar por resuelto el catálogo. 
+
+Fuentes: [WCFM Store Shipping](https://docs.wclovers.com/store-shipping/), [Condiciones Latitudes](https://latitudes.es/condiciones-de-venta/).
