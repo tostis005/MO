@@ -1,6 +1,11 @@
 name: Latitudes - publicar borradores en producción
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/latitudes-publish-drafts.php'
+      - '.github/workflows/latitudes-publish-production.yml'
   workflow_dispatch:
     inputs:
       mode:
@@ -24,7 +29,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate:
+    name: Validar script sin tocar producción
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Comprobar sintaxis PHP
+        run: php -l .github/scripts/latitudes-publish-drafts.php
+      - name: Verificar barreras de seguridad
+        run: |
+          grep -q "LATITUDES_MODE" .github/scripts/latitudes-publish-drafts.php
+          grep -q "wp_update_post" .github/scripts/latitudes-publish-drafts.php
+          grep -q "post_status' => 'draft'" .github/scripts/latitudes-publish-drafts.php
+
   publish:
+    if: github.event_name == 'workflow_dispatch'
+    needs: validate
     name: Comprobar y publicar solo borradores de Latitudes
     runs-on: ubuntu-latest
     timeout-minutes: 15
