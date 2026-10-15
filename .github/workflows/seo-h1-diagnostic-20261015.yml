@@ -1,0 +1,28 @@
+name: SEO H1 diagnostic read only 20261015
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/seo-h1-diagnostic-20261015.py'
+      - '.github/workflows/seo-h1-diagnostic-20261015.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Diagnose headings in public HTML
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends python3-bs4 >/dev/null
+          /usr/bin/python3 tests/seo-h1-diagnostic-20261015.py
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seo-h1-diagnostic-20261015
+          path: h1-diagnostic-20261015.json
+          retention-days: 30
