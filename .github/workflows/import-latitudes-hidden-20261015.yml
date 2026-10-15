@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/import-latitudes-hidden-20261015.yml'
+      - '.github/scripts/import-latitudes-hidden-20261015.php'
   workflow_dispatch:
 permissions:
   contents: read
@@ -33,7 +34,7 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=20 -p $PORT"
           SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
           PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
             set -e
@@ -63,7 +64,7 @@ jobs:
             "
           }
           remote_wp preflight
-          for i in $(seq 1 10); do
+          for i in $(seq 1 40); do
             result="$(remote_wp batch)"
             printf '%s\n' "$result"
             remaining="$(printf '%s\n' "$result" | sed -nE 's/.*"remaining":([0-9]+).*/\1/p' | tail -n1)"
