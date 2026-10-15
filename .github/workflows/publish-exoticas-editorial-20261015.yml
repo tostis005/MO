@@ -95,7 +95,7 @@ jobs:
           DIR="/tmp/emdo-exoticas-${GITHUB_RUN_ID}"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$DIR'"
           sshpass -e scp $SCP .github/data/editorial-exoticas-20261015.json .github/scripts/publish-exoticas-editorial-20261015.php "$STAGING_USER@$STAGING_HOST:$DIR/"
-          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '\''$DIR'\''" >/dev/null 2>&1 || true' EXIT
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf $DIR" >/dev/null 2>&1 || true' EXIT
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_EXO_PAYLOAD='$DIR/editorial-exoticas-20261015.json' '$PHP' -d memory_limit=768M '$WP' eval-file '$DIR/publish-exoticas-editorial-20261015.php' --path='$PROD' --allow-root" | tee /tmp/exoticas.log
           grep -q '^EMDO_EXO_RELEASE ' /tmp/exoticas.log
           sed -n 's/^EMDO_EXO_RELEASE //p' /tmp/exoticas.log | tail -n1 > /tmp/exoticas-result.json
@@ -115,8 +115,8 @@ jobs:
           }
           jq -r '.posts[] | [.slug,.en_slug] | @tsv' .github/data/editorial-exoticas-20261015.json |
           while IFS=$'\t' read -r es en; do
-            verify_page "$es" 'carnes' ''
-            verify_page "$en" 'meat' 'en/'
+            verify_page "$es" 'EMDO_EXO_NEW_20261015' ''
+            verify_page "$en" 'EMDO_EXO_NEW_20261015' 'en/'
           done
           jq -r '.updates[].slug' .github/data/editorial-exoticas-20261015.json |
           while IFS= read -r es; do
