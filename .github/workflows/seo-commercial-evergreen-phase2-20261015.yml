@@ -1,0 +1,130 @@
+name: SEO commercial evergreen phase 2 production
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/seo-commercial-evergreen-phase2-20261015.php'
+      - 'mu-plugins/mdo-commercial-vegetables-dedupe-20261015.php'
+      - '.github/workflows/seo-commercial-evergreen-phase2-20261015.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mdo-seo-commercial-evergreen-20261015
+  cancel-in-progress: false
+jobs:
+  deploy-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate scripts and secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/seo-commercial-evergreen-phase2-20261015.php
+          php -l mu-plugins/mdo-commercial-vegetables-dedupe-20261015.php
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+      - name: Install and run editorial improvements
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] && [ -n "$php" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              path=$(dirname "$cfg")
+              site=$("$php" "$wp" option get siteurl --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$site" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s|%s|%s" "$path" "$php" "$wp"; break;;
+              esac
+            done
+          ')"
+          [ -n "$INFO" ] || exit 3
+          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
+          echo "PROD_PATH=$PROD" >> "$GITHUB_ENV"
+          echo "EV_WP=$WP" >> "$GITHUB_ENV"
+          RDIR="/tmp/mdo-evergreen-$GITHUB_RUN_ID"
+          TARGET="$PROD/wp-content/mu-plugins/mdo-commercial-vegetables-dedupe-20261015.php"
+          BACKUP="/tmp/mdo-commercial-vegetables-dedupe-backup-$GITHUB_RUN_ID.php"
+          echo "EV_REMOTE=$RDIR" >> "$GITHUB_ENV"
+          echo "EV_BACKUP=$BACKUP" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$RDIR' '$PROD/wp-content/mu-plugins'; if [ -f '$TARGET' ]; then cp -p '$TARGET' '$BACKUP'; fi"
+          sshpass -e scp $SCP .github/scripts/seo-commercial-evergreen-phase2-20261015.php "$STAGING_USER@$STAGING_HOST:$RDIR/apply.php"
+          sshpass -e scp $SCP mu-plugins/mdo-commercial-vegetables-dedupe-20261015.php "$STAGING_USER@$STAGING_HOST:$RDIR/dedupe.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP' -l '$RDIR/apply.php' >/dev/null && '$PHP' -l '$RDIR/dedupe.php' >/dev/null && install -m 0644 '$RDIR/dedupe.php' '$TARGET'"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$RDIR/apply.php' --path='$PROD' --allow-root" | tee /tmp/ev-apply.log
+          sed -n 's/^MDO_EVERGREEN_RESULT //p' /tmp/ev-apply.log | tail -n1 > /tmp/ev-apply.json
+          jq -e '.checks.veg_has_commercial_copy == true and .checks.article_count == 4 and .checks.article_marker_count == 4' /tmp/ev-apply.json >/dev/null
+          echo 'EDITORIAL_WP_CONTENT_UPDATES_OK'
+      - name: Verify public HTML and commercial links
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends python3-bs4 >/dev/null
+          /usr/bin/python3 - <<'PY'
+          from urllib.request import Request, urlopen
+          from bs4 import BeautifulSoup
+          from urllib.parse import urlparse
+          import time
+          urls = {
+            "veg": ("/categoria-producto/hortalizas-verduras/","Si buscas comprar verduras y hortalizas online", "/categoria-producto/hortalizas-verduras/"),
+            "meat": ("/comprar-carne-online-que-mirar-antes-elegir-corte/","Cuando la compra es a un ganadero o a un especialista","/categoria-producto/carnes/"),
+            "gourmet": ("/como-comprar-alimentos-gourmet-online-que-mirar-ademas-precio/","Explora por familias de alimentos, no solo por etiquetas comerciales","/categoria-producto/aceites/"),
+            "season": ("/verduras-temporada-espana-calendario-meses-que-comprar/","Del calendario orientativo al pedido real","/categoria-producto/hortalizas-verduras/"),
+            "aove": ("/que-significa-aceite-oliva-virgen-extra/","Qué cambia al comprar a una almazara","/categoria-producto/aceites/"),
+          }
+          root="https://www.elmercadodeorigen.com"
+          for key,(route,needle,link) in urls.items():
+            request=Request(root+route+"?mdo_evergreen_audit="+str(int(time.time())),headers={"Cache-Control":"no-cache","User-Agent":"MDO-Editorial-QA/2026"})
+            with urlopen(request,timeout=85) as res:
+              assert res.status==200, (key,res.status)
+              html=res.read().decode("utf-8","replace")
+            soup=BeautifulSoup(html,"html.parser")
+            text=soup.get_text(" ",strip=True)
+            can=soup.find("link",rel=lambda v:v and "canonical" in v)
+            canon=urlparse(can.get("href","")).path if can else ""
+            print(key,"bytes",len(html),"has_needle",needle in text,"mentions",text.count(needle),"canonical",canon)
+            assert canon==route,(key,"canonical",canon)
+            assert needle in text,(key,"missing copy")
+            assert text.count(needle)==1,(key,"duplicated copy")
+            assert soup.find("a",href=lambda v:v and link in v),(key,"commercial link missing")
+          print("EVERGREEN_PUBLIC_HTML_OK")
+          PY
+      - name: Roll back site content and plugin on failure
+        if: failure() && env.PROD_PATH != ''
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set +e
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          RDIR="$EV_REMOTE"
+          PROD="$PROD_PATH"
+          php_bin="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "command -v php" || true)"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export MDO_EV_ROLLBACK=1; '$php_bin' -d memory_limit=768M '$EV_WP' eval-file '$RDIR/apply.php' --path='$PROD' --allow-root" || true
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "if [ -f '$EV_BACKUP' ]; then install -m 0644 '$EV_BACKUP' '$PROD/wp-content/mu-plugins/mdo-commercial-vegetables-dedupe-20261015.php'; else rm -f '$PROD/wp-content/mu-plugins/mdo-commercial-vegetables-dedupe-20261015.php'; fi" || true
+      - name: Remove temporary scripts
+        if: always() && env.PROD_PATH != ''
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$EV_REMOTE' '$EV_BACKUP'" || true
