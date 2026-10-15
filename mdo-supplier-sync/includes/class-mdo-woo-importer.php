@@ -116,6 +116,19 @@ final class MDO_Woo_Importer {
 		update_post_meta( $product_id, '_emdo_supplier_id', (int) $row['supplier_id'] );
 		update_post_meta( $product_id, '_emdo_source_url', esc_url_raw( (string) $row['source_url'] ) );
 		update_post_meta( $product_id, '_emdo_source_hash', sanitize_text_field( (string) $row['source_hash'] ) );
+		// Product-title heuristics elsewhere in WooCommerce sometimes add
+		// "Packs y lotes" to simple multi-unit packs (e.g. two burger patties or
+		// 250 g of frog legs). That category is reserved for genuine mixed
+		// assortments: a supplier-specific, post-save guard prevents taxonomy
+		// drift on every future Latitudes synchronization.
+		if ( 'latitudes' === (string) $supplier['code'] &&
+			! str_contains( (string) $row['source_url'], '/pack-medallones-exoticos-' ) ) {
+			$packs = get_term_by( 'slug', 'packs-y-lotes', 'product_cat' );
+			if ( $packs instanceof WP_Term && has_term( (int) $packs->term_id, 'product_cat', $product_id ) ) {
+				wp_remove_object_terms( $product_id, (int) $packs->term_id, 'product_cat' );
+			}
+		}
+
 
 		$wpdb->update(
 			$table,
