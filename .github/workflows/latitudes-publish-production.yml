@@ -89,6 +89,8 @@ jobs:
           : "${PROD_KEY:?Configura el secret PRODUCTION_SSH_KEY}"
           : "${PROD_HOST_KEYS:?Configura el secret PRODUCTION_KNOWN_HOSTS con la huella validada}"
           : "${PROD_WP_PATH:?Configura el secret PRODUCTION_WP_PATH}"
+          echo "Destino exclusivo: https://www.elmercadodeorigen.com (PRODUCCIÓN)"
+          echo "Este workflow NO despliega en dev.elmercadodeorigen.com."
           PORT="${PROD_PORT:-22}"
           [[ "$PROD_HOST" =~ ^[A-Za-z0-9.-]+$ ]]
           [[ "$PROD_USER" =~ ^[A-Za-z0-9._-]+$ ]]
@@ -135,6 +137,11 @@ jobs:
             echo "No se encontró wp-config.php en la ruta configurada" >&2
             exit 1
           }
+          case "$wp_path" in
+            */dev.elmercadodeorigen.com/*|*/staging/*|*/development/*)
+              echo "ERROR: la ruta apunta a desarrollo, no a producción." >&2
+              exit 1 ;;
+          esac
           test -f "$php_file" || exit 1
           wp_bin="$(command -v wp || true)"
           test -n "$wp_bin" || { echo "WP-CLI no está disponible." >&2; exit 1; }
@@ -143,9 +150,32 @@ jobs:
             php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"
           fi
           test -x "$php_bin" || { echo "PHP CLI no disponible." >&2; exit 1; }
+          home="$( "$php_bin" -d memory_limit=512M "$wp_bin" option get home --path="$wp_path" --skip-plugins --skip-themes --allow-root )"
+          siteurl="$( "$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$wp_path" --skip-plugins --skip-themes --allow-root )"
+          case "$home" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
+            *) echo "ERROR: WordPress home no es producción: $home" >&2; exit 1 ;;
+          esac
+          case "$siteurl" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
+            *) echo "ERROR: siteurl no es producción: $siteurl" >&2; exit 1 ;;
+          esac
+          echo "WordPress producción validado: $home"
           LATITUDES_MODE="$mode" "$php_bin" -d memory_limit=512M "$wp_bin" \
             eval-file "$php_file" --path="$wp_path" --skip-themes --allow-root
           REMOTE
 
+      - name: Verificar escaparate de PRODUCCIÓN tras publicar
+        if: inputs.mode == 'publish'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --max-time 45 \
+            "https://www.elmercadodeorigen.com/tienda/?latitudes_verificacion=${GITHUB_RUN_ID}" \
+            -o /tmp/latitudes-production-shop.html
+          test -s /tmp/latitudes-production-shop.html
+          echo "Respuesta HTTP 200 en www.elmercadodeorigen.com/tienda/ (bypass de caché con querystring)."
+          echo "La comprobación HTTP no sustituye la lectura de RESUMEN ni confirma por sí sola que los productos sean visibles."
+
       - name: Resultado
-        run: echo "Consulta el recuento RESUMEN en los registros del paso anterior."
+        run: echo "Destino producción: www.elmercadodeorigen.com. Comprueba RESUMEN en los registros."
