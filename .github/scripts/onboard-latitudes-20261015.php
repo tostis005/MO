@@ -129,7 +129,8 @@ if ( 'setup' === $phase ) {
         if ( $logo ) { $profile['gravatar'] = (string) $logo; }
     }
     if ( empty( $profile['banner'] ) ) {
-        $banner = $media( $candidate_images['banner'], 'Latitudes - imagen de cabecera', 900 );
+        // Verified homepage promo images are only 635x402; use a native-resolution triptych instead.
+        $banner = 0;
         if ( ! $banner && function_exists( 'imagecreatefromstring' ) ) {
             $photo_urls = array(
                 'https://latitudes.es/wp-content/uploads/2020/04/Pollo.jpg',
