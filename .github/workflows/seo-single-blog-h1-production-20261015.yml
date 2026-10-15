@@ -1,0 +1,140 @@
+name: SEO blog one H1 with existing page header layout
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/single-post.php'
+      - '.github/workflows/seo-single-blog-h1-production-20261015.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mdo-single-blog-h1-20261015
+  cancel-in-progress: false
+jobs:
+  guarded-theme-file-update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: PHP syntax and expected parent hash
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/single-post.php
+          git show HEAD^:elmercadodeorigen-child/single-post.php | sha256sum | awk '{print $1}' > /tmp/mdo-original-template.sha
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+      - name: Deploy single file only when server is in sync
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] && [ -n "$php" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              path=$(dirname "$cfg")
+              site=$("$php" "$wp" option get siteurl --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$site" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s|%s|%s" "$path" "$php" "$wp"; break;;
+              esac
+            done
+          ')"
+          [ -n "$INFO" ] || exit 3
+          PROD="${INFO%%|*}";REST="${INFO#*|}";PHP="${REST%%|*}";WP="${REST#*|}"
+          TARGET="$PROD/wp-content/themes/elmercadodeorigen-child/single-post.php"
+          BACKUP="/tmp/mdo-single-post-h1-before-$GITHUB_RUN_ID.php"
+          REMOTE="/tmp/mdo-single-post-h1-new-$GITHUB_RUN_ID.php"
+          echo "MDO_PROD=$PROD" >> "$GITHUB_ENV"
+          echo "MDO_PHP=$PHP" >> "$GITHUB_ENV"
+          echo "MDO_WP=$WP" >> "$GITHUB_ENV"
+          echo "MDO_BACKUP=$BACKUP" >> "$GITHUB_ENV"
+          echo "MDO_REMOTE=$REMOTE" >> "$GITHUB_ENV"
+          EXPECTED="$(cat /tmp/mdo-original-template.sha)"
+          ACTUAL="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sha256sum '$TARGET' | cut -d ' ' -f1")"
+          echo "Expected live template SHA256: $EXPECTED"
+          echo "Actual live template SHA256: $ACTUAL"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::Production single-post.php differs from the repository parent. Do not overwrite untracked live changes."
+            exit 6
+          fi
+          sshpass -e scp $SCP elmercadodeorigen-child/single-post.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP' -l '$REMOTE' >/dev/null && cp -p '$TARGET' '$BACKUP' && install -m 0644 '$REMOTE' '$TARGET'"
+          echo 'MDO_TARGET_UPDATED=1' >> '$GITHUB_ENV'
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' eval 'if ( has_action(\"litespeed_purge_all\") ) { do_action(\"litespeed_purge_all\"); }' --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+      - name: Verify article H1 one per page and breadcrumbs preserved
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends python3-bs4 >/dev/null
+          /usr/bin/python3 - <<'PY'
+          from urllib.request import urlopen,Request
+          from bs4 import BeautifulSoup
+          from urllib.parse import urlsplit
+          from time import time
+          routes=[
+            '/comprar-directamente-al-productor-como-funciona/',
+            '/comprar-carne-online-que-mirar-antes-elegir-corte/',
+            '/que-significa-aceite-oliva-virgen-extra/',
+            '/productos-proximidad-que-son-como-reconocerlos-comprarlos/',
+            '/en/how-to-identify-local-food-and-where-to-buy-it/',
+            '/en/buying-fresh-vegetables-online-seasonality-origin-delivery/'
+          ]
+          for path in routes:
+            url='https://www.elmercadodeorigen.com'+path+'?mdo_single_h1_check='+str(int(time()))
+            with urlopen(Request(url,headers={'Cache-Control':'no-cache','User-Agent':'MDO-One-H1-QA'}),timeout=85) as r:
+              assert r.status==200,(path,r.status)
+              soup=BeautifulSoup(r.read().decode('utf8','replace'),'html.parser')
+            h1=soup.find_all('h1')
+            hero=soup.select_one('article.emo-article .emo-article-hero h1')
+            header=soup.select_one('.page-header .entry-title')
+            breadcrumb=soup.select_one('.page-header nav.woostify-breadcrumb')
+            can=soup.find('link',rel=lambda x:x and 'canonical' in x)
+            can_path=urlsplit(can.get('href','')).path if can else ''
+            print('H1_QA',path,'count',len(h1),'hero',bool(hero),'header_label',header.name if header else None,'breadcrumb',bool(breadcrumb),'canonical',can_path)
+            assert len(h1)==1,(path,'duplicate H1')
+            assert hero is h1[0],(path,'canonical post hero H1 changed')
+            assert header is not None and header.name=='div',(path,'Woostify header not demoted')
+            assert breadcrumb is not None,(path,'breadcrumb removed')
+            assert can_path==path,(path,'canonical mismatch')
+          # Shop categories are explicitly outside this fix.
+          url='https://www.elmercadodeorigen.com/categoria-producto/hortalizas-verduras/?mdo_single_h1_check='+str(int(time()))
+          with urlopen(Request(url,headers={'Cache-Control':'no-cache','User-Agent':'MDO-One-H1-QA'}),timeout=85) as r:
+            soup=BeautifulSoup(r.read().decode('utf8','replace'),'html.parser')
+          header=soup.select_one('.page-header h1.entry-title')
+          assert header is not None,'Shop category parent H1 unexpectedly changed'
+          print('ONE_H1_AND_BREADCRUMBS_OK')
+          PY
+      - name: Restore exact original file if deployment fails QA
+        if: failure() && env.MDO_TARGET_UPDATED == '1'
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set +e
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p ${STAGING_PORT:-22}"
+          TARGET="$MDO_PROD/wp-content/themes/elmercadodeorigen-child/single-post.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "if [ -f '$MDO_BACKUP' ]; then install -m 0644 '$MDO_BACKUP' '$TARGET'; fi" || true
+      - name: Remove temporary remote files
+        if: always() && env.MDO_PROD != ''
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p ${STAGING_PORT:-22}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$MDO_BACKUP' '$MDO_REMOTE'" || true
