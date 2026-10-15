@@ -63,6 +63,17 @@ if ( ! is_wp_error( $home ) ) {
             $backgrounds[] = (string) $m[1];
         }
     }
+    $dimensions = array();
+    foreach ( array_slice( $img_list, 0, 12 ) as $img ) {
+        $u = (string) $img['src'];
+        if ( str_starts_with( $u, '//' ) ) { $u = 'https:' . $u; }
+        if ( ! str_contains( $u, 'latitudes.es/wp-content/uploads/' ) ) { continue; }
+        $response = wp_safe_remote_get( $u, array( 'timeout' => 15, 'limit_response_size' => 5000000 ) );
+        if ( is_wp_error( $response ) ) { continue; }
+        $meta = @getimagesizefromstring( (string) wp_remote_retrieve_body( $response ) );
+        $dimensions[] = array( 'url' => $u, 'size' => $meta ? array( $meta[0], $meta[1] ) : null );
+    }
+    echo 'LATITUDES_ASSET_DIMENSIONS=' . wp_json_encode( $dimensions, JSON_UNESCAPED_SLASHES ) . PHP_EOL;
     echo 'LATITUDES_ASSETS=' . wp_json_encode( array( 'images' => array_slice( $img_list, 0, 25 ), 'backgrounds' => array_slice( array_unique( $backgrounds ), 0, 15 ) ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) . PHP_EOL;
 }
 
