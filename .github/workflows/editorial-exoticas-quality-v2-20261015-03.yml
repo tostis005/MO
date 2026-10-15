@@ -1,0 +1,105 @@
+name: Editorial quality v2 batch 03 four bilingual articles
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/data/editorial-exoticas-quality-v2-20261015-03.json'
+      - '.github/scripts/editorial-exoticas-quality-v2-20261015-03.php'
+      - '.github/workflows/editorial-exoticas-quality-v2-20261015-03.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emdo-quality-editorial-20261015-01
+  cancel-in-progress: false
+
+jobs:
+  publish-production:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint and review manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/editorial-exoticas-quality-v2-20261015-03.php
+          python3 - <<'PY'
+          import json,re
+          p=json.load(open('.github/data/editorial-exoticas-quality-v2-20261015-03.json'))
+          assert p['batch']=='quality-v2-20261015-03'
+          a=p['posts'];assert len(a)==4 and len(set(x['slug'] for x in a))==4
+          intros_es=[];intros_en=[]
+          for x in a:
+              for lang,minimum in [('es',640),('en',550)]:
+                  txt=re.sub('<[^>]*>',' ',x[lang]); wc=len(re.findall(r'\b\w+\b',txt))
+                  assert wc>=minimum, (x['slug'],lang,wc)
+                  assert 'Preguntas frecuentes' not in x[lang] and 'Frequently asked questions' not in x[lang]
+                  assert len(re.findall(r'<h2>',x[lang]))>=4
+                  assert len(re.findall(r'<a href=',x[lang]))>=2
+              assert 'https://www.elmercadodeorigen.com/en/' in x['en']
+              assert len(x['es_desc'])<175 and len(x['en_desc'])<175
+              intros_es.append(re.sub('<[^>]*>',' ',x['es'])[:120])
+              intros_en.append(re.sub('<[^>]*>',' ',x['en'])[:120])
+          assert len(set(intros_es))==4 and len(set(intros_en))==4
+          print('EDITORIAL_QA_PREFLIGHT=4 bilingual non-templated articles')
+          PY
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+      - name: Update WordPress and verify both languages
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          BASE='https://www.elmercadodeorigen.com'
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] && [ -n "$php" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              path=$(dirname "$cfg")
+              site=$("$php" "$wp" option get siteurl --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$site" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s|%s|%s" "$path" "$php" "$wp"; break ;;
+              esac
+            done
+          ')"
+          [ -n "$INFO" ] || exit 3
+          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
+          DIR="/tmp/emdo-quality-v2-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$DIR'"
+          sshpass -e scp $SCP .github/data/editorial-exoticas-quality-v2-20261015-03.json .github/scripts/editorial-exoticas-quality-v2-20261015-03.php "$STAGING_USER@$STAGING_HOST:$DIR/"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf $DIR" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_QUALITY_PAYLOAD='$DIR/editorial-exoticas-quality-v2-20261015-03.json' '$PHP' -d memory_limit=768M '$WP' eval-file '$DIR/editorial-exoticas-quality-v2-20261015-03.php' --path='$PROD' --allow-root" | tee /tmp/emdo-quality-v2.log
+          sed -n 's/^EMDO_QUALITY_V2 //p' /tmp/emdo-quality-v2.log | tail -n1 > /tmp/emdo-quality-v2.json
+          jq -e '.verified == true and .count == 4 and .batch == "quality-v2-20261015-03" and all(.posts[]; .es_words>=650 and .en_words>=570)' /tmp/emdo-quality-v2.json >/dev/null
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+          validate(){
+            url="$1"; file=/tmp/quality-v2-public.html
+            status=$(curl -L -sS --retry 3 --connect-timeout 12 --max-time 45 -A 'Mozilla/5.0 editorial quality checker' -H 'Cache-Control: no-cache' -o "$file" -w '%{http_code}' "$url?editorial_v2=${GITHUB_RUN_ID}")
+            [ "$status" = 200 ] && [ "$(wc -c < "$file")" -gt 8000 ] && grep -q 'EMDO_QUALITY_V2_20261015_03' "$file" || { echo "Editorial quality public check failed: $url $status" >&2; exit 1; }
+            echo "EDITORIAL_V2_PUBLIC_OK $url"
+          }
+          while IFS=$'\t' read -r es en; do
+            validate "$BASE/$es/"
+            validate "$BASE/en/$en/"
+          done < <(jq -r '.posts[] | [.slug,.en_slug] | @tsv' .github/data/editorial-exoticas-quality-v2-20261015-03.json)
+          for url in "$BASE/" "$BASE/blog/" "$BASE/tienda/" "$BASE/category/carnes-exoticas/"; do
+            s=$(curl -sSL --max-time 35 -o /dev/null -w '%{http_code}' "$url?editorial_v2=${GITHUB_RUN_ID}")
+            [ "$s" = 200 ] || { echo "Health failure: $url HTTP $s" >&2; exit 1; }
+          done
+          echo 'EMDO_EDITORIAL_V2_03_PRODUCTION_VERIFIED=4+4'
