@@ -131,4 +131,59 @@ if ( $sup_row ) {
     $report['latitudes_quality'] = $summary;
 }
 
+
+$sample_urls = array(
+    'foie' => 'https://latitudes.es/exoticos/pato/foie-de-pato-pieza-700-g-aprox/',
+    'magret' => 'https://latitudes.es/exoticos/pato/magret-de-pato-pieza-390-gr-aprox/',
+);
+$report['latitudes_stock_diagnostic'] = array();
+foreach ( $sample_urls as $key => $sample_url ) {
+    $response = wp_safe_remote_get( $sample_url, array( 'timeout' => 30, 'headers' => array( 'Cache-Control' => 'no-cache' ) ) );
+    if ( is_wp_error( $response ) ) {
+        $report['latitudes_stock_diagnostic'][ $key ] = array( 'error' => $response->get_error_message() );
+        continue;
+    }
+    $html = (string) wp_remote_retrieve_body( $response );
+    $doc = new DOMDocument();
+    $old = libxml_use_internal_errors( true );
+    $doc->loadHTML( '<?xml encoding="utf-8" ?>' . $html, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING );
+    libxml_clear_errors(); libxml_use_internal_errors( $old );
+    $xp = new DOMXPath( $doc );
+    $nodes = array();
+    foreach ( $xp->query( "//*[contains(concat(' ',normalize-space(@class),' '),' stock ') or contains(concat(' ',normalize-space(@class),' '),' availability ')]" ) ?: array() as $node ) {
+        $nodes[] = array(
+            'tag' => $node->nodeName,
+            'class' => $node->getAttribute( 'class' ),
+            'text' => mb_substr( trim( preg_replace( '/\\s+/u', ' ', $node->textContent ) ), 0, 130 ),
+        );
+    }
+    $offer_data = array();
+    foreach ( $xp->query( "//script[contains(translate(@type,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'ld+json')]" ) ?: array() as $node ) {
+        $script = (string) $node->textContent;
+        if ( strpos( $script, '"availability"' ) !== false || strpos( $script, '"@type"' ) !== false ) {
+            $offer_data[] = array( 'product_stock_matches' => array_slice( array_values( array_unique( array_filter( array_map(
+                static function( $chunk ) { return strpos( strtolower( $chunk ), 'instock' ) !== false || strpos( strtolower( $chunk ), 'outofstock' ) !== false ? mb_substr( $chunk, 0, 130 ) : ''; },
+                preg_split( '/[{}]/', $script )
+            ) ) ) ), 0, 8 ), 'bytes' => strlen( $script ) );
+        }
+    }
+    $product = MDO_Connector_Latitudes::scrape_product( $sample_url );
+    $record = $wpdb->get_row( $wpdb->prepare(
+        "SELECT id,status,source_stock_status,wc_product_id,source_payload FROM {$source_table} WHERE supplier_id=%d AND source_url=%s LIMIT 1",
+        $supplier_id, $sample_url
+    ), ARRAY_A );
+    $wc = $record && ! empty( $record['wc_product_id'] ) ? wc_get_product( (int) $record['wc_product_id'] ) : false;
+    $report['latitudes_stock_diagnostic'][ $key ] = array(
+        'status' => wp_remote_retrieve_response_code( $response ),
+        'nodes' => array_slice( $nodes, 0, 12 ),
+        'schema' => array_slice( $offer_data, 0, 4 ),
+        'scraped_stock' => $product['stock_status'],
+        'emdo_stock' => $record['source_stock_status'] ?? null,
+        'wc_stock' => $wc ? $wc->get_stock_status() : null,
+        'source_status' => $record['status'] ?? null,
+        'raw_excerpt_add_to_cart' => strpos( $html, 'single_add_to_cart_button' ) !== false,
+        'raw_excerpt_soldout' => strpos( $html, 'Out of stock' ) !== false,
+    );
+}
+
 echo 'LATITUDES_READONLY_DIAGNOSTIC=' . wp_json_encode( $report, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
