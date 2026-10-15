@@ -54,7 +54,7 @@ HTML,
 <h2>Local, direct, seasonal and organic describe different things</h2>
 <p><strong>Local or proximity</strong> refers to a geographical relationship between a product and a specific place.</p>
 <p><strong>Direct-from-producer</strong> describes the commercial route. A buyer may purchase directly from a producer in another part of the country, including through an online platform. Direct does not automatically mean nearby.</p>
-<p><strong>Seasonal</strong> concerns when a particular crop is typically produced in a region. Climate, variety, protected cultivation and storage can change the picture. Our <a href="/en/vegetables-in-season-spain-month-by-month/">guide to Spanish seasonal vegetables</a> explains why a calendar is a guide rather than a guarantee.</p>
+<p><strong>Seasonal</strong> concerns when a particular crop is typically produced in a region. Climate, variety, protected cultivation and storage can change the picture. Our <a href="/en/category/vegetables/">guide to Spanish seasonal vegetables</a> explains why a calendar is a guide rather than a guarantee.</p>
 <p><strong>Organic</strong> refers to a production system with specific rules and controls when foods are marketed under that protected description. Organic food can be imported or sold through intermediaries; local food is not necessarily organic.</p>
 
 <h2>How to check origin beyond a marketing claim</h2>
