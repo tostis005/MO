@@ -1,0 +1,33 @@
+name: SEO commercial evergreen final public audit
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/seo-commercial-evergreen-public-audit-20261015.py'
+      - 'docs/SEO_COMERCIAL_EVERGREEN_MEDICION_2026-10-15.md'
+      - '.github/workflows/seo-commercial-evergreen-final-audit-20261015.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install HTML parser
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends python3-bs4 >/dev/null
+          /usr/bin/python3 -m py_compile tests/seo-commercial-evergreen-public-audit-20261015.py
+      - name: Audit 13 public commercial pages read-only
+        run: |
+          /usr/bin/python3 tests/seo-commercial-evergreen-public-audit-20261015.py
+      - name: Save transparent baseline report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seo-commercial-live-baseline-20261015
+          path: seo-commercial-live-audit-20261015.json
+          if-no-files-found: warn
+          retention-days: 90
