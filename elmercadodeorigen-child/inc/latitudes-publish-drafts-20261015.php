@@ -74,6 +74,46 @@ function elmercado_latitudes_draft_preflight_20261015(): array {
 	return $result;
 }
 
+/**
+ * Da pistas del origen del estado borrador y permite compararlo con los
+ * permisos del usuario importador. No modifica ajustes del plugin.
+ */
+function elmercado_latitudes_draft_origin_admin_panel_20261015(): void {
+	if ( ! current_user_can( 'manage_woocommerce' ) ) {
+		return;
+	}
+	$vendor_id = function_exists( 'elmercado_latitudes_vendor_id_20261015' )
+		? absint( elmercado_latitudes_vendor_id_20261015() ) : 0;
+	$vendor = $vendor_id > 0 ? get_userdata( $vendor_id ) : false;
+	?>
+	<h3>¿Por qué está importando como borrador?</h3>
+	<p>La causa ya es el estado <code>draft</code>; para evitar recurrencias hay que identificar quién lo escribe. Ningún ajuste de caché o envío convierte un borrador en publicado.</p>
+	<table class="widefat striped"><tbody>
+		<tr><th>Cuenta del vendedor</th><td><?php echo esc_html( $vendor ? $vendor->display_name . ' (#' . $vendor_id . ')' : 'No identificada' ); ?></td></tr>
+		<tr><th>Capacidad de publicar productos del vendedor</th><td><?php echo esc_html( $vendor && user_can( $vendor, 'publish_products' ) ? 'Sí' : 'No; si el importador se ejecuta como este vendedor podría dejar borradores' ); ?></td></tr>
+	</tbody></table>
+	<?php
+	if ( ! function_exists( 'get_plugins' ) ) {
+		require_once ABSPATH . 'wp-admin/includes/plugin.php';
+	}
+	$installed = get_plugins();
+	$active = (array) get_option( 'active_plugins', array() );
+	$related = array();
+	foreach ( $installed as $basename => $plugin ) {
+		if ( ! in_array( $basename, $active, true ) ) {
+			continue;
+		}
+		$label = (string) ( $plugin['Name'] ?? $basename );
+		if ( preg_match( '/import|sync|scrap|wcfm|latitud|marketplace|proveedor/i', $basename . ' ' . $label ) ) {
+			$related[] = $label . ' (' . $basename . ')';
+		}
+	}
+	?>
+	<p><strong>Plugins activos relacionados:</strong> <?php echo esc_html( $related ? implode( ' · ', $related ) : 'Sin coincidencias; comprueba también plugins MU y tareas externas.' ); ?></p>
+	<p><strong>Comprobación necesaria en el importador:</strong> estado del producto al crearlo (<code>post_status</code> o <code>status</code>), usuario/autor elegido y si WCFM exige aprobación de producto. Si el importador sobrescribe el estado en cada sincronización, cambiarlo allí antes de republicar.</p>
+	<?php
+}
+
 /** Publicación POST con nonce: solo Latitudes y solo fichas verificadas. */
 add_action(
 	'admin_post_elmercado_latitudes_publish_drafts_20261015',
@@ -158,6 +198,7 @@ function elmercado_latitudes_draft_publish_admin_panel_20261015(): void {
 	$publishable = (int) $review['publishable'];
 	?>
 	<h2>Publicación de productos importados en borrador</h2>
+	<?php elmercado_latitudes_draft_origin_admin_panel_20261015(); ?>
 	<p>El catálogo público solo muestra <code>publish</code>. Se han localizado
 		<strong><?php echo esc_html( (string) $total ); ?> borradores</strong> atribuidos al autor Latitudes;
 		<strong><?php echo esc_html( (string) $publishable ); ?> completos</strong> según precio, imagen,
