@@ -17,7 +17,7 @@ $summary = array(
     'prices_ok' => 0, 'stocks_ok' => 0, 'images_ok' => 0,
     'visible' => 0, 'duplicates' => 0, 'source_source_urls_ok' => 0,
     'pending' => 0, 'short_content' => 0, 'allergen_declarations_preserved' => 0,
-    'source_allergen_declarations' => 0, 'category_totals' => array(), 'issues' => array(),
+    'source_allergen_declarations' => 0, 'category_totals' => array(), 'unexpected_packs' => array(), 'issues' => array(),
     'manual_review' => array(),
 );
 $hashes = array();
@@ -55,6 +55,10 @@ foreach ( $rows as $row ) {
             $cats[] = $term->slug;
             $summary['category_totals'][ $term->slug ] = ( $summary['category_totals'][ $term->slug ] ?? 0 ) + 1;
         }
+    }
+    if ( in_array( 'packs-y-lotes', $cats, true ) && ! str_contains( (string) $row['source_url'], '/pack-medallones-exoticos-' ) ) {
+        $summary['unexpected_packs'][] = array( 'source_id' => $id, 'title' => $row['title'], 'cats' => $cats );
+        $flags[] = 'unexpected_packs_category';
     }
     if ( $cats && get_post_meta( $pid, '_emdo_latitudes_category_v1', true ) &&
         ! array_intersect( array( 'sin-categorizar','uncategorized','naranjas','embutidos-y-curados' ), $cats ) ) {
