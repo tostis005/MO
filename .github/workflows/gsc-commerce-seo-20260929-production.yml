@@ -59,7 +59,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install --quiet beautifulsoup4
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends python3-bs4 >/dev/null
           ACEITES="https://www.elmercadodeorigen.com/categoria-producto/aceites/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           SOB="https://www.elmercadodeorigen.com/producto/sobrasada-de-bellota-100-iberica/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           AGUJA="https://www.elmercadodeorigen.com/producto/filetes-aguja-de-ternera/?mdo_commerce_verify=${GITHUB_RUN_ID}"
@@ -88,7 +89,7 @@ jobs:
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$HOME" -o /tmp/home-transactional.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$VERDURAS" -o /tmp/verduras-transactional.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$CARNES" -o /tmp/carnes-transactional.html
-          python - <<'PY'
+          /usr/bin/python3 - <<'PY'
           from bs4 import BeautifulSoup
 
           checks = [
