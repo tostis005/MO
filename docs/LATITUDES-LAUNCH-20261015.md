@@ -61,6 +61,19 @@ Regla comercial solicitada por el administrador, que **sustituye** los tramos de
 - Se recomienda no fusionar a producción antes de comprobar el informe y los diez casos de checkout. El tema hijo solo despliega código: no cambia datos de la base de datos, páginas multimedia ni configuraciones WCFM.
 
 
+## Hallazgo confirmado: caché temprana de catálogo y productos
+
+El drop-in `elmercadodeorigen-child/dropins/advanced-cache.php` guarda y sirve páginas públicas **antes de cargar WordPress**:
+
+- `/tienda/` → `wp-content/uploads/elmercado-hot-static-v1/es-shop-root.html` con TTL 300 s y stale hasta 3600 s cuando otra petición revalida.
+- Fichas de producto → `wp-content/uploads/elmercado-product-static-v1/<sha256-ruta>.html` con TTL 600–1200 s y stale hasta 3600 s.
+- La tienda `/tienda/latitudes/` **no está** incluida en la lista de rutas calientes del drop-in.
+- El tema anterior vaciaba transitorios y caché de la portada, pero **no eliminaba el HTML estático de /tienda/**: esa omisión se ha corregido.
+- El módulo `latitudes-cache-maintenance-20261015.php` ahora borra el archivo temprano del catálogo, las fichas individuales de productos de Latitudes ya publicadas, la portada y las URL correspondientes de otros motores reconocidos. También ofrece el botón manual y aplica un debounce de 1 minuto tras eventos normales `save_post_product`.
+- El informe admin muestra si el archivo existe, su antigüedad y si `WP_CACHE` está activo. **No se ha ejecutado ninguna purga en producción** por falta de acceso al servidor; el código queda preparado en la PR.
+
+**Diagnóstico importante:** este hallazgo puede mantener desactualizado el catálogo global, pero **no explica por sí solo** una tienda individual de Latitudes vacía. Si tras el borrado sigue sin mostrar productos, atender primero a la asignación del vendedor, `publish`, stock, `Offline`, `Disabled` y la exclusión por destino.
+
 ## Cómo configurar realmente WCFM por zonas
 
 Las tarifas propuestas en `inc/latitudes-shipping-20261015.php` son una salvaguarda de cálculo de checkout para **paquetes de Latitudes**. **No escriben las reglas en la base de datos** y no sustituyen los requisitos de visibilidad de la capa `MDO_Catalog_Destination_Frontend` del plugin externo.
