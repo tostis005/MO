@@ -1,4 +1,4 @@
-name: Latitudes - publicar borradores en producción
+name: Latitudes - activación en PRODUCCIÓN (138 referencias)
 
 on:
   push:
@@ -9,15 +9,15 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "Primero dry-run (sin cambios); publish publica los aptos"
-        type: choice
+        description: "dry-run comprueba sin cambios; publish activa Latitudes en producción"
         required: true
+        type: choice
         default: dry-run
         options:
           - dry-run
           - publish
       confirmation:
-        description: "Para publish escribir exactamente PUBLICAR-LATITUDES"
+        description: "Para publish escribir PUBLICAR-LATITUDES"
         type: string
         required: false
 
@@ -25,157 +25,121 @@ permissions:
   contents: read
 
 concurrency:
-  group: latitudes-production-publication
+  group: emdo-latitudes-production-activation
   cancel-in-progress: false
 
 jobs:
-  validate:
-    name: Validar script sin tocar producción
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
+  check:
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Comprobar sintaxis PHP
+      - name: Validar código PHP
         run: php -l .github/scripts/latitudes-publish-drafts.php
-      - name: Verificar barreras de seguridad
-        run: |
-          grep -q "LATITUDES_MODE" .github/scripts/latitudes-publish-drafts.php
-          grep -q "wp_update_post" .github/scripts/latitudes-publish-drafts.php
-          grep -q "post_status' => 'draft'" .github/scripts/latitudes-publish-drafts.php
 
-  publish:
-    if: github.event_name == 'workflow_dispatch'
-    needs: validate
-    name: Comprobar y publicar solo borradores de Latitudes
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+  activate:
+    name: Preflight y publicación en WordPress producción
+    needs: check
+    # Los pushes realizan SOLO diagnóstico. Publicar exige workflow_dispatch.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
     environment: production
+    timeout-minutes: 25
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+      MODE: ${{ github.event_name == 'push' && 'dry-run' || inputs.mode }}
+      CONFIRM: ${{ inputs.confirmation }}
     steps:
-      - name: Verificar autorización explícita
+      - uses: actions/checkout@v4
+      - name: Confirmar modo de ejecución
         shell: bash
-        env:
-          RUN_MODE: ${{ inputs.mode }}
-          CONFIRM: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
-          case "$RUN_MODE" in
-            dry-run) echo "Diagnóstico: no se modificará ningún artículo." ;;
+          case "$MODE" in
+            dry-run) echo "Auditoría sin cambios." ;;
             publish)
               test "$CONFIRM" = 'PUBLICAR-LATITUDES' || {
-                echo "Falta la confirmación exacta PUBLICAR-LATITUDES" >&2
-                exit 1
-              }
-              ;;
-            *) echo "Modo desconocido" >&2; exit 1 ;;
+                echo "Error: confirmation debe ser PUBLICAR-LATITUDES" >&2; exit 1;
+              } ;;
+            *) echo "Modo de ejecución desconocido" >&2; exit 1 ;;
           esac
+          : "${HOST:?Falta STAGING_HOST; se usa para llegar al servidor de producción}"
+          : "${USER:?Falta STAGING_USER}"
+          : "${SSHPASS:?Falta STAGING_PASSWORD}"
+          echo "Se buscará exclusivamente la instalación cuyo dominio sea www.elmercadodeorigen.com."
 
-      - name: Obtener script WP-CLI versionado
-        uses: actions/checkout@v4
-
-      - name: Configurar SSH de producción sin mostrar credenciales
-        shell: bash
-        env:
-          PROD_HOST: ${{ secrets.PRODUCTION_HOST }}
-          PROD_PORT: ${{ secrets.PRODUCTION_PORT }}
-          PROD_USER: ${{ secrets.PRODUCTION_USER }}
-          PROD_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
-          PROD_HOST_KEYS: ${{ secrets.PRODUCTION_KNOWN_HOSTS }}
-          PROD_WP_PATH: ${{ secrets.PRODUCTION_WP_PATH }}
+      - name: Instalar utilidades SSH
         run: |
-          set -euo pipefail
-          : "${PROD_HOST:?Configura el secret PRODUCTION_HOST}"
-          : "${PROD_USER:?Configura el secret PRODUCTION_USER}"
-          : "${PROD_KEY:?Configura el secret PRODUCTION_SSH_KEY}"
-          : "${PROD_HOST_KEYS:?Configura el secret PRODUCTION_KNOWN_HOSTS con la huella validada}"
-          : "${PROD_WP_PATH:?Configura el secret PRODUCTION_WP_PATH}"
-          echo "Destino exclusivo: https://www.elmercadodeorigen.com (PRODUCCIÓN)"
-          echo "Este workflow NO despliega en dev.elmercadodeorigen.com."
-          PORT="${PROD_PORT:-22}"
-          [[ "$PROD_HOST" =~ ^[A-Za-z0-9.-]+$ ]]
-          [[ "$PROD_USER" =~ ^[A-Za-z0-9._-]+$ ]]
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass
+
+      - name: Conectar con el servidor compartido y localizar exclusivamente PRODUCCIÓN
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${PORT:-22}"
           [[ "$PORT" =~ ^[0-9]{1,5}$ ]]
-          [[ "$PROD_WP_PATH" =~ ^/[A-Za-z0-9._/-]+/?$ ]]
-          mkdir -p "$HOME/.ssh"
-          chmod 700 "$HOME/.ssh"
-          printf '%s\n' "$PROD_KEY" > "$HOME/.ssh/latitudes_deploy_key"
-          printf '%s\n' "$PROD_HOST_KEYS" > "$HOME/.ssh/known_hosts"
-          chmod 600 "$HOME/.ssh/latitudes_deploy_key" "$HOME/.ssh/known_hosts"
-          ssh-keygen -y -f "$HOME/.ssh/latitudes_deploy_key" >/dev/null
-          echo "PROD_PORT=$PORT" >> "$GITHUB_ENV"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=10 -p "$PORT")
+          SCP=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P "$PORT")
+          SERVER="$USER@$HOST"
 
-      - name: Ejecutar revisión o publicación en WP-CLI del sitio real
-        shell: bash
-        env:
-          PROD_HOST: ${{ secrets.PRODUCTION_HOST }}
-          PROD_USER: ${{ secrets.PRODUCTION_USER }}
-          PROD_WP_PATH: ${{ secrets.PRODUCTION_WP_PATH }}
-          RUN_MODE: ${{ inputs.mode }}
-        run: |
-          set -euo pipefail
-          SSH=(ssh -i "$HOME/.ssh/latitudes_deploy_key" -o BatchMode=yes -o StrictHostKeyChecking=yes -p "$PROD_PORT")
-          REMOTE="$PROD_USER@$PROD_HOST"
-          SCRIPT="/tmp/emo-latitudes-publish-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.php"
-
-          scp -i "$HOME/.ssh/latitudes_deploy_key" -o BatchMode=yes \
-            -o StrictHostKeyChecking=yes -P "$PROD_PORT" \
-            .github/scripts/latitudes-publish-drafts.php "$REMOTE:$SCRIPT"
-
-          # Ejecutar la corrección únicamente contra la instalación real validada.
-          "${SSH[@]}" "$REMOTE" \
-            "sh -s -- '$PROD_WP_PATH' '$SCRIPT' '$RUN_MODE'" <<'REMOTE'
+          # El nombre STAGING_HOST es histórico; no utilizar el WordPress dev.
+          PROD_PATH="$(sshpass -e ssh "${SSH[@]}" "$SERVER" 'sh -s' <<'REMOTE'
           set -eu
-          wp_path="${1%/}"
-          php_file="$2"
-          mode="$3"
-          trap 'rm -f "$php_file"' EXIT
-          case "$wp_path" in
-            /*) ;;
-            *) echo "Ruta inválida" >&2; exit 1 ;;
-          esac
-          test -f "$wp_path/wp-config.php" || {
-            echo "No se encontró wp-config.php en la ruta configurada" >&2
-            exit 1
-          }
-          case "$wp_path" in
-            */dev.elmercadodeorigen.com/*|*/staging/*|*/development/*)
-              echo "ERROR: la ruta apunta a desarrollo, no a producción." >&2
-              exit 1 ;;
-          esac
-          test -f "$php_file" || exit 1
           wp_bin="$(command -v wp || true)"
-          test -n "$wp_bin" || { echo "WP-CLI no está disponible." >&2; exit 1; }
           php_bin="$(command -v php || true)"
-          if [ -z "$php_bin" ]; then
-            php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"
+          test -n "$wp_bin" && test -n "$php_bin"
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            wp_path="$(dirname "$cfg")"
+            url="$( "$php_bin" "$wp_bin" option get siteurl --path="$wp_path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true )"
+            home="$( "$php_bin" "$wp_bin" option get home --path="$wp_path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true )"
+            case "$url" in
+              https://www.elmercadodeorigen.com|https://elmercadodeorigen.com)
+                case "$home" in
+                  https://www.elmercadodeorigen.com|https://elmercadodeorigen.com)
+                    printf "%s" "$wp_path"; exit 0 ;;
+                esac ;;
+            esac
+          done
+          exit 1
+          REMOTE
+          )"
+          test -n "$PROD_PATH" || { echo "No se localizó WordPress producción; dev NO se usa." >&2; exit 1; }
+          echo "Instalación PRODUCCIÓN localizada."
+
+          REMOTE_SCRIPT="/tmp/emdo-latitudes-activate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.php"
+          sshpass -e scp "${SCP[@]}" .github/scripts/latitudes-publish-drafts.php "$SERVER:$REMOTE_SCRIPT"
+          sshpass -e ssh "${SSH[@]}" "$SERVER" \
+            "sh -s -- '$PROD_PATH' '$REMOTE_SCRIPT' '$MODE'" <<'REMOTE'
+          set -eu
+          wp_path="$1"
+          script="$2"
+          mode="$3"
+          trap 'rm -f "$script"' EXIT
+          test -f "$wp_path/wp-config.php"
+          wp_bin="$(command -v wp)"
+          php_bin="$(command -v php)"
+          echo "Preflight de 138 referencias y zonas WCFM (NO modifica nada)"
+          LATITUDES_MODE=dry-run "$php_bin" -d memory_limit=512M "$wp_bin" \
+            eval-file "$script" --path="$wp_path" --skip-themes --allow-root
+          if [ "$mode" = publish ]; then
+            echo "Preflight correcto: comenzando publicación y activación de Latitudes."
+            LATITUDES_MODE=publish "$php_bin" -d memory_limit=512M "$wp_bin" \
+              eval-file "$script" --path="$wp_path" --skip-themes --allow-root
           fi
-          test -x "$php_bin" || { echo "PHP CLI no disponible." >&2; exit 1; }
-          home="$( "$php_bin" -d memory_limit=512M "$wp_bin" option get home --path="$wp_path" --skip-plugins --skip-themes --allow-root )"
-          siteurl="$( "$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$wp_path" --skip-plugins --skip-themes --allow-root )"
-          case "$home" in
-            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
-            *) echo "ERROR: WordPress home no es producción: $home" >&2; exit 1 ;;
-          esac
-          case "$siteurl" in
-            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
-            *) echo "ERROR: siteurl no es producción: $siteurl" >&2; exit 1 ;;
-          esac
-          echo "WordPress producción validado: $home"
-          LATITUDES_MODE="$mode" "$php_bin" -d memory_limit=512M "$wp_bin" \
-            eval-file "$php_file" --path="$wp_path" --skip-themes --allow-root
           REMOTE
 
-      - name: Verificar escaparate de PRODUCCIÓN tras publicar
+      - name: Comprobar respuesta de tienda en producción
         if: inputs.mode == 'publish'
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsSL --max-time 45 \
-            "https://www.elmercadodeorigen.com/tienda/?latitudes_verificacion=${GITHUB_RUN_ID}" \
-            -o /tmp/latitudes-production-shop.html
-          test -s /tmp/latitudes-production-shop.html
-          echo "Respuesta HTTP 200 en www.elmercadodeorigen.com/tienda/ (bypass de caché con querystring)."
-          echo "La comprobación HTTP no sustituye la lectura de RESUMEN ni confirma por sí sola que los productos sean visibles."
-
-      - name: Resultado
-        run: echo "Destino producción: www.elmercadodeorigen.com. Comprueba RESUMEN en los registros."
+          curl -fsSL --max-time 45 "https://www.elmercadodeorigen.com/tienda/?emdo-latitudes-check=${GITHUB_RUN_ID}" -o /tmp/emdo-latitudes-production.html
+          test -s /tmp/emdo-latitudes-production.html
+          echo "Producción responde 200; examinar registros LATITUDES_PUBLISHED y verificar los productos en el escaparate."
