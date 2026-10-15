@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO Category SEO Description
  * Description: Renders the persisted ES/EN description on public product-category archives.
- * Version: 2026.10.15.1
+ * Version: 2026.08.21.2
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
@@ -71,11 +71,3 @@ add_action( 'wp_head', static function (): void {
     if ( ! function_exists( 'is_product_category' ) || ! is_product_category() || is_paged() ) return;
     echo '<style id="emdo-category-seo-description-css">.emdo-seo-category-description{max-width:920px;line-height:1.65}.emdo-seo-category-description--above{margin:0 0 24px}.emdo-seo-category-description--below{margin:32px 0 8px}.emdo-seo-category-description p:last-child{margin-bottom:0}</style>';
 }, 50 );
-
-// On the vegetable category, our persisted description renderer is the single
-// authoritative instance. Suppress WooCommerce's second output of the same text.
-add_action('wp', static function (): void {
-    if (!function_exists('is_product_category') || !is_product_category('hortalizas-verduras')) return;
-    if (emdo_category_seo_current_description() === '') return;
-    remove_action('woocommerce_archive_description','woocommerce_taxonomy_archive_description',10);
-}, 20);
