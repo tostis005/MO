@@ -82,6 +82,12 @@ jobs:
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$JAMON_CEBO50" -o /tmp/jamon-cebo50.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$TENDERLOIN" -o /tmp/tenderloin.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EVOO15" -o /tmp/evoo15.html
+          HOME="https://www.elmercadodeorigen.com/?mdo_commerce_verify=${GITHUB_RUN_ID}"
+          VERDURAS="https://www.elmercadodeorigen.com/categoria-producto/hortalizas-verduras/?mdo_commerce_verify=${GITHUB_RUN_ID}"
+          CARNES="https://www.elmercadodeorigen.com/categoria-producto/carnes/?mdo_commerce_verify=${GITHUB_RUN_ID}"
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$HOME" -o /tmp/home-transactional.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$VERDURAS" -o /tmp/verduras-transactional.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$CARNES" -o /tmp/carnes-transactional.html
           python - <<'PY'
           from bs4 import BeautifulSoup
 
@@ -115,6 +121,26 @@ jobs:
                   assert desc and desc_signal.lower() in desc.lower(), f'{label}: reviewed English description lost key intent: {desc!r}'
               assert canon.endswith(canonical_path), f'{label}: unexpected canonical: {canon!r}'
               assert h1 is not None, f'{label}: H1 missing'
+
+          commercial_targets = [
+              ('HOME', '/tmp/home-transactional.html', 'Comprar directamente al productor | El Mercado de Origen', 'Compra alimentos de productores españoles', '/'),
+              ('VERDURAS', '/tmp/verduras-transactional.html', 'Comprar verduras online al productor | El Mercado de Origen', 'Compra hortalizas y verduras frescas online', '/categoria-producto/hortalizas-verduras/'),
+              ('CARNES', '/tmp/carnes-transactional.html', 'Comprar carne online a productores | El Mercado de Origen', 'Compra carne online de productores y especialistas', '/categoria-producto/carnes/'),
+          ]
+          from urllib.parse import urlsplit
+          for label, path, expected_title, expected_desc, canonical_path in commercial_targets:
+              soup = BeautifulSoup(open(path, encoding='utf-8').read(), 'html.parser')
+              title = soup.title.get_text(' ', strip=True) if soup.title else ''
+              meta = soup.find('meta', attrs={'name':'description'})
+              desc = meta.get('content', '').strip() if meta else ''
+              canonical = soup.find('link', rel=lambda v: v and 'canonical' in v)
+              actual_path = urlsplit(canonical.get('href', '')).path if canonical else ''
+              h1s = soup.find_all('h1')
+              print(label, 'title=', title, 'description=', desc, 'canonical_path=', actual_path, 'h1_count=', len(h1s))
+              assert title.startswith(expected_title), f'{label}: expected commercial title, got {title!r}'
+              assert desc.startswith(expected_desc), f'{label}: expected commercial description, got {desc!r}'
+              assert actual_path == canonical_path, f'{label}: unexpected canonical {actual_path!r}'
+              assert h1s, f'{label}: missing H1'
 
           aceites = BeautifulSoup(open('/tmp/aceites.html', encoding='utf-8').read(), 'html.parser')
           editorial = aceites.select_one('.emdo-seo-category-description')
