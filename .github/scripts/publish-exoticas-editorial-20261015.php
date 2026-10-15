@@ -58,7 +58,7 @@ try {
             $id=0;
         }
         $arr=['post_type'=>'post','post_status'=>'publish','post_title'=>$a['title'],
-              'post_name'=>$a['slug'],'post_excerpt'=>$a['excerpt'],'post_content'=>$a['content'],
+              'post_name'=>$a['slug'],'post_excerpt'=>$a['excerpt'],'post_content'=>"<!-- EMDO_EXO_NEW_20261015:{$a['slug']} -->\n".$a['content'],
               'post_author'=>$author_id,'comment_status'=>'closed','ping_status'=>'closed'];
         if ($id) { $arr['ID']=$id; }
         $result=$id ? wp_update_post(wp_slash($arr),true) : wp_insert_post(wp_slash($arr),true);
@@ -74,7 +74,7 @@ try {
         update_post_meta($id,'_en_US_post_title',$a['en_title']);
         update_post_meta($id,'_en_US_post_name',$a['en_slug']);
         update_post_meta($id,'_en_US_post_excerpt',$a['en_excerpt']);
-        update_post_meta($id,'_en_US_post_content',$a['en_content']);
+        update_post_meta($id,'_en_US_post_content',"<!-- EMDO_EXO_NEW_20261015:{$a['slug']} -->\n".$a['en_content']);
         update_post_meta($id,'_en_US_seo_title',$a['en_seo_title']);
         update_post_meta($id,'_en_US_seo_description',$a['en_seo_desc']);
         update_post_meta($id,'_en_US_focus_keyword',$a['en_keyword']);
