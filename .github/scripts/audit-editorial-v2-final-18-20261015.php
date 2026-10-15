@@ -45,7 +45,7 @@ foreach($ids as $id) {
  if(!str_contains($en,'EMDO_QUALITY_V2_20261015_'))$problems[]='missing_en_editorial_marker';
  if(str_contains($es,'Preguntas frecuentes') || str_contains($en,'Frequently asked questions'))$problems[]='generic_faq_section';
  if((string)get_post_meta($id,'_en_US_post_name',true)==='')$problems[]='missing_en_slug';
- if($aid<=0 || get_post_status($aid)!=='inherit')$problems[]='no_valid_featured_image';
+ if($aid<=0 || get_post_type($aid)!=='attachment')$problems[]='no_valid_featured_image';
  if($aid>0) {
    if(!str_contains($es,'EMDO_PHOTO_CREDIT_20261015_') || !str_contains($en,'EMDO_PHOTO_CREDIT_20261015_'))$problems[]='missing_photo_credit';
    foreach(['_emdo_photo_source_key','_emdo_photo_original_page','_emdo_photo_author','_emdo_photo_license_url','_wp_attachment_image_alt','_en_US_attachment_alt'] as $k)
