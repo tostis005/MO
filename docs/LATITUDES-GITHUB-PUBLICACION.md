@@ -4,6 +4,8 @@
 
 La herramienta usa GitHub Actions como control remoto para actualizar **los registros de WordPress de la instalación de producción**, sin pasar por el panel de WooCommerce.
 
+**Destino obligatorio: `https://www.elmercadodeorigen.com`. NUNCA `dev.elmercadodeorigen.com`.** El workflow valida mediante WP-CLI que tanto `home` como `siteurl` corresponden al dominio real, rechaza rutas identificadas como staging y, tras la publicación, hace una petición de comprobación a la tienda pública de producción. El despliegue ordinario del tema a `dev` es un workflow diferente e independiente.
+
 ## Preparar conexión (una sola vez)
 
 En el repositorio GitHub, en `Settings → Secrets and variables → Actions`, configurar los siguientes secretos (a nivel de repositorio o del entorno `production`):
@@ -42,4 +44,4 @@ Requisitos del servidor: `wp` (WP-CLI) y PHP CLI accesibles, WooCommerce y WCFM 
 
 ## Alcance de GitHub
 
-El tema hijo disponible en `tostis005/MO` se despliega a staging mediante `.github/workflows/deploy-development.yml`. Fusionar la PR de diseño/diagnóstico [#337](https://github.com/tostis005/MO/pull/337) no publica registros WooCommerce de producción. **El workflow independiente de este documento es el único que ejecuta la publicación mediante SSH/WP-CLI** y requiere los secretos de conexión anteriores. Si faltan, la ejecución fallará de forma segura en la verificación de conexión y no modificará productos.
+El tema hijo disponible en `tostis005/MO` se despliega a staging mediante `.github/workflows/deploy-development.yml`. Fusionar la PR de diseño/diagnóstico [#337](https://github.com/tostis005/MO/pull/337) no publica registros WooCommerce de producción. **El workflow independiente de este documento es el único que ejecuta la publicación mediante SSH/WP-CLI** y requiere los secretos de conexión anteriores. Si faltan, la ejecución fallará de forma segura en la verificación de conexión y no modificará productos. La creación/edición de este workflow solo activa su validación sintáctica en GitHub; para realizar la publicación real hay que lanzar manualmente `workflow_dispatch` en modo `publish` con la confirmación indicada.
