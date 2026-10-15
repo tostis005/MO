@@ -38,6 +38,11 @@ final class MDO_Woo_Importer {
 			throw new RuntimeException( 'Los datos extraídos del producto están incompletos.' );
 		}
 		$payload['title'] = MDO_Text::normalize_title( (string) $payload['title'] );
+		if ( 'latitudes' === (string) $supplier['code'] &&
+			! in_array( (string) ( $payload['stock_status'] ?? 'unknown' ), array( 'instock', 'outofstock' ), true ) ) {
+			throw new RuntimeException( 'Stock de Latitudes sin verificar: se cancela la importación de esta referencia.' );
+		}
+
 
 		$variations = self::usable_variations( $payload );
 		$declared_variations = isset( $payload['variation_count'] ) ? (int) $payload['variation_count'] : 0;
