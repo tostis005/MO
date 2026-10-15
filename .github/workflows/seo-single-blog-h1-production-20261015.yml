@@ -1,10 +1,5 @@
-name: SEO blog one H1 with existing page header layout
+name: DEPRECATED SEO blog H1 experimental deployment — do not run
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'elmercadodeorigen-child/single-post.php'
-      - '.github/workflows/seo-single-blog-h1-production-20261015.yml'
   workflow_dispatch:
 permissions:
   contents: read
