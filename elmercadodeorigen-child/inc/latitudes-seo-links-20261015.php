@@ -24,7 +24,10 @@ function elmercado_latitudes_vendor_id_20261015(): int {
 		$candidates = function_exists( 'elmercado_latitudes_vendor_candidates_20261015' )
 			? elmercado_latitudes_vendor_candidates_20261015() : array();
 		foreach ( $candidates as $candidate ) {
-			if ( sanitize_title( $candidate->display_name ) === 'latitudes' ) {
+			$settings = get_user_meta( (int) $candidate->ID, 'wcfmmp_profile_settings', true );
+			$store_name = is_array( $settings ) ? (string) ( $settings['store_name'] ?? '' ) : '';
+			if ( sanitize_title( $candidate->display_name ) === 'latitudes'
+				|| sanitize_title( $store_name ) === 'latitudes' ) {
 				$id = (int) $candidate->ID;
 				break;
 			}
