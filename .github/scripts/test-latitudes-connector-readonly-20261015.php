@@ -38,4 +38,32 @@ foreach ( $samples as $p ) {
         throw new RuntimeException( 'Ficha incompleta o scraper incompatible: ' . wp_json_encode( $p ) );
     }
 }
+
+$home = wp_safe_remote_get( 'https://latitudes.es/', array( 'timeout' => 20 ) );
+if ( ! is_wp_error( $home ) ) {
+    $home_html = (string) wp_remote_retrieve_body( $home );
+    $doc = new DOMDocument();
+    $old = libxml_use_internal_errors( true );
+    $doc->loadHTML( '<?xml encoding="utf-8" ?>' . $home_html, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING );
+    libxml_clear_errors();
+    libxml_use_internal_errors( $old );
+    $xp = new DOMXPath( $doc );
+    $img_list = array();
+    foreach ( $xp->query( '//img[@src]' ) ?: array() as $img ) {
+        $src = (string) $img->getAttribute( 'src' );
+        $alt = (string) $img->getAttribute( 'alt' );
+        $cl = (string) $img->getAttribute( 'class' );
+        if ( preg_match( '/logo|banner|latitudes|hero|slider/i', $src . ' ' . $alt . ' ' . $cl ) ) {
+            $img_list[] = array( 'src' => $src, 'alt' => $alt, 'class' => $cl );
+        }
+    }
+    $backgrounds = array();
+    foreach ( $xp->query( '//*[@style]' ) ?: array() as $node ) {
+        if ( preg_match( '/background-image\\s*:\\s*url\\([\\x22\\x27]?([^\\)\\x22\\x27]+)/i', (string) $node->getAttribute( 'style' ), $m ) ) {
+            $backgrounds[] = (string) $m[1];
+        }
+    }
+    echo 'LATITUDES_ASSETS=' . wp_json_encode( array( 'images' => array_slice( $img_list, 0, 25 ), 'backgrounds' => array_slice( array_unique( $backgrounds ), 0, 15 ) ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) . PHP_EOL;
+}
+
 echo 'LATITUDES_CONNECTOR_TEST_OK' . PHP_EOL;
