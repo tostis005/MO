@@ -1,0 +1,89 @@
+name: Fix provisional blog image display metadata 2026-10-15
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/fix-blog-default-image-metadata-20261015.php'
+      - '.github/workflows/fix-blog-default-image-metadata-20261015.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emdo-blog-brand-image-metadata-20261015
+  cancel-in-progress: false
+
+jobs:
+  update-metadata:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate script and production access
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/fix-blog-default-image-metadata-20261015.php
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+      - name: Correct attachment title and alt in WordPress
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] && [ -n "$php" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              path=$(dirname "$cfg")
+              site=$("$php" "$wp" option get siteurl --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$site" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s|%s|%s" "$path" "$php" "$wp"; break ;;
+              esac
+            done
+          ')"
+          [ -n "$INFO" ] || { echo 'Production site not found' >&2; exit 3; }
+          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
+          DIR="/tmp/emdo-blog-image-meta-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$DIR'"
+          sshpass -e scp $SCP .github/scripts/fix-blog-default-image-metadata-20261015.php "$STAGING_USER@$STAGING_HOST:$DIR/"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf $DIR" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$DIR/fix-blog-default-image-metadata-20261015.php' --path='$PROD' --allow-root" | tee /tmp/blog-image-meta.log
+          sed -n 's/^EMDO_IMAGE_ALT_AUDIT //p' /tmp/blog-image-meta.log | tail -n1 > /tmp/blog-image-meta.json
+          jq -e '.verified == true and .central_id > 0 and .checked > 0 and ((.updated|length)+(.unchanged|length))>0' /tmp/blog-image-meta.json >/dev/null
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+          echo 'BRANDED_IMAGE_METADATA_APPLIED'
+
+      - name: Validate public HTML Spanish and English
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=https://www.elmercadodeorigen.com
+          urls=(
+            "$base/jamon-iberico-o-paleta-iberica-diferencias-cual-elegir/"
+            "$base/en/iberian-ham-vs-iberian-shoulder-differences-which-to-choose/"
+            "$base/wagyu-kobe-diferencias/"
+          )
+          for url in "${urls[@]}"; do
+            file=/tmp/emdo-image-check.html
+            http=$(curl -L -sS --retry 3 --connect-timeout 12 --max-time 45 -A 'Mozilla/5.0 EMDO editorial image verifier' -H 'Cache-Control: no-cache' -o "$file" -w '%{http_code}' "$url?image_meta=${GITHUB_RUN_ID}")
+            [ "$http" = 200 ] && [ "$(wc -c < "$file")" -gt 5000 ] || { echo "HTTP invalid $url: $http" >&2; exit 1; }
+            ! grep -qiE 'alt="Imagen provisional del blog de El Mercado de Origen"|alt="Temporary editorial image for El Mercado de Origen blog"' "$file" || { echo "Old provisional image alt still visible in $url" >&2; exit 1; }
+            echo "IMAGE_METADATA_PUBLIC_OK $url"
+          done
+          echo "IMAGE_METADATA_PRODUCTION_VERIFIED"
