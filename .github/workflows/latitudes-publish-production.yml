@@ -94,20 +94,29 @@ jobs:
           set -eu
           wp_bin="$(command -v wp || true)"
           php_bin="$(command -v php || true)"
-          test -n "$wp_bin" && test -n "$php_bin"
-          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+          if [ -z "$php_bin" ]; then
+            php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1 || true)"
+          fi
+          [ -n "$wp_bin" ] && [ -x "$php_bin" ] || {
+            echo "El servidor no tiene WP-CLI/PHP disponibles." >&2; exit 9;
+          }
+          # WordPress puede guardar http detrás de un proxy HTTPS. Validar
+          # el hostname exacto, tanto en home como en siteurl.
+          configs="$(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null || true)"
+          for cfg in $configs; do
             wp_path="$(dirname "$cfg")"
             url="$( "$php_bin" "$wp_bin" option get siteurl --path="$wp_path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true )"
             home="$( "$php_bin" "$wp_bin" option get home --path="$wp_path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true )"
             case "$url" in
-              https://www.elmercadodeorigen.com|https://elmercadodeorigen.com)
+              https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com)
                 case "$home" in
-                  https://www.elmercadodeorigen.com|https://elmercadodeorigen.com)
+                  https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com)
                     printf "%s" "$wp_path"; exit 0 ;;
                 esac ;;
             esac
           done
-          exit 1
+          echo "WordPress de producción no localizado entre las instalaciones Plesk; dev no se acepta." >&2
+          exit 10
           REMOTE
           )"
           test -n "$PROD_PATH" || { echo "No se localizó WordPress producción; dev NO se usa." >&2; exit 1; }
@@ -124,7 +133,11 @@ jobs:
           trap 'rm -f "$script"' EXIT
           test -f "$wp_path/wp-config.php"
           wp_bin="$(command -v wp)"
-          php_bin="$(command -v php)"
+          php_bin="$(command -v php || true)"
+          if [ -z "$php_bin" ]; then
+            php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1 || true)"
+          fi
+          test -x "$php_bin"
           echo "Preflight de 138 referencias y zonas WCFM (NO modifica nada)"
           LATITUDES_MODE=dry-run "$php_bin" -d memory_limit=512M "$wp_bin" \
             eval-file "$script" --path="$wp_path" --skip-themes --allow-root
