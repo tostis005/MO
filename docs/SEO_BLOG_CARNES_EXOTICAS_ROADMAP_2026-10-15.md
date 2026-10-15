@@ -4,13 +4,13 @@
 
 Optimización de artículos publicados del blog y publicación de guías nuevas en castellano e inglés. Se puede crear o asignar la **categoría editorial de WordPress** `category` Carnes exóticas, dependiente de Carnes. No se modifica `product_cat`, ningún producto, importadores ni fichas comerciales. Los artículos existentes conservan slug/URL y reciben mejoras incrementales idempotentes.
 
-## Estado a fecha de incorporación de la última tanda
+## Estado final — completado y verificado en producción (15-10-2026)
 
-| Bloque | Hecho y verificado en producción | Pendiente de verificar |
+| Bloque | Hecho y verificado en producción | Pendiente |
 |---|---:|---:|
 | A · Optimización de artículos existentes | **10/10** | 0 |
-| B · Publicación de artículos nuevos | **13/18** | 5 (lote 04) |
-| **Total** | **23/28** | **5** |
+| B · Publicación de artículos nuevos | **18/18** | 0 |
+| **Total** | **28/28** | **0** |
 
 Los contadores solo se cierran cuando el workflow del lote concluye en `success` y se observan `PUBLISHED_OK` para las URLs públicas y `HEALTH_OK` para las páginas principales.
 
@@ -44,18 +44,18 @@ Los contadores solo se cierran cuando el workflow del lote concluye en `success`
 | B11 | `huevo-de-avestruz-peso-personas-como-cocinar` | 03 | Verificado |
 | B12 | `ragout-carne-de-caza-cortes-coccion` | 03 | Verificado |
 | B13 | `carne-de-cebra-sabor-origen-como-cocinar` | 03 | Verificado |
-| B14 | `carne-de-alce-sabor-cortes-como-cocinar` | 04 | Pendiente de verificación |
-| B15 | `corzo-gamo-venado-diferencias-carne` | 04 | Pendiente de verificación |
-| B16 | `hamburguesa-wagyu-japones-carne-ingredientes-coccion` | 04 | Pendiente de verificación |
-| B17 | `entrecot-black-angus-plancha-receta` | 04 | Pendiente de verificación |
-| B18 | `carnes-exoticas-para-barbacoa-elegir-preparar` | 04 | Pendiente de verificación |
+| B14 | `carne-de-alce-sabor-cortes-como-cocinar` | 04 | Verificado |
+| B15 | `corzo-gamo-venado-diferencias-carne` | 04 | Verificado |
+| B16 | `hamburguesa-wagyu-japones-carne-ingredientes-coccion` | 04 | Verificado |
+| B17 | `entrecot-black-angus-plancha-receta` | 04 | Verificado |
+| B18 | `carnes-exoticas-para-barbacoa-elegir-preparar` | 04 | Verificado |
 
 ## Evidencias de producción
 
 - **Lote 01:** [GitHub Actions verificado](https://github.com/tostis005/MO/actions/runs/38709638213), 5 nuevos + 4 mejoras. Blog category `carnes-exoticas`, term ID 499.
 - **Lote 02:** [GitHub Actions verificado](https://github.com/tostis005/MO/actions/runs/38710537446), 3 nuevos + 4 mejoras.
 - **Lote 03:** [GitHub Actions verificado](https://github.com/tostis005/MO/actions/runs/38711336931), 5 nuevos + 2 mejoras.
-- **Lote 04:** `.github/workflows/publish-exoticas-editorial-20261015-04.yml`, estado pendiente hasta completar Action + QA público.
+- **Lote 04:** [GitHub Actions verificado](https://github.com/tostis005/MO/actions/runs/38712111357), 5 nuevos y 0 mejoras; URLs ES/EN + home, tienda, blog y archivo de categoría con HTTP 200 y comprobación editorial.
 
 ## Trabajos SEO posteriores, fuera del alcance de las 28 intervenciones
 
