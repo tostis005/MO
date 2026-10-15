@@ -64,6 +64,86 @@ function elmercado_latitudes_vendor_candidates_20261015(): array {
 	return array_values( $unique );
 }
 
+/**
+ * Solo productos que WCFM ya identifica expresamente como propiedad de
+ * Latitudes, pero que tienen otro post_author. Jamás se atribuye por nombre.
+ * @return int[]
+ */
+function elmercado_latitudes_owner_mismatches_20261015(): array {
+	$vendor_id = function_exists( 'elmercado_latitudes_vendor_id_20261015' )
+		? elmercado_latitudes_vendor_id_20261015() : 0;
+	if ( $vendor_id <= 0 || ! function_exists( 'wcfm_get_vendor_id_by_post' ) ) {
+		return array();
+	}
+	global $wpdb;
+	$rows = $wpdb->get_results(
+		$wpdb->prepare(
+			"SELECT ID, post_author FROM {$wpdb->posts}
+			 WHERE post_type = %s AND post_author != %d
+			   AND post_status NOT IN ('trash', 'auto-draft')
+			 ORDER BY post_modified DESC LIMIT 3000",
+			'product',
+			$vendor_id
+		)
+	);
+	$matched = array();
+	foreach ( (array) $rows as $row ) {
+		$pid = absint( $row->ID );
+		if ( $pid && absint( wcfm_get_vendor_id_by_post( $pid ) ) === $vendor_id ) {
+			$matched[] = $pid;
+		}
+	}
+	return $matched;
+}
+
+/** Reparación restringida y explícita: no cambia estado, precios ni stock. */
+add_action(
+	'admin_post_elmercado_latitudes_fix_product_owners_20261015',
+	static function (): void {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_die( 'Permisos insuficientes' );
+		}
+		check_admin_referer( 'elmercado_latitudes_fix_product_owners_20261015' );
+		$vendor_id = function_exists( 'elmercado_latitudes_vendor_id_20261015' )
+			? elmercado_latitudes_vendor_id_20261015() : 0;
+		$fixed = 0;
+		if ( $vendor_id > 0 ) {
+			foreach ( elmercado_latitudes_owner_mismatches_20261015() as $product_id ) {
+				$res = wp_update_post(
+					array( 'ID' => $product_id, 'post_author' => $vendor_id ),
+					true
+				);
+				if ( ! is_wp_error( $res ) && $res > 0 ) {
+					clean_post_cache( $product_id );
+					++$fixed;
+				}
+			}
+		}
+		if ( $fixed > 0 ) {
+			if ( function_exists( 'wc_delete_product_transients' ) ) {
+				wc_delete_product_transients();
+			}
+			if ( function_exists( 'elmercado_latitudes_flush_early_static_20261015' ) ) {
+				elmercado_latitudes_flush_early_static_20261015();
+			}
+			if ( function_exists( 'elmercado_latitudes_purge_page_cache_20261015' )
+				&& function_exists( 'elmercado_latitudes_cache_urls_20261015' ) ) {
+				elmercado_latitudes_purge_page_cache_20261015( elmercado_latitudes_cache_urls_20261015() );
+			}
+		}
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page' => 'elmercado-latitudes-audit',
+					'latitudes_owner_fixed' => $fixed,
+				),
+				admin_url( 'tools.php' )
+			)
+		);
+		exit;
+	}
+);
+
 /** Informe de estados reales en la base de datos sin depender del filtro público. */
 function elmercado_latitudes_product_stats_20261015( int $user_id ): array {
 	global $wpdb;
@@ -239,6 +319,18 @@ function elmercado_latitudes_render_audit_20261015(): void {
 			<?php endforeach; ?>
 			</tbody>
 		</table>
+		<?php $repairable_owner_ids = elmercado_latitudes_owner_mismatches_20261015(); ?>
+		<?php if ( $repairable_owner_ids ) : ?>
+			<div class="notice notice-warning"><p><strong><?php echo esc_html( count( $repairable_owner_ids ) ); ?> productos asignados a Latitudes por WCFM, pero guardados con otro autor de WordPress.</strong> Esto es una causa directa de exclusión porque la tienda del tema consulta <code>post_author</code>. Solo esos productos pueden sincronizarse con seguridad.</p></div>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<input type="hidden" name="action" value="elmercado_latitudes_fix_product_owners_20261015">
+				<?php wp_nonce_field( 'elmercado_latitudes_fix_product_owners_20261015' ); ?>
+				<?php submit_button( 'Corregir autor de estos productos (sin cambiar publicación ni stock)', 'secondary' ); ?>
+			</form>
+		<?php endif; ?>
+		<?php if ( isset( $_GET['latitudes_owner_fixed'] ) && ! is_array( $_GET['latitudes_owner_fixed'] ) ) : ?>
+			<p><strong>Productos cuyo autor se ha corregido:</strong> <?php echo esc_html( (string) absint( $_GET['latitudes_owner_fixed'] ) ); ?></p>
+		<?php endif; ?>
 		<h2>Productos importados con nombre de carnes especiales, por propietario</h2>
 		<p>La búsqueda no corrige ni reasigna nada. Señala artículos que podrían haberse importado por error bajo el administrador u otro usuario. La coincidencia del nombre no demuestra su procedencia.</p>
 		<table class="widefat striped"><thead><tr><th>Producto / ID</th><th>Estado</th><th>Autor de WordPress</th><th>Vendedor WCFM</th></tr></thead><tbody>
