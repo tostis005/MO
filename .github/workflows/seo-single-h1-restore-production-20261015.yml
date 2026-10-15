@@ -1,0 +1,75 @@
+name: Restore blog H1 original theme file 20261015
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/seo-single-h1-restore-production-20261015.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  restore:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore original file with exact SHA guard
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] && [ -n "$php" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              path=$(dirname "$cfg")
+              site=$("$php" "$wp" option get siteurl --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$site" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s|%s|%s" "$path" "$php" "$wp"; break;;
+              esac
+            done
+          ')"
+          [ -n "$INFO" ] || exit 3
+          PROD="${INFO%%|*}";REST="${INFO#*|}";PHP="${REST%%|*}";WP="${REST#*|}"
+          TARGET="$PROD/wp-content/themes/elmercadodeorigen-child/single-post.php"
+          BACKUP='/tmp/mdo-single-post-h1-before-38720819590.php'
+          EXPECTED='ece5e7a6c2c4faa3a0e0fb74f69d3005e663777e73a5ed1f8ca62161c6e984a3'
+          SOURCE_SHA="$(sha256sum elmercadodeorigen-child/single-post.php | cut -d ' ' -f1)"
+          REMOTE_CURRENT="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sha256sum '$TARGET' | cut -d ' ' -f1")"
+          echo "Original checksum (expected): $EXPECTED"
+          echo "Live checksum: $REMOTE_CURRENT"
+          if [ "$REMOTE_CURRENT" = "$EXPECTED" ]; then
+            echo 'File already reverted to safe baseline.'
+            exit 0
+          fi
+          if [ "$REMOTE_CURRENT" != "$SOURCE_SHA" ]; then
+            echo "::error::Live theme file changed again since last deployment; refusing to overwrite."
+            exit 8
+          fi
+          BACKUP_SHA="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sha256sum '$BACKUP' | cut -d ' ' -f1")"
+          [ "$BACKUP_SHA" = "$EXPECTED" ] || { echo "::error::Backup checksum mismatch"; exit 9; }
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "install -m 0644 '$BACKUP' '$TARGET'; export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' eval 'if ( has_action(\"litespeed_purge_all\") ) { do_action(\"litespeed_purge_all\"); }' --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+          RESTORED="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sha256sum '$TARGET' | cut -d ' ' -f1")"
+          [ "$RESTORED" = "$EXPECTED" ] || { echo "::error::Restoration not verified"; exit 10; }
+          echo 'ORIGINAL_SINGLE_POST_TEMPLATE_RESTORED_AND_HASH_VERIFIED'
+      - name: Public site smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in "/comprar-directamente-al-productor-como-funciona/" "/en/how-to-identify-local-food-and-where-to-buy-it/" "/categoria-producto/hortalizas-verduras/"; do
+            curl --fail --location --silent --show-error --retry 3 --max-time 60 "https://www.elmercadodeorigen.com${path}?h1_restore_qa=$GITHUB_RUN_ID" -o /tmp/mdo-restored.html
+            test -s /tmp/mdo-restored.html
+            echo "HTTP_OK: $path"
+          done
