@@ -1,0 +1,25 @@
+name: Test Latitudes Stock Safety
+on:
+  push:
+    branches:
+      - fix/latitudes-stock-verification
+    paths:
+      - 'mdo-supplier-sync/connectors/class-mdo-connector-latitudes.php'
+      - 'mdo-supplier-sync/includes/class-mdo-woo-importer.php'
+      - 'tests/test-latitudes-stock-20261015.php'
+      - '.github/workflows/test-latitudes-stock-20261015.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify stock interpreter and plugin syntax
+        run: |
+          set -e
+          php -l mdo-supplier-sync/connectors/class-mdo-connector-latitudes.php
+          php -l mdo-supplier-sync/includes/class-mdo-woo-importer.php
+          php -l tests/test-latitudes-stock-20261015.php
+          php tests/test-latitudes-stock-20261015.php
