@@ -92,4 +92,43 @@ if ( $sup_row ) {
     ), ARRAY_A );
 }
 
+
+if ( $sup_row ) {
+    $product_rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id,title,status,source_url,source_price,source_stock_status,source_payload FROM {$source_table} WHERE supplier_id=%d", (int) $sup_row['id']
+    ), ARRAY_A );
+    $summary = array(
+        'total' => count( $product_rows ),
+        'missing_price' => 0, 'missing_images' => 0, 'short_description' => 0,
+        'many_variants' => 0, 'unknown_stock' => 0, 'potentially_blocked' => 0,
+        'stock_statuses' => array(), 'sample_flags' => array(),
+    );
+    foreach ( $product_rows as $row ) {
+        $payload = json_decode( (string) $row['source_payload'], true );
+        $payload = is_array( $payload ) ? $payload : array();
+        $desc_len = mb_strlen( trim( wp_strip_all_tags( (string) ( $payload['description'] ?? '' ) ) ) );
+        $image_count = (int) ( $payload['image_count'] ?? count( (array) ( $payload['images'] ?? array() ) ) );
+        $variation_count = (int) ( $payload['variation_count'] ?? 0 );
+        $stock = (string) $row['source_stock_status'];
+        $summary['stock_statuses'][ $stock ] = ( $summary['stock_statuses'][ $stock ] ?? 0 ) + 1;
+        $flags = array();
+        if ( ! is_numeric( $row['source_price'] ) || (float) $row['source_price'] <= 0 ) { $summary['missing_price']++; $flags[]='price'; }
+        if ( $image_count < 1 ) { $summary['missing_images']++; $flags[]='image'; }
+        if ( $desc_len < 35 ) { $summary['short_description']++; $flags[]='description'; }
+        if ( $variation_count > 1 ) { $summary['many_variants']++; $flags[]='variants'; }
+        if ( ! in_array( $stock, array( 'instock', 'outofstock' ), true ) ) { $summary['unknown_stock']++; $flags[]='stock'; }
+        if ( in_array( 'price', $flags, true ) || in_array( 'image', $flags, true ) || in_array( 'stock', $flags, true ) || in_array( 'variants', $flags, true ) ) {
+            $summary['potentially_blocked']++;
+        }
+        if ( $flags && count( $summary['sample_flags'] ) < 35 ) {
+            $summary['sample_flags'][] = array(
+                'id' => (int) $row['id'], 'title' => $row['title'], 'flags' => $flags,
+                'price' => $row['source_price'], 'stock' => $stock, 'images' => $image_count,
+                'description_length' => $desc_len, 'variations' => $variation_count
+            );
+        }
+    }
+    $report['latitudes_quality'] = $summary;
+}
+
 echo 'LATITUDES_READONLY_DIAGNOSTIC=' . wp_json_encode( $report, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
