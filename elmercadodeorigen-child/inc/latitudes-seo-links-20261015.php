@@ -145,14 +145,15 @@ add_action(
 add_action(
 	'woocommerce_after_single_product_summary',
 	static function (): void {
-		if ( ! is_product() || ! elmercado_latitudes_has_public_products_20261015() ) {
+		if ( ! is_product() ) {
 			return;
 		}
 		$product_id = get_queried_object_id();
 		$owner = function_exists( 'wcfm_get_vendor_id_by_post' )
 			? (int) wcfm_get_vendor_id_by_post( $product_id )
 			: (int) get_post_field( 'post_author', $product_id );
-		if ( $owner !== elmercado_latitudes_vendor_id_20261015() ) {
+		if ( $owner !== elmercado_latitudes_vendor_id_20261015()
+			|| ! elmercado_latitudes_has_public_products_20261015() ) {
 			return;
 		}
 		echo '<section class="emo-latitudes-seo emo-latitudes-seo--product">';
@@ -166,12 +167,12 @@ add_action(
 add_filter(
 	'the_content',
 	static function ( $content ) {
-		if ( is_admin() || ! is_singular( 'post' ) || ! in_the_loop() || ! is_main_query()
-			|| ! elmercado_latitudes_has_public_products_20261015() ) {
+		if ( is_admin() || ! is_singular( 'post' ) || ! in_the_loop() || ! is_main_query() ) {
 			return $content;
 		}
 		$title = (string) get_the_title( get_the_ID() );
-		if ( ! preg_match( '~\b(wagyu|exótic[ao]s?|bisonte|avestruz|canguro|cocodrilo|cebra)\b~iu', $title ) ) {
+		if ( ! preg_match( '~\b(wagyu|exótic[ao]s?|bisonte|avestruz|canguro|cocodrilo|cebra)\b~iu', $title )
+			|| ! elmercado_latitudes_has_public_products_20261015() ) {
 			return $content;
 		}
 		$url = elmercado_latitudes_store_url_20261015();
