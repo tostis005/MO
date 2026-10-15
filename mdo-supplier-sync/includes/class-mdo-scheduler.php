@@ -155,6 +155,7 @@ final class MDO_Scheduler {
 			}
 			$product = match ( (string) $supplier['connector'] ) {
 				'tolecarnes'           => MDO_Connector_Tolecarnes::scrape_product( $url ),
+				'latitudes'            => MDO_Connector_Latitudes::scrape_product( $url ),
 				'la-huerta-ana-mary'   => MDO_Connector_Huerta_Ana_Mary::scrape_product( $url ),
 				default                => MDO_Connector_Iberico_Family::scrape_product( $url, $supplier ),
 			};
@@ -260,6 +261,7 @@ final class MDO_Scheduler {
 	private static function connector_class( array $supplier ): ?string {
 		return match ( (string) ( $supplier['connector'] ?? 'none' ) ) {
 			'tolecarnes'         => MDO_Connector_Tolecarnes::class,
+			'latitudes'          => MDO_Connector_Latitudes::class,
 			'la-huerta-ana-mary' => MDO_Connector_Huerta_Ana_Mary::class,
 			'el-catedratico',
 			'puente-robles',
