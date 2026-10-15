@@ -122,6 +122,19 @@ function elmercado_latitudes_render_audit_20261015(): void {
 				: null;
 			$all_excluded = function_exists( 'elmercado_catalog_counts_excluded_authors_010217' )
 				? in_array( $id, elmercado_catalog_counts_excluded_authors_010217(), true ) : null;
+			$wcfm_shipping = get_user_meta( $id, '_wcfmmp_shipping', true );
+			$shipping_type = is_array( $wcfm_shipping )
+				? (string) ( $wcfm_shipping['_wcfmmp_user_shipping_type'] ?? '' ) : '';
+			$shipping_zone_data = function_exists( 'wcfmmp_get_shipping_zone' )
+				? wcfmmp_get_shipping_zone( '', $id ) : null;
+			$shipping_zone_count = is_array( $shipping_zone_data ) ? count( $shipping_zone_data ) : 0;
+			$wcfm_store_url = function_exists( 'wcfmmp_get_store_url' )
+				? (string) wcfmmp_get_store_url( $id ) : '';
+			$store_path = trim( (string) wp_parse_url( $wcfm_store_url, PHP_URL_PATH ), '/' );
+			$store_parts = array_values( array_filter( explode( '/', $store_path ) ) );
+			$store_slug = sanitize_title( (string) end( $store_parts ) );
+			$store_slug_user = $store_slug ? get_user_by( 'slug', $store_slug ) : false;
+			$store_user_matches = $store_slug_user instanceof WP_User && (int) $store_slug_user->ID === $id;
 			$offline   = get_user_meta( $id, '_wcfm_store_offline', true );
 			$disabled  = get_user_meta( $id, '_disable_vendor', true );
 			$is_hidden = function_exists( 'elmercado_wcfm_vendor_is_hidden_010210' )
@@ -145,6 +158,11 @@ function elmercado_latitudes_render_audit_20261015(): void {
 				<tr><th>Reconocido como vendedor en los filtros de Tienda</th><td><?php echo esc_html( null === $is_vendor ? 'No disponible' : ( $is_vendor ? 'Sí' : 'NO: revisar rol/store_name' ) ); ?></td></tr>
 				<tr><th>Excluido por destino de envío (para esta sesión)</th><td><?php echo esc_html( null === $excluded_destination ? 'No hay sistema de destino' : ( $excluded_destination ? 'SÍ: revisar configuración del vendedor' : 'No' ) ); ?></td></tr>
 				<tr><th>Excluido en catálogo/contadores</th><td><?php echo esc_html( null === $all_excluded ? 'No disponible' : ( $all_excluded ? 'Sí' : 'No' ) ); ?></td></tr>
+				<tr><th>URL de tienda devuelta por WCFM</th><td><?php if ( $wcfm_store_url ) : ?><a href="<?php echo esc_url( $wcfm_store_url ); ?>" target="_blank" rel="noopener"><?php echo esc_html( $wcfm_store_url ); ?></a><?php else : ?>Sin URL<?php endif; ?></td></tr>
+				<tr><th>Slug de la tienda resuelve al usuario correcto</th><td><?php echo esc_html( $store_user_matches ? 'Sí' : 'NO: posible causa de página 404 o catálogo vacío' ); ?></td></tr>
+				<tr><th>Configuración WCFM de envíos</th><td><?php echo esc_html( is_array( $wcfm_shipping ) && $wcfm_shipping ? 'Existe' : 'NO: falta configurar' ); ?></td></tr>
+				<tr><th>Tipo de envío del vendedor</th><td><?php echo esc_html( $shipping_type ?: 'NO DEFINIDO' ); ?><?php echo 'by_zone' === $shipping_type ? ' (correcto si utiliza zonas)' : ''; ?></td></tr>
+				<tr><th>Zonas del vendedor WCFM</th><td><?php echo esc_html( function_exists( 'wcfmmp_get_shipping_zone' ) ? (string) $shipping_zone_count : 'Función no disponible' ); ?><?php echo 0 === $shipping_zone_count && 'by_zone' === $shipping_type ? ' ⚠ Sin zonas asignadas' : ''; ?></td></tr>
 				<tr><th>Flag WCFM Offline</th><td><code><?php echo esc_html( var_export( $offline, true ) ); ?></code></td></tr>
 				<tr><th>Flag WCFM Disabled</th><td><code><?php echo esc_html( var_export( $disabled, true ) ); ?></code></td></tr>
 				<tr><th>Oculto por la política del tema (para esta sesión)</th><td><?php echo esc_html( null === $is_hidden ? 'Función no disponible' : ( $is_hidden ? 'Sí' : 'No' ) ); ?></td></tr>
@@ -177,8 +195,23 @@ function elmercado_latitudes_render_audit_20261015(): void {
 			<tr><td><?php echo esc_html( $author ? $author->display_name . ' (#' . $author->ID . ')' : '#' . $row->post_author ); ?></td><td><?php echo esc_html( $row->post_status ); ?></td><td><?php echo esc_html( (string) $row->total ); ?></td></tr>
 		<?php endforeach; ?>
 		</tbody></table>
+		<?php if ( class_exists( 'WC_Shipping_Zones' ) ) : ?>
+			<h2>Zonas globales de WooCommerce (compartidas con los demás vendedores)</h2>
+			<p>Los métodos deben configurarse individualmente en WCFM para Latitudes, sin modificar las tarifas del resto de vendedores.</p>
+			<table class="widefat striped"><thead><tr><th>Zona / ID</th><th>Métodos globales</th></tr></thead><tbody>
+			<?php foreach ( WC_Shipping_Zones::get_zones() as $zone ) : ?>
+				<?php
+				$methods = array();
+				foreach ( (array) ( $zone['shipping_methods'] ?? array() ) as $method ) {
+					$methods[] = is_object( $method ) ? (string) ( $method->id ?? get_class( $method ) ) : 'Desconocido';
+				}
+				?>
+				<tr><td><?php echo esc_html( (string) ( $zone['zone_name'] ?? '' ) . ' (#' . ( $zone['zone_id'] ?? '0' ) . ')' ); ?></td><td><?php echo esc_html( implode( ', ', $methods ) ?: 'Sin métodos' ); ?></td></tr>
+			<?php endforeach; ?>
+			</tbody></table>
+		<?php endif; ?>
 		<h2>Tarifas acordadas para el marketplace</h2>
-		<p>Para un paquete exclusivo de Latitudes: <strong>13,45 €</strong> si el importe final de sus artículos es inferior a 200 € y <strong>gratis</strong> desde 200 € (incluidos 200 € exactos). Se aplica a Península española/portuguesa y Baleares, sin tramos de peso. No se habilita Canarias, Ceuta, Melilla, Madeira o Azores. Se respeta la separación por vendedor de los paquetes WCFM.</p>
+		<p>Para paquetes exclusivos de Latitudes: <strong>13,45 € en Península</strong> y <strong>29,00 € en Baleares</strong> para importes inferiores a 200 €. <strong>Gratis</strong> desde 200 € (incluidos 200 € exactos) para ambas zonas, sin tramos de peso. No se habilita Canarias, Ceuta, Melilla, Madeira o Azores. Se respeta la separación por vendedor de los paquetes WCFM.</p>
 		<p>Las condiciones originales de <a href="https://latitudes.es/condiciones-de-venta/" target="_blank" rel="noopener noreferrer">latitudes.es</a> tienen otras tarifas por peso y para Baleares. Estas reglas simplificadas son una instrucción comercial específica de El Mercado de Origen, no una transcripción de los gastos oficiales.</p>
 		<p>Si WooCommerce/WCFM no separa los pedidos en paquetes por vendedor, <strong>la regla no sustituye el envío de un carrito mixto</strong>; habría que corregir la separación para no cobrar menos a otros proveedores.</p>
 		<?php if ( function_exists( 'elmercado_latitudes_cache_actions_20261015' ) ) : ?>
