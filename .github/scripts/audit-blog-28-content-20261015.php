@@ -22,5 +22,5 @@ foreach ($slugs as $slug) {
     'has_editorial_marker'=>str_contains($es,'EMDO_EXO_'),
     'title'=>$post->post_title];
 }
-echo 'EMDO_EDITORIAL_QA '.wp_json_encode(['verified'=>count($items)===28 && !$missing,'count'=>count($items),'missing'=>$missing,'posts'=>$items],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\\n";
+echo 'EMDO_EDITORIAL_QA '.wp_json_encode(['verified'=>count($items)===28 && !$missing,'count'=>count($items),'missing'=>$missing,'posts'=>$items],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
 if ($missing) throw new RuntimeException('Editorial posts missing');
