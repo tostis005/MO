@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/audit-latitudes-final-quality-20261015.yml'
+      - '.github/scripts/audit-latitudes-final-quality-20261015.php'
   workflow_dispatch:
 permissions:
   contents: read
