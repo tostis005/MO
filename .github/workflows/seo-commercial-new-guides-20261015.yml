@@ -1,0 +1,138 @@
+name: SEO evergreen new buying guides production
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/publish-commercial-evergreen-20261015.php'
+      - '.github/data/seo-comercial-evergreen-20261015/**'
+      - '.github/workflows/seo-commercial-new-guides-20261015.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mdo-new-evergreen-buying-guides-20261015
+  cancel-in-progress: false
+jobs:
+  publish-or-draft-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate PHP payloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/publish-commercial-evergreen-20261015.php
+          for p in .github/data/seo-comercial-evergreen-20261015/*.php; do php -l "$p"; done
+          test "$(find .github/data/seo-comercial-evergreen-20261015 -maxdepth 1 -name '*.php' | wc -l)" -eq 3
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+      - name: Run bilingual publication with WordPress
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] && [ -n "$php" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              path=$(dirname "$cfg")
+              site=$("$php" "$wp" option get siteurl --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$site" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s|%s|%s" "$path" "$php" "$wp"; break;;
+              esac
+            done
+          ')"
+          [ -n "$INFO" ] || exit 3
+          PROD="${INFO%%|*}";REST="${INFO#*|}";PHP="${REST%%|*}";WP="${REST#*|}"
+          DIR="/tmp/mdo-new-guides-$GITHUB_RUN_ID"
+          echo "EV_PROD=$PROD" >> "$GITHUB_ENV"
+          echo "EV_PHP=$PHP" >> "$GITHUB_ENV"
+          echo "EV_WP=$WP" >> "$GITHUB_ENV"
+          echo "EV_DIR=$DIR" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$DIR'"
+          sshpass -e scp $SCP .github/scripts/publish-commercial-evergreen-20261015.php "$STAGING_USER@$STAGING_HOST:$DIR/apply.php"
+          sshpass -e scp -r $SCP .github/data/seo-comercial-evergreen-20261015 "$STAGING_USER@$STAGING_HOST:$DIR/guides"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; export MDO_NEW_GUIDES_DIR='$DIR/guides'; '$PHP' -d memory_limit=768M '$WP' eval-file '$DIR/apply.php' --path='$PROD' --allow-root" | tee /tmp/new-articles.log
+          sed -n 's/^MDO_NEW_EVERGREEN_RESULT //p' /tmp/new-articles.log | tail -n1 > /tmp/new-articles.json
+          jq -e '.batch == "20261015-commercial-evergreen-new-3" and (.results|length)==3' /tmp/new-articles.json >/dev/null
+          echo "New guides execution summary:"
+          jq '{status,images,general_category,results}' /tmp/new-articles.json
+          if [ "$(jq -r '.status' /tmp/new-articles.json)" = "publish" ]; then
+             echo "GUIDES_PUBLISHED=1" >> "$GITHUB_ENV"
+          else
+             echo "GUIDES_PUBLISHED=0" >> "$GITHUB_ENV"
+             echo "::notice::Three bilingual guides saved as drafts because suitable non-placeholder featured images were not found for all three."
+          fi
+      - name: Verify three ES/EN published URLs
+        if: env.GUIDES_PUBLISHED == '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends python3-bs4 >/dev/null
+          /usr/bin/python3 - <<'PY'
+          from urllib.request import Request,urlopen
+          from urllib.parse import urlsplit
+          from bs4 import BeautifulSoup
+          from time import time
+          targets=[
+            ('/comprar-directamente-al-productor-como-funciona/','Comprar directamente al productor','/tienda/'),
+            ('/en/buy-directly-from-food-producers-how-it-works/','Buying food directly from producers','/en/shop/'),
+            ('/comprar-verduras-hortalizas-online-elegir-frescas-temporada/','Comprar verduras y hortalizas online','/categoria-producto/hortalizas-verduras/'),
+            ('/en/buying-fresh-vegetables-online-seasonality-origin-delivery/','Buying fresh vegetables online','/en/product-category/vegetables/'),
+            ('/productos-proximidad-que-son-como-reconocerlos-comprarlos/','Productos de proximidad','/comprar-directamente-al-productor-como-funciona/'),
+            ('/en/how-to-identify-local-food-and-where-to-buy-it/','Local and proximity food','/en/buy-directly-from-food-producers-how-it-works/'),
+          ]
+          for route,title,anchor in targets:
+            u='https://www.elmercadodeorigen.com'+route+'?mdo_evergreen_guides='+str(int(time()))
+            req=Request(u,headers={'Cache-Control':'no-cache','User-Agent':'MDO-Bilingual-Editorial-QA'})
+            with urlopen(req,timeout=90) as response:
+              assert response.status==200, (route,response.status)
+              html=response.read().decode('utf-8','replace')
+            soup=BeautifulSoup(html,'html.parser')
+            plain=soup.get_text(' ',strip=True)
+            h1=soup.find('h1')
+            canonical=soup.find('link',rel=lambda v:v and 'canonical' in v)
+            canonical_path=urlsplit(canonical.get('href','')).path if canonical else ''
+            headings=soup.find_all('h2')
+            meaningful=len(plain.split())
+            has_link=bool(soup.find('a',href=lambda v:v and anchor in v))
+            img=bool(soup.find('img',alt=lambda v:v and 'provisional' not in v.lower()))
+            print(route,'h1',h1.get_text(' ',strip=True) if h1 else None,'h2',len(headings),'words',meaningful,'link',has_link,'canonical',canonical_path)
+            assert h1 and title.lower() in h1.get_text(' ',strip=True).lower(),(route,'title missing')
+            assert canonical_path==route,(route,'canonical mismatch')
+            assert len(headings)>=4,(route,'insufficient structure')
+            assert meaningful>=420,(route,'thin rendered article')
+            assert has_link,(route,'commercial/internal link missing')
+            assert img,(route,'missing imagery')
+          print('NEW_BILINGUAL_EVERGREEN_GUIDES_QA_OK')
+          PY
+      - name: Roll back to draft on publication verification failure
+        if: failure() && env.GUIDES_PUBLISHED == '1'
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set +e
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p ${STAGING_PORT:-22}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export MDO_NEW_GUIDES_ROLLBACK=1 MDO_NEW_GUIDES_DIR='$EV_DIR/guides'; '$EV_PHP' '$EV_WP' eval-file '$EV_DIR/apply.php' --path='$EV_PROD' --allow-root" || true
+      - name: Clean temporary remote scripts
+        if: always() && env.EV_DIR != ''
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p ${STAGING_PORT:-22}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$EV_DIR'" || true
