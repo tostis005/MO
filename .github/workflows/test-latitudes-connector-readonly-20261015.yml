@@ -5,6 +5,8 @@ on:
       - feature/latitudes-onboarding-20261015
     paths:
       - '.github/workflows/test-latitudes-connector-readonly-20261015.yml'
+      - 'mdo-supplier-sync/connectors/class-mdo-connector-latitudes.php'
+      - '.github/scripts/test-latitudes-connector-readonly-20261015.php'
   workflow_dispatch:
 permissions:
   contents: read
