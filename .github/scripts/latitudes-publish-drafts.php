@@ -5,7 +5,7 @@
  * LATITUDES_MODE=dry-run|publish wp eval-file <ruta>
  *
  * 138 referencias importadas expresamente como drafts con catalog_visibility
- * hidden y el vendedor WCFM desactivado. Nunca tocar otros proveedores.
+ * hidden. No cambiar propietarios, usuarios, roles, envíos ni otros proveedores.
  */
 if ( ! defined( 'ABSPATH' ) || ! defined( 'WP_CLI' ) || ! WP_CLI ) {
 	exit( 1 );
@@ -126,7 +126,7 @@ $shipping_ok = 'yes' === $shipping_enabled && 'by_zone' === $shipping_type
 	&& count( $destination_checks ) === 3
 	&& ! in_array( false, $destination_checks, true );
 if ( ! $shipping_ok ) {
-	$bad[] = array( 'shipping' => 'WCFM no tiene envíos por zonas habilitados para Península, Baleares y Portugal.' );
+	WP_CLI::warning( 'Latitudes aún no tiene envíos nativos configurados. Esto no impide PUBLICAR fichas; sí requiere revisión del checkout antes de aceptar pedidos.' );
 }
 
 // Datos no sensibles del esquema WCFM para poder preparar las zonas NATIVAS.
@@ -183,7 +183,7 @@ if ( function_exists( 'wcfmmp_get_shipping_zone' ) ) {
 	}
 }
 $vendor_roles = (array) $user->roles;
-if ( ! in_array( 'wcfm_vendor', $vendor_roles, true ) && ! in_array( 'disable_vendor', $vendor_roles, true ) ) {
+if ( ! in_array( 'wcfm_vendor', $vendor_roles, true ) ) {
 	$bad[] = array( 'vendor_roles' => 'Roles de vendedor inesperados: ' . implode( ',', $vendor_roles ) );
 }
 $summary = array(
@@ -230,14 +230,7 @@ foreach ( $ready as $product_id ) {
 	++$published;
 }
 
-if ( in_array( 'disable_vendor', $vendor_roles, true ) ) {
-	$user->remove_role( 'disable_vendor' );
-	if ( ! in_array( 'wcfm_vendor', (array) $user->roles, true ) ) {
-		$user->add_role( 'wcfm_vendor' );
-	}
-}
-delete_user_meta( $vendor_id, '_disable_vendor' );
-delete_user_meta( $vendor_id, '_wcfm_store_offline' );
+// Sin cambios en usuarios/roles: post_author y el perfil WCFM permanecen intactos.
 clean_user_cache( $vendor_id );
 if ( function_exists( 'wc_delete_product_transients' ) ) {
 	wc_delete_product_transients();
@@ -267,5 +260,5 @@ WP_CLI::success( 'LATITUDES_PUBLISHED=' . wp_json_encode( array(
 	'published' => $published,
 	'previously_public' => $already_public,
 	'vendor_id' => $vendor_id,
-	'vendor_active' => ! get_user_meta( $vendor_id, '_disable_vendor', true ),
+	'vendor_role_unchanged' => in_array( 'wcfm_vendor', (array) $user->roles, true ),
 ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) );
