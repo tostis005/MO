@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.320' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.321' );
 /* 0.10.316 evita bloqueos de Woostify al navegar entre productos agotados/ocultos. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
 	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsense' ); // Adsterra queda conservado pero inactivo.
@@ -185,6 +185,7 @@ $elmercado_modules = array(
 	'inc/latitudes-shipping-20261015.php',
 	'inc/latitudes-cache-maintenance-20261015.php',
 	'inc/latitudes-store-banner-20261015.php',
+	'inc/latitudes-publish-drafts-20261015.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
