@@ -1,64 +1,60 @@
-# Latitudes · puesta en marcha, checklist de producción (15-10-2026)
+# Latitudes · diagnóstico y puesta en marcha (15/10/2026)
 
-Este documento no afirma que la tienda esté publicada. La importación y la configuración WCFM residen en la base de datos y los plugins de WordPress, fuera del despliegue de este tema hijo.
+## Resultado y límites de acceso
 
-## Diagnóstico objetivo
+- **Tienda pública:** se muestran 208 productos de seis productores, y Latitudes no aparece. No está demostrado si la causa es caché, atribución de vendedor, catálogo o envío.
+- **Código GitHub:** diagnóstico de solo lectura, opciones de invalidación de caché, nueva lógica de envío y enlaces editoriales. **Los cambios de esta rama aún no están instalados en la web pública.**
+- **WordPress privado:** no hay acceso autenticado a los ajustes del importador, metadatos reales de Latitudes, cachés del servidor, sesiones WooCommerce ni tarifas activas. No afirmar que se han modificado.
 
-1. Desplegar el tema en staging y abrir **Herramientas → Diagnóstico Latitudes** con un usuario con permiso `manage_woocommerce`.
-2. Confirmar el usuario WCFM que corresponde a Latitudes, su ID y su URL de tienda.
-3. Revisar los flags `_wcfm_store_offline` y `_disable_vendor`, además del rol `disable_vendor`. Los tres pueden impedir la publicación en el frontend.
-4. Contar productos por `post_status`: los productos con estado `draft`, `pending`, `private` o `archived` no aparecen en el catálogo. Los productos deben tener `publish`, `catalog_visibility=visible`, `stock_status=instock` (conforme a la política del sitio) y asociarse al vendedor real de WCFM.
-5. Si los productos recién importados aparecen atribuidos a otro autor, corregir la asignación desde el **importador original**, no mediante una actualización SQL indiscriminada. Después ejecutar la importación de prueba y confirmar que no reaparecen bajo otro autor.
-6. Recalcular tablas de búsqueda de WooCommerce y vaciar las cachés después de editar los estados. Validar como visitante anónimo y en móvil las páginas `/tienda/`, `/productores/` y el perfil del vendedor.
-7. Comprobar número de productos en el listado global, ficha individual, filtros de categoría y tienda WCFM. Probar el producto con el checkout sólo después de verificar envío.
+## Diagnóstico en WordPress
 
-## Condiciones oficiales de envío
+Tras instalar la rama **en staging**, abrir `Herramientas → Diagnóstico Latitudes` como gestor de WooCommerce y seguir esta secuencia:
 
-Fuente: https://latitudes.es/condiciones-de-venta/ (consultada el 15-10-2026).
+1. Verificar si existe usuario WCFM con slug, nombre visible o nombre comercial "Latitudes". Si no existe, crear/identificar correctamente el vendedor; no basta con crear productos.
+2. Verificar rol de vendedor o `wcfmmp_profile_settings.store_name`. El tema excluye cuentas `administrator` como vendedores, incluso si tienen productos.
+3. Comprobar `_wcfm_store_offline`, `_disable_vendor` y rol `disable_vendor`.
+4. Verificar si `MDO_Catalog_Destination_Frontend::excluded_vendor_ids()` excluye Latitudes para España; configurar el destino elegible.
+5. Contar productos por `post_status`. Deben ser `publish`, estar visibles en catálogo y `instock`, sin exclusión taxonómica.
+6. Comparar `post_author` con `wcfm_get_vendor_id_by_post()` para una selección de productos reales.
+7. Revisar también el listado de autores de productos recientes: permite detectar si el importador los crea bajo el usuario administrador u otro proveedor. Corregir el origen en el importador, luego probar reimportación controlada.
+8. **Después**, botón «Invalidar caché de productos»: transitorios WooCommerce, prefijo de caché y objetos de productos. Si el admin refleja productos válidos y la vista anónima sigue antigua, botón de borrado de cachés globales de plugins (WP Rocket, LiteSpeed, W3TC, WordPress, si están disponibles). Verificar por separado caché CDN (no existe integración directa aquí).
+9. Abrir en incógnito `/tienda/`, `/productores/`, tienda WCFM de Latitudes y una ficha de producto; comparar recuentos y filtros. Limpiar las tablas de búsqueda WooCommerce si es preciso.
 
-| Destino | Peso total del pedido del vendedor | Importe |
-|---|---:|---:|
-| España peninsular y Portugal peninsular | Hasta 4 kg | 13,45 € |
-| España peninsular y Portugal peninsular | Más de 4 hasta 7 kg | 16,45 € |
-| España peninsular y Portugal peninsular | Más de 7 hasta 20 kg | 21,45 € |
-| Baleares | Hasta 20 kg | 29,00 € |
-| Península o Baleares | Importe Latitudes >= 200 € | Gratis |
-| Más de 20 kg | Cualquiera | Solicitar presupuesto; no automatizar |
-| Canarias, Ceuta, Melilla y territorios no peninsulares de Portugal | Cualquiera | No disponibles según condiciones del productor |
+**No desactivar globalmente los filtros de catálogo para "forzar" a mostrar Latitudes**: las exclusiones protegen stock, vendedores desactivados y destinos no admitidos.
 
-- Seur Frío y entregas generalmente en 24/48 horas laborables, con las excepciones descritas por el productor.
-- La fuente también contempla recogida gratuita en su establecimiento de Alcobendas, pero no se debe activar en el marketplace sin validar operativamente esa opción.
-- No hay pedido mínimo publicado como requisito de compra: **200 € es el umbral de envío gratis**, no un mínimo de compra.
-- Los costes son por **paquete de este vendedor**, no por la suma global de un carrito de varios vendedores.
-- Verificar el régimen fiscal de las tarifas con el productor antes de introducirlas en el checkout.
-- No deducir peso de títulos de producto ni usar peso = 0 para mercadería sin dato; revisar los pesos importados, incluidas variaciones, antes de activar reglas por peso.
-- WCFM soporta envío por peso y configuración por vendedor: https://docs.wclovers.com/store-shipping/. Verificar si conviene más esa modalidad o métodos por zona, según el envío gratuito y las restricciones.
-- No tocar la política ni las zonas del resto de vendedores; no activar métodos que abaraten accidentalmente carritos mixtos.
+## Tarifa simplificada acordada para El Mercado de Origen
 
-### Pruebas de checkout obligatorias
+Regla comercial solicitada por el administrador, que **sustituye** los tramos de peso de Latitudes para esta tienda:
 
-1. España peninsular, 3,9 kg y 199,99 € → 13,45 €.
-2. España peninsular, 4,1 kg y 199,99 € → 16,45 €.
-3. España peninsular, 7,1 kg y 199,99 € → 21,45 €.
-4. España peninsular, 3,9 kg y 200,00 € → gratis.
-5. Baleares, 2 kg y 199,99 € → 29 €; 200,00 € → gratis.
-6. Canarias, Ceuta, Melilla, Madeira y Azores → sin opción de envío para Latitudes.
-7. 20,1 kg → no permitir checkout normal para Latitudes hasta cotización confirmada.
-8. Carrito Latitudes + otro vendedor → verificar que cada envío se calcule por separado y respete los umbrales **por vendedor**.
-9. Verificar impuestos aplicados al método y tasa mostrada antes/después del pago.
-10. Probar exactamente 4 kg, 7 kg y 20 kg; y artículos variables con varios pesos.
+| Importe final de los productos de Latitudes (después de cupones, IVA incluido) | Envío |
+|---|---:|
+| Desde 0 hasta 199,99 € | 13,45 € |
+| Desde 200,00 € | Gratis |
 
-## Banner y enlazado SEO
+- Sin tramos ni recargos por peso; **200 € exactos dan envío gratis**.
+- Solo para envíos de Latitudes en España peninsular, Portugal continental o Baleares.
+- No se habilita Canarias, Ceuta, Melilla, Azores o Madeira: la web del productor los excluye.
+- Sin cambios para los demás vendedores. Un carrito mixto debe estar **separado por paquetes por vendedor** para que se aplique esta tarifa únicamente al paquete Latitudes. El código evita sobrescribir un paquete mixto; si la separación falla, se necesita corregir WCFM antes del lanzamiento.
+- El filtro `woocommerce_package_rates` devuelve una única tarifa para paquetes exclusivamente de Latitudes. Los identificadores de método y las comisiones deben comprobarse con el proveedor WCFM activo.
+- Requiere validar el cálculo de IVA y los costes finales mostrados en checkout en la configuración real.
+- Las condiciones del productor no ofrecen estas tarifas fijas para todos los pesos o Baleares; se trata de **una decisión comercial propia del marketplace**. Fuente del productor: https://latitudes.es/condiciones-de-venta/
 
-- Sustituir la creatividad genérica «pollo, ternera, cerdo» por una identidad de **carnes exóticas y premium**, con fotografía gastronómica coherente y texto visible «Carnes exóticas y cortes premium». No confundir su oferta con carnicería convencional.
-- Comprobar si el texto es parte de la imagen o un campo de WCFM antes de modificar el banner; usar imagen accesible y `alt` que no prometa disponibilidad de productos concretos.
-- El módulo `latitudes-seo-links-20261015.php` vincula la ficha del productor y productos con artículos ya publicados de la categoría editorial de carnes, y añade un enlace comercial en artículos cuyos títulos tratan de carnes exóticas/wagyu. No genera enlaces si el vendedor no tiene stock visible.
-- Para consolidar el clúster es recomendable revisar las entradas relevantes una a una y actualizar sus enlaces contextuales específicos y su redacción, sin forzar plantillas idénticas.
-- Verificar versión española e inglesa, HTML de la tienda WCFM, títulos, repetición de bloques y canonicals antes de desplegar a producción.
+### Casos de aceptación en checkout
 
-## Estado de implementación
+1. Madrid, Latitudes 199,99 € → envío 13,45 €.
+2. Madrid, Latitudes 200,00 € → gratis.
+3. Madrid, Latitudes 200,01 € → gratis.
+4. Madrid, Latitudes 210 € con cupón de 20,01 € → 13,45 € (si el umbral se calcula tras descuentos).
+5. Baleares, Latitudes 50 € → 13,45 €.
+6. Portugal continental, Latitudes 50 € → 13,45 €.
+7. Canarias, Ceuta, Melilla, Azores y Madeira → no se ofrece el envío de Latitudes.
+8. Carrito combinado Latitudes 80 € + otro vendedor 150 € → Latitudes 13,45 € y otro vendedor según su propia política (no enviar gratis Latitudes por sumar 230 €).
+9. Carrito combinado Latitudes 210 € + otro vendedor 30 € → Latitudes gratis, el otro según su propia política.
+10. Revisar importe final incluyendo impuestos de envío, caché de sesiones y separación de paquetes por vendedor.
 
-- Código listo para revisión mediante PR: diagnóstico (solo lectura) y enlaces editoriales condicionales.
-- Pendiente acceso a base de datos / administración WordPress para confirmar y corregir estado/autor real de los productos y configurar y probar tarifas de envío.
-- Pendiente subir y seleccionar la nueva creatividad en el banner del vendedor desde WCFM.
-- No fusionar a producción ni dar por completado el lanzamiento hasta pasar las pruebas anteriores.
+## SEO, imagen y publicación
+
+- En la rama se proponen módulos de enlace desde tienda de Latitudes hacia guías existentes de carnes, desde fichas de Latitudes hacia blog y desde posts titulados sobre carnes exóticas/wagyu hacia su tienda. No inventar URLs ni mostrar enlaces si los artículos/productos no existen.
+- Creatividad disponible fuera de GitHub; cargarla como medio en WordPress/WCFM y cambiar el mensaje `pollo, ternera, cerdo` por `Carnes exóticas y cortes premium`.
+- Los módulos están sujetos a revisión en staging: el hook de portada de WCFM puede variar; revisar ES/EN, cachés y semántica SEO.
+- Se recomienda no fusionar a producción antes de comprobar el informe y los diez casos de checkout. El tema hijo solo despliega código: no cambia datos de la base de datos, páginas multimedia ni configuraciones WCFM.
