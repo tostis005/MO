@@ -385,6 +385,33 @@ ob_start();
 require __DIR__ . '/single.php';
 $rendered_post = (string) ob_get_clean();
 
+/*
+ * Woostify prints a generic page-header H1 above the bespoke article hero.
+ * For blog posts only, demote the identical generic H1 to a non-heading div,
+ * retaining the class, text and breadcrumbs so the visual layout is unchanged.
+ * Never affect WooCommerce product/category pages or a genuinely different H1.
+ */
+if ( is_singular( 'post' ) ) {
+    $rendered_post = preg_replace_callback(
+        '~(<div\s+class="page-header">\s*<div\s+class="woostify-container[^"]*">\s*)<h1\s+class="entry-title">(.*?)</h1>~isu',
+        static function ( array $match ): string {
+            $plain = static function ( $value ): string {
+                $value = html_entity_decode( wp_strip_all_tags( (string) $value ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+                $value = trim( (string) preg_replace( '/\s+/u', ' ', $value ) );
+                return function_exists( 'mb_strtolower' ) ? mb_strtolower( $value, 'UTF-8' ) : strtolower( $value );
+            };
+            $expected = get_the_title( get_queried_object_id() );
+            if ( '' === $plain( $match[2] ) || $plain( $match[2] ) !== $plain( $expected ) ) {
+                return $match[0];
+            }
+            return $match[1] . '<div class="entry-title">' . $match[2] . '</div>';
+        },
+        $rendered_post,
+        1
+    );
+}
+
+
 $rendered_post = preg_replace(
 	'~<section\b([^>]*\bclass=(?:"[^"]*\bemo-related-reading\b[^"]*"|\'[^\']*\bemo-related-reading\b[^\']*\')[^>]*)>(.*?)</section>~isu',
 	'<div$1 data-emo-related-root="1">$2</div>',
