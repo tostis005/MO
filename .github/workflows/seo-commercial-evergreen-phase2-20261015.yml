@@ -117,7 +117,7 @@ jobs:
           RDIR="$EV_REMOTE"
           PROD="$PROD_PATH"
           php_bin="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "command -v php" || true)"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export MDO_EV_ROLLBACK=1; '$php_bin' -d memory_limit=768M \"$(command -v wp)\" eval-file '$RDIR/apply.php' --path='$PROD' --allow-root" || true
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export MDO_EV_ROLLBACK=1; '$php_bin' -d memory_limit=768M '$EV_WP' eval-file '$RDIR/apply.php' --path='$PROD' --allow-root" || true
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "if [ -f '$EV_BACKUP' ]; then install -m 0644 '$EV_BACKUP' '$PROD/wp-content/mu-plugins/mdo-commercial-vegetables-dedupe-20261015.php'; else rm -f '$PROD/wp-content/mu-plugins/mdo-commercial-vegetables-dedupe-20261015.php'; fi" || true
       - name: Remove temporary scripts
         if: always() && env.PROD_PATH != ''
