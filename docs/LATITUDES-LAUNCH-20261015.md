@@ -1,3 +1,21 @@
+# ACTUALIZACIÓN DECISIVA (15/10/2026): TODOS LOS PRODUCTOS IMPORTADOS FIGURAN EN BORRADOR
+
+El propietario ha comprobado directamente en WooCommerce que los productos de Latitudes están marcados como **Borrador / draft**. Es una causa suficiente y confirmada de que ni `/tienda/` ni la tienda de Latitudes muestren estos productos. Las consultas del tema en `vendor-store-catalog-filters-010225.php`, `catalog-query-parity-010224.php` y `catalog-vendor-truth-final-010235.php` exigen `post_status=publish`. La ausencia de producto no es demostración de un fallo de caché o de los envíos.
+
+**Paso correctivo prioritario**: revisar primero qué hizo que el importador creara `draft` (opción de importación «crear como borrador», `post_status = draft`, moderación WCFM o falta de autorización del vendedor). Ajustar el origen para próximas importaciones; este repositorio no contiene la configuración operativa ni el código del importador instalado. Corregir los artículos que ya están en borrador.
+
+Se añade a `Herramientas → Diagnóstico Latitudes` un botón **Publicar productos de Latitudes revisados**, solo para gestores de WooCommerce, protegido con nonce, que vuelve a comprobar que:
+- el artículo pertenezca por `post_author` al vendedor Latitudes y WCFM no lo asigne a otro vendedor;
+- tenga un nombre, precio, imagen principal y existencias;
+- no tenga visibilidad que impida aparecer en el catálogo;
+- siga estando en `draft` justo antes de la publicación.
+
+No publica productos incompletos ni altera precios, imágenes, descripciones o stock. Ejecutada la acción, invalida las cachés de tienda y producto. Si hay borradores sin autor correcto, usar **primero** la detección y reparación de autores bajo validación WCFM. La interfaz enseña cuáles son aptos y por qué se omiten otros.
+
+**Estado de publicación:** herramienta preparada en el código del PR; no se ha pulsado ni se ha publicado ningún producto en producción desde esta conexión. Es imprescindible acceso real a WordPress/WCFM y pruebas de carrito.
+
+---
+
 # Latitudes · diagnóstico y puesta en marcha (15/10/2026)
 
 ## Resultado y límites de acceso
