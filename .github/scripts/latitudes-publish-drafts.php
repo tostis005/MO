@@ -143,10 +143,18 @@ if ( class_exists( 'WC_Shipping_Zones' ) ) {
 		foreach ( (array) ( $zone['zone_locations'] ?? array() ) as $loc ) {
 			$locs[] = (string) ( $loc->type ?? '' ) . ':' . (string) ( $loc->code ?? '' );
 		}
+		$methods = array();
+		foreach ( (array) ( $zone['shipping_methods'] ?? array() ) as $method ) {
+			$methods[] = array(
+				'id' => (string) ( $method->id ?? '' ),
+				'enabled' => (string) ( $method->enabled ?? '' ),
+			);
+		}
 		$native_zone_debug['woocommerce_zones'][] = array(
 			'id' => (int) $zid,
 			'name' => (string) ( $zone['zone_name'] ?? '' ),
 			'locations' => array_slice( $locs, 0, 16 ),
+			'shipping_methods' => $methods,
 		);
 	}
 }
