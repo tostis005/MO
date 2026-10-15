@@ -63,7 +63,7 @@ HTML,
 <p>For a closer look at these distinctions, see our guide to <a href="/en/how-to-identify-local-food-and-where-to-buy-it/">local and proximity food</a>.</p>
 
 <h2>Different food categories need different buying criteria</h2>
-<p>For <a href="/en/product-category/vegetables/">vegetables</a>, seasonality, variety and condition on arrival matter. When shopping for <a href="/en/product-category/meats/">meat</a>, the cut, cold chain and preparation method deserve attention. For <a href="/en/product-category/oils/">olive oil</a>, the category, variety, mill and storage are more informative. There is no single quality checklist that applies equally well to all food.</p>
+<p>For <a href="/en/product-category/vegetables/">vegetables</a>, seasonality, variety and condition on arrival matter. When shopping for <a href="/en/shop/">meat</a>, the cut, cold chain and preparation method deserve attention. For <a href="/en/shop/">olive oil</a>, the category, variety, mill and storage are more informative. There is no single quality checklist that applies equally well to all food.</p>
 <p>Start with the purpose of your purchase: everyday cooking, a special meal, exploring a regional food or sending a gift. You can then compare the details that matter for that decision.</p>
 
 <h2>Before confirming your order</h2>
