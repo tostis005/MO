@@ -67,4 +67,29 @@ if ( $home_html ) {
     $report['image_candidates'] = array_slice( $found, 0, 25 );
 }
 
+
+$sup_table = MDO_Database::table( 'suppliers' );
+$source_table = MDO_Database::table( 'source_products' );
+$run_table = MDO_Database::table( 'sync_runs' );
+$sup_row = $wpdb->get_row( $wpdb->prepare( "SELECT id,name,code,vendor_user_id,connector,sync_frequency,active,last_sync_at FROM {$sup_table} WHERE code=%s LIMIT 1", 'latitudes' ), ARRAY_A );
+$lat_user = get_user_by( 'login', 'latitudes' );
+$lat_profile = $lat_user ? get_user_meta( (int) $lat_user->ID, 'wcfmmp_profile_settings', true ) : array();
+$lat_profile = is_array( $lat_profile ) ? $lat_profile : array();
+$report['latitudes_state'] = array(
+    'supplier' => $sup_row ?: null,
+    'user_id' => $lat_user ? (int) $lat_user->ID : 0,
+    'disabled' => $lat_user ? (string) get_user_meta( (int) $lat_user->ID, '_disable_vendor', true ) : '',
+    'gravatar' => (string) ( $lat_profile['gravatar'] ?? '' ),
+    'banner' => (string) ( $lat_profile['banner'] ?? '' ),
+);
+if ( $sup_row ) {
+    $supplier_id = (int) $sup_row['id'];
+    $report['latitudes_state']['source_counts'] = $wpdb->get_results( $wpdb->prepare(
+        "SELECT status,COUNT(*) AS count FROM {$source_table} WHERE supplier_id=%d GROUP BY status", $supplier_id
+    ), ARRAY_A );
+    $report['latitudes_state']['last_run'] = $wpdb->get_row( $wpdb->prepare(
+        "SELECT id,status,products_found,products_new,products_updated,errors_count,message,started_at,finished_at FROM {$run_table} WHERE supplier_id=%d ORDER BY id DESC LIMIT 1", $supplier_id
+    ), ARRAY_A );
+}
+
 echo 'LATITUDES_READONLY_DIAGNOSTIC=' . wp_json_encode( $report, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
