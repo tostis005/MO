@@ -1,3 +1,27 @@
+# Estado comprobado en producción — 15/10/2026
+
+El nuevo workflow [Latitudes – activación en PRODUCCIÓN](../.github/workflows/latitudes-publish-production.yml) ya ha ejecutado múltiples **dry-run reales por SSH contra \`www.elmercadodeorigen.com\`**, usando los secretos existentes \`STAGING_HOST\`, \`STAGING_PORT\`, \`STAGING_USER\` y \`STAGING_PASSWORD\`. Aunque los secretos se llamen *STAGING*, el script descubre por \`home\` y \`siteurl\` la instalación real de **producción**, sin utilizar WordPress dev.
+
+Última validación: [Actions #38798984208](https://github.com/tostis005/MO/actions/runs/38798984208).
+
+Resultados reproducidos en el servidor:
+- Proveedor EMDO \`supplier_id=6\`, vendedor WCFM \`vendor_id=4949\`.
+- **138 fuentes correctas; 138 productos listos para publicar**. Ningún artículo publicado todavía.
+- El importador había creado intencionadamente los productos con estado \`draft\` y visibilidad \`hidden\`.
+- El vendedor ya tiene rol \`wcfm_vendor\` y no aparece bloqueado ni offline.
+- **Única barrera operativa:** los ajustes de envío de Latitudes \`_wcfmmp_shipping\` no existen/están vacíos (\`shipping_type=""\`, \`shipping_enabled=""\`). El backend EMDO rechaza Península, Baleares y Portugal para este vendedor; \`wcfmmp_get_shipping_zone('',4949)\` no dispone de métodos propios.
+- Las **zonas WooCommerce generales SÍ existen** y SÍ tienen el método compartido \`wcfmmp_product_shipping_by_zone\` habilitado: \`1=España (península)\`, \`10=Baleares\`, \`20=Portugal\`. No deben recrearse ni modificarse de forma indiscriminada: se tienen que añadir **métodos nativos WCFM solo para el vendedor 4949**, junto al flag de envío por zona.
+
+Condiciones comerciales a configurar para este vendedor:
+- Zona 1 Península y zona 20 Portugal continental: envío plano 13,45 €; gratis desde 200 €.
+- Zona 10 Baleares: envío plano 29 €; gratis desde 200 €.
+- No admitir Canarias, Ceuta, Melilla, Azores ni Madeira. **Atención:** la zona global 20 cubre Portugal completo; se necesita control específico por código postal para bloquear islas antes de abrir ventas.
+- Verificar que el checkout ofrece el método correcto por paquete, sin afectar otros proveedores.
+
+La publicación segura debe ejecutarse **después de dejar las zonas nativas correctas**. Los pushes del workflow solo hacen \`dry-run\`; ninguna ejecución automática publica. La publicación real necesita \`workflow_dispatch\` con modo \`publish\` y confirmación \`PUBLICAR-LATITUDES\`.
+
+---
+
 # Publicar los borradores de Latitudes desde GitHub
 
 **Herramienta disponible en la rama `main`**: workflow [Latitudes - publicar borradores en producción](../.github/workflows/latitudes-publish-production.yml) y script [WP-CLI](../.github/scripts/latitudes-publish-drafts.php).
