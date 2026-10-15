@@ -38,6 +38,23 @@ function elmercado_latitudes_vendor_candidates_20261015(): array {
 	if ( $exact instanceof WP_User ) {
 		$users[] = $exact;
 	}
+	/* Nombre comercial WCFM puede diferir del nombre de usuario. */
+	$wcfm_vendors = get_users(
+		array(
+			'role__in' => array( 'wcfm_vendor', 'vendor', 'dc_vendor', 'seller' ),
+			'number'   => 1000,
+		)
+	);
+	foreach ( $wcfm_vendors as $candidate ) {
+		if ( ! $candidate instanceof WP_User ) {
+			continue;
+		}
+		$profile = get_user_meta( (int) $candidate->ID, 'wcfmmp_profile_settings', true );
+		$name    = is_array( $profile ) ? (string) ( $profile['store_name'] ?? '' ) : '';
+		if ( false !== stripos( $name, 'latitudes' ) ) {
+			$users[] = $candidate;
+		}
+	}
 	$unique = array();
 	foreach ( $users as $user ) {
 		if ( $user instanceof WP_User ) {
@@ -96,6 +113,15 @@ function elmercado_latitudes_render_audit_20261015(): void {
 			<?php
 			$id        = (int) $vendor->ID;
 			$stats     = elmercado_latitudes_product_stats_20261015( $id );
+			$profile   = get_user_meta( $id, 'wcfmmp_profile_settings', true );
+			$store_name = is_array( $profile ) ? (string) ( $profile['store_name'] ?? '' ) : '';
+			$is_vendor = function_exists( 'elmercado_core_filter_is_vendor' )
+				? elmercado_core_filter_is_vendor( $id ) : null;
+			$excluded_destination = class_exists( 'MDO_Catalog_Destination_Frontend' )
+				? in_array( $id, array_map( 'absint', MDO_Catalog_Destination_Frontend::excluded_vendor_ids() ), true )
+				: null;
+			$all_excluded = function_exists( 'elmercado_catalog_counts_excluded_authors_010217' )
+				? in_array( $id, elmercado_catalog_counts_excluded_authors_010217(), true ) : null;
 			$offline   = get_user_meta( $id, '_wcfm_store_offline', true );
 			$disabled  = get_user_meta( $id, '_disable_vendor', true );
 			$is_hidden = function_exists( 'elmercado_wcfm_vendor_is_hidden_010210' )
@@ -115,6 +141,10 @@ function elmercado_latitudes_render_audit_20261015(): void {
 			<h2><?php echo esc_html( $vendor->display_name ); ?> (ID <?php echo esc_html( (string) $id ); ?>)</h2>
 			<p>Slug: <code><?php echo esc_html( $vendor->user_nicename ); ?></code> · Roles: <?php echo esc_html( implode( ', ', $vendor->roles ) ); ?></p>
 			<table class="widefat striped"><tbody>
+				<tr><th>Nombre comercial WCFM</th><td><?php echo esc_html( $store_name ?: 'Sin nombre comercial detectado' ); ?></td></tr>
+				<tr><th>Reconocido como vendedor en los filtros de Tienda</th><td><?php echo esc_html( null === $is_vendor ? 'No disponible' : ( $is_vendor ? 'Sí' : 'NO: revisar rol/store_name' ) ); ?></td></tr>
+				<tr><th>Excluido por destino de envío (para esta sesión)</th><td><?php echo esc_html( null === $excluded_destination ? 'No hay sistema de destino' : ( $excluded_destination ? 'SÍ: revisar configuración del vendedor' : 'No' ) ); ?></td></tr>
+				<tr><th>Excluido en catálogo/contadores</th><td><?php echo esc_html( null === $all_excluded ? 'No disponible' : ( $all_excluded ? 'Sí' : 'No' ) ); ?></td></tr>
 				<tr><th>Flag WCFM Offline</th><td><code><?php echo esc_html( var_export( $offline, true ) ); ?></code></td></tr>
 				<tr><th>Flag WCFM Disabled</th><td><code><?php echo esc_html( var_export( $disabled, true ) ); ?></code></td></tr>
 				<tr><th>Oculto por la política del tema (para esta sesión)</th><td><?php echo esc_html( null === $is_hidden ? 'Función no disponible' : ( $is_hidden ? 'Sí' : 'No' ) ); ?></td></tr>
@@ -147,17 +177,13 @@ function elmercado_latitudes_render_audit_20261015(): void {
 			<tr><td><?php echo esc_html( $author ? $author->display_name . ' (#' . $author->ID . ')' : '#' . $row->post_author ); ?></td><td><?php echo esc_html( $row->post_status ); ?></td><td><?php echo esc_html( (string) $row->total ); ?></td></tr>
 		<?php endforeach; ?>
 		</tbody></table>
-		<h2>Referencias para configurar los envíos de Latitudes</h2>
-		<p>Origen: condiciones de venta oficiales de <a href="https://latitudes.es/condiciones-de-venta/" target="_blank" rel="noopener noreferrer">latitudes.es</a>. No cambia tarifas; hay que configurar una regla por vendedor/paquete y comprobar los pesos importados.</p>
-		<table class="widefat striped"><thead><tr><th>Destino</th><th>Condición</th><th>Importe</th></tr></thead><tbody>
-			<tr><td>Península española y Portugal peninsular</td><td>0–4 kg, pedido inferior a 200 €</td><td>13,45 €</td></tr>
-			<tr><td>Península española y Portugal peninsular</td><td>Más de 4–7 kg, pedido inferior a 200 €</td><td>16,45 €</td></tr>
-			<tr><td>Península española y Portugal peninsular</td><td>Más de 7–20 kg, pedido inferior a 200 €</td><td>21,45 €</td></tr>
-			<tr><td>Baleares</td><td>Hasta 20 kg, pedido inferior a 200 €</td><td>29,00 €</td></tr>
-			<tr><td>Península / Baleares</td><td>Pedido Latitudes desde 200 €</td><td>Gratis</td></tr>
-			<tr><td>Canarias, Ceuta, Melilla; más de 20 kg</td><td>No enviar automáticamente</td><td>No aplicable / consultar</td></tr>
-		</tbody></table>
-		<p><strong>Orden de corrección:</strong> 1. vendedor y estado Offline/Disabled; 2. autor WCFM del producto; 3. estado publish; 4. stock y visibilidad; 5. restricciones de destino; 6. purgar caché, regenerar lookup y probar catálogo sin sesión.</p>
+		<h2>Tarifas acordadas para el marketplace</h2>
+		<p>Para un paquete exclusivo de Latitudes: <strong>13,45 €</strong> si el importe final de sus artículos es inferior a 200 € y <strong>gratis</strong> desde 200 € (incluidos 200 € exactos). Se aplica a Península española/portuguesa y Baleares, sin tramos de peso. No se habilita Canarias, Ceuta, Melilla, Madeira o Azores. Se respeta la separación por vendedor de los paquetes WCFM.</p>
+		<p>Las condiciones originales de <a href="https://latitudes.es/condiciones-de-venta/" target="_blank" rel="noopener noreferrer">latitudes.es</a> tienen otras tarifas por peso y para Baleares. Estas reglas simplificadas son una instrucción comercial específica de El Mercado de Origen, no una transcripción de los gastos oficiales.</p>
+		<p>Si WooCommerce/WCFM no separa los pedidos en paquetes por vendedor, <strong>la regla no sustituye el envío de un carrito mixto</strong>; habría que corregir la separación para no cobrar menos a otros proveedores.</p>
+		<?php if ( function_exists( 'elmercado_latitudes_cache_actions_20261015' ) ) : ?>
+			<?php elmercado_latitudes_cache_actions_20261015(); ?>
+		<?php endif; ?>
 	</div>
 	<?php
 }
