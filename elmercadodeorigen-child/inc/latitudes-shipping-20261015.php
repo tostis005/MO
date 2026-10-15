@@ -59,7 +59,9 @@ function elmercado_latitudes_shipping_destination_allowed_20261015( array $packa
 	$postal  = preg_replace( '/\s+/', '', strtoupper( (string) ( $dest['postcode'] ?? '' ) ) );
 	if ( 'ES' === $country ) {
 		/* 35/38 Canarias, 51 Ceuta, 52 Melilla. Si falta CP, WooCommerce aún no lo conoce. */
-		return '' === $postal || ! preg_match( '/^(35|38|51|52)\d{3}$/', $postal );
+		$state = strtoupper( (string) ( $dest['state'] ?? '' ) );
+		return ! in_array( $state, array( 'GC', 'TF', 'CE', 'ML' ), true )
+			&& ( '' === $postal || ! preg_match( '/^(35|38|51|52)\d{3}$/', $postal ) );
 	}
 	if ( 'PT' === $country ) {
 		/* Los CP 9xxx corresponden a Madeira/Azores. */
@@ -75,10 +77,10 @@ function elmercado_latitudes_is_balearics_20261015( array $package ): bool {
 	if ( strtoupper( (string) ( $destination['country'] ?? '' ) ) !== 'ES' ) {
 		return false;
 	}
-	$postcode = preg_replace( '/\\s+/', '', (string) ( $destination['postcode'] ?? '' ) );
+	$postcode = preg_replace( '/\s+/', '', (string) ( $destination['postcode'] ?? '' ) );
 	$state = strtoupper( (string) ( $destination['state'] ?? '' ) );
 	/* Código postal 07xxx y provincia PM (WooCommerce), IB en integraciones externas. */
-	return 1 === preg_match( '/^07\\d{3}$/', $postcode ) || in_array( $state, array( 'PM', 'IB' ), true );
+	return 1 === preg_match( '/^07\d{3}$/', $postcode ) || in_array( $state, array( 'PM', 'IB' ), true );
 }
 
 /** Total final visible de las líneas del vendedor, con IVA y después de cupones. */
@@ -121,7 +123,8 @@ add_filter(
 		if ( ! elmercado_latitudes_shipping_destination_allowed_20261015( $package ) ) {
 			return array();
 		}
-		if ( ! class_exists( 'WC_Shipping_Rate' ) ) {
+		/* Nunca crear envíos nuevos si WCFM/WooCommerce no devuelve métodos para la zona. */
+		if ( ! class_exists( 'WC_Shipping_Rate' ) || ! is_array( $rates ) || ! $rates ) {
 			return $rates;
 		}
 		$total = elmercado_latitudes_shipping_items_total_20261015( $package );
