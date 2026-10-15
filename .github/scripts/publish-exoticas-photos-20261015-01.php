@@ -66,13 +66,24 @@ try {
    $license='<a href="'.esc_url($a['license_url']).'">'.esc_html($a['license']).'</a>';
    $es_credit='\n'.$credit_marker.'<p class="emdo-photo-credit"><small>Imagen ilustrativa del alimento; fotografía de '.esc_html($a['author']).' / '.$source.'. Licencia '.$license.'. Imagen redimensionada para la web.</small></p>';
    $en_credit='\n'.$credit_marker.'<p class="emdo-photo-credit"><small>Illustrative photo of the food by '.esc_html($a['author']).' / '.$source.'. License '.$license.'. Image resized for web display.</small></p>';
+   // Legacy first-run footer used a literal backslash-n; normalise it to a real line break.
+   $rawline='\\n'.$credit_marker;
+   $es_current=(string)get_post_field('post_content',$id);
+   if(str_contains($es_current,$rawline)) {
+     $es_clean=str_replace($rawline,PHP_EOL.$credit_marker,$es_current);
+     $res=wp_update_post(wp_slash(['ID'=>$id,'post_content'=>$es_clean]),true);
+     if(is_wp_error($res))throw new RuntimeException('Could not normalise Spanish photo credit '.$slug);
+     $p=get_post($id);
+   }
+   $en_current=(string)get_post_meta($id,'_en_US_post_content',true);
+   if(str_contains($en_current,$rawline))update_post_meta($id,'_en_US_post_content',str_replace($rawline,PHP_EOL.$credit_marker,$en_current));
    if(!str_contains((string)$p->post_content,$credit_marker)){
       $res=wp_update_post(wp_slash(['ID'=>$id,'post_content'=>(string)$p->post_content.$es_credit]),true);
       if(is_wp_error($res))throw new RuntimeException('ES photo credit failed '.$slug);
    }
    $en=(string)get_post_meta($id,'_en_US_post_content',true);
    if(!str_contains($en,$credit_marker))update_post_meta($id,'_en_US_post_content',$en.$en_credit);
-   if(!set_post_thumbnail($id,$aid))throw new RuntimeException('Could not set thumbnail '.$slug);
+   if((int)get_post_thumbnail_id($id)!==$aid && !set_post_thumbnail($id,$aid))throw new RuntimeException('Could not set thumbnail '.$slug);
    update_post_meta($id,'_emdo_editorial_image_approved_id',$aid);
    update_post_meta($id,'_emdo_editorial_cover_asset_id','emdo-commons-'.sanitize_key((string)$a['key']));
    update_post_meta($id,'_emdo_editorial_cover_brand_safe','1');
