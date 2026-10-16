@@ -7,6 +7,8 @@ on:
       - '.github/workflows/seo-batch1-public-html-audit-20261013.yml'
       - 'tests/seo-batch1-public-audit-20261013.py'
   workflow_dispatch:
+  schedule:
+    - cron: '15 6 * * *' # Daily read-only HTML regression audit
 
 permissions:
   contents: read
@@ -28,7 +30,7 @@ jobs:
           python3 tests/seo-batch1-public-audit-20261013.py | tee "$RUNNER_TEMP/gsc-seo-20-public-summary.log"
           grep -q '^GSC_BATCH1_PUBLIC_SUMMARY ' "$RUNNER_TEMP/gsc-seo-20-public-summary.log"
       - name: Publish safe aggregate findings to issue 246
-        if: ${{ always() && github.ref == 'refs/heads/main' }}
+        if: ${{ always() && github.ref == 'refs/heads/main' && (github.event_name != 'schedule' || steps.audit.outcome != 'success') }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
