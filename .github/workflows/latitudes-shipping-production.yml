@@ -1,4 +1,4 @@
-name: Latitudes - inspeccionar envíos de producción
+name: Latitudes - configurar envíos en producción
 on:
   push:
     branches: [main]
@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validar el código PHP
         run: php -l .github/scripts/latitudes-shipping-production.php
-      - name: Inspeccionar WordPress producción (sin cambios)
+      - name: Configurar únicamente las tarifas WCFM de Latitudes en producción
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -75,5 +75,8 @@ jobs:
             php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1 || true)"
           fi
           wp_bin="$(command -v wp)"
-          "$php_bin" -d memory_limit=512M "$wp_bin" eval-file "$script" --path="$wp_path" --skip-themes --allow-root
+          echo "Paso 1: inspección de tarifas actuales sin escritura."
+          LATITUDES_SHIPPING_MODE=inspect "$php_bin" -d memory_limit=512M "$wp_bin" eval-file "$script" --path="$wp_path" --skip-themes --allow-root
+          echo "Paso 2: aplicar solo tarifas de Latitudes (13,45 EUR Península/Portugal, 29 EUR Baleares)."
+          LATITUDES_SHIPPING_MODE=apply "$php_bin" -d memory_limit=512M "$wp_bin" eval-file "$script" --path="$wp_path" --skip-themes --allow-root
           REMOTE
