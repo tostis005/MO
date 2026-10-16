@@ -1,0 +1,31 @@
+name: SEO emergency crawler-facing HTTP audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/seo-global-incident-20261016.yml'
+      - 'tests/seo_global_incident_headers_20261016.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate audit and request public production pages without writes
+        shell: bash
+        run: |
+          python3 -m py_compile tests/seo_global_incident_headers_20261016.py
+          python3 tests/seo_global_incident_headers_20261016.py
+      - name: Retain JSON report, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seo-global-incident-headers
+          path: seo-global-incident-headers-20261016.json
+          if-no-files-found: warn
