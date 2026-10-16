@@ -46,6 +46,21 @@ foreach (array(1=>'Peninsula',10=>'Baleares',20=>'Portugal') as $id=>$label) {
     'methods'=>$methods
   );
 }
+if (class_exists('MDO_Shipping_Destinations')) {
+  $out['destination_checks']=array();
+  foreach (array(
+    'peninsula'=>array('ES','28001'),
+    'baleares'=>array('ES','07001'),
+    'canarias'=>array('ES','35001'),
+    'ceuta'=>array('ES','51001'),
+    'melilla'=>array('ES','52001'),
+    'portugal_mainland'=>array('PT','1000-001'),
+    'madeira'=>array('PT','9000-001'),
+    'azores'=>array('PT','9500-001')
+  ) as $label=>$loc) {
+    $out['destination_checks'][$label]=MDO_Shipping_Destinations::vendor_can_ship_to($vendor,$loc[0],$loc[1]);
+  }
+}
 WP_CLI::log('LATITUDES_SHIPPING_AUDIT='.wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));
 $mode=getenv('LATITUDES_SHIPPING_MODE')?:'inspect';
 if ('inspect'===$mode) {
