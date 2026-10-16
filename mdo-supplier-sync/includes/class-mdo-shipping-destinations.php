@@ -21,6 +21,9 @@ final class MDO_Shipping_Destinations {
 		add_action( 'updated_user_meta', array( __CLASS__, 'maybe_invalidate_from_user_meta' ), 10, 4 );
 		add_action( 'deleted_user_meta', array( __CLASS__, 'maybe_invalidate_from_user_meta' ), 10, 4 );
 		add_action( 'mdo_shipping_destinations_invalidate', array( __CLASS__, 'invalidate_cache' ) );
+		// Exclude islands that Latitudes does not serve, without changing other vendors' rates.
+		add_filter( 'woocommerce_package_rates', array( __CLASS__, 'exclude_latitudes_unserved_package_rates' ), 9999, 2 );
+		add_action( 'woocommerce_after_checkout_validation', array( __CLASS__, 'validate_latitudes_checkout_destination' ), 10, 2 );
 	}
 
 	/** Default destination requested for the future storefront selector. */
@@ -122,6 +125,10 @@ final class MDO_Shipping_Destinations {
 			return false;
 		}
 
+		if ( self::latitudes_destination_is_blocked( $vendor_id, $destination['country'], $destination['postcode'] ) ) {
+			return false;
+		}
+
 		$shipping = get_user_meta( $vendor_id, '_wcfmmp_shipping', true );
 		$type     = is_array( $shipping ) ? (string) ( $shipping['_wcfmmp_user_shipping_type'] ?? '' ) : '';
 
@@ -132,6 +139,114 @@ final class MDO_Shipping_Destinations {
 
 		$available = self::zones_match_destination( $vendor_id, $destination );
 		return (bool) apply_filters( 'mdo_shipping_vendor_can_ship_to', $available, $vendor_id, $destination, $type );
+	}
+
+	/** Vendor ID from the EMDO connector mapping (never create or change users). */
+	private static function latitudes_vendor_id(): int {
+		static $vendor_id = null;
+		if ( null !== $vendor_id ) {
+			return $vendor_id;
+		}
+		$vendor_id = 0;
+		if ( ! class_exists( 'MDO_Database' ) ) {
+			return 0;
+		}
+		global $wpdb;
+		$table = MDO_Database::table( 'suppliers' );
+		$vendor_id = absint( $wpdb->get_var( $wpdb->prepare(
+			"SELECT vendor_user_id FROM {$table} WHERE code=%s LIMIT 1",
+			'latitudes'
+		) ) );
+		return $vendor_id;
+	}
+
+	/** No Latitudes delivery to Canaries, Ceuta, Melilla, Madeira or Azores. */
+	private static function latitudes_destination_is_blocked( int $vendor_id, string $country, string $postcode ): bool {
+		if ( $vendor_id <= 0 || $vendor_id !== self::latitudes_vendor_id() ) {
+			return false;
+		}
+		$country = strtoupper( trim( $country ) );
+		$digits  = preg_replace( '/\D+/', '', $postcode );
+		if ( 'PT' === $country && strlen( $digits ) >= 4 ) {
+			// All Portuguese postcodes 9000–9999 are Madeira / Azores.
+			return (int) substr( $digits, 0, 4 ) >= 9000;
+		}
+		if ( 'ES' === $country && strlen( $digits ) >= 2 ) {
+			return in_array( substr( $digits, 0, 2 ), array( '35', '38', '51', '52' ), true );
+		}
+		return false;
+	}
+
+	/** Whether a shipping package contains only Latitudes goods. */
+	private static function latitudes_shipping_package( array $package, int $vendor_id ): bool {
+		if ( $vendor_id <= 0 ) {
+			return false;
+		}
+		if ( isset( $package['vendor_id'] ) && absint( $package['vendor_id'] ) > 0 ) {
+			return absint( $package['vendor_id'] ) === $vendor_id;
+		}
+		if ( empty( $package['contents'] ) || ! is_array( $package['contents'] ) ) {
+			return false;
+		}
+		foreach ( $package['contents'] as $item ) {
+			$product_id = absint( $item['product_id'] ?? 0 );
+			if ( $product_id <= 0 || (int) get_post_field( 'post_author', $product_id ) !== $vendor_id ) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Blocks only shipping packages belonging to Latitudes in unserved areas.
+	 * Other producers and their available rates remain untouched.
+	 */
+	public static function exclude_latitudes_unserved_package_rates( array $rates, array $package ): array {
+		$vendor_id = self::latitudes_vendor_id();
+		if ( ! self::latitudes_shipping_package( $package, $vendor_id ) ) {
+			return $rates;
+		}
+		$destination = isset( $package['destination'] ) && is_array( $package['destination'] )
+			? $package['destination'] : array();
+		return self::latitudes_destination_is_blocked(
+			$vendor_id,
+			(string) ( $destination['country'] ?? '' ),
+			(string) ( $destination['postcode'] ?? '' )
+		) ? array() : $rates;
+	}
+
+	/** Prevent checkout bypasses, including mixed-vendor carts. */
+	public static function validate_latitudes_checkout_destination( $data, $errors ): void {
+		if ( ! is_array( $data ) || ! $errors instanceof WP_Error || ! function_exists( 'WC' ) || ! WC()->cart ) {
+			return;
+		}
+		$vendor_id = self::latitudes_vendor_id();
+		if ( $vendor_id <= 0 ) {
+			return;
+		}
+		$has_latitudes = false;
+		foreach ( WC()->cart->get_cart() as $item ) {
+			$product_id = absint( $item['product_id'] ?? 0 );
+			if ( $product_id > 0 && (int) get_post_field( 'post_author', $product_id ) === $vendor_id ) {
+				$has_latitudes = true;
+				break;
+			}
+		}
+		if ( ! $has_latitudes ) {
+			return;
+		}
+		$use_shipping = ! empty( $data['ship_to_different_address'] );
+		$country_key = $use_shipping ? 'shipping_country' : 'billing_country';
+		$postcode_key = $use_shipping ? 'shipping_postcode' : 'billing_postcode';
+		if ( self::latitudes_destination_is_blocked(
+			$vendor_id,
+			(string) ( $data[ $country_key ] ?? '' ),
+			(string) ( $data[ $postcode_key ] ?? '' )
+		) ) {
+			$errors->add( 'mdo_latitudes_excluded_destination',
+				'Latitudes no realiza envíos a esa zona. Cambia el destino o elimina sus productos del carrito.'
+			);
+		}
 	}
 
 	/** Product-level convenience method; WCFM vendors are the product authors. */
