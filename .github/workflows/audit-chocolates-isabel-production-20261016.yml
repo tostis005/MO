@@ -1,5 +1,8 @@
 name: Chocolates Isabel - QA de importacion en produccion
 on:
+  workflow_run:
+    workflows: ["Chocolates Isabel - corregir fichas activas en produccion"]
+    types: [completed]
   push:
     branches: [main]
     paths:
@@ -10,6 +13,7 @@ permissions:
   contents: read
 jobs:
   audit:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:

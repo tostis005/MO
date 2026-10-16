@@ -42,6 +42,7 @@ $rows = $wpdb->get_results( $wpdb->prepare(
 ), ARRAY_A ) ?: array();
 
 $counts = array(
+    'quality_repaired' => 0, 'quality_errors' => 0,
     'source_total' => count( $rows ), 'active' => 0, 'pending' => 0, 'importing' => 0,
     'excluded' => 0, 'unavailable' => 0, 'other' => 0,
     'wc_products_found' => 0, 'draft' => 0, 'published' => 0, 'hidden' => 0,
@@ -104,6 +105,8 @@ foreach ( $rows as $row ) {
     $p = wc_get_product( (int)$row['wc_product_id'] );
     if ( ! $p ) { $add_issue( 'wc_product_missing', $row ); continue; }
     $counts['wc_products_found']++;
+    if (get_post_meta($p->get_id(),'_emdo_isabel_quality_v2_done',true)==='1'){$counts['quality_repaired']++;}
+    if (get_post_meta($p->get_id(),'_emdo_isabel_quality_v2_done',true)==='error'){$counts['quality_errors']++;}
     if ( $p->get_status() === 'draft' ) { $counts['draft']++; }
     if ( $p->get_status() === 'publish' ) { $counts['published']++; }
     if ( $p->get_catalog_visibility() === 'hidden' ) { $counts['hidden']++; }
@@ -125,13 +128,13 @@ foreach ( $rows as $row ) {
     }
     $cat_string = implode(' ', $slugs);
     if ( str_contains( $cat_string, 'sin-categorizar' ) || str_contains( $cat_string, 'uncategorized' ) ) { $taxonomy_defects['uncategorized']++; }
-    if ( preg_match( '/hortalizas|verduras|carnes|pato|jamon|aceites|cerdo|queso/', $cat_string ) ) { $taxonomy_defects['unrelated_to_chocolate']++; }
+    if ( preg_match( '/naranjas|hortalizas|verduras|carnes|pato|jamon|aceites|cerdo|queso/', $cat_string ) ) { $taxonomy_defects['unrelated_to_chocolate']++; }
     $is_bombon = (bool) preg_match( '/bombon|torino|laminero|roca/i', $p->get_name() );
     if ( $is_bombon && preg_match( '/tabletas/', $cat_string ) ) { $taxonomy_defects['bombon_as_tablet']++; }
     if ( preg_match( '/habas de cacao|nibs|cascarilla|manteca de cacao/i', $p->get_name() ) && preg_match( '/tabletas/', $cat_string ) ) { $taxonomy_defects['cacao_as_tablet']++; }
     if ( count($wrong_category_examples) < 20 && (
         $is_bombon && preg_match('/tabletas/',$cat_string) ||
-        preg_match('/hortalizas|verduras|carnes|pato|jamon|aceites|cerdo|queso/',$cat_string)
+        preg_match('/naranjas|hortalizas|verduras|carnes|pato|jamon|aceites|cerdo|queso/',$cat_string)
     ) ) { $wrong_category_examples[] = array('id'=>$p->get_id(), 'name'=>$p->get_name(), 'categories'=>array_map(static fn($t)=>$t->name, is_array($terms)?$terms:array())); }
     if ( $p->is_type( 'variable' ) ) { $counts['wc_variable']++; }
     $wc_desc = wp_strip_all_tags( $p->get_description() );
