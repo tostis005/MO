@@ -76,6 +76,16 @@ $method_table=$wpdb->prefix.'wcfm_marketplace_shipping_zone_methods';
 if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$method_table))!==$method_table) {
   WP_CLI::error('WCFM native shipping method table absent');
 }
+// WP-CLI runs as anonymous user by default. The WCFM native API checks
+// capabilities; perform this administrative maintenance in an administrator
+// context (without modifying product authors or any vendor's account).
+$operator_id=0;
+foreach (get_users(array('role'=>'administrator','fields'=>'ids','number'=>20)) as $uid) {
+  if (user_can((int)$uid,'manage_woocommerce')) { $operator_id=(int)$uid; break; }
+}
+if ($operator_id<=0) { WP_CLI::error('No administrator has manage_woocommerce capability'); }
+wp_set_current_user($operator_id);
+if (!current_user_can('manage_woocommerce')) { WP_CLI::error('Cannot authorize native WCFM shipping method write'); }
 $changes=array();
 foreach ($rates as $zone_id=>$methods) {
   $existing=$wpdb->get_results($wpdb->prepare(
