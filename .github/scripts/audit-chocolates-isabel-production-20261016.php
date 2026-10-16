@@ -62,6 +62,12 @@ $add_issue = static function ( string $type, array $row, array $extra = array() 
     }
 };
 $source_urls = array();
+$category_distribution = array();
+$taxonomy_defects = array( 'uncategorized' => 0, 'unrelated_to_chocolate' => 0, 'bombon_as_tablet' => 0, 'cacao_as_tablet' => 0 );
+$wrong_category_examples = array();
+$source_weight_mentioned = 0;
+$source_dimensions_mentioned = 0;
+$description_fragments = array();
 foreach ( $rows as $row ) {
     $status = (string) $row['status'];
     if ( isset( $counts[ $status ] ) ) { $counts[ $status ]++; }
@@ -82,6 +88,10 @@ foreach ( $rows as $row ) {
     elseif ( 'outofstock' === $source_stock ) { $counts['source_outofstock']++; }
     else { $counts['source_unknown_stock']++; }
     if ( preg_match( '/ingredientes|composici[oó]n/i', $source_desc ) ) { $counts['with_source_ingredients']++; }
+    if ( preg_match( '/peso\s+(?:unitario|envase|neto)|\b\d+\s*(?:grs|gramos|g\.|g\b|kg\b)/ui', $source_desc ) ) { $source_weight_mentioned++; }
+    if ( preg_match( '/medidas|dimensiones|\b\d+\s*x\s*\d+\s*x\s*\d+\s*cm/ui', $source_desc ) ) { $source_dimensions_mentioned++; }
+    $prefix = mb_substr( preg_replace( '/\s+/u', ' ', trim( $source_desc ) ), 0, 85 );
+    if ( $prefix ) { $description_fragments[ $prefix ] = (int)( $description_fragments[ $prefix ] ?? 0 ) + 1; }
     if ( preg_match( '/al[eé]rgen|trazas|puede contener/i', $source_desc ) ) { $counts['with_source_allergen_words']++; }
     if ( ! $payload && $status !== 'excluded' ) { $add_issue( 'missing_source_payload', $row ); }
     if ( $status === 'pending' && $row['last_error'] ) {
@@ -107,6 +117,22 @@ foreach ( $rows as $row ) {
     if ( $p->get_weight() ) { $counts['with_weight']++; }
     if ( $p->get_length() || $p->get_width() || $p->get_height() ) { $counts['with_dimensions']++; }
     if ( $p->get_category_ids() ) { $counts['with_categories']++; }
+    $terms = wp_get_post_terms( $p->get_id(), 'product_cat' );
+    $slugs = array();
+    foreach ( is_array($terms) ? $terms : array() as $term ) {
+        $slugs[] = (string)$term->slug;
+        $category_distribution[(string)$term->name] = (int)( $category_distribution[(string)$term->name] ?? 0 ) + 1;
+    }
+    $cat_string = implode(' ', $slugs);
+    if ( str_contains( $cat_string, 'sin-categorizar' ) || str_contains( $cat_string, 'uncategorized' ) ) { $taxonomy_defects['uncategorized']++; }
+    if ( preg_match( '/hortalizas|verduras|carnes|pato|jamon|aceites|cerdo|queso/', $cat_string ) ) { $taxonomy_defects['unrelated_to_chocolate']++; }
+    $is_bombon = (bool) preg_match( '/bombon|torino|laminero|roca/i', $p->get_name() );
+    if ( $is_bombon && preg_match( '/tabletas/', $cat_string ) ) { $taxonomy_defects['bombon_as_tablet']++; }
+    if ( preg_match( '/habas de cacao|nibs|cascarilla|manteca de cacao/i', $p->get_name() ) && preg_match( '/tabletas/', $cat_string ) ) { $taxonomy_defects['cacao_as_tablet']++; }
+    if ( count($wrong_category_examples) < 20 && (
+        $is_bombon && preg_match('/tabletas/',$cat_string) ||
+        preg_match('/hortalizas|verduras|carnes|pato|jamon|aceites|cerdo|queso/',$cat_string)
+    ) ) { $wrong_category_examples[] = array('id'=>$p->get_id(), 'name'=>$p->get_name(), 'categories'=>array_map(static fn($t)=>$t->name, is_array($terms)?$terms:array())); }
     if ( $p->is_type( 'variable' ) ) { $counts['wc_variable']++; }
     $wc_desc = wp_strip_all_tags( $p->get_description() );
     if ( preg_match( '/ingredientes|composici[oó]n/i', $wc_desc ) ) { $counts['with_wc_ingredients']++; }
@@ -180,5 +206,10 @@ $out = array(
     'vendor_published_products'=>$vendor_published,
     'counts'=>$counts, 'issue_counts'=>$severity, 'issues_sample'=>$issues,
     'product_samples'=>$samples, 'recent_sync_runs'=>$recent_runs, 'sync_event_counts'=>$events,
+    'category_distribution'=>$category_distribution, 'taxonomy_defects'=>$taxonomy_defects,
+    'wrong_category_examples'=>$wrong_category_examples,
+    'source_products_with_weight_text'=>$source_weight_mentioned,
+    'source_products_with_dimension_text'=>$source_dimensions_mentioned,
+    'repeated_description_prefixes'=>array_slice( array_filter($description_fragments, static fn($n)=>$n>1), 0, 10, true ),
 );
 echo 'ISABEL_AUDIT=' . wp_json_encode( $out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR ) . "\n";
