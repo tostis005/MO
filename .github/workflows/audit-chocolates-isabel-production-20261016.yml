@@ -1,7 +1,7 @@
 name: Chocolates Isabel - QA de importacion en produccion
 on:
   workflow_run:
-    workflows: ["Chocolates Isabel - corregir fichas activas en produccion"]
+    workflows: ["Chocolates Isabel - corregir fichas activas en produccion", "Chocolates Isabel - registrar personalizables y excluir servicios caducados"]
     types: [completed]
   push:
     branches: [main]

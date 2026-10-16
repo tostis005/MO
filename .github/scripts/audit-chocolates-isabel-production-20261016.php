@@ -42,7 +42,7 @@ $rows = $wpdb->get_results( $wpdb->prepare(
 ), ARRAY_A ) ?: array();
 
 $counts = array(
-    'quality_repaired' => 0, 'quality_errors' => 0,
+    'quality_repaired' => 0, 'quality_errors' => 0, 'personalized_draft_review' => 0, 'excluded_services' => 0,
     'source_total' => count( $rows ), 'active' => 0, 'pending' => 0, 'importing' => 0,
     'excluded' => 0, 'unavailable' => 0, 'other' => 0,
     'wc_products_found' => 0, 'draft' => 0, 'published' => 0, 'hidden' => 0,
@@ -130,7 +130,10 @@ foreach ( $rows as $row ) {
     }
     if ( preg_match( '/al[eé]rgen|trazas|puede contener/i', $source_desc ) ) { $counts['with_source_allergen_words']++; }
     if ( ! $payload && $status !== 'excluded' ) { $add_issue( 'missing_source_payload', $row ); }
-    if ( $status === 'pending' && $row['last_error'] ) {
+    $under_review = (int)$row['wc_product_id'] > 0 && get_post_meta((int)$row['wc_product_id'],'_emdo_isabel_customization_review_required',true)==='1';
+    if ( $status === 'excluded' && in_array((int)$row['id'], array(759,760,761),true) ) { $counts['excluded_services']++; }
+    if ( $under_review ) { $counts['personalized_draft_review']++; }
+    if ( $status === 'pending' && $row['last_error'] && ! $under_review ) {
         $add_issue( 'import_or_scrape_error', $row, array( 'error'=>mb_substr( (string)$row['last_error'],0,210 ) ) );
     }
     if ( $status === 'active' && ! $row['wc_product_id'] ) {
@@ -210,7 +213,7 @@ foreach ( $rows as $row ) {
         $wc_plain = $wc_desc;
         $src_plain = $source_desc;
         if ( $src_plain && $wc_plain !== $src_plain ) { $add_issue( 'description_differs_from_source', $row ); }
-        if ( $variation_count > 1 && ! $p->is_type( 'variable' ) ) { $add_issue( 'missing_variations', $row ); }
+        if ( $variation_count > 1 && ! $p->is_type( 'variable' ) && ! $under_review ) { $add_issue( 'missing_variations', $row ); }
         if ( $p->is_type( 'variable' ) && $variation_count && count( $p->get_children() ) !== $variation_count ) {
             $add_issue( 'variation_count_mismatch', $row, array( 'source_variations'=>$variation_count, 'wc_variations'=>count($p->get_children()) ) );
         }
@@ -254,6 +257,7 @@ $out = array(
     'counts'=>$counts, 'issue_counts'=>$severity, 'issues_sample'=>$issues,
     'product_samples'=>$samples, 'recent_sync_runs'=>$recent_runs, 'sync_event_counts'=>$events,
     'pending_listing'=>$pending_listing,
+    'personalized_review_required'=>array_values(array_filter($pending_listing, static fn($r) => in_array((int)$r['id'],array(692,693,700,701,702,757,758),true))),
     'pending_details'=>$pending_details,'short_description_missing'=>$short_missing,
     'source_description_examples'=>$source_description_examples,
     'nutrition_source_count'=>$nutrition_source,'nutrition_woo_count'=>$nutrition_woo,
