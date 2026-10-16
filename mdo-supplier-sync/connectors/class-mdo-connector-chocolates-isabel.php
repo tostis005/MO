@@ -110,6 +110,28 @@ final class MDO_Connector_Chocolates_Isabel {
             $product['variation_count'] = max( 2, (int) ( $product['variation_count'] ?? 0 ) );
             $product['variations'] = array();
         }
+
+        $rows = $xpath->query( "//table[contains(@class, 'woocommerce-product-attributes')]//tr" );
+        foreach ( $rows ?: array() as $tr ) {
+            $th = $xpath->query( "./th", $tr );
+            $td = $xpath->query( "./td", $tr );
+            if ( ! $th || ! $th->length || ! $td || ! $td->length ) { continue; }
+            $key = mb_strtolower( trim( $th->item(0)->textContent ), 'UTF-8' );
+            $value = trim( $td->item(0)->textContent );
+            if ( str_contains( $key, 'peso' ) && preg_match( '/([0-9]+(?:[,.][0-9]+)?) *(kg|g)/i', $value, $m ) ) {
+                $kg = (float) str_replace( ',', '.', $m[1] );
+                if ( strtolower($m[2]) === 'g' ) { $kg /= 1000; }
+                if ( $kg > 0 && $kg < 250 ) { $product['weight_kg'] = $kg; }
+            }
+            if ( str_contains( $key, 'dimensiones' ) && preg_match( '/([0-9.,]+) *[x×] *([0-9.,]+) *[x×] *([0-9.,]+) *cm/i', $value, $m ) ) {
+                $product['dimensions_cm'] = array_map( static fn( $n ) => (float) str_replace( ',', '.', $n ), array_slice( $m, 1, 3 ) );
+            }
+        }
+        $summary = $xpath->query( "//div[contains(@class, 'woocommerce-product-details__short-description')]" );
+        if ( $summary && $summary->length ) {
+            $short = trim( $summary->item(0)->textContent );
+            if ( mb_strlen( $short ) > 35 ) { $product['short_description'] = $short; }
+        }
         $product['source_url'] = $canonical;
         $data = $product;
         unset( $data['source_hash'], $data['description'] );

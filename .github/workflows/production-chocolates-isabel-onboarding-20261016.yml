@@ -1,8 +1,5 @@
 name: Chocolates Isabel - onboarding seguro en produccion
 on:
-  workflow_run:
-    workflows: ["Deploy MDO Supplier Sync to production"]
-    types: [completed]
   workflow_dispatch:
 permissions:
   contents: read

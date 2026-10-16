@@ -46,7 +46,8 @@ final class MDO_Woo_Importer {
 
 		$variations = self::usable_variations( $payload );
 		$declared_variations = isset( $payload['variation_count'] ) ? (int) $payload['variation_count'] : 0;
-		if ( $declared_variations > 1 && ! $variations ) {
+		if ( $declared_variations > 1 && ( ! $variations ||
+			( 'chocolates-artesanos-isabel' === (string) $supplier['code'] && count( $variations ) < $declared_variations ) ) ) {
 			throw new RuntimeException( 'El producto tiene opciones/variantes, pero EMDO aún no dispone de la matriz completa de precios y stock. No se importará hasta evitar una ficha incorrecta.' );
 		}
 
@@ -116,6 +117,10 @@ final class MDO_Woo_Importer {
 		update_post_meta( $product_id, '_emdo_supplier_id', (int) $row['supplier_id'] );
 		update_post_meta( $product_id, '_emdo_source_url', esc_url_raw( (string) $row['source_url'] ) );
 		update_post_meta( $product_id, '_emdo_source_hash', sanitize_text_field( (string) $row['source_hash'] ) );
+		if ( 'chocolates-artesanos-isabel' === (string) $supplier['code'] ) {
+			MDO_Isabel_Quality::apply( $product_id, $payload );
+		}
+
 		// Product-title heuristics elsewhere in WooCommerce sometimes add
 		// "Packs y lotes" to simple multi-unit packs (e.g. two burger patties or
 		// 250 g of frog legs). That category is reserved for genuine mixed
