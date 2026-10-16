@@ -107,7 +107,10 @@ foreach ($rates as $zone_id=>$methods) {
       $instance_id=WCFMmp_Shipping_Zone::add_shipping_methods(array(
         'user_id'=>$vendor,'zone_id'=>$zone_id,'method_id'=>$method_id
       ));
-      if (is_wp_error($instance_id) || (int)$instance_id<=0) { WP_CLI::error('WCFM failed creating zone '.$zone_id.' method '.$method_id); }
+      if (is_wp_error($instance_id) || (int)$instance_id<=0) {
+        $detail=is_wp_error($instance_id)?$instance_id->get_error_message():('result='.var_export($instance_id,true));
+        WP_CLI::error('WCFM failed creating zone '.$zone_id.' method '.$method_id.'; '.$detail.'; db='.$wpdb->last_error);
+      }
     }
     $saved=$wpdb->update($method_table,array('settings'=>maybe_serialize($settings),'is_enabled'=>1),
       array('instance_id'=>(int)$instance_id,'vendor_id'=>$vendor,'zone_id'=>$zone_id,'method_id'=>$method_id),
