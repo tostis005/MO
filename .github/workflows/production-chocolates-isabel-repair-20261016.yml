@@ -58,6 +58,8 @@ jobs:
             [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
             wp_bin=\$(command -v wp)
             ISABEL_REPAIR_PHASE=all \"\$php_bin\" -d memory_limit=1536M \"\$wp_bin\" eval-file '$SCRIPT' --path='$PROD_PATH' --allow-root
+            ISABEL_REPAIR_PHASE=backfill \"\$php_bin\" -d memory_limit=1536M \"\$wp_bin\" eval-file '$SCRIPT' --path='$PROD_PATH' --allow-root
+            ISABEL_REPAIR_PHASE=report \"\$php_bin\" -d memory_limit=1536M \"\$wp_bin\" eval-file '$SCRIPT' --path='$PROD_PATH' --allow-root
             rm -f '$SCRIPT'
           "
           echo ISABEL_REPAIR_WORKFLOW_COMPLETED

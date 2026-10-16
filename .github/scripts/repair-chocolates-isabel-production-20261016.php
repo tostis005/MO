@@ -73,6 +73,45 @@ if ( $mode === 'batch' || $mode === 'all' ) {
     if ( $mode === 'batch' ) { exit; }
     $mode = 'report';
 }
+if ( $mode === 'backfill' ) {
+    // QA confirmed rows 730–756 are ordinary physical chocolate products.
+    // Use atomic pending->importing claims; a concurrent onboarding worker
+    // selects only pending rows, so the same record cannot be scheduled twice.
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id,source_url FROM {$products}
+         WHERE supplier_id=%d AND status='pending'
+         AND (last_error IS NULL OR last_error='')
+         AND id BETWEEN 730 AND 756 ORDER BY id DESC", $sid
+    ), ARRAY_A );
+    $ok=0;$fail=0;$skip=0;
+    foreach ( (array)$rows as $r ) {
+        $row_id=(int)$r['id'];
+        if ( ! MDO_Woo_Importer::mark_importing( $row_id ) ) { $skip++; continue; }
+        try {
+            $new_payload = MDO_Connector_Chocolates_Isabel::scrape_product( (string)$r['source_url'] );
+            if ( preg_match( '/visita|taller|curso|personalizad/u', mb_strtolower( (string)($new_payload['title'] ?? ''),'UTF-8' ) ) ) {
+                throw new RuntimeException( 'Artículo con servicio o personalización que exige revisión de opciones.' );
+            }
+            MDO_Connector_Chocolates_Isabel::upsert_product( $sid, $new_payload );
+            $wc_id = (int) MDO_Woo_Importer::import_source_product( $row_id );
+            $p = wc_get_product( $wc_id );
+            if ( ! $p || $p->get_status() !== 'draft' || $p->get_catalog_visibility() !== 'hidden' ||
+                 (int)get_post_field('post_author',$wc_id) !== $vid ) {
+                throw new RuntimeException( 'No se mantuvo el estado oculto del producto.' );
+            }
+            update_post_meta( $wc_id, '_emdo_isabel_quality_v2_done', '1' );
+            $ok++;
+            echo 'ISABEL_BACKFILL_OK id=' . $row_id . ' woo=' . $wc_id . ' price=' . $p->get_price() .
+                 ' image=' . (int)$p->get_image_id() . "\n";
+        } catch ( Throwable $e ) {
+            MDO_Woo_Importer::mark_import_error( $row_id, $e->getMessage() );
+            $fail++;
+            echo 'ISABEL_BACKFILL_BLOCKED id=' . $row_id . ' reason=' . substr($e->getMessage(),0,230) . "\n";
+        }
+    }
+    echo 'ISABEL_BACKFILL_REPORT=' . wp_json_encode(array('imported'=>$ok,'blocked'=>$fail,'skipped'=>$skip)) . "\n";
+    exit;
+}
 if ( $mode === 'report' ) {
     $inventory = $wpdb->get_results( $wpdb->prepare(
         "SELECT status,COUNT(*) n FROM {$products} WHERE supplier_id=%d GROUP BY status ORDER BY status", $sid
