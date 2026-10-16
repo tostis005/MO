@@ -1,0 +1,91 @@
+name: Chocolates Isabel - onboarding seguro en produccion
+on:
+  workflow_run:
+    workflows: ["Deploy MDO Supplier Sync to production"]
+    types: [completed]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: production-chocolates-isabel-onboarding
+  cancel-in-progress: false
+jobs:
+  onboard:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint and safely provision disabled Isabel vendor
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/onboard-chocolates-isabel-20261016.php
+          php -l mdo-supplier-sync/connectors/class-mdo-connector-chocolates-isabel.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+          EXPECTED_PLUGIN_HASH="$(sha256sum mdo-supplier-sync/mdo-supplier-sync.php | cut -d " " -f1)"
+          ACTUAL_PLUGIN_HASH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sha256sum '$PROD_PATH/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php' | cut -d ' ' -f1" | tr -d "\r\n")"
+          test "$EXPECTED_PLUGIN_HASH" = "$ACTUAL_PLUGIN_HASH"
+          EXPECTED_CONNECTOR_HASH="$(sha256sum mdo-supplier-sync/connectors/class-mdo-connector-chocolates-isabel.php | cut -d " " -f1)"
+          ACTUAL_CONNECTOR_HASH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sha256sum '$PROD_PATH/wp-content/plugins/mdo-supplier-sync/connectors/class-mdo-connector-chocolates-isabel.php' | cut -d ' ' -f1" | tr -d "\r\n")"
+          test "$EXPECTED_CONNECTOR_HASH" = "$ACTUAL_CONNECTOR_HASH"
+          echo "ISABEL_PLUGIN_MATCH_OK"
+          REMOTE_SCRIPT="/tmp/onboard-chocolates-isabel-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/onboard-chocolates-isabel-20261016.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+          remote_wp() {
+            phase="$1"
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+              set -e
+              php_bin=\$(command -v php || true)
+              [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+              wp_bin=\$(command -v wp)
+              ISABEL_PHASE='$phase' \"\$php_bin\" -d memory_limit=1536M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root
+            "
+          }
+          remote_wp setup
+          remote_wp discover
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -d memory_limit=1536M \"\$wp_bin\" action-scheduler run --group=mdo-supplier-sync --batch-size=20 --batches=0 --force --path='$PROD_PATH' --allow-root
+          "
+          remote_wp report
+          for i in $(seq 1 60); do
+            result="$(remote_wp import)"
+            printf '%s\n' "$result"
+            remaining="$(printf '%s\n' "$result" | sed -nE 's/.*"remaining":([0-9]+).*/\1/p' | tail -n1)"
+            test -n "$remaining"
+            if [ "$remaining" = "0" ]; then break; fi
+          done
+          remote_wp report
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$REMOTE_SCRIPT'"
+          echo ISABEL_PRELAUNCH_SETUP_AND_IMPORT_COMPLETED

@@ -38,7 +38,7 @@ final class MDO_Woo_Importer {
 			throw new RuntimeException( 'Los datos extraídos del producto están incompletos.' );
 		}
 		$payload['title'] = MDO_Text::normalize_title( (string) $payload['title'] );
-		if ( 'latitudes' === (string) $supplier['code'] &&
+		if ( in_array( (string) $supplier['code'], array( 'latitudes', 'chocolates-artesanos-isabel' ), true ) &&
 			! in_array( (string) ( $payload['stock_status'] ?? 'unknown' ), array( 'instock', 'outofstock' ), true ) ) {
 			throw new RuntimeException( 'Stock de Latitudes sin verificar: se cancela la importación de esta referencia.' );
 		}
@@ -80,7 +80,7 @@ final class MDO_Woo_Importer {
 
 		// Prelaunch products from Latitudes must never become public while its
 		// WCFM vendor is hard-disabled, including after nightly updates.
-		if ( 'latitudes' === (string) $supplier['code'] && get_user_meta( $vendor_id, '_disable_vendor', true ) ) {
+		if ( in_array( (string) $supplier['code'], array( 'latitudes', 'chocolates-artesanos-isabel' ), true ) && get_user_meta( $vendor_id, '_disable_vendor', true ) ) {
 			$product->set_status( 'draft' );
 			$product->set_catalog_visibility( 'hidden' );
 		}
