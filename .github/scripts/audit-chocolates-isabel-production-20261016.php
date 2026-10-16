@@ -172,7 +172,7 @@ foreach ( $rows as $row ) {
     if ( (int)get_post_field( 'post_author', $p->get_id() ) !== $vendor_id ) { $add_issue( 'wrong_vendor_author', $row ); }
     if ( $p->get_status() !== 'draft' ) { $add_issue( 'unexpected_post_status', $row, array( 'value'=>$p->get_status() ) ); }
     if ( $p->get_catalog_visibility() !== 'hidden' ) { $add_issue( 'unexpected_catalog_visibility', $row ); }
-    if ( $p->get_image_id() <= 0 ) { $add_issue( 'missing_main_image', $row ); }
+    if ( $p->get_image_id() <= 0 ) { $add_issue( 'missing_main_image', $row, array( 'source_images' => count( $images ), 'first_source_image' => esc_url_raw( (string) ( $images[0] ?? '' ) ) ) ); }
     if ( trim( $wc_desc ) === '' ) { $add_issue( 'missing_woocommerce_description', $row ); }
     if ( ! $p->get_category_ids() ) { $add_issue( 'missing_category', $row ); }
     if ( (int)get_post_meta( $p->get_id(), '_emdo_supplier_id', true ) !== $supplier_id ) { $add_issue( 'wrong_supplier_meta', $row ); }
