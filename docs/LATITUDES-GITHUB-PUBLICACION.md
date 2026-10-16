@@ -1,3 +1,19 @@
+## Tarifas definitivas autorizadas — 16/10/2026
+
+Las condiciones vigentes solicitadas por el propietario para **Latitudes solamente** son:
+
+| Destino | Hasta 199,99 € | Desde 200 € |
+|---|---:|---:|
+| España peninsular | 13,45 € | **0 € (gratis)** |
+| Portugal continental | 13,45 € | **0 € (gratis)** |
+| Baleares | **29,00 €** | **29,00 € (nunca gratis por superar 200 €)** |
+
+Quedan excluidos **Canarias, Ceuta, Melilla, Azores y Madeira**. Portugal continental no incluye sus archipiélagos. Conservar la configuración manual de Península si es correcta; añadir o corregir únicamente métodos WCFM del vendedor Latitudes en Baleares/Portugal. No cambiar autores, productos ni tarifas de otros vendedores. Las tarifas deben comprobarse en WordPress/checkout antes de declararlas operativas.
+
+Este apartado tiene prioridad sobre todos los importes o umbrales anteriores del documento: cualquier mención a envío gratis a Baleares desde 200 € es obsoleta.
+
+---
+
 ## Última comprobación real de publicación (15/10/2026)
 
 [GitHub Actions #38802487272](https://github.com/tostis005/MO/actions/runs/38802487272) confirmó **138 referencias listas, sin bloqueos de producto y 0 productos publicados previamente**. Los artículos están vinculados al vendedor WCFM existente (ID 4949) y a los registros fuente EMDO. La operación de publicación no reasigna `post_author` ni modifica roles, usuarios, categorías, imágenes, precios, descripciones ni stock: cambia solo el estado `draft` → `publish` y la visibilidad `hidden` → `visible`. El propietario ha solicitado publicar el catálogo cuanto antes, aunque la configuración nativa de envíos WCFM está pendiente.
@@ -22,7 +38,7 @@ Resultados reproducidos en el servidor:
 
 Condiciones comerciales a configurar para este vendedor:
 - Zona 1 Península y zona 20 Portugal continental: envío plano 13,45 €; gratis desde 200 €.
-- Zona 10 Baleares: envío plano 29 €; gratis desde 200 €.
+- Zona 10 Baleares: envío plano 29 € **siempre**, sin envío gratuito por alcanzar 200 €.
 - No admitir Canarias, Ceuta, Melilla, Azores ni Madeira. **Atención:** la zona global 20 cubre Portugal completo; se necesita control específico por código postal para bloquear islas antes de abrir ventas.
 - Verificar que el checkout ofrece el método correcto por paquete, sin afectar otros proveedores.
 
@@ -62,7 +78,7 @@ Requisitos del servidor: `wp` (WP-CLI) y PHP CLI accesibles, WooCommerce y WCFM 
 3. Volver a ejecutar, esta vez en modo **publish** y escribir exactamente `PUBLICAR-LATITUDES` en el campo `confirmation`.
 4. Comprobar `RESUMEN`: `published` indica cuántos artículos cambiaron a `publish`. Cada elemento pasa validaciones de vendedor, nombre, precio, imagen, stock y visibilidad; no modifica otros productores.
 5. Comprobar en navegador anónimo `https://www.elmercadodeorigen.com/tienda/` y la tienda oficial WCFM de Latitudes. El workflow invalida la caché temprana de tienda y portada, transitorios WooCommerce y cachés de plugins conocidos. Un CDN externo puede necesitar purga adicional.
-6. Revisar una compra de prueba y las reglas nativas de envío de Latitudes en WCFM (Península 13,45 €, Baleares 29 €, gratis desde 200 €) antes de recibir pedidos reales.
+6. Revisar una compra de prueba y las reglas nativas de envío de Latitudes en WCFM (Península 13,45 €, Baleares 29 € siempre, sin gratuidad) antes de recibir pedidos reales.
 
 ## Barreras de seguridad
 
