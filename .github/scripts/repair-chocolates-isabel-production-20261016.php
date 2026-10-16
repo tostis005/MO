@@ -21,7 +21,8 @@ if ( ! class_exists( 'MDO_Isabel_Quality' ) ) {
     throw new RuntimeException( 'La versión corregida de EMDO aún no está desplegada.' );
 }
 $mode = getenv('ISABEL_REPAIR_PHASE') ?: 'batch';
-if ( $mode === 'batch' ) {
+if ( $mode === 'batch' || $mode === 'all' ) {
+    for ( $round = 0; $round < ( $mode === 'all' ? 40 : 1 ); $round++ ) {
     $rows = $wpdb->get_results( $wpdb->prepare(
         "SELECT sp.id,sp.source_url,sp.wc_product_id FROM {$products} sp
          INNER JOIN {$wpdb->posts} p ON p.ID=sp.wc_product_id
@@ -67,7 +68,10 @@ if ( $mode === 'batch' ) {
          WHERE sp.supplier_id=%d AND sp.status='active' AND p.post_type='product' AND marker.meta_id IS NULL", $sid
     ));
     echo 'ISABEL_REPAIR_BATCH=' . wp_json_encode(array('ok'=>$done,'blocked'=>$blocked,'remaining'=>$remaining)) . "\n";
-    exit;
+    if ( $remaining === 0 ) { break; }
+    }
+    if ( $mode === 'batch' ) { exit; }
+    $mode = 'report';
 }
 if ( $mode === 'report' ) {
     $inventory = $wpdb->get_results( $wpdb->prepare(
