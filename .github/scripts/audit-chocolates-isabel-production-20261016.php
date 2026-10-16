@@ -75,6 +75,7 @@ $plain_description = static function ( string $html ): string {
     return trim( preg_replace( '/\s+/u', ' ', $html ) );
 };
 $critical_description_mismatches = array();
+$source_description_examples = array();
 $nutrition_source = 0;
 $nutrition_woo = 0;
 $source_urls = array();
@@ -110,6 +111,13 @@ foreach ( $rows as $row ) {
     if ( preg_match( '/medidas|dimensiones|\b\d+\s*x\s*\d+\s*x\s*\d+\s*cm/ui', $source_desc ) ) { $source_dimensions_mentioned++; }
     $prefix = mb_substr( preg_replace( '/\s+/u', ' ', trim( $source_desc ) ), 0, 85 );
     if ( $prefix ) { $description_fragments[ $prefix ] = (int)( $description_fragments[ $prefix ] ?? 0 ) + 1; }
+    if ( in_array( (int)$row['id'], array( 655,658,680,712,725,745 ), true ) ) {
+        $source_description_examples[] = array( 'source_id'=>(int)$row['id'],'source_chars'=>mb_strlen($source_desc),
+            'start'=>mb_substr($source_desc,0,550),'tail'=>mb_substr($source_desc,-450),
+            'contains_composition'=>(bool)preg_match('/composici[oó]n|ingredientes/iu',$source_desc),
+            'contains_allergens'=>(bool)preg_match('/al[eé]rgen|trazas/iu',$source_desc),
+            'contains_nutrition'=>(bool)preg_match('/nutricional/iu',$source_desc) );
+    }
     if ( preg_match( '/al[eé]rgen|trazas|puede contener/i', $source_desc ) ) { $counts['with_source_allergen_words']++; }
     if ( ! $payload && $status !== 'excluded' ) { $add_issue( 'missing_source_payload', $row ); }
     if ( $status === 'pending' && $row['last_error'] ) {
@@ -236,6 +244,7 @@ $out = array(
     'counts'=>$counts, 'issue_counts'=>$severity, 'issues_sample'=>$issues,
     'product_samples'=>$samples, 'recent_sync_runs'=>$recent_runs, 'sync_event_counts'=>$events,
     'pending_listing'=>$pending_listing,
+    'source_description_examples'=>$source_description_examples,
     'nutrition_source_count'=>$nutrition_source,'nutrition_woo_count'=>$nutrition_woo,
     'critical_description_mismatches'=>$critical_description_mismatches,
     'category_distribution'=>$category_distribution, 'taxonomy_defects'=>$taxonomy_defects,
