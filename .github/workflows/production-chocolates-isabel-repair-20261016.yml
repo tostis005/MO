@@ -1,5 +1,9 @@
 name: Chocolates Isabel - corregir fichas activas en produccion
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-chocolates-isabel-repair-20261016.yml'
   workflow_run:
     workflows: ["Deploy MDO Supplier Sync to production"]
     types: [completed]
@@ -8,7 +12,7 @@ permissions:
   contents: read
 jobs:
   audit:
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -19,7 +23,7 @@ jobs:
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Validate and inspect WordPress without changing data
+      - name: Rescrape and enrich Isabel catalog without publishing
         shell: bash
         run: |
           set -Eeuo pipefail
