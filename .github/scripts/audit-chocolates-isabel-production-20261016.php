@@ -69,8 +69,10 @@ $wrong_category_examples = array();
 $source_weight_mentioned = 0;
 $source_dimensions_mentioned = 0;
 $description_fragments = array();
+$pending_listing = array();
 foreach ( $rows as $row ) {
     $status = (string) $row['status'];
+    if ( $status === 'pending' ) { $pending_listing[] = array('id'=>(int)$row['id'],'title'=>$row['title'],'error'=>mb_substr((string)$row['last_error'],0,120),'variation_count'=>(int)(json_decode((string)$row['source_payload'],true)['variation_count']??0) ); }
     if ( isset( $counts[ $status ] ) ) { $counts[ $status ]++; }
     else { $counts['other']++; }
     $url = rtrim( (string) $row['source_url'], '/' );
@@ -209,6 +211,7 @@ $out = array(
     'vendor_published_products'=>$vendor_published,
     'counts'=>$counts, 'issue_counts'=>$severity, 'issues_sample'=>$issues,
     'product_samples'=>$samples, 'recent_sync_runs'=>$recent_runs, 'sync_event_counts'=>$events,
+    'pending_listing'=>$pending_listing,
     'category_distribution'=>$category_distribution, 'taxonomy_defects'=>$taxonomy_defects,
     'wrong_category_examples'=>$wrong_category_examples,
     'source_products_with_weight_text'=>$source_weight_mentioned,
