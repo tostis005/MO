@@ -131,6 +131,50 @@ if('apply'===$phase){
         $excluded++;
         echo "ISABEL_SERVICE_EXCLUDED={$id}\n";
     }
+    // Close the five otherwise complete standard drafts that lacked a short
+    // description. Use only wording found in the manufacturer's source.
+    $filled_short=0;$still_without_short=0;
+    foreach(array(674,686,690,716,718) as $source_id) {
+        $r=$wpdb->get_row($wpdb->prepare(
+            "SELECT source_payload,wc_product_id FROM {$src} WHERE supplier_id=%d AND id=%d",$sid,$source_id),ARRAY_A);
+        if(!$r || !(int)$r['wc_product_id']){$still_without_short++;continue;}
+        $p=wc_get_product((int)$r['wc_product_id']);
+        if(!$p||$p->get_status()!=='draft'||(int)get_post_field('post_author',$p->get_id())!==$vid){
+            $still_without_short++;continue;
+        }
+        if(trim(wp_strip_all_tags((string)$p->get_short_description()))!==''){continue;}
+        $payload=json_decode((string)$r['source_payload'],true);
+        if(!is_array($payload)){$still_without_short++;continue;}
+        $html=(string)($payload['description']??'');
+        $fragments=preg_split('~</(?:p|div|li|h[2-5]|tr)>~i',$html);
+        $text='';
+        foreach((array)$fragments as $fragment) {
+            $fragment=trim(preg_replace('/\s+/u',' ',html_entity_decode(wp_strip_all_tags((string)$fragment),ENT_QUOTES|ENT_HTML5,'UTF-8')));
+            if(mb_strlen($fragment)<48 || preg_match('/^(composici[oó]n|ingredientes|al[eé]rgenos|valores nutricionales|informaci[oó]n al[eé]rgenos)/iu',$fragment)){continue;}
+            $text=$fragment;break;
+        }
+        if(!$text){
+            $text=trim((string)($payload['title']??''));
+        }
+        if(mb_strlen($text)>260){
+            $text=rtrim(mb_substr($text,0,255),' ,.;');
+            $text=preg_replace('/\s+\S*$/u','',$text).'…';
+        }
+        if(mb_strlen($text)<25){$still_without_short++;continue;}
+        $p->set_short_description('<p>'.esc_html($text).'</p>');
+        $p->save();
+        update_post_meta($p->get_id(),'_emdo_isabel_short_description_from_manufacturer','1');
+        $filled_short++;
+        echo 'ISABEL_SHORT_DESCRIPTION_FILLED='. $source_id . ':woo=' . $p->get_id() . "\n";
+    }
+    echo 'ISABEL_SHORT_SUMMARY='.wp_json_encode(array('newly_filled'=>$filled_short,
+        'unresolved'=>$still_without_short))."\n";
+
+    $turron=wc_get_product(17606);
+    if($turron && (int)get_post_field('post_author',17606)===$vid && !$turron->get_image_id()){
+        update_post_meta(17606,'_emdo_isabel_missing_source_image_needs_real_photo','1');
+        echo "ISABEL_TURRON_IMAGE_REVIEW=original_supplier_photo_missing\n";
+    }
     echo 'ISABEL_FINAL_APPLY='.wp_json_encode(array('created'=>$created,'reused'=>$reused,
         'blocked'=>$error,'activities_excluded'=>$excluded))."\n";
     if($error){exit(31);}
