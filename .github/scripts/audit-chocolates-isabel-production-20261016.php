@@ -62,6 +62,21 @@ $add_issue = static function ( string $type, array $row, array $extra = array() 
              'wc_id'=>(int)$row['wc_product_id'], 'title'=>mb_substr( (string) $row['title'],0,115 ) ), $extra );
     }
 };
+$plain_description = static function ( string $html ): string {
+    // Source JSON sometimes double-escapes rich HTML, while WordPress decodes
+    // it before saving. Strip tags only AFTER decoding all nested entities.
+    for ( $i = 0; $i < 4; $i++ ) {
+        $new = html_entity_decode( $html, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+        if ( $new === $html ) { break; }
+        $html = $new;
+    }
+    $html = wp_strip_all_tags( $html );
+    $html = str_replace( "\xc2\xa0", ' ', $html );
+    return trim( preg_replace( '/\s+/u', ' ', $html ) );
+};
+$critical_description_mismatches = array();
+$nutrition_source = 0;
+$nutrition_woo = 0;
 $source_urls = array();
 $category_distribution = array();
 $taxonomy_defects = array( 'uncategorized' => 0, 'unrelated_to_chocolate' => 0, 'bombon_as_tablet' => 0, 'cacao_as_tablet' => 0 );
@@ -80,7 +95,7 @@ foreach ( $rows as $row ) {
     $source_urls[ $url ] = true;
     $payload = json_decode( (string) $row['source_payload'], true );
     $payload = is_array( $payload ) ? $payload : array();
-    $source_desc = wp_strip_all_tags( (string) ( $payload['description'] ?? '' ) );
+    $source_desc = $plain_description( (string) ( $payload['description'] ?? '' ) );
     $source_stock = (string) ( $payload['stock_status'] ?? $row['source_stock_status'] );
     $source_price = isset( $payload['price'] ) && is_numeric( $payload['price'] ) ? (float) $payload['price'] : null;
     $variation_count = (int) ( $payload['variation_count'] ?? 0 );
@@ -139,7 +154,16 @@ foreach ( $rows as $row ) {
         preg_match('/naranjas|hortalizas|verduras|carnes|pato|jamon|aceites|cerdo|queso/',$cat_string)
     ) ) { $wrong_category_examples[] = array('id'=>$p->get_id(), 'name'=>$p->get_name(), 'categories'=>array_map(static fn($t)=>$t->name, is_array($terms)?$terms:array())); }
     if ( $p->is_type( 'variable' ) ) { $counts['wc_variable']++; }
-    $wc_desc = wp_strip_all_tags( $p->get_description() );
+    $wc_desc = $plain_description( $p->get_description() );
+    if ( preg_match( '/nutricional|valor energ[eé]tico/iu', $source_desc ) ) { $nutrition_source++; }
+    if ( preg_match( '/nutricional|valor energ[eé]tico/iu', $wc_desc ) ) { $nutrition_woo++; }
+    foreach ( array( 'composici[oó]n|ingredientes', 'informaci[oó]n\s+al[eé]rgen|trazas', 'nutricional|valor energ[eé]tico' ) as $section ) {
+        if ( preg_match( '~' . $section . '~iu', $source_desc ) && ! preg_match( '~' . $section . '~iu', $wc_desc ) ) {
+            if ( count( $critical_description_mismatches ) < 22 ) {
+                $critical_description_mismatches[] = array( 'wc_id'=>$p->get_id(),'source_id'=>(int)$row['id'],'section'=>$section );
+            }
+        }
+    }
     if ( preg_match( '/ingredientes|composici[oó]n/i', $wc_desc ) ) { $counts['with_wc_ingredients']++; }
     if ( preg_match( '/al[eé]rgen|trazas|puede contener/i', $wc_desc ) ) { $counts['with_wc_allergen_words']++; }
     $media = json_decode( (string) get_post_meta( $p->get_id(), '_emdo_image_map', true ), true );
@@ -165,8 +189,8 @@ foreach ( $rows as $row ) {
         if ( $source_price !== null && ! $p->is_type('variable') && abs( $source_price - (float)$p->get_price() ) > 0.011 ) {
             $add_issue( 'price_mismatch', $row, array( 'source_price'=>$source_price, 'wc_price'=>$p->get_price() ) );
         }
-        $wc_plain = preg_replace( '/\s+/u', ' ', html_entity_decode( $wc_desc, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
-        $src_plain = preg_replace( '/\s+/u', ' ', html_entity_decode( $source_desc, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+        $wc_plain = $wc_desc;
+        $src_plain = $source_desc;
         if ( $src_plain && $wc_plain !== $src_plain ) { $add_issue( 'description_differs_from_source', $row ); }
         if ( $variation_count > 1 && ! $p->is_type( 'variable' ) ) { $add_issue( 'missing_variations', $row ); }
         if ( $p->is_type( 'variable' ) && $variation_count && count( $p->get_children() ) !== $variation_count ) {
@@ -212,6 +236,8 @@ $out = array(
     'counts'=>$counts, 'issue_counts'=>$severity, 'issues_sample'=>$issues,
     'product_samples'=>$samples, 'recent_sync_runs'=>$recent_runs, 'sync_event_counts'=>$events,
     'pending_listing'=>$pending_listing,
+    'nutrition_source_count'=>$nutrition_source,'nutrition_woo_count'=>$nutrition_woo,
+    'critical_description_mismatches'=>$critical_description_mismatches,
     'category_distribution'=>$category_distribution, 'taxonomy_defects'=>$taxonomy_defects,
     'wrong_category_examples'=>$wrong_category_examples,
     'source_products_with_weight_text'=>$source_weight_mentioned,
