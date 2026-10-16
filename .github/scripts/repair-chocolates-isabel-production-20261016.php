@@ -81,7 +81,7 @@ if ( $mode === 'backfill' ) {
         "SELECT id,source_url FROM {$products}
          WHERE supplier_id=%d AND status='pending'
          AND (last_error IS NULL OR last_error='')
-         AND id BETWEEN 730 AND 756 ORDER BY id DESC", $sid
+         AND id BETWEEN 712 AND 756 ORDER BY id DESC", $sid
     ), ARRAY_A );
     $ok=0;$fail=0;$skip=0;
     foreach ( (array)$rows as $r ) {
@@ -110,6 +110,30 @@ if ( $mode === 'backfill' ) {
         }
     }
     echo 'ISABEL_BACKFILL_REPORT=' . wp_json_encode(array('imported'=>$ok,'blocked'=>$fail,'skipped'=>$skip)) . "\n";
+    exit;
+}
+if ( $mode === 'dimensions' ) {
+    // No network access: recover explicitly stated three-dimensional values from
+    // already archived manufacturer descriptions on all imported Isabel products.
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id,wc_product_id,source_payload FROM {$products}
+         WHERE supplier_id=%d AND status='active' AND wc_product_id IS NOT NULL
+         ORDER BY id", $sid
+    ), ARRAY_A );
+    $ok=0;$dimensions_set=0;$error=0;
+    foreach ( (array) $rows as $r ) {
+        $product_id = (int) $r['wc_product_id'];
+        if ( (int)get_post_field('post_author',$product_id) !== $vid ) { $error++; continue; }
+        $p = wc_get_product( $product_id );
+        if ( ! $p || $p->get_status() !== 'draft' || $p->get_catalog_visibility() !== 'hidden' ) { $error++; continue; }
+        $payload = json_decode( (string)$r['source_payload'], true );
+        if ( ! is_array($payload) || empty($payload['description']) ) { $error++; continue; }
+        MDO_Isabel_Quality::apply( $product_id, $payload );
+        $p = wc_get_product( $product_id );
+        if ( $p && $p->get_length() && $p->get_width() && $p->get_height() ) { $dimensions_set++; }
+        $ok++;
+    }
+    echo 'ISABEL_DIMENSIONS=' . wp_json_encode(array('checked'=>$ok,'dimensions_set'=>$dimensions_set,'errors'=>$error)) . "\n";
     exit;
 }
 if ( $mode === 'report' ) {

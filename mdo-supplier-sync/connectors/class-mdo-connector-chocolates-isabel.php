@@ -132,6 +132,19 @@ final class MDO_Connector_Chocolates_Isabel {
             $short = trim( $summary->item(0)->textContent );
             if ( mb_strlen( $short ) > 35 ) { $product['short_description'] = $short; }
         }
+
+        // Many Isabel product cards place dimensions in the description tab
+        // (e.g. "Medidas 9x1x20cm"), not in WooCommerce attributes.
+        // Accept only explicit three-dimensional measurements in centimetres.
+        if ( empty( $product['dimensions_cm'] ) ) {
+            $plain = html_entity_decode( wp_strip_all_tags( (string) ( $product['description'] ?? '' ) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+            if ( preg_match( '/\\b(?:medidas|dimensiones)\\s*[:\\-]?\\s*([0-9]+(?:[,.][0-9]+)?)\\s*[x×]\\s*([0-9]+(?:[,.][0-9]+)?)\\s*[x×]\\s*([0-9]+(?:[,.][0-9]+)?)\\s*cm\\b/iu', $plain, $parts ) ) {
+                $values = array_map( static fn( $v ) => (float) str_replace( ',', '.', $v ), array_slice( $parts, 1, 3 ) );
+                if ( count( array_filter( $values, static fn( $v ) => $v > 0 && $v < 1000 ) ) === 3 ) {
+                    $product['dimensions_cm'] = $values;
+                }
+            }
+        }
         $product['source_url'] = $canonical;
         $data = $product;
         unset( $data['source_hash'], $data['description'] );

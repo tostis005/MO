@@ -10,6 +10,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: chocolates-isabel-production-repair
+  cancel-in-progress: false
 jobs:
   audit:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
@@ -28,6 +31,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           php -l .github/scripts/repair-chocolates-isabel-production-20261016.php
+          php -l mdo-supplier-sync/includes/class-mdo-isabel-quality.php
+          php -l mdo-supplier-sync/connectors/class-mdo-connector-chocolates-isabel.php
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"
@@ -59,6 +64,7 @@ jobs:
             wp_bin=\$(command -v wp)
             ISABEL_REPAIR_PHASE=all \"\$php_bin\" -d memory_limit=1536M \"\$wp_bin\" eval-file '$SCRIPT' --path='$PROD_PATH' --allow-root
             ISABEL_REPAIR_PHASE=backfill \"\$php_bin\" -d memory_limit=1536M \"\$wp_bin\" eval-file '$SCRIPT' --path='$PROD_PATH' --allow-root
+            ISABEL_REPAIR_PHASE=dimensions \"\$php_bin\" -d memory_limit=1536M \"\$wp_bin\" eval-file '$SCRIPT' --path='$PROD_PATH' --allow-root
             ISABEL_REPAIR_PHASE=report \"\$php_bin\" -d memory_limit=1536M \"\$wp_bin\" eval-file '$SCRIPT' --path='$PROD_PATH' --allow-root
             rm -f '$SCRIPT'
           "

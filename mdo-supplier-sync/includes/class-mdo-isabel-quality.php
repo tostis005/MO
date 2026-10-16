@@ -37,6 +37,12 @@ final class MDO_Isabel_Quality {
             $p->set_weight( wc_format_decimal( wc_get_weight( $weight, get_option( 'woocommerce_weight_unit', 'kg' ), 'kg' ) ) );
         }
         $dimensions = (array) ( $payload['dimensions_cm'] ?? array() );
+        if ( count( $dimensions ) !== 3 ) {
+            $description_plain = html_entity_decode( wp_strip_all_tags( (string) ( $payload['description'] ?? '' ) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+            if ( preg_match( '/\\b(?:medidas|dimensiones)\\s*[:\\-]?\\s*([0-9]+(?:[,.][0-9]+)?)\\s*[x×]\\s*([0-9]+(?:[,.][0-9]+)?)\\s*[x×]\\s*([0-9]+(?:[,.][0-9]+)?)\\s*cm\\b/iu', $description_plain, $match ) ) {
+                $dimensions = array_map( static fn( $v ) => (float) str_replace( ',', '.', $v ), array_slice( $match, 1, 3 ) );
+            }
+        }
         if ( count( $dimensions ) === 3 && count( array_filter( $dimensions, static fn( $n ) => is_numeric( $n ) && (float) $n > 0 && (float) $n < 1000 ) ) === 3 ) {
             foreach ( array( 'length', 'width', 'height' ) as $index => $key ) {
                 $method = 'set_' . $key;
