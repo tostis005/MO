@@ -86,8 +86,18 @@ $source_weight_mentioned = 0;
 $source_dimensions_mentioned = 0;
 $description_fragments = array();
 $pending_listing = array();
+$short_missing = array();
+$pending_details = array();
 foreach ( $rows as $row ) {
     $status = (string) $row['status'];
+    if ( $status === 'pending' && count($pending_details) < 15 ) {
+        $p_raw = json_decode((string)$row['source_payload'],true);$p_raw=is_array($p_raw)?$p_raw:array();
+        $pending_details[]=array('id'=>(int)$row['id'],'title'=>$row['title'],'source_url'=>$row['source_url'],
+            'price'=>isset($p_raw['price'])?$p_raw['price']:null,'stock'=>$row['source_stock_status'],
+            'images'=>count((array)($p_raw['images']??array())),'sku'=>$p_raw['sku']??'',
+            'description_chars'=>mb_strlen(wp_strip_all_tags((string)($p_raw['description']??''))),
+            'source_variables'=>count((array)($p_raw['variations']??array())),'variation_count'=>$p_raw['variation_count']??0 );
+    }
     if ( $status === 'pending' ) { $pending_listing[] = array('id'=>(int)$row['id'],'title'=>$row['title'],'error'=>mb_substr((string)$row['last_error'],0,120),'variation_count'=>(int)(json_decode((string)$row['source_payload'],true)['variation_count']??0) ); }
     if ( isset( $counts[ $status ] ) ) { $counts[ $status ]++; }
     else { $counts['other']++; }
@@ -140,7 +150,7 @@ foreach ( $rows as $row ) {
     if ( $p->get_image_id() ) { $counts['with_images']++; }
     if ( $p->get_gallery_image_ids() ) { $counts['with_gallery']++; }
     if ( trim( wp_strip_all_tags( $p->get_description() ) ) !== '' ) { $counts['with_description']++; }
-    if ( trim( wp_strip_all_tags( $p->get_short_description() ) ) !== '' ) { $counts['with_short_description']++; }
+    if ( trim( wp_strip_all_tags( $p->get_short_description() ) ) !== '' ) { $counts['with_short_description']++; } else { $short_missing[]=array('source_id'=>(int)$row['id'],'wc_id'=>$p->get_id(),'title'=>$p->get_name()); }
     if ( $p->get_sku() ) { $counts['with_sku']++; }
     if ( $p->get_weight() ) { $counts['with_weight']++; }
     if ( $p->get_length() || $p->get_width() || $p->get_height() ) { $counts['with_dimensions']++; }
@@ -244,6 +254,7 @@ $out = array(
     'counts'=>$counts, 'issue_counts'=>$severity, 'issues_sample'=>$issues,
     'product_samples'=>$samples, 'recent_sync_runs'=>$recent_runs, 'sync_event_counts'=>$events,
     'pending_listing'=>$pending_listing,
+    'pending_details'=>$pending_details,'short_description_missing'=>$short_missing,
     'source_description_examples'=>$source_description_examples,
     'nutrition_source_count'=>$nutrition_source,'nutrition_woo_count'=>$nutrition_woo,
     'critical_description_mismatches'=>$critical_description_mismatches,
