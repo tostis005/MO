@@ -162,6 +162,13 @@ final class MDO_Scheduler {
 			};
 			$product = MDO_Text::normalize_product( $product );
 			$result   = $connector::upsert_product( $supplier_id, $product );
+			// Isabel's seven custom-option listings are not safe to import via
+			// the generic Woo importer, but their source availability must
+			// still refresh on every scheduled scan (including restocks).
+			if ( 'chocolates-artesanos-isabel' === (string) $supplier['connector'] ) {
+				MDO_Isabel_Quality::sync_review_stock( $supplier_id, (string) $product['source_url'] );
+			}
+
 			$restored = MDO_Woo_Importer::restore_if_unavailable( $supplier_id, (string) $product['source_url'] );
 			if ( $restored && 'unchanged' === $result ) {
 				$result = 'updated';

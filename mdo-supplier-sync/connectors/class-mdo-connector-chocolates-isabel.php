@@ -225,19 +225,53 @@ final class MDO_Connector_Chocolates_Isabel {
         return array_values( $urls );
     }
 
+    /**
+     * Stock on the *individual* manufacturer product, never cross-sells or
+     * generic shipping/notification text. Unknown is not treated as in stock.
+     */
+    public static function detect_stock_from_html( string $html ): string {
+        return self::visible_stock( self::xpath( $html ) );
+    }
+
     private static function visible_stock( DOMXPath $xpath ): string {
-        $scope = $xpath->query( "//div[contains(concat(' ',normalize-space(@class),' '),' summary ')] | //div[contains(concat(' ',normalize-space(@class),' '),' entry-summary ')]" );
-        if ( ! $scope || ! $scope->length ) { return 'unknown'; }
-        $statuses = array();
-        foreach ( $scope as $summary ) {
-            foreach ( $xpath->query( ".//*[contains(concat(' ',normalize-space(@class),' '),' stock ')] | .//*[contains(concat(' ',normalize-space(@class),' '),' availability ')]", $summary ) ?: array() as $node ) {
-                $c = strtolower( (string) $node->getAttribute( 'class' ) );
-                $t = mb_strtolower( trim( (string) $node->textContent ), 'UTF-8' );
-                if ( preg_match( '/out.of.stock|agotad|sin existencias|no disponible/u', $c . ' ' . $t ) ) { $statuses['outofstock'] = true; }
-                elseif ( preg_match( '/in.stock|disponible|hay existencias|en stock/u', $c . ' ' . $t ) ) { $statuses['instock'] = true; }
+        $scopes = $xpath->query( "//div[contains(concat(' ',normalize-space(@class),' '),' entry-summary ')] | //div[contains(concat(' ',normalize-space(@class),' '),' summary ')]" );
+        if ( ! $scopes || ! $scopes->length ) { return 'unknown'; }
+
+        $found = array();
+        foreach ( $scopes as $summary ) {
+            $indicators = $xpath->query(
+                ".//*[contains(concat(' ',normalize-space(@class),' '),' stock ')] | " .
+                ".//*[contains(concat(' ',normalize-space(@class),' '),' availability ')]",
+                $summary
+            );
+            foreach ( $indicators ?: array() as $node ) {
+                $class = mb_strtolower( (string) $node->getAttribute( 'class' ), 'UTF-8' );
+                $text = mb_strtolower( trim( (string) $node->textContent ), 'UTF-8' );
+
+                // Manufacturer uses "No disponible" on a product and "Agotado"
+                // on the archive. Recognize Woo's stock CSS and both wordings.
+                if ( preg_match( '/out[-_ ]?of[-_ ]?stock|sold[-_ ]?out|agotad[oa]s?|sin existencias|sin stock|no disponible|no hay existencias|fuera de stock/iu', $class . ' ' . $text ) ) {
+                    $found['outofstock'] = true;
+                } elseif (
+                    preg_match( '/(?:^|[-_\s])in[-_ ]?stock(?:$|[-_\s])|hay existencias|en stock|disponible/iu', $class . ' ' . $text ) &&
+                    ! preg_match( '/notificar|avisar|cuando.*disponible|de nuevo.*inventario/iu', $text )
+                ) {
+                    $found['instock'] = true;
+                }
+            }
+
+            // Some Woo themes omit the .stock class but still print their
+            // explicit "No disponible" in the product's own summary.
+            if ( ! $indicators || ! $indicators->length ) {
+                $summary_text = mb_strtolower( trim( (string) $summary->textContent ), 'UTF-8' );
+                if ( preg_match( '/(?:^|\s)(?:no disponible|sin existencias|agotad[oa]s?|sin stock)(?:[\s.!,:;]|$)/iu', $summary_text ) ) {
+                    $found['outofstock'] = true;
+                }
             }
         }
-        if ( count( $statuses ) > 1 ) { throw new RuntimeException( 'Isabel: indicadores de stock contradictorios.' ); }
-        return $statuses ? (string) array_key_first( $statuses ) : 'unknown';
+        if ( count( $found ) > 1 ) {
+            throw new RuntimeException( 'Isabel: disponibilidad contradictoria en la ficha de producto.' );
+        }
+        return $found ? (string) array_key_first( $found ) : 'unknown';
     }
 }

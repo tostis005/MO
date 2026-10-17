@@ -29,6 +29,59 @@ final class MDO_Isabel_Quality {
         }
         return $purchasable;
     }
+    /**
+     * The seven personalized Isabel entries were intentionally created as
+     * visible-but-NOT-purchasable drafts for configuration. The generic importer
+     * rightly refuses their incomplete variations; keep their *displayed* stock
+     * synchronized without importing a fake simple product or enabling checkout.
+     *
+     * Called only after an authoritative Isabel source scrape and upsert.
+     * Idempotent, seller-scoped, and never changes publish/visibility/price.
+     */
+    public static function sync_review_stock( int $supplier_id, string $source_url ): bool {
+        global $wpdb;
+        $supplier = MDO_Supplier_Repository::find( $supplier_id );
+        if ( ! $supplier || 'chocolates-artesanos-isabel' !== (string) $supplier['code'] ) {
+            return false;
+        }
+        $table = MDO_Database::table( 'source_products' );
+        $row = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id,wc_product_id,status,source_stock_status FROM {$table} WHERE supplier_id=%d AND source_url=%s LIMIT 1",
+                $supplier_id, $source_url
+            ),
+            ARRAY_A
+        );
+        if ( ! $row || 'pending' !== (string) $row['status'] || empty( $row['wc_product_id'] ) ) {
+            return false;
+        }
+        $wc_id = (int) $row['wc_product_id'];
+        if ( '1' !== (string) get_post_meta( $wc_id, '_emdo_isabel_customization_review_required', true ) ) {
+            return false;
+        }
+        if ( (int) get_post_field( 'post_author', $wc_id ) !== (int) $supplier['vendor_user_id'] ) {
+            throw new RuntimeException( 'Isabel: el propietario del producto personalizable es incorrecto.' );
+        }
+        $stock = (string) $row['source_stock_status'];
+        if ( ! in_array( $stock, array( 'instock', 'outofstock' ), true ) ) {
+            throw new RuntimeException( 'Isabel: disponibilidad no validada en artículo personalizable.' );
+        }
+        $product = wc_get_product( $wc_id );
+        if ( ! $product || ! $product->is_type( 'simple' ) ) {
+            throw new RuntimeException( 'Isabel: tipo de producto personalizable inesperado.' );
+        }
+        if ( $stock === $product->get_stock_status( 'edit' ) ) {
+            return false;
+        }
+        $product->set_stock_status( $stock );
+        $product->set_manage_stock( false );
+        $product->save();
+        if ( $product->get_stock_status( 'edit' ) !== $stock ) {
+            throw new RuntimeException( 'Isabel: no se ha guardado el cambio de disponibilidad.' );
+        }
+        return true;
+    }
+
     public static function apply( int $product_id, array $payload ): array {
         $p = wc_get_product( $product_id );
         if ( ! $p ) { throw new RuntimeException( 'Isabel: producto WooCommerce no encontrado.' ); }
