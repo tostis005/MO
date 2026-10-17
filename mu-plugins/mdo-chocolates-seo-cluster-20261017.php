@@ -126,3 +126,30 @@ add_action('woocommerce_product_set_stock_status',static function($id) {
   if(!function_exists('rocket_clean_post'))return;
   foreach(emdo_choco_articles() as $post)rocket_clean_post((int)$post->ID);
 },10,1);
+
+/** Archive-to-archive entry points; no stored post or product descriptions changed. */
+add_filter('get_the_archive_description',static function($description) {
+  if(is_admin()||!is_category('chocolates-y-cacao'))return $description;
+  $term=get_term_by('slug','chocolates-artesanos','product_cat');
+  if(!$term instanceof WP_Term)return $description;
+  $url=get_term_link($term);if(is_wp_error($url)||!$url)return $description;
+  $label=emdo_choco_en()?'Explore chocolate products':'Ver chocolates artesanos disponibles';
+  $description.='<p class="emdo-choco-archive-link"><a href="'.esc_url($url).'">'.esc_html($label).' &rarr;</a></p>';
+  return $description;
+},20);
+add_action('woocommerce_archive_description',static function(): void {
+  if(!is_product_category(emdo_choco_categories()))return;
+  $term=get_category_by_slug('chocolates-y-cacao');if(!$term instanceof WP_Term)return;
+  $url=get_category_link((int)$term->term_id);
+  if(emdo_choco_en()) {
+    foreach(emdo_choco_articles() as $p) {
+      if((int)get_post_meta($p->ID,'_emdo_chocolate_topic',true)===1) {
+        $url=emdo_choco_post_url((int)$p->ID);break;
+      }
+    }
+  }
+  if(is_wp_error($url)||!$url)return;
+  echo '<div class="emdo-choco-archive-link"><a href="'.esc_url($url).'">'.
+    esc_html(emdo_choco_en()?'Read our chocolate guides':'Leer las guías de chocolates y cacao').
+    ' &rarr;</a></div>';
+},30);
