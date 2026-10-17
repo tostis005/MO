@@ -9,7 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 final class MDO_Isabel_Quality {
     /** Preserve the maker's BIO&FT acronym after EMDO's generic title casing. */
     public static function canonical_title( string $title ): string {
-        return (string) preg_replace(
+        $title = html_entity_decode( $title, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+        return (string) preg_replace,
             '/(?<![\p{L}\p{N}])bio\s*&(?:amp;){0,3}\s*ft(?![\p{L}\p{N}])/iu',
             'BIO&FT',
             $title
