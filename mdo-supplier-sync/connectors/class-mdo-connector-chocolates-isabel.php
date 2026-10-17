@@ -263,9 +263,14 @@ final class MDO_Connector_Chocolates_Isabel {
             // Some Woo themes omit the .stock class but still print their
             // explicit "No disponible" in the product's own summary.
             if ( ! $indicators || ! $indicators->length ) {
-                $summary_text = mb_strtolower( trim( (string) $summary->textContent ), 'UTF-8' );
-                if ( preg_match( '/(?:^|\s)(?:no disponible|sin existencias|agotad[oa]s?|sin stock)(?:[\s.!,:;]|$)/iu', $summary_text ) ) {
-                    $found['outofstock'] = true;
+                // DOM textContent joins adjacent tags without whitespace.
+                // Assess text nodes independently to catch "No disponible".
+                foreach ( $xpath->query( './/text()', $summary ) ?: array() as $node ) {
+                    $text = mb_strtolower( trim( (string) $node->textContent ), 'UTF-8' );
+                    if ( preg_match( '/^(?:no disponible|sin existencias|agotad[oa]s?|sin stock)(?:[\s.!,:;]|$)/iu', $text ) ) {
+                        $found['outofstock'] = true;
+                        break;
+                    }
                 }
             }
         }
