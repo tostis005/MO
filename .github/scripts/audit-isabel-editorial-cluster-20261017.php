@@ -48,5 +48,18 @@ foreach($ids as $id){
 }
 $counts['duplicate_intro']=count(array_filter($prefixes,static fn($v)=>$v>1));
 usort($products,static fn($a,$b)=>strcmp($a['name'],$b['name']));
-$summary=['generated_at'=>gmdate('c'),'counts'=>$counts,'categories'=>$category_counts,'posts_count'=>count($posts),'posts'=>$posts,'post_warnings'=>$post_warnings,'issues'=>$issues,'products'=>$products];
+$term_details=[];
+foreach(['chocolates-artesanos','tabletas-de-chocolate','bombones-y-chocolatinas','cremas-de-cacao','cacao-para-beber-y-cocinar','packs-y-regalos','chocolates-de-temporada','kits-y-experiencias'] as $slug){
+ $term=get_term_by('slug',$slug,'product_cat');
+ if(!$term instanceof WP_Term){$term_details[$slug]=['missing'=>true];continue;}
+ $term_details[$slug]=['id'=>(int)$term->term_id,'name'=>$term->name,'parent'=>(int)$term->parent,
+ 'description'=>wp_strip_all_tags((string)$term->description),
+ 'en_description'=>wp_strip_all_tags((string)get_term_meta($term->term_id,'_en_US_description',true)),
+ 'en_name'=>(string)get_term_meta($term->term_id,'_en_US_name',true)];
+}
+$blog_term=get_category_by_slug('chocolates-y-cacao');
+if($blog_term instanceof WP_Term)$term_details['blog/chocolates-y-cacao']=['id'=>$blog_term->term_id,
+ 'description'=>wp_strip_all_tags((string)$blog_term->description),
+ 'en_description'=>wp_strip_all_tags((string)get_term_meta($blog_term->term_id,'_en_US_description',true))];
+$summary=['generated_at'=>gmdate('c'),'counts'=>$counts,'categories'=>$category_counts,'posts_count'=>count($posts),'posts'=>$posts,'post_warnings'=>$post_warnings,'issues'=>$issues,'products'=>$products,'term_details'=>$term_details];
 echo 'ISABEL_EDITORIAL_AUDIT='.wp_json_encode($summary,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
