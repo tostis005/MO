@@ -25,13 +25,13 @@ function emdo_choco_post_title(int $id): string {
 function emdo_choco_tokens(): array {
   return [
     1=>['tableta'],2=>['bean to bar','tableta'],3=>['negro','75','85','100'],4=>['cobertura','gota','chip'],
-    5=>['nib'],6=>['cascarilla'],7=>[],8=>[],9=>['regalo','pack','bombon'],10=>['turron'],
+    5=>['nibs','nib'],6=>['cascarilla'],7=>[],8=>[],9=>['regalo','pack','bombon'],10=>['turron'],
     11=>['tableta'],12=>['blanco','leche','negro'],13=>['peru','origen','piura'],14=>['bio','eco'],
-    15=>[],16=>['vegano'],17=>['100','sin azucar'],18=>['oliva'],19=>['cacao polvo'],
+    15=>[],16=>['vegano'],17=>['100','sin azucar'],18=>['oliva'],19=>['cacao en polvo','cacao puro'],
     20=>['pasta','manteca','cacao polvo'],21=>['manteca'],22=>['cacao polvo','cacao puro'],
-    23=>['cobertura','gota'],24=>['cobertura','gota'],25=>['cacao puro','cacao en polvo','chocolate a la taza','cacao natural'],
+    23=>['cobertura','gota','chip'],24=>['cobertura','gota'],25=>['cacao puro','cacao en polvo','chocolate a la taza','cacao natural'],
     26=>['chocolate negro'],27=>['cobertura','bombon'],28=>['tableta','bean to bar'],
-    29=>['bombon'],30=>['personaliz','regalo','pack']
+    29=>['bombon','torino','piedrecica'],30=>['personaliz','regalo','pack']
   ];
 }
 function emdo_choco_categories(): array {
@@ -42,7 +42,7 @@ function emdo_choco_categories(): array {
 function emdo_choco_related_products(int $topic): array {
   if(!function_exists('wc_get_products'))return [];
   $cats=emdo_choco_categories();if(!$cats)return [];
-  $items=wc_get_products(['status'=>'publish','category'=>$cats,'limit'=>90,'orderby'=>'popularity']);
+  $items=wc_get_products(['status'=>'publish','category'=>$cats,'limit'=>-1,'stock_status'=>'instock','orderby'=>'popularity']);
   $tokens=emdo_choco_tokens()[$topic]??[];
   $strict=in_array($topic,[5,6,10,13,14,15,16,17,18,19,20,21,22,23,24,25,27,29,30],true);
   $ranked=[];
@@ -81,16 +81,26 @@ add_filter('the_content',static function($html) {
     }
     $html.='<section data-emdo-choco-products="1" class="emdo-choco-grid"><h2>'.esc_html(emdo_choco_en()?'Available chocolate products':'Chocolates disponibles').'</h2><ul>'.$cards.'</ul></section>';
   }
-  $n=$topic;$matches=[];
+  // Editorial relationships are topic-based; consecutive article numbers
+  // often discuss unrelated search intents and must not determine relevance.
+  $related_map=[
+    1=>[2,3,11],2=>[13,1,3],3=>[17,12,1],4=>[23,24,20],
+    5=>[20,26,22],6=>[5,22,7],7=>[8,26,9],8=>[7,23,24],
+    9=>[29,28,30],10=>[9,29,30],11=>[1,2,12],12=>[3,17,11],
+    13=>[2,28,1],14=>[15,16,2],15=>[14,16,17],16=>[15,17,14],
+    17=>[3,22,16],18=>[26,9,28],19=>[22,20,25],20=>[21,19,22],
+    21=>[20,24,27],22=>[19,25,5],23=>[24,27,4],24=>[23,27,21],
+    25=>[22,19,26],26=>[18,23,27],27=>[24,23,29],28=>[2,13,9],
+    29=>[9,27,30],30=>[9,29,10],
+  ];
+  $topic_numbers=$related_map[$topic]??[1,2,3];$by_topic=[];
   foreach(emdo_choco_articles() as $p) {
-    if((int)$p->ID===$id)continue;
-    $pn=(int)get_post_meta($p->ID,'_emdo_chocolate_topic',true);
-    $score=20-abs($pn-$n);
-    if(($n<=18&&$pn<=18)||($n>=19&&$pn>=19))$score+=10;
-    $matches[]=['p'=>$p,'score'=>$score];
+    $number=(int)get_post_meta($p->ID,'_emdo_chocolate_topic',true);
+    $by_topic[$number]=$p;
   }
-  usort($matches,static fn($a,$b)=>$b['score']<=>$a['score']);
-  $links=emdo_choco_links(array_slice(array_column($matches,'p'),0,3));
+  $candidates=[];
+  foreach($topic_numbers as $number)if(isset($by_topic[$number])&&$by_topic[$number]->ID!==$id)$candidates[]=$by_topic[$number];
+  $links=emdo_choco_links($candidates);
   if($links)$html.='<nav class="emdo-choco-guides" aria-label="Chocolate"><h2>'.esc_html(emdo_choco_en()?'More chocolate guides':'Más sobre chocolate').'</h2>'.$links.'</nav>';
   return $html;
 },10);
@@ -108,7 +118,7 @@ add_action('woocommerce_after_single_product_summary',static function(): void {
   $label=remove_accents(mb_strtolower($p->get_name().' '.$p->get_slug()));
   $matches=[];
   foreach(emdo_choco_articles() as $article) {
-    $topic=(int)get_post_meta($article->ID,'_emdo_chocolate_topic',true);$score=in_array($topic,[1,2,3],true)?2:0;
+    $topic=(int)get_post_meta($article->ID,'_emdo_chocolate_topic',true);$score=in_array($topic,[1,2,12],true)?2:0;
     foreach(emdo_choco_tokens()[$topic]??[] as $token)if(str_contains($label,remove_accents($token)))$score+=8;
     $matches[]=['p'=>$article,'score'=>$score];
   }
