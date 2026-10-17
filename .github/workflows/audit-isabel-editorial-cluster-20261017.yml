@@ -81,7 +81,8 @@ jobs:
           assert c['short_empty']==0 and c['long_under300']==0
           assert len(j['term_details'])==9
           assert all(len(d.get('description',''))>=170 and len(d.get('en_description',''))>=170 for d in j['term_details'].values())
-          assert len(j['related_counts'])==30 and any(v>0 for v in j['related_counts'].values())
+          assert len(j['related_counts'])==30 and j['related_counts']['15']>=1 and j['related_counts']['22']>=1
+          assert j['related_counts']['10']==0  # all seasonal nougats currently unavailable
           assert not j['issues']
           PY
           git config user.name 'github-actions[bot]'
