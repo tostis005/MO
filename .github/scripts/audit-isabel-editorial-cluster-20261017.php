@@ -24,7 +24,7 @@ $products=[];$counts=['total'=>0,'published'=>0,'instock'=>0,'outofstock'=>0,'hi
 $prefixes=[];$category_counts=[];$issues=[];$source_table=class_exists('MDO_Database')?MDO_Database::table('source_products'):'';
 $ids=get_posts(['post_type'=>'product','post_status'=>['publish','draft'],'author'=>$supplier_id,'posts_per_page'=>-1,'fields'=>'ids','suppress_filters'=>true]);
 foreach($ids as $id){
- $p=wc_get_product($id);if(!$p)continue;
+ $p=wc_get_product($id);if(!$p || (int)get_post_field('post_author',$id)!==$supplier_id)continue;
  $n=$p->get_name();$long=trim(wp_strip_all_tags($p->get_description()));$short=trim(wp_strip_all_tags($p->get_short_description()));
  $categories=wp_get_post_terms($id,'product_cat',['fields'=>'slugs']);if(!is_array($categories))$categories=[];
  foreach($categories as $cat)$category_counts[$cat]=($category_counts[$cat]??0)+1;
