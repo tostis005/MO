@@ -1,0 +1,91 @@
+name: Deploy chocolate SEO cluster links to production
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-chocolates-seo-cluster-20261017.php'
+      - '.github/workflows/deploy-chocolates-seo-cluster-20261017.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emdo-chocolates-seo-cluster
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint and check credentials
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-chocolates-seo-cluster-20261017.php
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+      - name: Install MU plugin in production WordPress
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] && [ -n "$php" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s|%s|%s" "$p" "$php" "$wp"; break;;
+              esac
+            done
+          ')"
+          [ -n "$INFO" ] || exit 3
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+          REMOTE="/tmp/emdo-chocolate-cluster-${GITHUB_RUN_ID}.php"
+          FILE="mu-plugins/mdo-chocolates-seo-cluster-20261017.php"
+          SHA="$(sha256sum "$FILE" | cut -d' ' -f1)"
+          sshpass -e scp $SCP "$FILE" "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD' '$PHP' '$WP' '$REMOTE' '$SHA'" <<'REMOTE'
+          set -euo pipefail
+          prod="$1"; php="$2"; wp="$3"; incoming="$4"; expected="$5"
+          trap 'rm -f "$incoming"' EXIT
+          "$php" -l "$incoming" >/dev/null
+          target="$prod/wp-content/mu-plugins/mdo-chocolates-seo-cluster-20261017.php"
+          mkdir -p "$(dirname "$target")"
+          [ ! -f "$target" ] || cp -p "$target" "$target.backup-$(date +%s)"
+          install -m 0644 "$incoming" "$target"
+          test "$(sha256sum "$target" | cut -d' ' -f1)" = "$expected"
+          "$php" -d memory_limit=768M "$wp" eval --path="$prod" --allow-root '
+            if(!function_exists("emdo_choco_articles") || !function_exists("emdo_choco_related_products"))throw new RuntimeException("MU plugin not active");
+            echo "CHOCOLATE_SEO_ACTIVE=1\n";
+            echo "CHOCOLATE_SEO_POSTS=".count(emdo_choco_articles())."\n";
+            echo "CHOCOLATE_SEO_CATEGORIES=".implode(",",emdo_choco_categories())."\n";
+          '
+          "$php" "$wp" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
+          "$php" "$wp" rocket clean --confirm --path="$prod" --allow-root >/dev/null 2>&1 || true
+          REMOTE
+      - name: Public health check
+        run: |
+          set -euo pipefail
+          for path in / /blog/ /tienda/; do
+            code=$(curl -sSL --retry 3 --max-time 45 -o /dev/null -w '%{http_code}' "https://www.elmercadodeorigen.com$path?emdo_choco_check=${GITHUB_RUN_ID}")
+            test "$code" = "200" || { echo "Site health check failed: $path status $code"; exit 1; }
+          done
+          echo 'CHOCOLATE_SEO_LINK_MODULE_DEPLOYED'
