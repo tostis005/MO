@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/data/chocolates-isabel-30-bilingual-20261017.br.b64'
       - '.github/scripts/publish-chocolates-isabel-20261017.php'
+      - '.github/scripts/audit-chocolates-isabel-20261017.php'
       - '.github/workflows/publish-chocolates-isabel-20261017.yml'
   workflow_dispatch:
 
@@ -73,12 +74,11 @@ jobs:
           sed -n 's/^EMDO_CHOCOLATES //p' /tmp/emdo-choco-published.log | tail -n1 > /tmp/emdo-choco-result.json
           jq -e '.verified==true and .count==30 and .common_image_id>0 and .category_id>0 and (.posts|length)==30' /tmp/emdo-choco-result.json >/dev/null
           echo "EMDO_CHOCOLATE_30_BILINGUAL_PUBLISHED=PASS"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval --path='$PROD' --allow-root '
-            if(!function_exists("emdo_choco_articles"))throw new RuntimeException("Dynamic module unavailable");
-            $posts=emdo_choco_articles();if(count($posts)!==30)throw new RuntimeException("30 posts not visible");
-            foreach($posts as $p){if(get_post_status($p->ID)!=="publish" || !get_post_thumbnail_id($p->ID) || !get_post_meta($p->ID,"_en_US_post_content",true))throw new RuntimeException("Post incomplete ". $p->ID);}
-            echo "EMDO_CHOCOLATE_POSTS_AND_IMAGE=30_OK\n";
-          '"
+          sshpass -e scp $SCP .github/scripts/audit-chocolates-isabel-20261017.php "$STAGING_USER@$STAGING_HOST:$DIR/audit.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$DIR/audit.php' --path='$PROD' --allow-root" | tee /tmp/emdo-choco-audit.log
+          sed -n 's/^EMDO_CHOCOLATE_AUDIT //p' /tmp/emdo-choco-audit.log | tail -n1 > /tmp/emdo-choco-audit.json
+          jq -e '.verified==true and .article_pairs==30 and .common_image_id>0 and .available_product_sample_count>0' /tmp/emdo-choco-audit.json >/dev/null
+          echo "EMDO_CHOCOLATE_30_IMAGE_AND_STOCK_AUDIT=PASS"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
       - name: Verify public Spanish and English pages
         shell: bash
