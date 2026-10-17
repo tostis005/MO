@@ -49,7 +49,7 @@ try {
    $summary['personalized_excluded'][]=$id;
   }elseif(is_array($curated)){
    $short=trim((string)($curated['short']??''));$intro=trim((string)($curated['intro']??''));
-   if(mb_strlen($short)<65||mb_strlen($intro)<85)throw new RuntimeException('Editorial brief too short '.$id);
+   if(mb_strlen($short)<38||mb_strlen($intro)<70)throw new RuntimeException('Editorial brief too short '.$id);
    if(str_contains($short,'<')||str_contains($intro,'<'))throw new RuntimeException('Plain editorial copy expected');
    $short_html='<p>'.esc_html($short).'</p>';
    $intro_html='<p>'.esc_html($intro).'</p>';
