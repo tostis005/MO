@@ -79,6 +79,22 @@ final class MDO_Woo_Importer {
 			}
 		}
 
+		// Chocolate editorial improvements are approved separately, scoped to
+		// Isabel and kept stable across daily source imports. Nutrition,
+		// composition, allergen and conservation details are preserved in the
+		// approved full text. No source-driven price or stock field is changed.
+		if ( 'chocolates-artesanos-isabel' === (string) $supplier['code'] && $existing_id &&
+			'1' === (string) get_post_meta( $existing_id, '_emdo_isabel_editorial_approved', true ) ) {
+			$approved_full = (string) get_post_meta( $existing_id, '_emdo_isabel_editorial_description', true );
+			$approved_short = (string) get_post_meta( $existing_id, '_emdo_isabel_editorial_short_description', true );
+			if ( trim( wp_strip_all_tags( $approved_full ) ) !== '' ) {
+				$product->set_description( wp_kses_post( $approved_full ) );
+			}
+			if ( trim( wp_strip_all_tags( $approved_short ) ) !== '' ) {
+				$product->set_short_description( wp_kses_post( $approved_short ) );
+			}
+		}
+
 		// Prelaunch products from Latitudes must never become public while its
 		// WCFM vendor is hard-disabled, including after nightly updates.
 		if ( in_array( (string) $supplier['code'], array( 'latitudes', 'chocolates-artesanos-isabel' ), true ) && get_user_meta( $vendor_id, '_disable_vendor', true ) ) {
