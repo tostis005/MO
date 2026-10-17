@@ -29,7 +29,7 @@ function emdo_choco_tokens(): array {
     11=>['tableta'],12=>['blanco','leche','negro'],13=>['peru','origen','piura'],14=>['bio','eco'],
     15=>[],16=>['vegano'],17=>['100','sin azucar'],18=>['oliva'],19=>['cacao polvo'],
     20=>['pasta','manteca','cacao polvo'],21=>['manteca'],22=>['cacao polvo','cacao puro'],
-    23=>['cobertura','gota'],24=>['cobertura','gota'],25=>['cacao polvo','a la taza'],
+    23=>['cobertura','gota'],24=>['cobertura','gota'],25=>['cacao puro','cacao en polvo','chocolate a la taza','cacao natural'],
     26=>['chocolate negro'],27=>['cobertura','bombon'],28=>['tableta','bean to bar'],
     29=>['bombon'],30=>['personaliz','regalo','pack']
   ];
@@ -44,10 +44,10 @@ function emdo_choco_related_products(int $topic): array {
   $cats=emdo_choco_categories();if(!$cats)return [];
   $items=wc_get_products(['status'=>'publish','category'=>$cats,'limit'=>90,'orderby'=>'popularity']);
   $tokens=emdo_choco_tokens()[$topic]??[];
-  $strict=in_array($topic,[5,6,10,19,20,21,22,23,24,25,27,29,30],true);
+  $strict=in_array($topic,[5,6,10,13,14,15,16,17,18,19,20,21,22,23,24,25,27,29,30],true);
   $ranked=[];
   foreach($items as $p) {
-    if(!$p instanceof WC_Product || !$p->is_visible() || !$p->is_in_stock() || $p->get_stock_status()!=='instock')continue;
+    if(!$p instanceof WC_Product || !$p->is_visible() || !$p->is_purchasable() || !$p->is_in_stock() || $p->get_stock_status()!=='instock')continue;
     $value=remove_accents(mb_strtolower($p->get_name().' '.$p->get_slug()));
     $score=0;
     foreach($tokens as $token)if(str_contains($value,remove_accents($token)))$score+=5;
