@@ -95,8 +95,8 @@ jobs:
               for lang in ('es','en'):
                   url=post[lang]
                   response=subprocess.run(['curl','-LsS','--retry','3','--max-time','45','-A','EMDO-chocolate-public-qa','-w','\\n%{http_code}',url+'?choco_verify=20261017'],capture_output=True,text=True)
-                  raw,status=response.stdout.rsplit('\\n',1) if '\\n' in response.stdout else ('',response.stdout)
-                  if response.returncode or status!='200' or len(raw)<10000 or not re.search(r'<h1\\b',raw,re.I):
+                  raw,status=response.stdout.rsplit('\n',1) if '\n' in response.stdout else ('',response.stdout)
+                  if response.returncode or status!='200' or len(raw)<10000 or not re.search(r'<h1\b',raw,re.I):
                       raise RuntimeError(f'Public URL failed: {url}, status={status}, bytes={len(raw)}')
                   if 'emdo-choco' not in raw:
                       raise RuntimeError(f'Dynamic module missing on page: {url}')
