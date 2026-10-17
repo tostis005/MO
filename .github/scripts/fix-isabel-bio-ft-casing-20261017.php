@@ -6,11 +6,17 @@ global $wpdb;
 if(!in_array(strtolower((string)wp_parse_url(home_url(),PHP_URL_HOST)),array('elmercadodeorigen.com','www.elmercadodeorigen.com'),true))throw new RuntimeException('No es producción');
 $table=MDO_Database::table('suppliers');$id=(int)$wpdb->get_var($wpdb->prepare("SELECT vendor_user_id FROM {$table} WHERE code=%s LIMIT 1",'chocolates-artesanos-isabel'));
 if($id!==4964)throw new RuntimeException('Vendedor inesperado');
-$products=get_posts(array('post_type'=>'product','post_status'=>array('draft','publish','private'),'author'=>$id,'posts_per_page'=>-1,'fields'=>'ids'));
-if(count($products)!==103)throw new RuntimeException('El catálogo de Isabel no es de 103 fichas: '.count($products));
+$supplier_id=(int)$wpdb->get_var($wpdb->prepare("SELECT id FROM {$table} WHERE code=%s LIMIT 1",'chocolates-artesanos-isabel'));
+$source_products=MDO_Database::table('source_products');
+$products=$wpdb->get_col($wpdb->prepare(
+ "SELECT wc_product_id FROM {$source_products}
+ WHERE supplier_id=%d AND wc_product_id IS NOT NULL AND wc_product_id > 0 AND status IN ('active','pending')
+ ORDER BY id",$supplier_id));
+if(count($products)!==103||count(array_unique(array_map('intval',$products)))!==103)
+ throw new RuntimeException('El catálogo de Isabel no es de 103 fichas exclusivas: '.count($products));
 $changed=0;$checked=0;$errors=array();$examples=array();
 foreach($products as $pid){
- $p=wc_get_product((int)$pid);if(!$p)throw new RuntimeException('Producto ausente '.(int)$pid);
+ $p=wc_get_product((int)$pid);if(!$p||get_post_type((int)$pid)!=='product'||(int)get_post_field('post_author',(int)$pid)!==$id)throw new RuntimeException('Producto ajeno o ausente '.(int)$pid);
  $name=$p->get_name();
  $desired=MDO_Isabel_Quality::canonical_title($name);
  $checked++;

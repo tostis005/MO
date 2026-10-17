@@ -1,8 +1,9 @@
 name: Correct Isabel BIO FT acronym casing only
 on:
-  workflow_run:
-    workflows: ["Deploy MDO Supplier Sync to production"]
-    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/fix-isabel-bio-ft-casing-20261017.php'
   workflow_dispatch:
 permissions:
   contents: read
