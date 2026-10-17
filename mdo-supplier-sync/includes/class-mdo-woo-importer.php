@@ -85,10 +85,12 @@ final class MDO_Woo_Importer {
 		// approved full text. No source-driven price or stock field is changed.
 		if ( 'chocolates-artesanos-isabel' === (string) $supplier['code'] && $existing_id &&
 			'1' === (string) get_post_meta( $existing_id, '_emdo_isabel_editorial_approved', true ) ) {
-			$approved_full = (string) get_post_meta( $existing_id, '_emdo_isabel_editorial_description', true );
+			$approved_intro = (string) get_post_meta( $existing_id, '_emdo_isabel_editorial_intro', true );
 			$approved_short = (string) get_post_meta( $existing_id, '_emdo_isabel_editorial_short_description', true );
-			if ( trim( wp_strip_all_tags( $approved_full ) ) !== '' ) {
-				$product->set_description( wp_kses_post( $approved_full ) );
+			if ( trim( wp_strip_all_tags( $approved_intro ) ) !== '' ) {
+				// Always append the NEW supplier description from this synchronization.
+				// Ingredient, allergen and storage changes must never be frozen.
+				$product->set_description( wp_kses_post( $approved_intro ) . "\n" . wp_kses_post( (string) ( $payload['description'] ?? '' ) ) );
 			}
 			if ( trim( wp_strip_all_tags( $approved_short ) ) !== '' ) {
 				$product->set_short_description( wp_kses_post( $approved_short ) );
