@@ -156,16 +156,38 @@ final class MDO_Isabel_Quality {
             'image' => (int) $p->get_image_id(), 'short_description' => (bool)$p->get_short_description(), 'allergens' => $has_allergens );
     }
 
+    /**
+     * Controlled chocolate taxonomy: broad reusable product families only.
+     * The root and one child are re-applied on every nightly synchronization.
+     * Give the physical format priority over generic words such as "crujiente"
+     * and never call couverture drops a tablet.
+     */
     private static function group( string $name, string $url ): string {
-        $title = mb_strtolower( $name, 'UTF-8' );
-        $text = $title . ' ' . mb_strtolower( (string) wp_parse_url( $url, PHP_URL_PATH ), 'UTF-8' );
-        if ( preg_match( '/turr[oó]n|navidad|navideñ|pascua|figura|huevo/', $text ) ) { return 'Chocolates de temporada'; }
-        if ( preg_match( '/taller|visita|curso|kit.*chocolate|haz tu propio/', $text ) ) { return 'Kits y experiencias'; }
-        if ( preg_match( '/lote|estuche|pack|caja|cesta|regalo|surtido|chocomensaje/', $text ) ) { return 'Packs y regalos'; }
-        if ( preg_match( '/bomb[oó]n|torino|carr[eé]|piedrecica|piruleta|chocolatina|roca|crujiente/', $text ) ) { return 'Bombones y chocolatinas'; }
-        if ( preg_match( '/crema|untable|untar/', $text ) ) { return 'Cremas de cacao'; }
-        if ( preg_match( '/tableta|bean.to.bar|chocolate negro|chocolate blanco|chocolate con leche/', $text ) ) { return 'Tabletas de chocolate'; }
-        if ( preg_match( '/nibs|cascarilla|manteca|habas de cacao|cacao en polvo|cacao.*beber|cacao.*cocinar/', $text ) ) { return 'Cacao para beber y cocinar'; }
+        $title = mb_strtolower( html_entity_decode( $name, ENT_QUOTES | ENT_HTML5, 'UTF-8' ), 'UTF-8' );
+        $source_path = mb_strtolower( (string) wp_parse_url( $url, PHP_URL_PATH ), 'UTF-8' );
+        $text = $title . ' ' . $source_path;
+
+        if ( preg_match( '/turr[oó]n|navidad|navideñ|pascua|huevo.*chocolate|figura.*navideñ/u', $text ) ) {
+            return 'Chocolates de temporada';
+        }
+        if ( preg_match( '/taller|visita|curso|kit.*chocolate|haz tu propio/u', $text ) ) {
+            return 'Kits y experiencias';
+        }
+        if ( preg_match( '/lote|estuche|pack|caja|cesta|regalo|surtido|chocomensaje|personaliz|tarjeta[ -]regalo/u', $text ) ) {
+            return 'Packs y regalos';
+        }
+        if ( preg_match( '/\\btableta\\b/u', $title ) ) {
+            return 'Tabletas de chocolate';
+        }
+        if ( preg_match( '/\\bcrema\\b|untable|untar/u', $title ) ) {
+            return 'Cremas de cacao';
+        }
+        if ( preg_match( '/nibs|cascarilla|manteca|habas? de cacao|pasta de cacao|cacao en polvo|chocolate.*(?:beber|bebidas)|preparar bebidas|gotas de cobertura|chips de chocolate|cobertura.*chocolate/u', $text ) ) {
+            return 'Cacao para beber y cocinar';
+        }
+        if ( preg_match( '/bomb[oó]n|torino|carr[eé]|piedrecica|piruleta|chocolatina|roca|crujiente|chocobone|figurita|figura de chocolate|laminero/u', $text ) ) {
+            return 'Bombones y chocolatinas';
+        }
         return '';
     }
 }
