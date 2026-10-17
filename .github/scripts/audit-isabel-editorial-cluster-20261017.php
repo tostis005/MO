@@ -22,7 +22,10 @@ foreach($articles as $post) {
 usort($posts,static fn($a,$b)=>$a['n']<=>$b['n']);
 $products=[];$counts=['total'=>0,'published'=>0,'instock'=>0,'outofstock'=>0,'hidden'=>0,'approved_edits'=>0,'short_empty'=>0,'long_under300'=>0,'category_root_only'=>0,'category_conflicts'=>0,'duplicate_intro'=>0,'source_match'=>0,'source_allergens_lost'=>0];
 $prefixes=[];$category_counts=[];$issues=[];$source_table=class_exists('MDO_Database')?MDO_Database::table('source_products'):'';
-$ids=get_posts(['post_type'=>'product','post_status'=>['publish','draft'],'author'=>$supplier_id,'posts_per_page'=>-1,'fields'=>'ids','suppress_filters'=>true]);
+$supplier_table=class_exists('MDO_Database')?MDO_Database::table('suppliers'):'';
+$ids=[];
+if(!$source_table||!$supplier_table)throw new RuntimeException('Supplier sync tables unavailable');
+$ids=$wpdb->get_col($wpdb->prepare("SELECT DISTINCT sp.wc_product_id FROM {$source_table} sp INNER JOIN {$supplier_table} s ON sp.supplier_id=s.id WHERE s.code=%s AND sp.wc_product_id > 0",'chocolates-artesanos-isabel'));
 foreach($ids as $id){
  $p=wc_get_product($id);if(!$p || (int)get_post_field('post_author',$id)!==$supplier_id)continue;
  $n=$p->get_name();$long=trim(wp_strip_all_tags($p->get_description()));$short=trim(wp_strip_all_tags($p->get_short_description()));
