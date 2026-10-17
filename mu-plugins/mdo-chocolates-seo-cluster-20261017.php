@@ -27,8 +27,8 @@ function emdo_choco_tokens(): array {
     1=>['tableta'],2=>['bean to bar','tableta'],3=>['negro','75','85','100'],4=>['cobertura','gota','chip'],
     5=>['nibs','nib'],6=>['cascarilla'],7=>[],8=>[],9=>['regalo','pack','bombon'],10=>['turron'],
     11=>['tableta'],12=>['blanco','leche','negro'],13=>['peru','origen','piura'],14=>['bio','eco'],
-    15=>[],16=>['vegano'],17=>['100','sin azucar'],18=>['oliva'],19=>['cacao en polvo','cacao puro'],
-    20=>['pasta','manteca','cacao polvo'],21=>['manteca'],22=>['cacao polvo','cacao puro'],
+    15=>['sin gluten'],16=>['vegano'],17=>['100','sin azucar'],18=>['oliva'],19=>['cacao en polvo','sin alcalinizar','cacao natural'],
+    20=>['pasta','manteca','cacao polvo'],21=>['manteca'],22=>['cacao en polvo','cacao puro','sin alcalinizar'],
     23=>['cobertura','gota','chip'],24=>['cobertura','gota'],25=>['cacao puro','cacao en polvo','chocolate a la taza','cacao natural'],
     26=>['chocolate negro'],27=>['cobertura','bombon'],28=>['tableta','bean to bar'],
     29=>['bombon','torino','piedrecica'],30=>['personaliz','regalo','pack']
