@@ -74,5 +74,22 @@ if(function_exists('emdo_choco_related_products')){
   $related_counts[$topic]=count($related);
  }
 }
-$summary=['generated_at'=>gmdate('c'),'counts'=>$counts,'categories'=>$category_counts,'posts_count'=>count($posts),'posts'=>$posts,'post_warnings'=>$post_warnings,'issues'=>$issues,'products'=>$products,'term_details'=>$term_details,'related_counts'=>$related_counts];
+$duplicate_probe=[];
+foreach([17526,17647] as $kit_id){
+ $kit=wc_get_product($kit_id);
+ if(!$kit)continue;
+ $source_row=$wpdb->get_row($wpdb->prepare("SELECT id,status,source_url,source_payload FROM {$source_table} WHERE wc_product_id=%d LIMIT 1",$kit_id),ARRAY_A);
+ $origin=is_array($source_row)?json_decode((string)$source_row['source_payload'],true):[];
+ $duplicate_probe[$kit_id]=[
+  'id'=>$kit_id,'title'=>$kit->get_name(),'slug'=>get_post_field('post_name',$kit_id),
+  'url'=>get_permalink($kit_id),'status'=>$kit->get_status(),'visible'=>$kit->is_visible(),
+  'purchasable'=>$kit->is_purchasable(),'stock'=>$kit->get_stock_status(),
+  'price'=>$kit->get_price('edit'),'regular_price'=>$kit->get_regular_price('edit'),
+  'sku'=>$kit->get_sku(),'weight'=>$kit->get_weight(),'image_id'=>$kit->get_image_id(),
+  'source_row'=>$source_row['id']??null,'source_status'=>$source_row['status']??'',
+  'source_url'=>$source_row['source_url']??'','source_price'=>$origin['price']??null,
+  'source_sku'=>$origin['sku']??null,'description_sha'=>hash('sha256',(string)$kit->get_description()),
+ ];
+}
+$summary=['generated_at'=>gmdate('c'),'counts'=>$counts,'categories'=>$category_counts,'posts_count'=>count($posts),'posts'=>$posts,'post_warnings'=>$post_warnings,'issues'=>$issues,'products'=>$products,'term_details'=>$term_details,'related_counts'=>$related_counts,'duplicate_kit_probe'=>$duplicate_probe];
 echo 'ISABEL_EDITORIAL_AUDIT='.wp_json_encode($summary,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
