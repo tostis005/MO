@@ -1,0 +1,109 @@
+name: Isabel - corregir catalogo y descripciones editoriales 20261017
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-isabel-editorial-cluster-20261017.yml'
+      - '.github/scripts/apply-isabel-editorial-cluster-20261017.php'
+      - '.github/data/isabel-editorial-brief-20261017.json'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate and inspect WordPress without changing data
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/apply-isabel-editorial-cluster-20261017.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          php -l mdo-supplier-sync/includes/class-mdo-isabel-quality.php
+          python3 - <<'PY'
+          import json
+          m=json.load(open('.github/data/isabel-editorial-brief-20261017.json'))
+          assert m['scope']=='chocolates-artesanos-isabel'
+          assert len(m['products'])>=70
+          PY
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+          SCRIPT="/tmp/apply-isabel-editorial-${GITHUB_RUN_ID}.php"
+          BRIEF="/tmp/brief-isabel-editorial-${GITHUB_RUN_ID}.json"
+          EXPECTED_SHA="$(sha256sum mdo-supplier-sync/includes/class-mdo-isabel-quality.php | awk '{print $1}')"
+          # Wait until the official supplier-sync deployment contains this exact code.
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH' '$EXPECTED_SHA'" <<'WAIT'
+          set -euo pipefail
+          prod="$1"; expected="$2"
+          deployed="$prod/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-isabel-quality.php"
+          # Plugin folder may be installed under its canonical mdo-supplier-sync name.
+          if [ ! -f "$deployed" ]; then
+            deployed="$prod/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-isabel-quality.php"
+          fi
+          for i in $(seq 1 42); do
+            actual=$(sha256sum "$deployed" 2>/dev/null | awk '{print $1}' || true)
+            [ "$actual" = "$expected" ] && { echo "ISABEL_SYNC_CODE_CURRENT=1"; exit 0; }
+            sleep 10
+          done
+          echo "Supplier-sync production code has not reached expected SHA" >&2
+          exit 21
+          WAIT
+          sshpass -e scp $SCP .github/scripts/apply-isabel-editorial-cluster-20261017.php "$STAGING_USER@$STAGING_HOST:$SCRIPT"
+          sshpass -e scp $SCP .github/data/isabel-editorial-brief-20261017.json "$STAGING_USER@$STAGING_HOST:$BRIEF"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -d memory_limit=1536M \"\$wp_bin\" eval-file '$SCRIPT' --path='$PROD_PATH' --allow-root
+            rm -f '$SCRIPT'
+          " | tee /tmp/isabel-editorial-apply.log
+          grep -q "^ISABEL_EDITORIAL_FIX=" /tmp/isabel-editorial-apply.log
+          echo ISABEL_EDITORIAL_APPLY_RUN_OK
+
+
+      - name: Record verified editorial reconciliation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          sed -n 's/^ISABEL_EDITORIAL_FIX=//p' /tmp/isabel-editorial-apply.log | tail -1 | python3 -m json.tool --no-ensure-ascii > .deploy-status/isabel-editorial-fix-20261017.json
+          python3 - <<'PY'
+          import json
+          j=json.load(open('.deploy-status/isabel-editorial-fix-20261017.json'))
+          print('ISABEL_EDITORIAL_CHANGE_COUNTS',j['reviewed'],j['edits'],len(j['category_corrected']))
+          assert j['verified'] and j['reviewed']==103 and j['edits']>=70
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/isabel-editorial-fix-20261017.json
+          git commit -m 'Record Isabel editorial corrections [skip ci]'
+          git pull --rebase origin main
+          git push origin HEAD:main
