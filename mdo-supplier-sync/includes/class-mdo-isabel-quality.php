@@ -7,6 +7,15 @@
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 final class MDO_Isabel_Quality {
+    /** Preserve the maker's BIO&FT acronym after EMDO's generic title casing. */
+    public static function canonical_title( string $title ): string {
+        return (string) preg_replace(
+            '/(?<![\p{L}\p{N}])bio\s*&(?:amp;){0,3}\s*ft(?![\p{L}\p{N}])/iu',
+            'BIO&FT',
+            $title
+        );
+    }
+
 
     /** Personalized Isabel products may be shown but not bought without their original customization form. */
     public static function init(): void {
@@ -23,6 +32,9 @@ final class MDO_Isabel_Quality {
     public static function apply( int $product_id, array $payload ): array {
         $p = wc_get_product( $product_id );
         if ( ! $p ) { throw new RuntimeException( 'Isabel: producto WooCommerce no encontrado.' ); }
+        $canonical_name = self::canonical_title( (string) $p->get_name() );
+        if ( $canonical_name !== $p->get_name() ) { $p->set_name( $canonical_name ); }
+
         if ( (string) get_post_meta( $product_id, '_emdo_source_url', true ) !== '' &&
             ! str_contains( (string) get_post_meta( $product_id, '_emdo_source_url', true ), 'chocolatesartesanosisabel.com' ) ) {
             throw new RuntimeException( 'Isabel: producto asociado a otro origen.' );
