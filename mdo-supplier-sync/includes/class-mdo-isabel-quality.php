@@ -7,6 +7,19 @@
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 final class MDO_Isabel_Quality {
+
+    /** Personalized Isabel products may be shown but not bought without their original customization form. */
+    public static function init(): void {
+        add_filter( 'woocommerce_is_purchasable', array( __CLASS__, 'safe_purchase_gate' ), 999, 2 );
+    }
+
+    public static function safe_purchase_gate( bool $purchasable, $product ): bool {
+        if ( $product instanceof WC_Product &&
+            '1' === (string) get_post_meta( $product->get_id(), '_emdo_isabel_customization_review_required', true ) ) {
+            return false;
+        }
+        return $purchasable;
+    }
     public static function apply( int $product_id, array $payload ): array {
         $p = wc_get_product( $product_id );
         if ( ! $p ) { throw new RuntimeException( 'Isabel: producto WooCommerce no encontrado.' ); }

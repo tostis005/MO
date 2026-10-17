@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO
  * Description: Gestión y sincronización de catálogos de proveedores con WooCommerce/WCFM.
- * Version: 1.0.62
+ * Version: 1.0.63
  * Author: El Mercado de Origen
  * Requires at least: 6.4
  * Requires PHP: 8.0
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.62' );
+define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.63' );
 define( 'MDO_SUPPLIER_SYNC_DB_VERSION', '1.2.0' );
 define( 'MDO_SUPPLIER_SYNC_FILE', __FILE__ );
 define( 'MDO_SUPPLIER_SYNC_PATH', plugin_dir_path( __FILE__ ) );
@@ -110,6 +110,7 @@ add_action(
 		MDO_Reviews_Vendors::init();
 		MDO_Description_Migration::run_once();
 		MDO_Pricing::init();
+		MDO_Isabel_Quality::init();
 		MDO_Iberico_Variations::init();
 		MDO_Rich_Description_Source::init();
 		MDO_Ham_Taxonomy::init();
