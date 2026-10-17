@@ -163,3 +163,18 @@ add_action('woocommerce_archive_description',static function(): void {
     esc_html(emdo_choco_en()?'Read our chocolate guides':'Leer las guías de chocolates y cacao').
     ' &rarr;</a></div>';
 },30);
+
+/**
+ * The maker's obsolete /kit-elabora-propio-chocolate/ URL redirects to its
+ * bean-to-bar URL, causing duplicate Woo listings. Preserve the old public
+ * product permalink via a narrow 301 to the canonical surviving listing.
+ * The old WP product is retained as a draft for order and audit history.
+ */
+add_action('template_redirect',static function():void{
+  $path=(string)wp_parse_url((string)($_SERVER['REQUEST_URI']??''),PHP_URL_PATH);
+  if('/producto/kit-haz-tu-propio-chocolate-bean-to-bar-2/'!==trailingslashit($path))return;
+  $target=wc_get_product(17647);
+  if(!$target||$target->get_status()!=='publish')return;
+  $url=get_permalink(17647);
+  if($url){wp_safe_redirect($url,301,'El Mercado de Origen');exit;}
+},1);
