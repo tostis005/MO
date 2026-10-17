@@ -20,7 +20,7 @@ foreach($articles as $post) {
  if($line['es_chars']<3000||$line['en_chars']<3000||!$line['seo_es']||!$line['seo_en']||!$line['en_published'])$post_warnings[]=$line['n'];
 }
 usort($posts,static fn($a,$b)=>$a['n']<=>$b['n']);
-$products=[];$counts=['total'=>0,'published'=>0,'instock'=>0,'outofstock'=>0,'hidden'=>0,'approved_edits'=>0,'short_empty'=>0,'long_under300'=>0,'category_root_only'=>0,'category_conflicts'=>0,'duplicate_intro'=>0,'source_match'=>0,'source_allergens_lost'=>0];
+$products=[];$counts=['total'=>0,'published'=>0,'instock'=>0,'outofstock'=>0,'hidden'=>0,'approved_edits'=>0,'short_empty'=>0,'long_under300'=>0,'category_root_only'=>0,'category_conflicts'=>0,'duplicate_intro'=>0,'source_match'=>0,'source_preserved'=>0,'source_allergens_lost'=>0];
 $prefixes=[];$category_counts=[];$issues=[];$source_table=class_exists('MDO_Database')?MDO_Database::table('source_products'):'';
 $supplier_table=class_exists('MDO_Database')?MDO_Database::table('suppliers'):'';
 $ids=[];
@@ -40,6 +40,9 @@ foreach($ids as $id){
  if($source_table&&$source){$raw=$wpdb->get_var($wpdb->prepare("SELECT source_payload FROM {$source_table} WHERE wc_product_id=%d LIMIT 1",$id));$a=json_decode((string)$raw,true);$original=trim(wp_strip_all_tags((string)($a['description']??'')));}
  $normalized=static fn($s)=>mb_strtolower(preg_replace('/\\s+/u',' ',html_entity_decode($s,ENT_QUOTES|ENT_HTML5,'UTF-8')));
  $counts['source_match']+=(int)($original!==''&&$normalized($original)===$normalized($long));
+ $source_contained=$original!=='' && str_contains($normalized($long),$normalized($original));
+ $counts['source_preserved']+=(int)$source_contained;
+ if(!$source_contained)$issues[]=['id'=>$id,'issue'=>'source_description_not_preserved'];
  if($original&&preg_match('/al[eé]rgen|trazas|puede contener/ui',$original)&&!preg_match('/al[eé]rgen|trazas|puede contener/ui',$long)){
   $counts['source_allergens_lost']++;$issues[]=['id'=>$id,'issue'=>'allergen_label_missing'];
  }
@@ -61,5 +64,15 @@ $blog_term=get_category_by_slug('chocolates-y-cacao');
 if($blog_term instanceof WP_Term)$term_details['blog/chocolates-y-cacao']=['id'=>$blog_term->term_id,
  'description'=>wp_strip_all_tags((string)$blog_term->description),
  'en_description'=>wp_strip_all_tags((string)get_term_meta($blog_term->term_id,'_en_US_description',true))];
-$summary=['generated_at'=>gmdate('c'),'counts'=>$counts,'categories'=>$category_counts,'posts_count'=>count($posts),'posts'=>$posts,'post_warnings'=>$post_warnings,'issues'=>$issues,'products'=>$products,'term_details'=>$term_details];
+
+$related_counts=[];
+if(function_exists('emdo_choco_related_products')){
+ for($topic=1;$topic<=30;$topic++){
+  $related=emdo_choco_related_products($topic);
+  if(count($related)>4)throw new RuntimeException('More than four related products '.$topic);
+  foreach($related as $rp)if(!$rp->is_visible()||!$rp->is_purchasable()||!$rp->is_in_stock()||$rp->get_stock_status()!=='instock')throw new RuntimeException('Unpurchasable or out-of-stock product suggested: '.$rp->get_id());
+  $related_counts[$topic]=count($related);
+ }
+}
+$summary=['generated_at'=>gmdate('c'),'counts'=>$counts,'categories'=>$category_counts,'posts_count'=>count($posts),'posts'=>$posts,'post_warnings'=>$post_warnings,'issues'=>$issues,'products'=>$products,'term_details'=>$term_details,'related_counts'=>$related_counts];
 echo 'ISABEL_EDITORIAL_AUDIT='.wp_json_encode($summary,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
