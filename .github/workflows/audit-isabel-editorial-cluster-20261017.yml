@@ -70,8 +70,19 @@ jobs:
           python3 - <<'PY'
           import json
           j=json.load(open('.deploy-status/isabel-editorial-audit-20261017.json'))
-          print('AUDIT_COUNTS',j['counts'],'ARTICLES',j['posts_count'],'CATEGORIES',j['categories'])
-          assert j['posts_count']==30 and j['counts']['total']>=90
+          print('ISABEL_FINAL_QA',j['counts'],'POSTS',j['posts_count'],'CATEGORIES',len(j['term_details']),'LINKS',j['related_counts'])
+          c=j['counts']
+          assert j['posts_count']==30 and not j['post_warnings']
+          assert c['total']==103 and c['published']==103
+          assert c['approved_edits']==96
+          assert c['instock']==86 and c['outofstock']==17
+          assert c['category_root_only']==0 and c['category_conflicts']==0
+          assert c['source_allergens_lost']==0 and c['source_preserved']==103
+          assert c['short_empty']==0 and c['long_under300']==0
+          assert len(j['term_details'])==9
+          assert all(len(d.get('description',''))>=170 and len(d.get('en_description',''))>=170 for d in j['term_details'].values())
+          assert len(j['related_counts'])==30 and any(v>0 for v in j['related_counts'].values())
+          assert not j['issues']
           PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
