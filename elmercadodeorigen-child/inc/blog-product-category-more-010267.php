@@ -686,6 +686,42 @@ function elmercado_blog_dynamic_products_content_010277( $content ) {
 /* Debe ejecutarse antes del do_shortcode de WordPress (prioridad 11). */
 add_filter( 'the_content', 'elmercado_blog_dynamic_products_content_010277', 9 );
 
+/**
+ * La primera inserción basada en shortcodes puede perderse durante la
+ * normalización de determinados artículos Gutenberg. En la salida final,
+ * restauramos UNA rejilla solo cuando no hay ninguna visible. La consulta usa
+ * la entrada principal, no un ID de producto temporal del loop WooCommerce.
+ */
+add_filter(
+	'the_content',
+	static function ( $content ) {
+		if ( is_admin() || ! is_singular( 'post' ) || ! is_main_query() || ! shortcode_exists( 'products' ) ) {
+			return $content;
+		}
+		$post_id = (int) get_queried_object_id();
+		if ( $post_id <= 0 || 'post' !== get_post_type( $post_id ) ) {
+			return $content;
+		}
+		$html = (string) $content;
+		if ( false !== strpos( $html, 'emo-related-products-dynamic' )
+			|| elmercado_blog_products_html_has_loop_010277( $html ) ) {
+			return $content;
+		}
+		$slug = elmercado_blog_product_category_slug_010277( $post_id );
+		if ( '' === $slug ) {
+			return $content;
+		}
+		$related = do_shortcode(
+			sprintf( '[elmercado_dynamic_products category="%s" heading="1"]', esc_attr( $slug ) )
+		);
+		if ( ! elmercado_blog_products_html_has_loop_010277( $related ) ) {
+			return $content;
+		}
+		return rtrim( $html ) . "\n\n" . $related;
+	},
+	40
+);
+
 add_action(
 	'wp_footer',
 	static function (): void {
