@@ -28,10 +28,10 @@ final class MDO_Latitudes_Logistics {
             $kg=self::parse_number($m[1]) * (preg_match('/^(g|gr|grs|gramos?)$/i',$m[2]) ? .001 : 1);
             return ['kg'=>round($kg,3),'basis'=>'title_weight'];
         }
-        // The supplier does not publish measured weights for these two SKUs.
-        // Conservative shipping-only estimates, flagged until supplier verifies.
-        if (preg_match('/\bhuevo de avestruz\b/iu', $s)) return ['kg'=>2.0,'basis'=>'provisional_egg'];
-        if (preg_match('/\bhuevo de oca\b/iu', $s) && preg_match('/\b2\s+unidades\b/iu',$s)) return ['kg'=>0.5,'basis'=>'provisional_egg'];
+        // Supplier product pages publish additional WooCommerce weights:
+        // ostrich egg 2.000 kg and goose egg box of two 0.300 kg.
+        if (preg_match('/\bhuevo de avestruz\b/iu', $s)) return ['kg'=>2.0,'basis'=>'source_product_weight'];
+        if (preg_match('/\bhuevo de oca\b/iu', $s) && preg_match('/\b2\s+unidades\b/iu',$s)) return ['kg'=>0.3,'basis'=>'source_product_weight'];
         return null;
     }
 
