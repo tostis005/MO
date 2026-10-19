@@ -79,7 +79,7 @@ foreach ($rows as $supplier) {
             }
             $stats['eligible_'.$country] += $hits;
         }
-        if ($stats['eligible_ES'] === 0 || true) {
+        {
             $has_es=false;
             foreach ($offers as $offer_product) {
                 if ($offer_product instanceof WC_Product && is_array(mdo_gmf_offer_data_v1($offer_product,$post,$product instanceof WC_Product_Variable ? $product : null,'ES'))) {
