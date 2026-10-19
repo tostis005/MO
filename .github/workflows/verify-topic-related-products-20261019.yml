@@ -1,0 +1,81 @@
+name: Verify topical blog recommendations and image loading 2026-10-19
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-topic-related-products-20261019.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Install browser automation
+        run: python -m pip install --quiet selenium
+      - name: Check recommendations and scroll-loaded images
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, re, time, sys
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          from selenium.webdriver.common.by import By
+          cases = [
+            ('wagyu_a5','https://www.elmercadodeorigen.com/wagyu-japones-a5-que-es-que-significa/', r'wagyu.*(japon|kagoshima|miyazaki|kobe)|(japon|kagoshima|miyazaki|kobe).*wagyu'),
+            ('wagyu_choice','https://www.elmercadodeorigen.com/como-elegir-wagyu-japones/',r'wagyu.*(japon|kagoshima|miyazaki|kobe)|(japon|kagoshima|miyazaki|kobe).*wagyu'),
+            ('chocolate_bombones','https://www.elmercadodeorigen.com/como-elegir-bombones-artesanos-rellenos-conservacion/',r'bombon|chocolatina|trufa|praline|ganache'),
+            ('pato_magret','https://www.elmercadodeorigen.com/magret-de-pato-que-es-como-cocinarlo-punto-perfecto/',r'magret'),
+          ]
+          opts=Options()
+          opts.page_load_strategy='eager'
+          for arg in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1440,1200','--lang=es-ES'):
+              opts.add_argument(arg)
+          driver=webdriver.Chrome(options=opts)
+          driver.set_page_load_timeout(65)
+          results=[]; failures=[]
+          try:
+              for mode,url,pattern in cases:
+                  row={'case':mode,'url':url,'products':[],'images_loaded':0,'image_failures':[]}
+                  try:
+                      driver.get(url+'?emdo_related_smoke=20261019')
+                      time.sleep(2)
+                      row['title']=driver.title
+                      cards=driver.find_elements(By.CSS_SELECTOR,'.emo-related-products-dynamic ul.products li.product')
+                      row['card_count']=len(cards)
+                      for i,card in enumerate(cards):
+                          card_title=card.text.split('\n')[0:3]
+                          title=' '.join(card_title)
+                          images=card.find_elements(By.CSS_SELECTOR,'img')
+                          card.location_once_scrolled_into_view
+                          driver.execute_script('arguments[0].scrollIntoView({block:"center"});',card)
+                          time.sleep(0.7)
+                          for img in images:
+                              driver.execute_script('arguments[0].loading="eager";',img)
+                          time.sleep(0.6)
+                          image_results=[driver.execute_script('return {loaded: arguments[0].complete && arguments[0].naturalWidth > 40,src:arguments[0].currentSrc||arguments[0].src,opacity:getComputedStyle(arguments[0]).opacity,visibility:getComputedStyle(arguments[0]).visibility}', img) for img in images]
+                          good=any(im['loaded'] and float(im['opacity'])>0 and im['visibility']=='visible' and not im['src'].startswith('data:image/') for im in image_results)
+                          if good: row['images_loaded']+=1
+                          else: row['image_failures'].append({'card':i+1,'images':image_results})
+                          row['products'].append(title)
+                          if not re.search(pattern,title,re.I):
+                              failures.append(mode+': irrelevant product '+repr(title))
+                      if not cards: failures.append(mode+': no related products rendered')
+                      if row['image_failures']: failures.append(mode+': product images do not load when scrolled')
+                  except Exception as e:
+                      failures.append(mode+': '+str(e)[:400])
+                  results.append(row)
+                  print('CASE='+json.dumps(row,ensure_ascii=False))
+              driver.set_window_size(390,844)
+              driver.get(cases[0][1])
+              time.sleep(1)
+              mobile=driver.find_elements(By.CSS_SELECTOR,'.emo-related-products-dynamic ul.products li.product')
+              print('MOBILE_RECOMMENDATIONS='+str(len(mobile)))
+              if not mobile: failures.append('mobile: no related products')
+          finally:
+              driver.quit()
+          print('RESULT='+json.dumps({'cases':len(results),'failures':failures},ensure_ascii=False))
+          if failures: sys.exit(1)
+          print('BLOG_RELATED_PRODUCTS_AND_IMAGES=PASS')
+          PY
