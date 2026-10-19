@@ -62,6 +62,7 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-product-bulk-admin.php
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-tiktok-shop-feed.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-minimum-order.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-shipping-destinations.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-latitudes-logistics.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-catalog-ranking.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-catalog-priority-admin.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-tolecarnes-weight-info.php';
@@ -147,6 +148,7 @@ add_action(
 		MDO_Huerta_Unit_Price::init();
 		MDO_Minimum_Order::init();
 		MDO_Shipping_Destinations::init();
+		MDO_Latitudes_Logistics::init();
 		MDO_Tolecarnes_Weight_Info::init();
 		MDO_Specials::init();
 		MDO_Specials_Router::init();

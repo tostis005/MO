@@ -140,12 +140,25 @@ final class MDO_Woo_Importer {
 			self::apply_simple_product( $product, $payload );
 		}
 
-		$product_id = $product->save();
+        // Latitudes does not expose weight in its synchronizer payload. Preserve
+        // verified manual overrides; otherwise read the advertised pack weight.
+        $latitudes_inferred_weight = null;
+        if ('latitudes' === (string)$supplier['code']) {
+            $latitudes_inferred_weight = MDO_Latitudes_Logistics::weight_from_title((string)$payload['title']);
+            $saved_basis = $existing_id ? (string)get_post_meta($existing_id,'_mdo_latitudes_weight_basis',true) : '';
+            if ($latitudes_inferred_weight && ($product->get_weight('edit') === '' || $saved_basis !== 'verified_manual')) {
+                $product->set_weight((string)$latitudes_inferred_weight['kg']);
+            }
+        }
+        $product_id = $product->save();
 		if ( ! $product_id ) {
 			throw new RuntimeException( 'WooCommerce no pudo guardar el producto.' );
 		}
 
-		wp_update_post( array( 'ID' => $product_id, 'post_author' => $vendor_id ) );
+        if ($latitudes_inferred_weight && 'verified_manual' !== (string)get_post_meta($product_id,'_mdo_latitudes_weight_basis',true)) {
+            update_post_meta($product_id,'_mdo_latitudes_weight_basis',(string)$latitudes_inferred_weight['basis']);
+        }
+        wp_update_post( array( 'ID' => $product_id, 'post_author' => $vendor_id ) );
 		if ( class_exists( 'MDO_Auto_Categorizer' ) ) {
 			MDO_Auto_Categorizer::record_result( $product_id, $category_result );
 		}

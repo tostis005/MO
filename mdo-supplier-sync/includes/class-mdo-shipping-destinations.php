@@ -213,11 +213,11 @@ final class MDO_Shipping_Destinations {
 		if ( self::latitudes_destination_is_blocked( $vendor_id, $country, $postcode ) ) {
 			return array();
 		}
-		// WooCommerce also has an admin-level free-shipping method in the
-		// shared Baleares zone. Never let it override Latitudes' flat 29 EUR.
+		// The shared Baleares zone also has an admin-level free-shipping method.
+		// Suppress it under EUR 200; from EUR 200 Latitudes must ship free too.
 		$digits = preg_replace( '/\\D+/', '', $postcode );
 		$state = strtoupper( (string) ( $destination['state'] ?? '' ) );
-		if ( 'ES' === $country && ( '07' === substr( $digits, 0, 2 ) || 'PM' === $state ) ) {
+		if ( 'ES' === $country && ( '07' === substr( $digits, 0, 2 ) || 'PM' === $state ) && ! MDO_Latitudes_Logistics::free_shipping_eligible( $package ) ) {
 			foreach ( $rates as $rate_id => $rate ) {
 				if ( is_object( $rate ) && method_exists( $rate, 'get_method_id' )
 					&& 'free_shipping' === $rate->get_method_id() ) {
