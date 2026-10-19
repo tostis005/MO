@@ -85,9 +85,9 @@ jobs:
                           path[p0[:180]]+=1
                           ip_dynamic[ip]+=1
                       ua[(agent or '')[:120]]+=1;codes[status]+=1
-          if status=='429':status429[p0]+=1;status429ua[(agent or '')[:80]]+=1
-          if p0 in inspect_paths:
-              z=inspected[p0]; z['ua'][(agent or '')[:120]]+=1; z['ip'][ip]+=1; z['codes'][status]+=1; z['hour'][h]+=1; z['bots']+=is_bot
+                      if status=='429':status429[p0]+=1;status429ua[(agent or '')[:80]]+=1
+                      if p0 in inspect_paths:
+                          z=inspected[p0]; z['ua'][(agent or '')[:120]]+=1; z['ip'][ip]+=1; z['codes'][status]+=1; z['hour'][h]+=1; z['bots']+=is_bot
                       types["dynamic" if not is_asset else "asset"]+=1
           hours=sorted(hour)
           for h in hours:hour[h]['approx_unique_ips']=len(unique_hour[h])
