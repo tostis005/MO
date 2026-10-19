@@ -112,6 +112,19 @@ final class MDO_Woo_Importer {
 			}
 		}
 
+		// Seven seller-customizable chocolates cannot be purchased until their
+		// variation forms are configured. A factual, approved introduction helps
+		// describe each product without promising an available checkout option.
+		// Keep source ingredients, allergen and conservation details current.
+		if ( 'chocolates-artesanos-isabel' === (string) $supplier['code'] && $existing_id &&
+			'1' === (string) get_post_meta( $existing_id, '_emdo_isabel_customization_review_required', true ) ) {
+			$custom_intro = (string) get_post_meta( $existing_id, '_emdo_isabel_personalizable_editorial_intro', true );
+			if ( '' !== trim( wp_strip_all_tags( $custom_intro ) ) ) {
+				$product->set_description( wp_kses_post( $custom_intro ) . "\n" .
+					self::neutralize_isabel_supplier_copy( (string) ( $payload['description'] ?? '' ) ) );
+			}
+		}
+
 		// Prelaunch products from Latitudes must never become public while its
 		// WCFM vendor is hard-disabled, including after nightly updates.
 		if ( in_array( (string) $supplier['code'], array( 'latitudes', 'chocolates-artesanos-isabel' ), true ) && get_user_meta( $vendor_id, '_disable_vendor', true ) ) {
