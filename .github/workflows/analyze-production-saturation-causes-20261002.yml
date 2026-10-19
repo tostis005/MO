@@ -25,53 +25,110 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'python3 -' <<'PY'
-          import re,os
-          from collections import Counter
+          import os,re,glob,gzip,json,statistics,subprocess
+          from collections import Counter,defaultdict
           from datetime import datetime,timezone,timedelta
           from urllib.parse import urlsplit
-
-          slow="/var/www/vhosts/system/elmercadodeorigen.com/logs/php-fpm_slow.log"
-          access="/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log"
-
-          print("=== SLOWLOG COMPONENT COUNTS ===")
-          data=open(slow,encoding="utf-8",errors="ignore").read() if os.path.isfile(slow) else ""
-          blocks=re.split(r'(?=\[\d{2}-[A-Za-z]{3}-\d{4} )',data)
-          counts=Counter()
-          recent=[]
-          for b in blocks:
-              if not b.strip(): continue
-              label="core/other"
-              m=re.search(r'/wp-content/plugins/([^/]+)/',b)
-              if m: label="plugin:"+m.group(1)
-              else:
-                  m=re.search(r'/wp-content/themes/([^/]+)/',b)
-                  if m: label="theme:"+m.group(1)
-              counts[label]+=1
-              recent.append((label,b[:1800]))
-          for k,v in counts.most_common(20):
-              print(v,k)
-
-          print("=== TRAFFIC 30M ===")
-          cut=datetime.now(timezone.utc)-timedelta(minutes=30)
-          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+\S+\s+"[^"]*"\s+"([^"]*)"')
-          total=0
-          by_ip=Counter(); by_ua=Counter(); by_path=Counter(); product_by_ip=Counter(); product_by_ua=Counter(); codes=Counter()
-          for line in open(access,encoding="utf-8",errors="ignore"):
-              m=rx.match(line)
-              if not m: continue
-              ip,ds,method,target,code,ua=m.groups()
-              try: dt=datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(timezone.utc)
-              except: continue
-              if dt<cut: continue
-              try: path=urlsplit(target).path or '/'
-              except: path=target.split('?',1)[0] or '/'
-              total+=1; by_ip[ip]+=1; by_ua[ua]+=1; by_path[path]+=1; codes[code]+=1
-              if '/producto/' in path or '/product/' in path:
-                  product_by_ip[ip]+=1; product_by_ua[ua]+=1
-          print("total",total,"codes",dict(codes))
-          print("top_ips",by_ip.most_common(12))
-          print("top_uas",by_ua.most_common(12))
-          print("product_top_ips",product_by_ip.most_common(12))
-          print("product_top_uas",product_by_ua.most_common(12))
-          print("top_paths",by_path.most_common(20))
+          now=datetime.now(timezone.utc)
+          cut=now-timedelta(hours=48)
+          root="/var/www/vhosts/system/elmercadodeorigen.com/logs"
+          asset=re.compile(r'\.(css|js|mjs|map|png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|eot|mp4|pdf|zip),re.I)
+          bot=re.compile(r'bot|crawler|crawl|spider|headless|python-requests|curl/|wget/|httpclient|scrapy|go-http-client|bytespider|semrush|ahrefs|mj12|dotbot|gptbot|claudebot|applebot|bingpreview|facebookexternalhit',re.I)
+          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+(\S+)(?:\s+"([^"]*)"\s+"([^"]*)")?')
+          hour=defaultdict(Counter); five=Counter(); path=Counter(); ua=Counter(); codes=Counter(); types=Counter()
+          ip_dynamic=Counter(); unique_hour=defaultdict(set); scanned=0; parsed=0; earliest=None; latest=None; selected=[]
+          for p in sorted(glob.glob(root+"/access_ssl_log*")):
+              try:
+                  if not os.path.isfile(p) or os.stat(p).st_mtime < (cut-timedelta(days=2)).timestamp():continue
+                  selected.append(p)
+              except OSError:continue
+          for p in selected:
+              try:f=gzip.open(p,'rt',encoding='utf8',errors='replace') if p.endswith('.gz') else open(p,'rt',encoding='utf8',errors='replace')
+              except OSError:continue
+              with f:
+                  for line in f:
+                      scanned+=1
+                      m=rx.match(line)
+                      if not m:continue
+                      ip,ds,method,target,status,size,ref,agent=m.groups()
+                      try:dt=datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(timezone.utc)
+                      except ValueError:continue
+                      if dt<cut or dt>now+timedelta(minutes=3):continue
+                      parsed+=1
+                      earliest=min(dt,earliest) if earliest else dt
+                      latest=max(dt,latest) if latest else dt
+                      try:p0=urlsplit(target).path or '/'
+                      except ValueError:p0=target.split('?',1)[0] or '/'
+                      is_asset=bool(asset.search(p0))
+                      is_bot=bool(bot.search(agent or ''))
+                      h=dt.strftime('%Y-%m-%d %H:00 UTC')
+                      five[dt.strftime('%Y-%m-%d %H:%M')[:-1]+'0']+=1
+                      x=hour[h]
+                      x['requests']+=1
+                      x['dynamic']+=not is_asset
+                      x['assets']+=is_asset
+                      x['bot_ua']+=is_bot
+                      x['browser_ua']+=bool(re.search(r'Mozilla/5\.0',agent or ''))
+                      x['status_5xx']+=status.startswith('5')
+                      x['status_4xx']+=status.startswith('4')
+                      x['wp_cron']+=('wp-cron.php' in p0)
+                      x['wp_ajax']+=('admin-ajax.php' in p0)
+                      x['wp_rest']+=('/wp-json/' in p0)
+                      x['xmlrpc']+=('xmlrpc.php' in p0)
+                      x['wc_ajax']+=('wc-ajax' in target)
+                      x['blog_articles']+=('/blog/' in p0 or ('/'!=p0 and p0.count('/')<=2 and not re.search(r'/producto/|/product/|/tienda/|/en/',p0)))
+                      unique_hour[h].add(ip)
+                      if not is_asset:
+                          path[p0[:180]]+=1
+                          ip_dynamic[ip]+=1
+                      ua[(agent or '')[:120]]+=1;codes[status]+=1
+                      types["dynamic" if not is_asset else "asset"]+=1
+          hours=sorted(hour)
+          for h in hours:hour[h]['approx_unique_ips']=len(unique_hour[h])
+          print('=== REAL TRAFFIC 48H (SERVER ACCESS LOG, UTC) ===')
+          print('META',json.dumps({'generated':now.isoformat(),'start':cut.isoformat(),'files_analyzed':[os.path.basename(p) for p in selected],'raw_lines':scanned,'requests48h':parsed,'oldest':earliest.isoformat() if earliest else None,'newest':latest.isoformat() if latest else None,'status':codes,'types':types},ensure_ascii=False))
+          for h in hours:print('HOUR',h,json.dumps(hour[h],ensure_ascii=False))
+          print('TOP_DYNAMIC_PATHS',json.dumps(path.most_common(25),ensure_ascii=False))
+          print('TOP_UAS',json.dumps(ua.most_common(20),ensure_ascii=False))
+          print('PEAK_10MIN',json.dumps(five.most_common(20)))
+          total_dyn=sum(c['dynamic'] for c in hour.values())
+          print('DYNAMIC_TRAFFIC_CONCENTRATION',json.dumps({'dynamic_requests':total_dyn,'highest_single_ip_dynamic_count':max(ip_dynamic.values()) if ip_dynamic else 0,'top10_ip_share':round(sum(c for _,c in ip_dynamic.most_common(10))/total_dyn,3) if total_dyn else None}))
+          slow=root+'/php-fpm_slow.log'
+          print('=== PHP FPM SLOWLOG (LAST 8MB) ===')
+          try:
+              with open(slow,'rb') as f:
+                  f.seek(0,2);f.seek(max(0,f.tell()-8_000_000))
+                  dat=f.read().decode('utf8','replace')
+              blocks=re.split(r'(?=\[\d{2}-[A-Za-z]{3}-\d{4} )',dat)
+              cats=Counter(); recent=Counter()
+              for b in blocks:
+                  if not b.strip() or not b.startswith('['):continue
+                  m=re.search(r'/wp-content/plugins/([^/]+)/',b)
+                  if m:typ='plugin/'+m.group(1)
+                  else:
+                      m=re.search(r'/wp-content/themes/([^/]+)/',b)
+                      typ='theme/'+m.group(1) if m else 'core/other'
+                  cats[typ]+=1
+                  dm=re.search(r'\[(\d{2}-[A-Za-z]{3}-\d{4} \d{2}:\d{2}:\d{2})',b)
+                  if dm:
+                      try:
+                          d=datetime.strptime(dm.group(1),'%d-%b-%Y %H:%M:%S').replace(tzinfo=timezone.utc)
+                          if d>=cut:recent[typ]+=1
+                      except ValueError:pass
+              print('SLOWLOG',json.dumps({'bytes_read':len(dat),'samples_last_48h':recent,'samples_tail_overall':cats},ensure_ascii=False))
+          except Exception as e:print('SLOWLOG_UNAVAILABLE',type(e).__name__,str(e)[:150])
+          print('=== SYSTEM SNAPSHOT ===')
+          try:print('LOADAVG',list(os.getloadavg()))
+          except Exception as e:print('LOADAVG_UNAVAILABLE',str(e))
+          try:
+              o=subprocess.run(['ps','-eo','comm='],capture_output=True,text=True,timeout=6)
+              procs=Counter(s.strip() for s in o.stdout.splitlines())
+              print('PROCESS_COUNTS',json.dumps({'php-fpm':sum(v for k,v in procs.items() if 'php-fpm' in k),'apache':sum(v for k,v in procs.items() if 'httpd' in k or 'apache' in k),'mariadb':sum(v for k,v in procs.items() if 'mysql' in k or 'mariadb' in k)}))
+          except Exception as e:print('PS_UNAVAILABLE',str(e))
+          print('=== LIGHT LIVE SAMPLE (3 GETs) ===')
+          for url in ['https://www.elmercadodeorigen.com/','https://www.elmercadodeorigen.com/blog/','https://www.elmercadodeorigen.com/wagyu-japones-a5-que-es-que-significa/']:
+              try:
+                  o=subprocess.run(['curl','-k','-L','-sS','-o','/dev/null','-w','%{http_code} %{time_starttransfer} %{time_total} %{size_download}','--max-time','20',url],capture_output=True,text=True,timeout=23)
+                  print('LIVE_TIMING',url,o.stdout.strip(), 'error='+o.stderr.strip()[:120] if o.returncode else '')
+              except Exception as e:print('LIVE_TIMING_ERROR',url,str(e)[:120])
           PY
