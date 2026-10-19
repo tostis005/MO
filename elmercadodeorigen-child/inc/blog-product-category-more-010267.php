@@ -405,7 +405,7 @@ function elmercado_blog_product_category_slug_010277( int $post_id, string $expl
 	$explicit = trim( $explicit );
 	$precise = elmercado_blog_precise_product_category_20261019( $post_id );
 	/* Una guía temática gana a shortcodes antiguos genéricos (p. ej. carnes). */
-	$generic = array( '', 'carnes', 'conservas', 'packs-y-lotes', 'foie-pates-untables' );
+	$generic = array( '', 'carnes', 'conservas', 'packs-y-lotes', 'foie-pates-untables', 'pato', 'chocolates-artesanos', 'wagyu' );
 	if ( '' !== $precise && in_array( sanitize_title( $explicit ), $generic, true ) ) {
 		if ( '' !== $explicit && ! in_array( sanitize_title( $explicit ), array( 'carnes', 'conservas', 'packs-y-lotes', 'foie-pates-untables' ), true ) ) {
 			return elmercado_blog_filter_product_category_slug_010277( $explicit, $post_id );
