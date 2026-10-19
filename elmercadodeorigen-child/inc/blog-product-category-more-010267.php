@@ -87,6 +87,15 @@ function elmercado_blog_product_category_map_010277(): array {
 		'naranjas'               => 'naranjas',
 		'packs-y-lotes'          => 'packs-y-lotes',
 		'quesos'                 => 'quesos',
+		'wagyu'                  => 'wagyu',
+		'pato'                   => 'pato',
+		'productos-de-pato'      => 'pato',
+		'foie-pates-y-untables'  => 'foie-pates-untables',
+		'foie-pates-untables'    => 'foie-pates-untables',
+		'chocolates-y-cacao'     => 'chocolates-artesanos',
+		'chocolate'              => 'chocolates-artesanos',
+		'chocolates-artesanos'   => 'chocolates-artesanos',
+		'carnes-exoticas'        => 'carnes-exoticas',
 	);
 
 	$map = (array) apply_filters( 'elmercado_blog_product_category_map', $map );
@@ -181,6 +190,206 @@ function elmercado_blog_product_category_candidates_010277( int $post_id ): arra
 }
 
 /**
+ * Detecta la intención comercial real del artículo, sin cambiar su taxonomía
+ * editorial. Los subtipos tienen preferencia sobre categorías genéricas.
+ */
+function elmercado_blog_precise_product_category_20261019( int $post_id ): string {
+	if ( $post_id <= 0 ) {
+		return '';
+	}
+	$terms = get_the_category( $post_id );
+	$slugs = array();
+	foreach ( (array) $terms as $term ) {
+		if ( $term instanceof WP_Term ) {
+			$slugs[] = (string) $term->slug;
+			foreach ( get_ancestors( (int) $term->term_id, 'category', 'taxonomy' ) as $ancestor_id ) {
+				$parent = get_term( (int) $ancestor_id, 'category' );
+				if ( $parent instanceof WP_Term ) {
+					$slugs[] = (string) $parent->slug;
+				}
+			}
+		}
+	}
+	$category_text = strtolower( remove_accents( implode( ' ', $slugs ) ) );
+	$title = strtolower( remove_accents( (string) get_the_title( $post_id ) . ' ' . (string) get_post_field( 'post_name', $post_id ) ) );
+	$in_wagyu = str_contains( $category_text, 'wagyu' ) || preg_match( '/\b(wagyu|kobe|miyazaki|kagoshima|kuroge|bms)\b/u', $title );
+	$in_chocolate = preg_match( '/chocolate|cacao/u', $category_text )
+		|| preg_match( '/chocolate|cacao|bombon|ganache|praline|trufa|turron|bean.to.bar/u', $title );
+	$in_duck = preg_match( '/\bpato\b|foie|magret|confit/u', $category_text )
+		|| preg_match( '/pato|foie.gras|magret|confit|rillettes|micuit|mi.cuit|manchon/u', $title );
+
+	if ( $in_wagyu ) {
+		return 'wagyu';
+	}
+	if ( $in_chocolate ) {
+		$subtypes = array(
+			'cremas-de-cacao' => '/crema|untar|untable/u',
+			'bombones-y-chocolatinas' => '/bombon|chocolatina|praline|ganache|trufa/u',
+			'cacao-para-beber-y-cocinar' => '/chocolate.a.la.taza|chocolate.caliente|cacao.en.polvo|reposteria|cocinar|bebida|beber/u',
+			'kits-y-experiencias' => '/\bkit\b|elabora.*chocolate|hacer.*chocolate/u',
+			'chocolates-de-temporada' => '/turron|navidad|pascua/u',
+			'packs-y-regalos' => '/regal|surtido|pack|lote/u',
+			'tabletas-de-chocolate' => '/tableta|bean.to.bar|porcentaje.de.cacao|chocolate.negro|chocolate.con.leche/u',
+		);
+		foreach ( $subtypes as $slug => $pattern ) {
+			if ( preg_match( $pattern, $title ) && get_term_by( 'slug', $slug, 'product_cat' ) ) {
+				return $slug;
+			}
+		}
+		return 'chocolates-artesanos';
+	}
+	if ( $in_duck ) {
+		$subtypes = array(
+			'magret-de-pato' => '/magret/u',
+			'confit-de-pato' => '/confit|muslo.de.pato/u',
+			'jamon-de-pato' => '/jamon.de.pato/u',
+			'foie-gras-de-pato' => '/foie.gras|micuit|mi.cuit/u',
+			'pate-mousse-rillettes-de-pato' => '/rillettes|mousse|pate.de.pato|parfait/u',
+			'pato-fresco' => '/pato.fresco|pechuga.de.pato|manchon|molleja.de.pato/u',
+		);
+		foreach ( $subtypes as $slug => $pattern ) {
+			if ( preg_match( $pattern, $title ) && get_term_by( 'slug', $slug, 'product_cat' ) ) {
+				return $slug;
+			}
+		}
+		if ( preg_match( '/foie|pat[eé]|untable/u', $category_text ) && get_term_by( 'slug', 'foie-pates-untables', 'product_cat' ) ) {
+			return 'foie-pates-untables';
+		}
+		return 'pato';
+	}
+	return '';
+}
+
+/**
+ * Elige fichas existentes, visibles y disponibles, ponderando el tema de la
+ * guía. Nunca presenta Wagyu australiano como si fuera japonés.
+ *
+ * Devuelve NULL para categorías históricas a las que se aplica el flujo normal.
+ * Devuelve [] para categorías especializadas sin referencias adecuadas.
+ *
+ * @return ?int[]
+ */
+function elmercado_blog_precise_product_ids_20261019( int $post_id, string $slug ): ?array {
+	$special_roots = array( 'wagyu', 'pato', 'pato-fresco', 'magret-de-pato',
+		'confit-de-pato', 'jamon-de-pato', 'foie-gras-de-pato',
+		'pate-mousse-rillettes-de-pato', 'foie-pates-untables',
+		'chocolates-artesanos', 'tabletas-de-chocolate', 'bombones-y-chocolatinas',
+		'cremas-de-cacao', 'cacao-para-beber-y-cocinar', 'kits-y-experiencias',
+		'chocolates-de-temporada', 'packs-y-regalos', 'carnes-exoticas' );
+	if ( ! in_array( $slug, $special_roots, true ) ) {
+		return null;
+	}
+
+	$title = strtolower( remove_accents( (string) get_the_title( $post_id ) ) );
+	$is_wagyu = 'wagyu' === $slug;
+	$is_comparison = $is_wagyu && preg_match( '/(japones|japon).*(australian|american|europeo)|(australian|american|europeo).*(japones|japon)/u', $title );
+	$is_australian = $is_wagyu && ! $is_comparison && preg_match( '/wagyu.australian|australian.*wagyu/u', $title );
+	$term = get_term_by( 'slug', $slug, 'product_cat' );
+	if ( ! $term instanceof WP_Term ) {
+		return array();
+	}
+	$ids = get_posts( array(
+		'post_type' => 'product',
+		'post_status' => 'publish',
+		'numberposts' => 240,
+		'fields' => 'ids',
+		'suppress_filters' => false,
+		'tax_query' => array( array( 'taxonomy' => 'product_cat', 'field' => 'term_id', 'terms' => array( (int) $term->term_id ), 'include_children' => true ) ),
+	) );
+	$keywords = array( 'entrecot', 'solomillo', 'lomo alto', 'lomo bajo', 'picanha', 'yakiniku',
+		'aguja', 'ribete', 'kagoshima', 'miyazaki', 'a4', 'a5', 'bms',
+		'magret', 'confit', 'jamon', 'foie', 'micuit', 'mousse', 'rillettes',
+		'manchon', 'molleja', 'tableta', 'bombon', 'chocolatina', 'crema',
+		'turron', 'cacao', 'chocolate negro', 'chocolate con leche', 'kit', 'regalo',
+		'avestruz', 'canguro', 'bisonte', 'bufalo', 'venado', 'alce', 'potro' );
+	$ranked = array();
+	foreach ( $ids as $id ) {
+		$product = wc_get_product( (int) $id );
+		if ( ! $product || ! $product->is_visible() || ! $product->is_in_stock() ) {
+			continue;
+		}
+		$name = strtolower( remove_accents( $product->get_name() ) );
+		$japanese = preg_match( '/japon|kagoshima|miyazaki|kobe/u', $name ) && ! str_contains( $name, 'australian' );
+		$australian = str_contains( $name, 'australian' );
+		if ( $is_wagyu && ! $is_comparison ) {
+			if ( $is_australian ? ! $australian : ! $japanese ) {
+				continue;
+			}
+		}
+		$score = 0;
+		foreach ( $keywords as $word ) {
+			if ( str_contains( $title, $word ) && str_contains( $name, $word ) ) {
+				$score += 24;
+			}
+		}
+		if ( $is_wagyu ) {
+			$score += $japanese ? 35 : ( $australian ? 8 : 0 );
+			if ( str_contains( $title, 'a5' ) && ! str_contains( $title, 'a4' ) ) {
+				$score += str_contains( $name, 'a5' ) ? 24 : -8;
+			}
+			if ( str_contains( $title, 'a4' ) && ! str_contains( $title, 'a5' ) ) {
+				$score += str_contains( $name, 'a4' ) ? 28 : -10;
+			}
+		} elseif ( str_starts_with( $slug, 'chocolate' ) || str_contains( $slug, 'cacao' ) || str_contains( $slug, 'bombon' ) || str_contains( $slug, 'tabletas' ) ) {
+			$score += preg_match( '/chocolate|cacao|bombon|tableta|turron|kit/u', $name ) ? 6 : 0;
+		}
+		$ranked[] = array( 'id' => (int) $id, 'score' => $score, 'japanese' => (bool) $japanese,
+			'australian' => (bool) $australian, 'a4' => str_contains( $name, 'a4' ), 'a5' => str_contains( $name, 'a5' ) );
+	}
+	usort( $ranked, static function ( array $a, array $b ): int {
+		return ( $b['score'] <=> $a['score'] ) ?: ( $b['id'] <=> $a['id'] );
+	} );
+	if ( $is_wagyu && $is_comparison ) {
+		$both = array();
+		foreach ( array( 'japanese', 'australian' ) as $side ) {
+			foreach ( $ranked as $candidate ) {
+				if ( $candidate[ $side ] && ! in_array( $candidate['id'], $both, true ) ) {
+					$both[] = $candidate['id'];
+					break;
+				}
+			}
+		}
+		foreach ( $ranked as $candidate ) {
+			if ( count( $both ) >= 4 ) break;
+			if ( ! in_array( $candidate['id'], $both, true ) ) $both[] = $candidate['id'];
+		}
+		return $both;
+	}
+	if ( $is_wagyu && str_contains( $title, 'a4' ) && str_contains( $title, 'a5' ) ) {
+		$grades = array();
+		foreach ( array( 'a4', 'a5' ) as $grade ) {
+			foreach ( $ranked as $candidate ) {
+				if ( $candidate[ $grade ] && ! in_array( $candidate['id'], $grades, true ) ) {
+					$grades[] = $candidate['id'];
+					break;
+				}
+			}
+		}
+		foreach ( $ranked as $candidate ) {
+			if ( count( $grades ) >= 4 ) break;
+			if ( ! in_array( $candidate['id'], $grades, true ) ) $grades[] = $candidate['id'];
+		}
+		return $grades;
+	}
+	return array_slice( array_column( $ranked, 'id' ), 0, 4 );
+}
+
+/**
+ * Las miniaturas al pie del post no dependen de una segunda activación lazy
+ * mediante JS de optimización: solo se cargan en modo eager estas 4 imágenes.
+ */
+add_filter( 'wp_get_attachment_image_attributes', static function ( array $attrs ): array {
+	if ( empty( $GLOBALS['elmercado_blog_related_product_grid_20261019'] ) ) {
+		return $attrs;
+	}
+	$attrs['loading'] = 'eager';
+	$attrs['decoding'] = 'async';
+	$attrs['fetchpriority'] = 'low';
+	$attrs['sizes'] = '(max-width: 620px) 90vw, (max-width: 1100px) 45vw, 260px';
+	return $attrs;
+}, 999 );
+
+/**
  * Resuelve la categoría WooCommerce que corresponde a una entrada.
  *
  * Orden:
@@ -194,6 +403,18 @@ function elmercado_blog_product_category_candidates_010277( int $post_id ): arra
  */
 function elmercado_blog_product_category_slug_010277( int $post_id, string $explicit = '' ): string {
 	$explicit = trim( $explicit );
+	$precise = elmercado_blog_precise_product_category_20261019( $post_id );
+	/* Una guía temática gana a shortcodes antiguos genéricos (p. ej. carnes). */
+	$generic = array( '', 'carnes', 'conservas', 'packs-y-lotes', 'foie-pates-untables' );
+	if ( '' !== $precise && in_array( sanitize_title( $explicit ), $generic, true ) ) {
+		if ( '' !== $explicit && ! in_array( sanitize_title( $explicit ), array( 'carnes', 'conservas', 'packs-y-lotes', 'foie-pates-untables' ), true ) ) {
+			return elmercado_blog_filter_product_category_slug_010277( $explicit, $post_id );
+		}
+		$meta_override = sanitize_title( (string) get_post_meta( $post_id, '_elmercado_product_category', true ) );
+		if ( '' === $meta_override ) {
+			return $precise;
+		}
+	}
 	if ( '' !== $explicit ) {
 		$parts = array_values(
 			array_filter(
@@ -333,23 +554,30 @@ function elmercado_blog_dynamic_products_shortcode_010277( $atts ): string {
 	 * proveedores desactivados y cualquier filtro comercial ya vigente en la web.
 	 */
 	$curated_iron_ids = elmercado_blog_iron_beef_product_ids_010277();
-	if ( null !== $curated_iron_ids ) {
-		if ( ! $curated_iron_ids ) {
+	$precise_ids = null === $curated_iron_ids ? elmercado_blog_precise_product_ids_20261019( $post_id, $slug ) : $curated_iron_ids;
+	if ( null !== $precise_ids ) {
+		if ( ! $precise_ids ) {
 			return '';
 		}
-		$products_html = do_shortcode(
-			sprintf(
-				'[products ids="%s" columns="3" orderby="post__in"]',
-				implode( ',', array_map( 'intval', $curated_iron_ids ) )
-			)
-		);
+		$GLOBALS['elmercado_blog_related_product_grid_20261019'] = true;
+		try {
+			$products_html = do_shortcode( sprintf(
+				'[products ids="%s" columns="4" orderby="post__in"]',
+				implode( ',', array_map( 'intval', $precise_ids ) )
+			) );
+		} finally {
+			unset( $GLOBALS['elmercado_blog_related_product_grid_20261019'] );
+		}
 	} else {
-		$products_html = do_shortcode(
-			sprintf(
+		$GLOBALS['elmercado_blog_related_product_grid_20261019'] = true;
+		try {
+			$products_html = do_shortcode( sprintf(
 				'[products category="%s" limit="4" columns="4" orderby="popularity"]',
 				esc_attr( $slug )
-			)
-		);
+			) );
+		} finally {
+			unset( $GLOBALS['elmercado_blog_related_product_grid_20261019'] );
+		}
 	}
 
 	/* Sin productos reales no existe ni sección, ni título, ni hueco, ni CTA. */
@@ -531,6 +759,42 @@ add_action(
 				}
 			}
 		</style>
+		<script id="elmercado-blog-related-images-20261019">
+		(function () {
+			'use strict';
+			function restoreProductImages() {
+				var images = document.querySelectorAll('.emo-related-products-dynamic ul.products img');
+				if (!images.length) return;
+				function activate(img) {
+					img.loading = 'eager';
+					img.style.opacity = '1';
+					img.style.visibility = 'visible';
+					var src = img.getAttribute('src') || '';
+					var replacement = img.getAttribute('data-src') || img.getAttribute('data-lazy-src');
+					var replacementSet = img.getAttribute('data-srcset') || img.getAttribute('data-lazy-srcset');
+					if (replacement && (!src || src.indexOf('data:image/') === 0 || src.indexOf('placeholder') !== -1)) {
+						img.setAttribute('src', replacement);
+					}
+					if (replacementSet && !img.getAttribute('srcset')) img.setAttribute('srcset', replacementSet);
+				}
+				if ('IntersectionObserver' in window) {
+					var observer = new IntersectionObserver(function (entries) {
+						entries.forEach(function (entry) {
+							if (entry.isIntersecting) { activate(entry.target); observer.unobserve(entry.target); }
+						});
+					}, { rootMargin: '600px 0px' });
+					images.forEach(function (img) { observer.observe(img); });
+				} else {
+					images.forEach(activate);
+				}
+			}
+			if (document.readyState === 'loading') {
+				document.addEventListener('DOMContentLoaded', restoreProductImages, { once: true });
+			} else {
+				restoreProductImages();
+			}
+		}());
+		</script>
 		<?php
 	},
 	PHP_INT_MAX
