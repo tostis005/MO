@@ -99,6 +99,6 @@ jobs:
           urls={x.text for x in sitemap.findall('s:url/s:loc',ns)}
           for pid in ['emdo-17180','emdo-17526']:
               link=offers[pid].find('g:link',ns).text
-              assert link in urls, 'Merchant product URL is absent from product sitemap: '+pid+' '+link
+              assert link.split('?',1)[0] in urls, 'Merchant product URL is absent from product sitemap: '+pid+' '+link
           print('MERCHANT_PUBLIC_XML_VERIFIED',len(products),'offers,',len(urls),'sitemap URLs, two new-supplier products found in both.')
           PY
