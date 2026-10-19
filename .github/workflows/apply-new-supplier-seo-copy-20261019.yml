@@ -71,11 +71,11 @@ jobs:
             wp_bin=\$(command -v wp)
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$SCRIPT' --path='$PROD_PATH' --allow-root
             rm -f '$SCRIPT'
-          " | tee /tmp/seo-product-audit.log
+          " | tee /tmp/seo-product-apply.log
           mkdir -p .deploy-status
           python3 - <<'PY'
           import json
-          rows=[line.removeprefix('EMDO_SEO_COPY_APPLY=') for line in open('/tmp/seo-product-audit.log') if line.startswith('EMDO_SEO_COPY_AUDIT=')]
+          rows=[line.removeprefix('EMDO_SEO_COPY_APPLY=') for line in open('/tmp/seo-product-apply.log') if line.startswith('EMDO_SEO_COPY_APPLY=')]
           assert rows, 'Live SEO report not emitted'
           data=json.loads(rows[-1])
           assert data['verified']
@@ -87,7 +87,7 @@ jobs:
           PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .deploy-status/new-supplier-seo-copy-audit-20261019.json
+          git add .deploy-status/new-supplier-seo-copy-applied-20261019.json
           git commit -m 'Record live SEO copy corrections for Latitudes and Isabel [skip ci]'
           git pull --rebase origin main
           git push origin HEAD:main
