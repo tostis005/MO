@@ -309,6 +309,24 @@ function elmercado_blog_precise_product_ids_20261019( int $post_id, string $slug
 			continue;
 		}
 		$name = strtolower( remove_accents( $product->get_name() ) );
+		/*
+		 * Bombonería agrupa formatos distintos. Una guía de bombones no debe
+		 * rellenarse con piruletas, crackers o chocolatinas solo porque
+		 * compartan categoría comercial.
+		 */
+		if ( 'bombones-y-chocolatinas' === $slug ) {
+			if ( preg_match( '/bombon|praline|ganache|trufa/u', $title )
+				&& ! preg_match( '/bombon|torino|praline|ganache|trufa/u', $name ) ) {
+				continue;
+			}
+			if ( str_contains( $title, 'piruleta' ) && ! str_contains( $name, 'piruleta' ) ) {
+				continue;
+			}
+			if ( preg_match( '/chocolatina|carre|cracker/u', $title )
+				&& ! preg_match( '/chocolatina|carre|cracker|barrita/u', $name ) ) {
+				continue;
+			}
+		}
 		$japanese = preg_match( '/japon|kagoshima|miyazaki|kobe/u', $name ) && ! str_contains( $name, 'australian' );
 		$australian = str_contains( $name, 'australian' );
 		if ( $is_wagyu && ! $is_comparison ) {
