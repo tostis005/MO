@@ -3,6 +3,7 @@
  * Read-only live content audit for EMDO's two newly onboarded suppliers.
  * Scopes by source_products + suppliers and verifies WooCommerce author.
  * No product, shipping, inventory, image, taxonomy or source changes.
+ * Re-checked after the production copy rewrite and supplier-sync deployment.
  */
 if (!defined('ABSPATH') || !class_exists('WooCommerce') || !class_exists('MDO_Database')) {
     throw new RuntimeException('WordPress, WooCommerce and supplier sync required');
