@@ -1,0 +1,172 @@
+name: Complete missing English product fiches - 20261020
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/complete-missing-product-english-20261020.yml'
+      - '.github/scripts/apply-missing-product-english-20261020.php'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: mdo-product-english-completion-20261020
+  cancel-in-progress: false
+jobs:
+  complete:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate and initialize
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/apply-missing-product-english-20261020.php
+          php -l .github/scripts/export-product-english-repair-20260820.php
+          python3 -m py_compile .github/scripts/mdo-final-en-translate-v73.py
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          python3 -m pip install --quiet --disable-pip-version-check --break-system-packages deep-translator==1.11.4
+          mkdir -p /tmp/emdo-translate .deploy-status ~/.ssh
+          chmod 700 ~/.ssh
+          PORT="${STAGING_PORT:-22}"
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          echo "SSH_PORT=$PORT" >> "$GITHUB_ENV"
+          PROD_PATH="$(sshpass -e ssh -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -p "$PORT" "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+      - name: Export missing English data from production
+        shell: bash
+        run: |
+          set -euo pipefail
+          REMOTE="/tmp/mdo-en-export-${GITHUB_RUN_ID}.php"
+          sshpass -e scp -o StrictHostKeyChecking=yes -P "$SSH_PORT" .github/scripts/export-product-english-repair-20260820.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh -o StrictHostKeyChecking=yes -p "$SSH_PORT" "$STAGING_USER@$STAGING_HOST" "
+            wp_bin=\$(command -v wp)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -d memory_limit=1024M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root
+            rc=\$?
+            rm -f '$REMOTE'
+            exit \$rc
+          " > /tmp/emdo-translate/export.json
+          python3 -m json.tool /tmp/emdo-translate/export.json >/dev/null
+          python3 - <<'PY'
+          import json,pathlib
+          src=json.load(open('/tmp/emdo-translate/export.json',encoding='utf-8'))
+          eligible=[p for p in src['products'] if p['status']=='publish' and ('missing:' in p['reason'] or 'exact_copy:' in p['reason'])]
+          pathlib.Path('/tmp/emdo-translate/eligible.json').write_text(json.dumps({'site':src['site'],'products':eligible},ensure_ascii=False))
+          print('ELIGIBLE_PRODUCTS',len(eligible),'TOTAL_EXPORTED',src['count'])
+          PY
+      - name: Translate missing fields in manageable batches
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, pathlib, subprocess, tempfile, re, html, collections
+          folder=pathlib.Path('/tmp/emdo-translate')
+          source=json.loads((folder/'eligible.json').read_text())
+          products=source['products']
+          script='.github/scripts/mdo-final-en-translate-v73.py'
+          translated=[]; failed=[]; batch_size=8
+          def translate_rows(rows):
+              with tempfile.TemporaryDirectory(dir=folder) as tmp:
+                  inp=pathlib.Path(tmp)/'in.json';out=pathlib.Path(tmp)/'out.json'
+                  inp.write_text(json.dumps({'site':source['site'],'products':rows},ensure_ascii=False))
+                  res=subprocess.run(['python3',script,str(inp),str(out)],capture_output=True,text=True,timeout=600)
+                  if res.returncode!=0 or not out.exists():
+                      raise RuntimeError((res.stderr+' '+res.stdout)[-700:])
+                  ans=json.loads(out.read_text())['products']
+                  if len(ans)!=len(rows):raise RuntimeError('Translation count mismatch')
+                  return ans
+          for offset in range(0,len(products),batch_size):
+              batch=products[offset:offset+batch_size]
+              try:
+                  result=translate_rows(batch)
+                  translated.extend(result)
+              except Exception as e:
+                  print('BATCH_RETRY',offset, str(e)[-400:],flush=True)
+                  for row in batch:
+                      try: translated.extend(translate_rows([row]))
+                      except Exception as exc: failed.append({'id':row['id'],'error':str(exc)[-250:]})
+              print('TRANSLATION_PROGRESS',min(offset+batch_size,len(products)),len(products),'ok',len(translated),'failed',len(failed),flush=True)
+          by_id={p['id']:p for p in products}
+          ready=[]
+          for row in translated:
+              original=by_id[row['id']]
+              title=row['title']
+              if re.search(r'BIO\s*&\s*FT',original['title'],re.I):
+                  title=re.sub(r'BIO\s*&\s*FT','BIO&FT',title,flags=re.I)
+                  if 'BIO&FT' not in title:title='BIO&FT '+title
+              ready.append({**row,'title':title,'source_title':original['title'],'source_excerpt':original['excerpt'],'source_content':original['content']})
+          (folder/'payload.json').write_text(json.dumps({'products':ready},ensure_ascii=False),encoding='utf-8')
+          (folder/'translate-report.json').write_text(json.dumps({'source_count':len(products),'translated_count':len(ready),'translation_failed':failed},ensure_ascii=False,indent=2))
+          print('TRANSLATION_COMPLETE',len(ready),'FAILED',len(failed),flush=True)
+          PY
+      - name: Apply vetted translations to existing Falang product metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$(python3 -c 'import json;print(len(json.load(open("/tmp/emdo-translate/payload.json"))["products"]))')" = "0" ]; then
+             echo 'NO_TRANSLATIONS_TO_APPLY' | tee /tmp/emdo-translate/apply.log
+             exit 0
+          fi
+          REMOTE_PHP="/tmp/mdo-en-apply-${GITHUB_RUN_ID}.php"
+          REMOTE_JSON="/tmp/mdo-en-payload-${GITHUB_RUN_ID}.json"
+          sshpass -e scp -o StrictHostKeyChecking=yes -P "$SSH_PORT" .github/scripts/apply-missing-product-english-20261020.php "$STAGING_USER@$STAGING_HOST:$REMOTE_PHP"
+          sshpass -e scp -o StrictHostKeyChecking=yes -P "$SSH_PORT" /tmp/emdo-translate/payload.json "$STAGING_USER@$STAGING_HOST:$REMOTE_JSON"
+          sshpass -e ssh -o StrictHostKeyChecking=yes -p "$SSH_PORT" "$STAGING_USER@$STAGING_HOST" "
+            wp_bin=\$(command -v wp)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            MDO_EN_PAYLOAD='$REMOTE_JSON' \"\$php_bin\" -d memory_limit=1536M \"\$wp_bin\" eval-file '$REMOTE_PHP' --path='$PROD_PATH' --allow-root
+            rc=\$?
+            rm -f '$REMOTE_PHP' '$REMOTE_JSON'
+            exit \$rc
+          " | tee /tmp/emdo-translate/apply.log
+          grep '^MDO_EN_20261020=' /tmp/emdo-translate/apply.log >/dev/null
+      - name: Commit non-sensitive translation outcome summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,pathlib
+          f=pathlib.Path('/tmp/emdo-translate')
+          report=json.loads((f/'translate-report.json').read_text()) if (f/'translate-report.json').exists() else {'status':'translation-not-completed'}
+          apply=(f/'apply.log')
+          if apply.exists():
+              for line in apply.read_text().splitlines():
+                  if line.startswith('MDO_EN_20261020='):
+                      report['apply']=json.loads(line.split('=',1)[1])
+          pathlib.Path('.deploy-status/missing-product-english-20261020.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+          print(json.dumps({'translated':report.get('translated_count'), 'failed':len(report.get('translation_failed',[])), 'applied':report.get('apply',{}).get('updated')},ensure_ascii=False))
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/missing-product-english-20261020.json
+          git commit -m "Record completed/missing English product translations 20261020 [skip ci]" || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
