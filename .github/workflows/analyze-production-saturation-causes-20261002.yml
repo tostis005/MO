@@ -37,6 +37,9 @@ jobs:
           rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+(\S+)(?:\s+"([^"]*)"\s+"([^"]*)")?')
           hour=defaultdict(Counter); five=Counter(); path=Counter(); ua=Counter(); codes=Counter(); types=Counter()
           ip_dynamic=Counter(); unique_hour=defaultdict(set); scanned=0; parsed=0; earliest=None; latest=None; selected=[]
+          inspect_paths={'/tienda/hidalgo-de-la-jara/','/categoria-producto/jamones-paletas/','/en/tienda/hidalgo-de-la-jara/','/en/store/hidalgo-de-la-jara/','/en/wp-json/oembed/1.0/embed','/wp-json/oembed/1.0/embed','/','/wp-login.php','/en/cart/','/en/product-category/hams-and-shoulders/','/wp-admin/admin-ajax.php'}
+          inspected=defaultdict(lambda:{'ua':Counter(),'ip':Counter(),'codes':Counter(),'hour':Counter(),'bots':0})
+          status429=Counter();status429ua=Counter()
           for p in sorted(glob.glob(root+"/access_ssl_log*")):
               try:
                   if not os.path.isfile(p) or os.stat(p).st_mtime < (cut-timedelta(days=2)).timestamp():continue
@@ -82,6 +85,9 @@ jobs:
                           path[p0[:180]]+=1
                           ip_dynamic[ip]+=1
                       ua[(agent or '')[:120]]+=1;codes[status]+=1
+          if status=='429':status429[p0]+=1;status429ua[(agent or '')[:80]]+=1
+          if p0 in inspect_paths:
+              z=inspected[p0]; z['ua'][(agent or '')[:120]]+=1; z['ip'][ip]+=1; z['codes'][status]+=1; z['hour'][h]+=1; z['bots']+=is_bot
                       types["dynamic" if not is_asset else "asset"]+=1
           hours=sorted(hour)
           for h in hours:hour[h]['approx_unique_ips']=len(unique_hour[h])
@@ -90,6 +96,11 @@ jobs:
           for h in hours:print('HOUR',h,json.dumps(hour[h],ensure_ascii=False))
           print('TOP_DYNAMIC_PATHS',json.dumps(path.most_common(25),ensure_ascii=False))
           print('TOP_UAS',json.dumps(ua.most_common(20),ensure_ascii=False))
+          for p0,z in inspected.items():
+              n=sum(z['ua'].values())
+              print('PATH_DETAIL',json.dumps({'path':p0,'requests':n,'unique_ips':len(z['ip']),'largest_ip_requests':max(z['ip'].values()) if z['ip'] else 0,'top10_ip_share':round(sum(v for _,v in z['ip'].most_common(10))/n,3) if n else 0,'named_bot':z['bots'],'status':z['codes'],'top_ua':z['ua'].most_common(6),'top_hours':z['hour'].most_common(6)},ensure_ascii=False))
+          print('STATUS_429_PATHS',json.dumps(status429.most_common(20),ensure_ascii=False))
+          print('STATUS_429_UAS',json.dumps(status429ua.most_common(12),ensure_ascii=False))
           print('PEAK_10MIN',json.dumps(five.most_common(20)))
           total_dyn=sum(c['dynamic'] for c in hour.values())
           print('DYNAMIC_TRAFFIC_CONCENTRATION',json.dumps({'dynamic_requests':total_dyn,'highest_single_ip_dynamic_count':max(ip_dynamic.values()) if ip_dynamic else 0,'top10_ip_share':round(sum(c for _,c in ip_dynamic.most_common(10))/total_dyn,3) if total_dyn else None}))
