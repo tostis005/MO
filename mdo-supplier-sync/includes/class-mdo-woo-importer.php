@@ -333,6 +333,11 @@ final class MDO_Woo_Importer {
 			'Tiene más información aquí.' => 'Consulte las características y el contenido del producto en esta ficha.',
 		);
 		$html = str_ireplace( array_keys( $replacements ), array_values( $replacements ), $html );
+		// Supplier identity can appear inside formatting tags; keep the product
+		// claims and ingredient labels, but make the merchant attribution neutral.
+		$html = preg_replace( '/Chocolates?\\s+Artesanos?\\s+Isabel/iu', 'el fabricante', $html );
+		// Original maker email is not the checkout support channel on EMDO.
+		$html = preg_replace( '~<a\\b[^>]*href\\s*=\\s*["\\\']mailto:[^"\\\']*@chocolatesartesanosisabel\\.com[^"\\\']*["\\\'][^>]*>.*?</a>~isu', 'consulte antes de comprar las condiciones de personalización', $html );
 		// An outbound maker-store link is inappropriate inside EMDO's checkout
 		// copy. Retain the visible label; never touch third-party certifications.
 		$html = preg_replace( '~<a\b[^>]*href\s*=\s*["\']https?://(?:www\.)?chocolatesartesanosisabel\.com[^"\']*["\'][^>]*>(.*?)</a>~isu', '$1', $html );
