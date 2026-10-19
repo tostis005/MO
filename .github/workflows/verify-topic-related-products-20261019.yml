@@ -23,8 +23,8 @@ jobs:
           from selenium.webdriver.chrome.options import Options
           from selenium.webdriver.common.by import By
           cases = [
-            ('wagyu_a5','https://www.elmercadodeorigen.com/wagyu-japones-a5-que-es-que-significa/', r'wagyu.*(japon|kagoshima|miyazaki|kobe)|(japon|kagoshima|miyazaki|kobe).*wagyu'),
-            ('wagyu_choice','https://www.elmercadodeorigen.com/como-elegir-wagyu-japones/',r'wagyu.*(japon|kagoshima|miyazaki|kobe)|(japon|kagoshima|miyazaki|kobe).*wagyu'),
+            ('wagyu_a5','https://www.elmercadodeorigen.com/wagyu-japones-a5-que-es-que-significa/', r'wagyu.*(japon|jap[oó]n|kagoshima|miyazaki|kobe)|(japon|jap[oó]n|kagoshima|miyazaki|kobe).*wagyu'),
+            ('wagyu_choice','https://www.elmercadodeorigen.com/como-elegir-wagyu-japones/',r'wagyu.*(japon|jap[oó]n|kagoshima|miyazaki|kobe)|(japon|jap[oó]n|kagoshima|miyazaki|kobe).*wagyu'),
             ('chocolate_bombones','https://www.elmercadodeorigen.com/como-elegir-bombones-artesanos-rellenos-conservacion/',r'bombon|chocolatina|trufa|praline|ganache'),
             ('pato_magret','https://www.elmercadodeorigen.com/magret-de-pato-que-es-como-cocinarlo-punto-perfecto/',r'magret'),
           ]
@@ -44,6 +44,9 @@ jobs:
                       row['title']=driver.title
                       cards=driver.find_elements(By.CSS_SELECTOR,'.emo-related-products-dynamic ul.products li.product')
                       row['card_count']=len(cards)
+                      row['dynamic_sections']=len(driver.find_elements(By.CSS_SELECTOR,'.emo-related-products-dynamic'))
+                      row['all_product_cards']=len(driver.find_elements(By.CSS_SELECTOR,'ul.products li.product'))
+                      row['raw_shortcode_visible']=('[elmercado_dynamic_products' in driver.page_source)
                       for i,card in enumerate(cards):
                           card_title=card.text.split('\n')[0:3]
                           title=' '.join(card_title)
