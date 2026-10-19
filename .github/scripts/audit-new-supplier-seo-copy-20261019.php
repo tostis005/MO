@@ -4,6 +4,7 @@
  * Scopes by source_products + suppliers and verifies WooCommerce author.
  * No product, shipping, inventory, image, taxonomy or source changes.
  * Re-checked after the production copy rewrite and supplier-sync deployment.
+ * Final signoff verifies 59 enriched short Latitudes pages and seven customizable chocolates.
  */
 if (!defined('ABSPATH') || !class_exists('WooCommerce') || !class_exists('MDO_Database')) {
     throw new RuntimeException('WordPress, WooCommerce and supplier sync required');
