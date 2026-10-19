@@ -32,7 +32,7 @@ jobs:
           now=datetime.now(timezone.utc)
           cut=now-timedelta(hours=48)
           root="/var/www/vhosts/system/elmercadodeorigen.com/logs"
-          asset=re.compile(r'\.(css|js|mjs|map|png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|eot|mp4|pdf|zip),re.I)
+          asset=re.compile(r'\.(?:css|js|mjs|map|png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|eot|mp4|pdf|zip)\Z',re.I)
           bot=re.compile(r'bot|crawler|crawl|spider|headless|python-requests|curl/|wget/|httpclient|scrapy|go-http-client|bytespider|semrush|ahrefs|mj12|dotbot|gptbot|claudebot|applebot|bingpreview|facebookexternalhit',re.I)
           rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+(\S+)(?:\s+"([^"]*)"\s+"([^"]*)")?')
           hour=defaultdict(Counter); five=Counter(); path=Counter(); ua=Counter(); codes=Counter(); types=Counter()
