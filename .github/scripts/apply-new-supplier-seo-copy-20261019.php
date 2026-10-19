@@ -10,11 +10,21 @@ if (!defined('ABSPATH')||!class_exists('WooCommerce')||!class_exists('MDO_Databa
 }
 global $wpdb;
 $sp=MDO_Database::table('source_products');$su=MDO_Database::table('suppliers');
-$report=['applied_at'=>gmdate('c'),'latitudes'=>['reviewed'=>0,'long_reworded'=>0,'short_added'=>0,'ids'=>[]],
-    'chocolates-artesanos-isabel'=>['reviewed'=>0,'long_reworded'=>0,'short_reworded'=>0,'ids'=>[]],
+
+$lat_path=getenv('LATITUDES_SEO_EXTENSIONS');$isabel_path=getenv('ISABEL_SEO_PERSONALIZABLE');
+if(!$lat_path||!is_readable($lat_path)||!$isabel_path||!is_readable($isabel_path))throw new RuntimeException('Missing grounded supplier SEO copy briefs');
+$lat_brief=json_decode(file_get_contents($lat_path),true,512,JSON_THROW_ON_ERROR);
+$isabel_brief=json_decode(file_get_contents($isabel_path),true,512,JSON_THROW_ON_ERROR);
+if(($lat_brief['scope']??'')!=='latitudes'||($isabel_brief['scope']??'')!=='chocolates-artesanos-isabel'
+    ||count($lat_brief['products']??[])!==59||count($isabel_brief['products']??[])!==7) {
+    throw new RuntimeException('Unexpected supplier SEO brief scope/count');
+}
+
+$report=['applied_at'=>gmdate('c'),'latitudes'=>['reviewed'=>0,'long_reworded'=>0,'short_added'=>0,'long_expanded'=>0,'ids'=>[]],
+    'chocolates-artesanos-isabel'=>['reviewed'=>0,'long_reworded'=>0,'short_reworded'=>0,'personalizable_expanded'=>0,'ids'=>[]],
     'commercial_fields_preserved'=>true,'verified'=>false];
 $snapshots=[];
-$meta_keys=['_emdo_latitudes_editorial_description','_emdo_latitudes_editorial_short_description'];
+$meta_keys=['_emdo_latitudes_editorial_description','_emdo_latitudes_editorial_short_description','_emdo_isabel_personalizable_editorial_intro'];
 $lat_clean=static function(string $html):string {
     $replacements=[
         'Información sobre preparación, ingredientes y alérgenos publicada por Latitudes:' => 'Información de preparación, ingredientes y alérgenos:',
@@ -88,6 +98,16 @@ try {
       if($code==='latitudes') {
         if(get_post_meta($id,'_emdo_latitudes_editorial_approved',true)!=='1')throw new RuntimeException('Latitudes editorial not approved '.$id);
         $newlong=$lat_clean($oldlong);
+        $extension=trim((string)($lat_brief['products'][(string)$id]??''));
+        if($extension!==''){
+          if(mb_strlen($extension)<170)throw new RuntimeException('SEO extension too short: '.$id);
+          $normalized_long=html_entity_decode(wp_strip_all_tags($newlong),ENT_QUOTES|ENT_HTML5,'UTF-8');
+          $existing_words=preg_match_all('/[\p{L}0-9]+/u',$normalized_long);
+          if($existing_words<60 && !str_contains($normalized_long,$extension)){
+            $newlong=rtrim($newlong)."\n".'<p>'.esc_html($extension).'</p>';
+            $report[$code]['long_expanded']++;
+          }
+        }
         if(preg_match('/\bLatitudes\b/iu',wp_strip_all_tags($newlong)))throw new RuntimeException('Latitudes residual mention '.$id);
         $summ=$first_sentence($newlong);
         if(mb_strlen($summ)<45)throw new RuntimeException('No verified summary sentence '.$id);
@@ -99,7 +119,17 @@ try {
         if(!is_array($payload)||trim(wp_strip_all_tags((string)($payload['description']??'')))==='')throw new RuntimeException('Chocolate technical source missing '.$id);
         $neutral=MDO_Woo_Importer::neutralize_isabel_supplier_copy((string)$payload['description']);
         $approved=get_post_meta($id,'_emdo_isabel_editorial_approved',true)==='1';
+        $protected=get_post_meta($id,'_emdo_isabel_customization_review_required',true)==='1';
         $intro=$approved?(string)get_post_meta($id,'_emdo_isabel_editorial_intro',true):'';
+        if($protected&&!$approved&&isset($isabel_brief['products'][(string)$id])){
+          $custom_intro=trim((string)$isabel_brief['products'][(string)$id]);
+          if(mb_strlen($custom_intro)<260)throw new RuntimeException('Personalization SEO brief too short '.$id);
+          $intro='<p>'.esc_html($custom_intro).'</p>';
+          update_post_meta($id,'_emdo_isabel_personalizable_editorial_intro',$intro);
+          if(!str_contains(html_entity_decode(wp_strip_all_tags($oldlong),ENT_QUOTES|ENT_HTML5,'UTF-8'),$custom_intro)){
+            $report[$code]['personalizable_expanded']++;
+          }
+        }
         $newlong=trim(wp_kses_post($intro))!==''?wp_kses_post($intro)."\n".$neutral:$neutral;
         if($approved){
           $shortapproved=(string)get_post_meta($id,'_emdo_isabel_editorial_short_description',true);
