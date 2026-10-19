@@ -79,5 +79,5 @@ jobs:
           LATITUDES_WEIGHT_MODE=dry-run "$php_bin" -d memory_limit=512M "$wp_bin" eval-file "$script" --path="$wp_path" --skip-themes --allow-root
           echo "Applying Latitudes-only weights and WCFM Baleares 200 EUR free rate."
           LATITUDES_WEIGHT_MODE=apply "$php_bin" -d memory_limit=512M "$wp_bin" eval-file "$script" --path="$wp_path" --skip-themes --allow-root
-          echo "Latitudes-only production update verified."
+          echo "Latitudes-only production update verified; official egg weights (2 kg and 0.300 kg)."
           REMOTE
