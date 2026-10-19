@@ -67,6 +67,17 @@ final class MDO_Woo_Importer {
 		}
 
 		self::apply_common_fields( $product, $payload );
+		// Product copy may be authored for the supplier's own checkout.
+		// Neutralize ONLY verified supplier-first-person/promotional wording,
+		// leaving ingredients, trace warnings, nutritional data and specs intact.
+		if ( 'chocolates-artesanos-isabel' === (string) $supplier['code'] ) {
+			$product->set_description( self::neutralize_isabel_supplier_copy( (string) ( $payload['description'] ?? '' ) ) );
+			$existing_short = (string) $product->get_short_description();
+			if ( '' !== trim( $existing_short ) ) {
+				$product->set_short_description( self::neutralize_isabel_supplier_copy( $existing_short ) );
+			}
+		}
+
 		// Independently edited supplier descriptions must survive nightly syncs.
 		// Price, images, title, variations and stock still come exclusively from
 		// the live supplier feed. The editorial override is limited to Latitudes
@@ -76,6 +87,10 @@ final class MDO_Woo_Importer {
 			if ( '1' === (string) get_post_meta( $existing_id, '_emdo_latitudes_editorial_approved', true ) &&
 				'' !== trim( wp_strip_all_tags( $editorial_description ) ) ) {
 				$product->set_description( wp_kses_post( $editorial_description ) );
+				$editorial_short = (string) get_post_meta( $existing_id, '_emdo_latitudes_editorial_short_description', true );
+				if ( '' !== trim( wp_strip_all_tags( $editorial_short ) ) ) {
+					$product->set_short_description( wp_kses_post( $editorial_short ) );
+				}
 			}
 		}
 
@@ -90,7 +105,7 @@ final class MDO_Woo_Importer {
 			if ( trim( wp_strip_all_tags( $approved_intro ) ) !== '' ) {
 				// Always append the NEW supplier description from this synchronization.
 				// Ingredient, allergen and storage changes must never be frozen.
-				$product->set_description( wp_kses_post( $approved_intro ) . "\n" . wp_kses_post( (string) ( $payload['description'] ?? '' ) ) );
+				$product->set_description( wp_kses_post( $approved_intro ) . "\n" . self::neutralize_isabel_supplier_copy( (string) ( $payload['description'] ?? '' ) ) );
 			}
 			if ( trim( wp_strip_all_tags( $approved_short ) ) !== '' ) {
 				$product->set_short_description( wp_kses_post( $approved_short ) );
@@ -298,6 +313,30 @@ final class MDO_Woo_Importer {
 			array( 'status' => 'pending', 'last_error' => sanitize_textarea_field( $message ) ),
 			array( 'id' => $source_product_id )
 		);
+	}
+
+
+	/**
+	 * Keep source specifications intact but remove the producer's own-store
+	 * voice and outbound shop links when presenting its copy on EMDO.
+	 * The supplier payload remains unchanged for subsequent stock/allergen QA.
+	 */
+	public static function neutralize_isabel_supplier_copy( string $html ): string {
+		$replacements = array(
+			'Con este kit le proponemos' => 'Este kit ofrece',
+			'-como la nuestra-' => '',
+			'Con nuestra Tarjeta-Regalo acertar es muy fácil.' => 'Tarjeta regalo personalizable para disfrutar o regalar chocolate artesano.',
+			'le enviaremos a usted una copia por e-mail' => 'el productor indica que puede enviar una copia por correo electrónico',
+			'le enviaremos a usted una copia por email' => 'el productor indica que puede enviar una copia por correo electrónico',
+			'indíquenos el correo electrónico y el mensaje para el destinatario y nosotras se la haremos llegar de su parte' => 'consulte con el productor las opciones de envío directo y dedicatoria antes de la compra',
+			'Chocolates Artesanos Isabel planta un árbol por usted a través de la ONG Plant For The Planet.' => 'el fabricante anuncia la plantación de un árbol mediante la ONG Plant For The Planet.',
+			'Tiene más información aquí.' => 'Consulte las características y el contenido del producto en esta ficha.',
+		);
+		$html = str_ireplace( array_keys( $replacements ), array_values( $replacements ), $html );
+		// An outbound maker-store link is inappropriate inside EMDO's checkout
+		// copy. Retain the visible label; never touch third-party certifications.
+		$html = preg_replace( '~<a\b[^>]*href\s*=\s*["\']https?://(?:www\.)?chocolatesartesanosisabel\.com[^"\']*["\'][^>]*>(.*?)</a>~isu', '$1', $html );
+		return wp_kses_post( (string) $html );
 	}
 
 	private static function apply_common_fields( WC_Product $product, array $payload ): void {
