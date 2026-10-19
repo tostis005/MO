@@ -59,25 +59,6 @@ jobs:
           siteurl="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --allow-root)"
           echo "SITEURL=$siteurl"
 
-          echo '=== BLOG TO PRODUCT RELATIONSHIP DEBUG ==='
-          "$php_bin" -d memory_limit=768M "$wp_bin" eval '
-            foreach (array("como-elegir-bombones-artesanos-rellenos-conservacion","wagyu-japones-a5-que-es-que-significa","magret-de-pato-que-es-como-cocinarlo-punto-perfecto") as $slug) {
-              $post=get_page_by_path($slug, OBJECT, "post");
-              if (!$post) { echo "MISSING ".$slug."\n"; continue; }
-              $id=(int)$post->ID;
-              $commercial=elmercado_blog_product_category_slug_010277($id);
-              $ids=elmercado_blog_precise_product_ids_20261019($id,$commercial);
-              $term=get_term_by("slug",$commercial,"product_cat");
-              $raw=(string)$post->post_content;
-              $transformed=elmercado_blog_dynamic_products_transform_content_010277($raw,$id);
-              echo "TOPIC id=$id slug=$slug commercial=$commercial term=".($term?$term->term_id:"NONE")." selected_ids=".json_encode($ids)." stored_shortcodes=".(preg_match_all("/\\[(?:products|elmercado_dynamic_products|product_category)\\b/i",$raw))." transformed_shortcode=".(preg_match_all("/\\[elmercado_dynamic_products\\b/i",$transformed))."\n";
-              if ($ids) {
-                $html=do_shortcode("[products ids=\"".implode(",",$ids)."\" columns=\"4\" orderby=\"post__in\"]");
-                echo "PRODUCT_LOOP_HTML=".strlen($html)." HAS_LOOP=".(strpos($html,"products")!==false?"YES":"NO")."\n";
-              }
-            }
-          ' --path="$prod" --allow-root
-          exit 0
           echo '=== THEME SOURCE FOR INTRO PHRASE ==='
           grep -RniF --exclude-dir=.git 'Una selección de productos con procedencia clara para acercar el origen a tu mesa de una forma más directa.' "$theme" 2>/dev/null || true
 
@@ -111,5 +92,4 @@ jobs:
               grep -Fin -B2 -A2 'Una selección de productos con procedencia clara para acercar el origen a tu mesa de una forma más directa.' "$html_file" | head -n 12 || true
             fi
           done
-
           REMOTE
