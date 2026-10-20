@@ -3,7 +3,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'banners_productores_aprobados_20261020.zip'
+      - 'elmercadodeorigen-child/assets/images/producer-banners/*.webp'
   workflow_dispatch:
 
 permissions:
@@ -32,27 +32,23 @@ jobs:
           : "${STAGING_USER:?SSH user absent}"
           : "${SSHPASS:?SSH password absent}"
           php -l elmercadodeorigen-child/inc/producer-list-image-square-010242.php
-          ZIP=banners_productores_aprobados_20261020.zip
-          test -s "$ZIP"
-          unzip -t "$ZIP" >/dev/null
-          mkdir -p /tmp/emdo-approved-banners
-          unzip -oq "$ZIP" -d /tmp/emdo-approved-banners
           python3 - <<'PY'
           from pathlib import Path
-          import json, hashlib
-          target=Path('/tmp/emdo-approved-banners')
-          expected=('selectos-de-castilla','la-huerta-de-ana-mary',
-                    'chocolates-artesanos-isabel','ikore-kofi','tropitop')
-          data=json.loads((target/'manifest.json').read_text())
-          assert set(data)==set(expected), set(data)
-          for slug in expected:
-              p=target/'banners'/(slug+'.webp')
+          import hashlib
+          target=Path('elmercadodeorigen-child/assets/images/producer-banners')
+          expected={
+              'selectos-de-castilla':('c2d2b2c49f934a542e1542422463421a9f3d0a6b9a796253bcf1620278418617',272102),
+              'la-huerta-de-ana-mary':('6aa6be0ae178a2f8fe4422695edaf69e82fd70fdd27fa84d68b384d84138ec4c',355876),
+              'chocolates-artesanos-isabel':('bd5d3c9db997048894e400da50af3f6de6431f6825f24917a6af496ce9e2582f',305110),
+              'ikore-kofi':('bd52db8973b1a87c0a1c5291a2d209f8bb01d5e0fdd3249ecfc215fd0c68ecd4',332004),
+              'tropitop':('318e7a67a3a71ab119b1aeff621d071177de6d2933b8a43ab3a4f9f775dcd44c',300076)}
+          for slug,(sha,byte_count) in expected.items():
+              p=target/(slug+'.webp')
               b=p.read_bytes()
               assert b[:4]==b'RIFF' and b[8:12]==b'WEBP'
-              assert len(b)>100_000
-              assert hashlib.sha256(b).hexdigest()==data[slug]['sha256']
-              assert data[slug]['size']==[2022,778]
-              print('VALIDATED',slug,len(b))
+              assert len(b)==byte_count
+              assert hashlib.sha256(b).hexdigest()==sha
+              print('VALIDATED_APPROVED_IMAGE',slug,len(b))
           PY
       - name: Instalar SSH y navegador para control real
         run: |
@@ -103,7 +99,7 @@ jobs:
           }
           trap rollback EXIT
           sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$STAGE' '$BACKUP'"
-          sshpass -e scp $SCP_OPTS /tmp/emdo-approved-banners/banners/*.webp elmercadodeorigen-child/inc/producer-list-image-square-010242.php "$STAGING_USER@$STAGING_HOST:$STAGE/"
+          sshpass -e scp $SCP_OPTS elmercadodeorigen-child/assets/images/producer-banners/*.webp elmercadodeorigen-child/inc/producer-list-image-square-010242.php "$STAGING_USER@$STAGING_HOST:$STAGE/"
           sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$ROOT' '$STAGE' '$BACKUP'" <<'INSTALL'
           set -Eeuo pipefail
           root="$1"; stage="$2"; backup="$3"
@@ -148,7 +144,7 @@ jobs:
           for slug in $NAMES; do
             u="https://www.elmercadodeorigen.com/wp-content/themes/elmercadodeorigen-child/assets/images/producer-banners/$slug.webp"
             curl --fail --silent --show-error --location --max-time 40 "$u" -o "/tmp/check-$slug.webp"
-            cmp "/tmp/check-$slug.webp" "/tmp/emdo-approved-banners/banners/$slug.webp"
+            cmp "/tmp/check-$slug.webp" "elmercadodeorigen-child/assets/images/producer-banners/$slug.webp"
             echo "PUBLIC_IMAGE_OK $slug"
           done
           cat >/tmp/verify-five-banners.cjs <<'NODE'
