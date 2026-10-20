@@ -24,13 +24,20 @@ if((int)$r['active']===1) {
   echo 'TROPITOP_DRAFT_PREP_SKIP_ALREADY_SYNCING_IN_BACKGROUND'."\\n";
   return;
  }
- throw new RuntimeException('Vendor enablement and shipping readiness are inconsistent');
+ if(!$disabled && !$ready) {
+  echo 'TROPITOP_SHIPPING_PREACTIVATION_IN_PROGRESS'."\\n";
+  return;
+ }
+ throw new RuntimeException('Checkout ready while vendor remains disabled');
 }
 if((int)$r['active']!==0)throw new RuntimeException('Invalid Tropitop registry status');
 $vendor=get_user_by('login','tropitop');
 if($vendor && !in_array('wcfm_vendor',(array)$vendor->roles,true))throw new RuntimeException('Tropitop login conflict');
 if($vendor && (int)($r['vendor_user_id']??0) && (int)$r['vendor_user_id']!==(int)$vendor->ID)throw new RuntimeException('Supplier vendor collision');
-if($vendor && !get_user_meta($vendor->ID,'_disable_vendor',true))throw new RuntimeException('Already active vendor; refusing draft reset');
+if($vendor && !get_user_meta($vendor->ID,'_disable_vendor',true)) {
+ echo 'TROPITOP_VENDOR_ALREADY_ENABLED_WAIT_FOR_SHIPPING_QA'."\\n";
+ return;
+}
 if(!$vendor) {
  $emails=(array)$wpdb->get_col("SELECT user_email FROM {$wpdb->users} WHERE user_email LIKE 'tostis005+%@%'");
  $domains=[];$max=-1;
