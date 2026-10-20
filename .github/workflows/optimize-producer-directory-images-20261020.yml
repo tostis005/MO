@@ -1,0 +1,231 @@
+name: Optimizar imágenes del listado de productores según tamaño y DPR
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/optimize-producer-directory-images-20261020.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: emdo-production-producer-directory-release
+  cancel-in-progress: false
+jobs:
+  optimize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preparar imágenes y validar fuentes originales
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          : "${STAGING_HOST:?SSH host absent}"
+          : "${STAGING_USER:?SSH user absent}"
+          : "${SSHPASS:?SSH password absent}"
+          php -l elmercadodeorigen-child/inc/producer-list-image-square-010242.php
+          grep -q 'image-set' elmercadodeorigen-child/inc/producer-list-image-square-010242.php
+          python3 -m venv /tmp/emdo-image-pillow
+          /tmp/emdo-image-pillow/bin/pip -q install pillow==11.3.0
+          mkdir -p /tmp/emdo-list-sources /tmp/emdo-list-variants
+          /tmp/emdo-image-pillow/bin/python - <<'PY'
+          import json, pathlib, urllib.request, hashlib, io
+          from PIL import Image
+          m=json.loads(pathlib.Path('elmercadodeorigen-child/assets/images/producer-banners/manifest.json').read_text())
+          entries=m['producers']
+          assert len(entries)==10
+          total_input=0
+          total_output={width:0 for width in (480,640,960,1280)}
+          for item in entries:
+              slug=item['slug']
+              req=urllib.request.Request(item['theme_url'],headers={'User-Agent':'EMDO-Images-Production-Optimizer/1.0'})
+              with urllib.request.urlopen(req,timeout=60) as res: original=res.read()
+              assert hashlib.sha256(original).hexdigest()==item['sha256'], slug+' source changed'
+              img=Image.open(io.BytesIO(original))
+              assert img.size==(2022,778) and img.format=='WEBP', (slug,img.size,img.format)
+              img=img.convert('RGB')
+              total_input+=len(original)
+              for width in (480,640,960,1280):
+                  height=round(778*width/2022)
+                  target=img.resize((width,height),Image.Resampling.LANCZOS)
+                  name=f'{slug}-list-{width}.webp'
+                  destination=pathlib.Path('/tmp/emdo-list-variants')/name
+                  target.save(destination,format='WEBP',quality=77,method=6,exact=False)
+                  data=destination.read_bytes()
+                  assert len(data)>5000 and len(data)<len(original), (slug,width,len(data))
+                  assert Image.open(io.BytesIO(data)).size==(width,height)
+                  total_output[width]+=len(data)
+                  print('LIST_VARIANT_GENERATED',slug,width,height,len(data))
+              print('SOURCE_HIRES_VERIFIED',slug,len(original))
+          print('SOURCE_BYTES_ALL_10',total_input)
+          for width,bytes_count in total_output.items():
+              print('VARIANT_BYTES_ALL_10',width,bytes_count,'SAVINGS_PCT',round(100*(1-bytes_count/total_input),1))
+          print('ALL_FORTY_LIST_VARIANTS_GENERATED')
+          PY
+      - name: Instalar utilidades de despliegue y navegador
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null
+      - name: Desplegar sólo variantes de listado con backup y verificar tamaños
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          ROOT=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+          STAGE="/tmp/emdo-image-optimization-$GITHUB_RUN_ID"
+          BACKUP="$ROOT/wp-content/.emdo-image-optimization-backup-$GITHUB_RUN_ID"
+          DIR="$ROOT/wp-content/themes/elmercadodeorigen-child/assets/images/producer-banners"
+          PHP="$ROOT/wp-content/themes/elmercadodeorigen-child/inc/producer-list-image-square-010242.php"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          chmod 600 ~/.ssh/known_hosts
+          SSH_OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP_OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          installed=0
+          rollback() {
+            status=$?
+            trap - EXIT
+            if [ "$status" -ne 0 ] && [ "$installed" -eq 1 ]; then
+              echo "::error::Optimización no verificada; restaurando banners originales y reglas anteriores"
+              sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$DIR' '$PHP' '$BACKUP'" <<'RESTORE' || true
+          set -eu
+          dir="$1"; php="$2"; backup="$3"
+          if [ -f "$backup/producer-list-image-square-010242.php" ]; then
+            cp -p "$backup/producer-list-image-square-010242.php" "$php"
+          fi
+          for file in "$dir"/*-list-{480,640,960,1280}.webp; do
+            [ -f "$file" ] || continue
+            name="$(basename "$file")"
+            if [ -f "$backup/variants/$name" ]; then
+              cp -p "$backup/variants/$name" "$file"
+            else
+              rm -f "$file"
+            fi
+          done
+          RESTORE
+            fi
+            exit "$status"
+          }
+          trap rollback EXIT
+          sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$STAGE'"
+          sshpass -e scp $SCP_OPTS /tmp/emdo-list-variants/*.webp elmercadodeorigen-child/inc/producer-list-image-square-010242.php "$STAGING_USER@$STAGING_HOST:$STAGE/"
+          sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$ROOT' '$STAGE' '$BACKUP'" <<'INSTALL'
+          set -Eeuo pipefail
+          root="$1"; stage="$2"; backup="$3"
+          child="$root/wp-content/themes/elmercadodeorigen-child"
+          dir="$child/assets/images/producer-banners"
+          php="$child/inc/producer-list-image-square-010242.php"
+          php_bin=/opt/plesk/php/8.2/bin/php
+          wp_bin="$(command -v wp)"
+          test -s "$root/wp-config.php"
+          url="$("$php_bin" "$wp_bin" option get siteurl --path="$root" --skip-plugins --skip-themes --allow-root)"
+          case "$url" in
+            https://elmercadodeorigen.com|https://www.elmercadodeorigen.com|http://elmercadodeorigen.com|http://www.elmercadodeorigen.com) ;;
+            *) echo "Unexpected WordPress production root: $url"; exit 1;;
+          esac
+          test -s "$php" && test -s "$stage/producer-list-image-square-010242.php"
+          "$php_bin" -l "$stage/producer-list-image-square-010242.php"
+          test "$(find "$stage" -maxdepth 1 -type f -name '*-list-*.webp' | wc -l)" -eq 40
+          mkdir -p "$backup/variants" "$dir"
+          cp -p "$php" "$backup/producer-list-image-square-010242.php"
+          for src in "$stage"/*-list-*.webp; do
+            name="$(basename "$src")"
+            if [ -f "$dir/$name" ]; then
+              cp -p "$dir/$name" "$backup/variants/$name"
+            fi
+            cp "$src" "$dir/$name"
+            cmp "$src" "$dir/$name"
+          done
+          cp "$stage/producer-list-image-square-010242.php" "$php"
+          "$php_bin" -l "$php"
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$root" --skip-plugins --allow-root || true
+          "$php_bin" -r '
+          $dir=$argv[1]."/wp-content/uploads/elmercado-blog-static-v2";
+          foreach (["www.elmercadodeorigen.com","elmercadodeorigen.com"] as $host) {
+            foreach (["/productores/","/en/producers/"] as $path) {
+              $file=$dir."/".hash("sha256",$host."|".$path).".html";
+              if (is_file($file)) unlink($file);
+            }
+          }
+          ' "$root"
+          echo 'FORTY_RESPONSIVE_LIST_BANNERS_INSTALLED'
+          INSTALL
+          installed=1
+          cat > /tmp/emdo-verify-responsive-banners.cjs <<'NODE'
+          const puppeteer=require(process.cwd()+'/node_modules/puppeteer-core');
+          const entries=require(process.cwd()+'/elmercadodeorigen-child/assets/images/producer-banners/manifest.json').producers;
+          (async()=>{
+            const browser=await puppeteer.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox','--disable-dev-shm-usage']});
+            try{
+              for(const {width,dpr,columns,small,big} of [
+                {width:1440,dpr:1,columns:3,small:480,big:960},
+                {width:1440,dpr:2,columns:3,small:480,big:960},
+                {width:1000,dpr:1,columns:2,small:640,big:1280},
+                {width:1000,dpr:2,columns:2,small:640,big:1280},
+                {width:390,dpr:2,columns:1,small:480,big:960}
+              ]) {
+                const page=await browser.newPage();
+                await page.setViewport({width,height:900,deviceScaleFactor:dpr});
+                const requests=[];
+                page.on('response',res=>{
+                  if(res.url().includes('producer-banners/') || res.url().includes('emdo-producer-'))
+                    requests.push({url:res.url(),status:res.status()});
+                });
+                await page.goto('https://www.elmercadodeorigen.com/productores/?image-opt='+process.env.GITHUB_RUN_ID+'-'+width+'-'+dpr,{waitUntil:'domcontentloaded',timeout:60000});
+                await page.waitForSelector('#wcfmmp-stores-wrap li.wcfmmp-single-store',{timeout:25000});
+                const data=await page.evaluate(slugs=>{
+                  const wrap=document.querySelector('#wcfmmp-stores-wrap ul.wcfmmp-store-wrap');
+                  const cards=[...document.querySelectorAll('#wcfmmp-stores-wrap li.wcfmmp-single-store')];
+                  return {
+                    count:cards.length,
+                    cols:getComputedStyle(wrap).gridTemplateColumns.split(' ').length,
+                    cards:slugs.map(slug=>{
+                      const item=cards.find(card=>card.querySelector('.store-data h2 a')?.href.includes('/tienda/'+slug));
+                      const info=item?.querySelector('.store-info');
+                      return {slug,source:info?getComputedStyle(info).backgroundImage:null,
+                        naturalWidth:info?.getBoundingClientRect().width||0};
+                    })
+                  };
+                },entries.map(e=>e.slug));
+                if(data.count!==10||data.cols!==columns) throw Error('List layout changed '+width+' '+JSON.stringify(data));
+                for(const card of data.cards){
+                  if(!card.source?.includes(card.slug+'-list-'+small+'.webp') || !card.source?.includes(card.slug+'-list-'+big+'.webp')) {
+                    throw Error('Responsive source missing '+width+'/'+dpr+' '+JSON.stringify(card));
+                  }
+                }
+                await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));
+                await new Promise(resolve=>setTimeout(resolve,700));
+                const listRequests=requests.filter(r=>r.url.includes('-list-'));
+                const selected=dpr===1?small:big;
+                if(!listRequests.some(r=>r.url.includes('-list-'+selected+'.webp'))){
+                  throw Error('Browser did not load expected DPR image '+width+'/'+dpr+' '+JSON.stringify(requests));
+                }
+                if(listRequests.some(r=>!r.url.includes('-list-'+selected+'.webp')||r.status!==200)) {
+                  throw Error('Wrong resolution or failed list download '+width+'/'+dpr+' '+JSON.stringify(listRequests));
+                }
+                console.log('RESPONSIVE_BANNERS_QA_OK '+width+' DPR '+dpr+' cards '+data.count+
+                  ' columns '+data.cols+' requested '+listRequests.length+' expectedWidth '+selected);
+                await page.close();
+              }
+              const page=await browser.newPage();
+              await page.goto('https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/?full-banner-qa='+process.env.GITHUB_RUN_ID,{waitUntil:'domcontentloaded',timeout:60000});
+              const html=await page.content();
+              if(!html.includes('emdo-producer-hidalgo-de-la-jara-banner-20261020.webp'))throw Error('Full-size WCFM shop header changed');
+              console.log('SHOP_HEADER_HIRES_UNCHANGED');
+              await page.close();
+            }finally{await browser.close()}
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          node /tmp/emdo-verify-responsive-banners.cjs
+          sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "rm -rf '$BACKUP' '$STAGE'"
+          trap - EXIT
+          echo 'RESPONSIVE_BANNERS_DEPLOYED_AND_VERIFIED'
