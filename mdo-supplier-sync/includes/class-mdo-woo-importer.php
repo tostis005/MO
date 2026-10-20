@@ -138,6 +138,18 @@ final class MDO_Woo_Importer {
 		$category_result = class_exists( 'MDO_Auto_Categorizer' )
 			? MDO_Auto_Categorizer::maybe_assign( $product, $payload, $row )
 			: array();
+		// The known Tropitop avocado SKU has a verified, deterministic taxonomy.
+		// Never publish it under an accidental generic meat/uncategorized term.
+		if ( 'tropitop' === (string) $supplier['code'] ) {
+			$term_slug = '33' === (string) ( $payload['source_product_id'] ?? '' ) ? 'aguacates' : '';
+			$term = $term_slug ? get_term_by( 'slug', $term_slug, 'product_cat' ) : false;
+			if ( ! $term instanceof WP_Term ) {
+				throw new RuntimeException( 'Tropitop: la categoría comercial del producto todavía no está validada.' );
+			}
+			$product->set_category_ids( array( (int) $term->term_id ) );
+			$category_result = array( 'assigned' => true, 'reason' => 'tropitop_source_category',
+				'category_ids' => array( (int) $term->term_id ), 'score' => null );
+		}
 		if ( $is_variable ) {
 			self::apply_variable_product( $product, $variations );
 		} else {
