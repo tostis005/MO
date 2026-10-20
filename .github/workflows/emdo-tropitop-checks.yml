@@ -11,6 +11,7 @@ on:
       - 'mdo-supplier-sync/mdo-supplier-sync.php'
       - 'mdo-supplier-sync/scripts/onboard-tropitop.php'
       - 'tests/tropitop-smoke.php'
+      - '.github/scripts/onboard-tropitop-20261020.php'
       - '.github/workflows/emdo-tropitop-checks.yml'
   workflow_dispatch:
 
@@ -35,5 +36,6 @@ jobs:
           php -l mdo-supplier-sync/mdo-supplier-sync.php
           php -l mdo-supplier-sync/scripts/onboard-tropitop.php
           php -l tests/tropitop-smoke.php
+          php -l .github/scripts/onboard-tropitop-20261020.php
       - name: Unit smoke
         run: php tests/tropitop-smoke.php
