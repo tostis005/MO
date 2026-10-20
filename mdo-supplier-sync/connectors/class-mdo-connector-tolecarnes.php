@@ -285,28 +285,53 @@ final class MDO_Connector_Tolecarnes {
 
 	private static function images( DOMXPath $xpath, array $json, string $base_url ): array {
 		$images = array();
+		$base_host = strtolower( (string) wp_parse_url( $base_url, PHP_URL_HOST ) );
+		$append = static function ( string $raw ) use ( &$images, $base_url, $base_host ): void {
+			$url = self::absolute_url( trim( $raw ), $base_url );
+			if ( ! $url ) { return; }
+			$host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+			$path = (string) wp_parse_url( $url, PHP_URL_PATH );
+			// Product images must come from this producer, never from related products,
+			// trackers or other domains. WP-generated square thumbnails are not originals.
+			if ( $host !== $base_host || ! preg_match( '~\.(?:jpe?g|png|webp)$~i', $path ) ) { return; }
+			if ( 'latitudes.es' === $host || 'www.latitudes.es' === $host ) {
+				if ( ! str_contains( $path, '/wp-content/uploads/' ) ) { return; }
+				$path = preg_replace( '/-[0-9]{2,4}x[0-9]{2,4}(?=\.(?:jpe?g|png|webp)$)/i', '', $path );
+				$url = (string) wp_parse_url( $url, PHP_URL_SCHEME ) . '://' . $host . $path;
+			}
+			if ( preg_match( '~/(?:logo|icon|avatar)[^/]*\.(?:jpe?g|png|webp)$~i', $path ) ) { return; }
+			$images[ $url ] = $url;
+		};
 		if ( isset( $json['image'] ) ) {
 			$raw = is_array( $json['image'] ) ? $json['image'] : array( $json['image'] );
 			foreach ( $raw as $image ) {
-				if ( is_array( $image ) ) {
-					$image = $image['url'] ?? $image['contentUrl'] ?? '';
-				}
-				$url = self::absolute_url( (string) $image, $base_url );
-				if ( $url ) {
-					$images[ $url ] = $url;
+				if ( is_array( $image ) ) { $image = $image['url'] ?? $image['contentUrl'] ?? ''; }
+				$append( (string) $image );
+			}
+		}
+		// WooCommerce/third-party themes often keep the full gallery only on
+		// image anchors, while <img src> is a 150px thumbnail. Restrict traversal
+		// to the FIRST principal gallery to exclude related-product carousels.
+		$gallery_query =
+			"//*[contains(concat(' ',normalize-space(@class),' '),' woocommerce-product-gallery ')"
+			. " or contains(concat(' ',normalize-space(@class),' '),' product-gallery ')"
+			. " or contains(concat(' ',normalize-space(@class),' '),' product-images ')"
+			. " or contains(concat(' ',normalize-space(@class),' '),' qodef-woo-product-images ')"
+			. " or @id='product-gallery']";
+		$galleries = $xpath->query( $gallery_query );
+		if ( $galleries && $galleries->length ) {
+			$gallery = $galleries->item( 0 );
+			foreach ( $xpath->query( './/a[@href]', $gallery ) ?: array() as $anchor ) {
+				$append( (string) $anchor->getAttribute( 'href' ) );
+			}
+			foreach ( $xpath->query( './/img', $gallery ) ?: array() as $img ) {
+				foreach ( array( 'data-large_image', 'data-full-url', 'data-src', 'src' ) as $attr ) {
+					$value = trim( (string) $img->getAttribute( $attr ) );
+					if ( '' !== $value ) { $append( $value ); break; }
 				}
 			}
 		}
-		foreach ( $xpath->query( "//*[contains(concat(' ', normalize-space(@class), ' '), ' woocommerce-product-gallery ')]//img" ) ?: array() as $img ) {
-			foreach ( array( 'data-large_image', 'data-src', 'src' ) as $attr ) {
-				$url = self::absolute_url( (string) $img->getAttribute( $attr ), $base_url );
-				if ( $url ) {
-					$images[ $url ] = $url;
-					break;
-				}
-			}
-		}
-		return array_values( array_filter( $images, static fn( string $url ): bool => ! preg_match( '~/(logo|icon|avatar)[^/]*\.(?:jpe?g|png|webp|gif|svg)(?:\?|$)~i', $url ) ) );
+		return array_slice( array_values( $images ), 0, 30 );
 	}
 
 	private static function stock_status( DOMXPath $xpath, array $json, array $variations ): string {
