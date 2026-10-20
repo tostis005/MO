@@ -84,6 +84,10 @@ jobs:
           # Idempotent init returns without modifying an existing catalog or
           # resetting the saved cursor. Always inspect the last imported SKU.
           remote_phase init
+          # Merchant authorized direct publication: activate ONLY after the
+          # importer verifies live WCFM mainland shipping, product identity,
+          # destination guards and the contracted supplier configuration.
+          remote_phase activate
           remote_phase status
           complete=0
           for ((batch=1; batch<=300; batch++)); do
