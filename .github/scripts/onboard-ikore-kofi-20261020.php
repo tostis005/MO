@@ -64,7 +64,7 @@ $profile=array_merge($profile,array('user_name'=>'ikore-kofi','user_email'=>$ven
 update_user_meta($vid,'store_name','Ikore Kofi');
 update_user_meta($vid,'_store_description',$about);
 update_user_meta($vid,'wcfmmp_profile_settings',$profile);
-update_user_meta($vid,'_mdo_manual_producer',array('legal_name'=>'Ikore Kofi S.L.','cif'=>'B26933242','address'=>'C/ Cofrentes 11, 46010 Valencia, España','website'=>'https://ikorekofi.com/','contact'=>'info@ikorekofi.com','registration'=>'EM-25.00008/V','emdo_commission_percent'=>15,'box_cm'=>array(43,30,12),'max_box_kg'=>3,'shipping_status'=>'pending_confirmation','sync'=>false));
+update_user_meta($vid,'_mdo_manual_producer',array('legal_name'=>'Ikore Kofi S.L.','cif'=>'B26933242','address'=>'C/ Cofrentes 11, 46010 Valencia, España','website'=>'https://ikorekofi.com/','contact'=>'info@ikorekofi.com','registration'=>'EM-25.00008/V','emdo_commission_percent'=>15,'box_cm'=>array(43,30,12),'max_box_kg'=>3,'shipping_status'=>'configured','sync'=>false));
 // Existing WCFM configuration defines commissions for the vendor: 85% vendor / 15% marketplace.
 $global=get_option('wcfm_commission_options',array());
 if(empty($global['commission_for'])) $global=get_option('wcfmmp_commission_options',array());
@@ -86,26 +86,71 @@ foreach($catalog as $r) {
  $p->set_tax_status('taxable');$p->set_tax_class($tax_class);
  $p->set_catalog_visibility('visible');$p->set_category_ids(array($cat));$p->set_image_id($images[$r[0]]);
  $p->set_short_description('<p>Café 100 % arábica de '.$r[6].', de tueste medio y proceso '.$r[8].'. '.$r[11].' Puntuación: '.$r[9].' SCA.</p>');
- $p->set_description('<h2>'.$r[1].': café de especialidad tostado en Valencia</h2><p>'.$r[11].' Ikore Kofi trabaja este origen con un tueste medio y selección manual de los granos.</p><h3>Ficha del café</h3><ul><li>Origen: '.$r[6].'.</li><li>Composición: café 100 % arábica.</li><li>Altitud: '.$r[7].' metros sobre el nivel del mar.</li><li>Proceso: '.$r[8].'.</li><li>Tueste: medio.</li><li>Puntuación: '.$r[9].' SCA.</li><li>Notas de cata: '.$r[10].'.</li><li>Contenido neto: 250 g.</li></ul><p>Las notas de cata describen el perfil sensorial del café; no son ingredientes añadidos.</p><h3>Elige cómo prepararlo</h3><p>Disponible en grano o con molienda para italiana, espresso, prensa francesa, cold brew, Aeropress o filtro y V60. Elige la opción de tu cafetera antes de añadirlo al carrito. Si tienes molinillo, el formato en grano permite moler justo antes de preparar la bebida.</p><h3>Conservación</h3><p>Guarda el envase bien cerrado en un lugar fresco y seco, protegido de la luz y de olores intensos. Consulta en el envase la información del lote y consumo preferente.</p>');
+ $p->set_description('<h2>'.$r[1].': café de especialidad tostado en Valencia</h2><p>'.$r[11].' Ikore Kofi trabaja este origen con un tueste medio y selección manual de los granos.</p><h3>Ficha del café</h3><ul><li>Origen: '.$r[6].'.</li><li>Composición: café 100 % arábica.</li><li>Altitud: '.$r[7].' metros sobre el nivel del mar.</li><li>Proceso: '.$r[8].'.</li><li>Tueste: medio.</li><li>Puntuación: '.$r[9].' SCA.</li><li>Notas de cata: '.$r[10].'.</li><li>Contenido neto: 250 g o 1 kg, según el formato seleccionado.</li></ul><p>Las notas de cata describen el perfil sensorial del café; no son ingredientes añadidos.</p><h3>Elige cómo prepararlo</h3><p>Disponible en grano o con molienda para italiana, espresso, prensa francesa, cold brew, Aeropress o filtro y V60. Elige la opción de tu cafetera antes de añadirlo al carrito. Si tienes molinillo, el formato en grano permite moler justo antes de preparar la bebida.</p><h3>Conservación</h3><p>Guarda el envase bien cerrado en un lugar fresco y seco, protegido de la luz y de olores intensos. Consulta en el envase la información del lote y consumo preferente.</p>');
  $attr=new WC_Product_Attribute();$attr->set_name('Molienda');$attr->set_options($grinds);$attr->set_visible(true);$attr->set_variation(true);
- $size=new WC_Product_Attribute();$size->set_name('Formato');$size->set_options(array('250 g'));$size->set_visible(true);$size->set_variation(false);
- $p->set_attributes(array($attr,$size));$p->set_default_attributes(array('molienda'=>'En grano'));
+ $size=new WC_Product_Attribute();$size->set_name('Peso');$size->set_options(array('250 g','1 kg'));$size->set_visible(true);$size->set_variation(true);$size->set_position(0);$attr->set_position(1);
+ $p->set_attributes(array($size,$attr));$p->set_default_attributes(array('peso'=>'250 g','molienda'=>'En grano'));
  $p->set_weight((string)wc_get_weight(0.25,get_option('woocommerce_weight_unit'),'kg'));
  $id=$p->save();wp_update_post(array('ID'=>$id,'post_author'=>$vid));
  update_post_meta($id,'_emdo_source_url','https://ikorekofi.com/cafe/'.$r[2].'/');
  update_post_meta($id,'_mdo_ikore_manual',1);
  update_post_meta($id,'_mdo_supplier_reference',$r[0]);
  $children=$p->get_children();
+ foreach(array('250'=>'250 g','1000'=>'1 kg') as $grams=>$weight_label) {
  foreach($grinds as $i=>$grind) {
-  $sku=$r[0].'-250-'.($i+1);$cid=wc_get_product_id_by_sku($sku);
+  $sku=$r[0].'-'.$grams.'-'.($i+1);$cid=wc_get_product_id_by_sku($sku);
   $v=$cid?wc_get_product($cid):new WC_Product_Variation();
   if($cid&&(int)$v->get_parent_id()!==$id)throw new RuntimeException('Variation collision');
-  $v->set_parent_id($id);$v->set_sku($sku);$v->set_attributes(array('molienda'=>$grind));$stored_price=wc_prices_include_tax()?$r[3]:wc_format_decimal((float)$r[3]/1.10,6);$v->set_tax_class('parent');$v->set_tax_status('taxable');$v->set_regular_price($stored_price);$v->set_sale_price('');$v->set_price($stored_price);$v->set_status('publish');$v->set_manage_stock(false);$v->set_stock_status('instock');$v->set_weight((string)wc_get_weight(0.25,get_option('woocommerce_weight_unit'),'kg'));$v->set_image_id($images[$r[0]]);$child=$v->save();wp_update_post(array('ID'=>$child,'post_author'=>$vid));
+  $v->set_parent_id($id);$v->set_sku($sku);$v->set_attributes(array('peso'=>$weight_label,'molienda'=>$grind));$gross_price=$grams==250?$r[3]:array('chiriqui'=>'76.00','el-indio'=>'68.40','villa-sarchi'=>'49.02','typica-mejorado'=>'49.02','adumu'=>'68.40','geisha'=>'68.40')[$r[2]];$stored_price=wc_prices_include_tax()?$gross_price:wc_format_decimal((float)$gross_price/1.10,6);$v->set_tax_class('parent');$v->set_tax_status('taxable');$v->set_regular_price($stored_price);$v->set_sale_price('');$v->set_price($stored_price);$v->set_status('publish');$v->set_manage_stock(false);$v->set_stock_status('instock');$v->set_weight((string)wc_get_weight((float)$grams/1000,get_option('woocommerce_weight_unit'),'kg'));$v->set_image_id($images[$r[0]]);$child=$v->save();wp_update_post(array('ID'=>$child,'post_author'=>$vid));
+ }
  }
  WC_Product_Variable::sync($id);wc_delete_product_transients($id);$ids[]=$id;
  $report[]=array('id'=>$id,'sku'=>$r[0],'name'=>$p->get_name(),'price_250g'=>$r[3],'url'=>get_permalink($id));
 }
 foreach($ids as $id) {$p=wc_get_product($id);$p->set_cross_sell_ids(array_values(array_diff($ids,array($id))));$p->set_status('publish');$p->save();wc_delete_product_transients($id);}
 delete_user_meta($vid,'_disable_vendor');
-foreach($ids as $id) { $p=wc_get_product($id);if($p->get_status()!=='publish'||count($p->get_children())!==7||!$p->get_image_id()||!$p->is_purchasable())throw new RuntimeException('Verification failed '.$id); }
-echo 'IKORE_RESULT='.wp_json_encode(array('vendor_id'=>$vid,'store_url'=>function_exists('wcfmmp_get_store_url')?wcfmmp_get_store_url($vid):'','products'=>$report,'variations'=>42,'logo'=>$logo,'banner'=>$banner,'manual_catalog'=>true,'shipping'=>'pending_confirmation'),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
+foreach($ids as $id) { $p=wc_get_product($id);if($p->get_status()!=='publish'||count($p->get_children())!==14||!$p->get_image_id()||!$p->is_purchasable())throw new RuntimeException('Verification failed '.$id); }
+
+// Official checkout checked 2026-10-20: ES mainland 3.99, Balearics 6.99,
+// Portugal 5.99; all three free at EUR40 including VAT, after discounts.
+$methods=$wpdb->prefix.'wcfm_marketplace_shipping_zone_methods';
+$locations=$wpdb->prefix.'wcfm_marketplace_shipping_zone_locations';
+$core_zones=$wpdb->prefix.'woocommerce_shipping_zones';
+$core_methods=$wpdb->prefix.'woocommerce_shipping_zone_methods';
+$zones=array(1=>array('name'=>'España (península)','flat'=>'3.99'),10=>array('name'=>'Baleares','flat'=>'6.99'),20=>array('name'=>'Portugal','flat'=>'5.99'));
+foreach($zones as $zid=>$cfg) {
+ $name=$wpdb->get_var($wpdb->prepare("SELECT zone_name FROM {$core_zones} WHERE zone_id=%d",$zid));
+ $gateway=$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$core_methods} WHERE zone_id=%d AND method_id='wcfmmp_product_shipping_by_zone' AND is_enabled=1",$zid));
+ if($name!==$cfg['name']||!$gateway)throw new RuntimeException('Unexpected global shipping zone '.$zid);
+}
+$other_before=$wpdb->get_results($wpdb->prepare("SELECT * FROM {$methods} WHERE vendor_id<>%d ORDER BY instance_id",$vid),ARRAY_A);
+$backup=array('methods'=>$wpdb->get_results($wpdb->prepare("SELECT * FROM {$methods} WHERE vendor_id=%d",$vid),ARRAY_A),'locations'=>$wpdb->get_results($wpdb->prepare("SELECT * FROM {$locations} WHERE vendor_id=%d",$vid),ARRAY_A),'meta'=>get_user_meta($vid,'_wcfmmp_shipping',true));
+if(!get_user_meta($vid,'_mdo_ikore_shipping_before_20261020',true))update_user_meta($vid,'_mdo_ikore_shipping_before_20261020',$backup);
+$wpdb->query('START TRANSACTION');
+try {
+ if(false===$wpdb->delete($methods,array('vendor_id'=>$vid),array('%d')))throw new RuntimeException('Cannot update own shipping rates');
+ if(false===$wpdb->delete($locations,array('vendor_id'=>$vid),array('%d')))throw new RuntimeException('Cannot update own shipping locations');
+ foreach($zones as $zid=>$cfg) {
+  $flat=array('title'=>'Envío a domicilio (CTT Express)','description'=>'Entrega estimada en 48–72 horas laborables','cost'=>$cfg['flat'],'tax_status'=>'none','class_cost_no_class_cost'=>'','calculation_type'=>'');
+  $free=array('title'=>'Envío gratuito (CTT Express)','description'=>'Desde 40 € en productos de Ikore Kofi','cost'=>'0','tax_status'=>'none','min_amount'=>'40');
+  foreach(array('flat_rate'=>$flat,'free_shipping'=>$free) as $method=>$settings) {
+   if(false===$wpdb->insert($methods,array('method_id'=>$method,'zone_id'=>$zid,'vendor_id'=>$vid,'is_enabled'=>1,'settings'=>maybe_serialize($settings)),array('%s','%d','%d','%d','%s')))throw new RuntimeException('Cannot save shipping rate');
+  }
+ }
+ $meta=get_user_meta($vid,'_wcfmmp_shipping',true);$meta=is_array($meta)?$meta:array();
+ $meta['_wcfmmp_user_shipping_enable']='yes';$meta['_wcfmmp_user_shipping_type']='by_zone';update_user_meta($vid,'_wcfmmp_shipping',$meta);
+ $wpdb->query('COMMIT');
+}catch(Throwable $e){$wpdb->query('ROLLBACK');throw $e;}
+$after=$wpdb->get_results($wpdb->prepare("SELECT * FROM {$methods} WHERE vendor_id=%d ORDER BY zone_id,method_id",$vid),ARRAY_A);
+if(count($after)!==6)throw new RuntimeException('Shipping rate count incorrect');
+foreach($after as $row) {
+ $settings=maybe_unserialize($row['settings']);$zid=(int)$row['zone_id'];$method=$row['method_id'];$field=$method==='free_shipping'?'min_amount':'cost';
+ $expected=$method==='free_shipping'?'40':$zones[$zid]['flat'];
+ if(abs((float)$settings[$field]-(float)$expected)>0.001)throw new RuntimeException('Shipping rate mismatch');
+}
+$other_after=$wpdb->get_results($wpdb->prepare("SELECT * FROM {$methods} WHERE vendor_id<>%d ORDER BY instance_id",$vid),ARRAY_A);
+if(wp_json_encode($other_after)!==wp_json_encode($other_before))throw new RuntimeException('Other vendor shipping changed');
+WC_Cache_Helper::get_transient_version('shipping',true);do_action('mdo_shipping_destinations_invalidate');
+echo 'IKORE_SHIPPING='.wp_json_encode(array('zones'=>$zones,'free_from'=>40,'other_vendors_unchanged'=>true),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
+
+echo 'IKORE_RESULT='.wp_json_encode(array('vendor_id'=>$vid,'store_url'=>function_exists('wcfmmp_get_store_url')?wcfmmp_get_store_url($vid):'','products'=>$report,'variations'=>84,'logo'=>$logo,'banner'=>$banner,'manual_catalog'=>true,'shipping'=>'configured'),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
