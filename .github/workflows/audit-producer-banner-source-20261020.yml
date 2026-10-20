@@ -39,6 +39,24 @@ jobs:
                 return out;
               });
               console.log('PRODUCER_HEADER_STYLES='+JSON.stringify(headers));
+              for(const slug of ['tienda','quienes-somos','contacto','blog']){
+                const destination='https://www.elmercadodeorigen.com/'+slug+'/?audit='+process.env.GITHUB_RUN_ID;
+                try{
+                  await page.goto(destination,{waitUntil:'domcontentloaded',timeout:45000});
+                  const diagnostic=await page.evaluate(()=>{
+                    const selectors={siteHeader:'.site-header',pageHeader:'.page-header',pageTitle:'.page-header h1',primaryHeader:'h1',intro:'.emo-about-intro',contact:'.emo-contact-aside',shopTitle:'.emo-shop-title-block',shopLead:'.emo-shop-lead',articleHero:'.emo-journal-hero',main:'.site-main'};
+                    const result={body:document.body.className,heading:[...document.querySelectorAll('h1,h2')].slice(0,7).map(n=>({type:n.tagName,text:n.textContent?.trim().slice(0,90)}))};
+                    for(const [k,css] of Object.entries(selectors)){
+                      const n=document.querySelector(css);
+                      if(!n)continue;
+                      const c=getComputedStyle(n),r=n.getBoundingClientRect();
+                      result[k]={t:n.textContent?.trim().slice(0,105),display:c.display,color:c.color,background:c.backgroundColor,image:c.backgroundImage,pad:c.padding,margin:c.margin,columns:c.gridTemplateColumns,width:r.width,height:r.height,top:r.top};
+                    }
+                    return result;
+                  });
+                  console.log('REFERENCE_HEADER_'+slug.toUpperCase()+'='+JSON.stringify(diagnostic));
+                }catch(e){console.log('REFERENCE_HEADER_ERROR_'+slug.toUpperCase()+'='+e.message)}
+              }
               const snapshot=await page.evaluate(()=>{
                 return [...document.querySelectorAll('#wcfmmp-stores-wrap li.wcfmmp-single-store')].map((card)=>{
                   const info=card.querySelector('.store-info'), content=card.querySelector('.store-content'), footer=card.querySelector('.store-footer'), img=[...card.querySelectorAll('img')];
