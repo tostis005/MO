@@ -1,6 +1,6 @@
-PHP Warning:  require_once(/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-latitudes-logistics.php): Failed to open stream: No such file or directory in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php on line 65
-Warning: require_once(/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-latitudes-logistics.php): Failed to open stream: No such file or directory in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php on line 65
-PHP Fatal error:  Uncaught Error: Failed opening required '/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-latitudes-logistics.php' (include_path='.:/opt/plesk/php/8.3/share/pear') in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php:65
+PHP Warning:  require_once(/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/connectors/class-mdo-connector-tropitop.php): Failed to open stream: No such file or directory in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php on line 31
+Warning: require_once(/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/connectors/class-mdo-connector-tropitop.php): Failed to open stream: No such file or directory in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php on line 31
+PHP Fatal error:  Uncaught Error: Failed opening required '/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/connectors/class-mdo-connector-tropitop.php' (include_path='.:/opt/plesk/php/8.3/share/pear') in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php:31
 Stack trace:
 #0 /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-settings.php(597): include_once()
 #1 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/WP_CLI/Runner.php(1394): require('...')
@@ -20,8 +20,8 @@ Stack trace:
 #15 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/wpt-wp-cli.php(49): require_once('...')
 #16 /usr/local/bin/wp(4): require_once('...')
 #17 {main}
-  thrown in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php on line 65
-Fatal error: Uncaught Error: Failed opening required '/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-latitudes-logistics.php' (include_path='.:/opt/plesk/php/8.3/share/pear') in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php:65
+  thrown in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php on line 31
+Fatal error: Uncaught Error: Failed opening required '/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/connectors/class-mdo-connector-tropitop.php' (include_path='.:/opt/plesk/php/8.3/share/pear') in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php:31
 Stack trace:
 #0 /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-settings.php(597): include_once()
 #1 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/vendor/wp-cli/wp-cli/php/WP_CLI/Runner.php(1394): require('...')
@@ -41,5 +41,5 @@ Stack trace:
 #15 /opt/psa/admin/plib/modules/wp-toolkit/vendor/wp-cli/wpt-wp-cli.php(49): require_once('...')
 #16 /usr/local/bin/wp(4): require_once('...')
 #17 {main}
-  thrown in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php on line 65
+  thrown in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php on line 31
 Error: Ha habido un error crítico en esta web.Aprende más sobre el diagnóstico de WordPress. Ha habido un error crítico en esta web.
