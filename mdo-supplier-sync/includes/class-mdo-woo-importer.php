@@ -38,16 +38,16 @@ final class MDO_Woo_Importer {
 			throw new RuntimeException( 'Los datos extraídos del producto están incompletos.' );
 		}
 		$payload['title'] = MDO_Text::normalize_title( (string) $payload['title'] );
-		if ( in_array( (string) $supplier['code'], array( 'latitudes', 'chocolates-artesanos-isabel' ), true ) &&
+		if ( in_array( (string) $supplier['code'], array( 'latitudes', 'chocolates-artesanos-isabel', 'tropitop' ), true ) &&
 			! in_array( (string) ( $payload['stock_status'] ?? 'unknown' ), array( 'instock', 'outofstock' ), true ) ) {
-			throw new RuntimeException( 'Stock de Latitudes sin verificar: se cancela la importación de esta referencia.' );
+			throw new RuntimeException( 'Stock del proveedor sin verificar: se cancela la importación de esta referencia.' );
 		}
 
 
 		$variations = self::usable_variations( $payload );
 		$declared_variations = isset( $payload['variation_count'] ) ? (int) $payload['variation_count'] : 0;
 		if ( $declared_variations > 1 && ( ! $variations ||
-			( 'chocolates-artesanos-isabel' === (string) $supplier['code'] && count( $variations ) < $declared_variations ) ) ) {
+			( in_array( (string) $supplier['code'], array( 'chocolates-artesanos-isabel', 'tropitop' ), true ) && count( $variations ) < $declared_variations ) ) ) {
 			throw new RuntimeException( 'El producto tiene opciones/variantes, pero EMDO aún no dispone de la matriz completa de precios y stock. No se importará hasta evitar una ficha incorrecta.' );
 		}
 
@@ -127,13 +127,29 @@ final class MDO_Woo_Importer {
 
 		// Prelaunch products from Latitudes must never become public while its
 		// WCFM vendor is hard-disabled, including after nightly updates.
-		if ( in_array( (string) $supplier['code'], array( 'latitudes', 'chocolates-artesanos-isabel' ), true ) && get_user_meta( $vendor_id, '_disable_vendor', true ) ) {
+		if ( in_array( (string) $supplier['code'], array( 'latitudes', 'chocolates-artesanos-isabel', 'tropitop' ), true ) && get_user_meta( $vendor_id, '_disable_vendor', true ) ) {
+			$product->set_status( 'draft' );
+			$product->set_catalog_visibility( 'hidden' );
+		}
+		if ( 'tropitop' === (string) $supplier['code'] && ! MDO_Tropitop_Shipping::is_ready() ) {
 			$product->set_status( 'draft' );
 			$product->set_catalog_visibility( 'hidden' );
 		}
 		$category_result = class_exists( 'MDO_Auto_Categorizer' )
 			? MDO_Auto_Categorizer::maybe_assign( $product, $payload, $row )
 			: array();
+		// The known Tropitop avocado SKU has a verified, deterministic taxonomy.
+		// Never publish it under an accidental generic meat/uncategorized term.
+		if ( 'tropitop' === (string) $supplier['code'] ) {
+			$term_slug = '33' === (string) ( $payload['source_product_id'] ?? '' ) ? 'aguacates' : '';
+			$term = $term_slug ? get_term_by( 'slug', $term_slug, 'product_cat' ) : false;
+			if ( ! $term instanceof WP_Term ) {
+				throw new RuntimeException( 'Tropitop: la categoría comercial del producto todavía no está validada.' );
+			}
+			$product->set_category_ids( array( (int) $term->term_id ) );
+			$category_result = array( 'assigned' => true, 'reason' => 'tropitop_source_category',
+				'category_ids' => array( (int) $term->term_id ), 'score' => null );
+		}
 		if ( $is_variable ) {
 			self::apply_variable_product( $product, $variations );
 		} else {
@@ -485,6 +501,9 @@ final class MDO_Woo_Importer {
 				$variation->set_sale_price( '' );
 			}
 			$variation->set_price( wc_format_decimal( $price ) );
+			if ( isset( $source_variation['weight_kg'] ) && is_numeric( $source_variation['weight_kg'] ) && (float) $source_variation['weight_kg'] > 0 ) {
+				$variation->set_weight( wc_format_decimal( $source_variation['weight_kg'] ) );
+			}
 			$variation->set_manage_stock( false );
 			$variation->set_stock_status( ! empty( $source_variation['is_in_stock'] ) ? 'instock' : 'outofstock' );
 			$variation_id = $variation->save();

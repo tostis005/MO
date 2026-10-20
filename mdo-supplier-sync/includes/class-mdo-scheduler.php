@@ -157,6 +157,7 @@ final class MDO_Scheduler {
 				'tolecarnes'           => MDO_Connector_Tolecarnes::scrape_product( $url ),
 				'latitudes'            => MDO_Connector_Latitudes::scrape_product( $url ),
 				'chocolates-artesanos-isabel' => MDO_Connector_Chocolates_Isabel::scrape_product( $url ),
+				'tropitop' => MDO_Connector_Tropitop::scrape_product( $url ),
 				'la-huerta-ana-mary'   => MDO_Connector_Huerta_Ana_Mary::scrape_product( $url ),
 				default                => MDO_Connector_Iberico_Family::scrape_product( $url, $supplier ),
 			};
@@ -271,6 +272,7 @@ final class MDO_Scheduler {
 			'tolecarnes'         => MDO_Connector_Tolecarnes::class,
 			'latitudes'          => MDO_Connector_Latitudes::class,
 			'chocolates-artesanos-isabel' => MDO_Connector_Chocolates_Isabel::class,
+			'tropitop' => MDO_Connector_Tropitop::class,
 			'la-huerta-ana-mary' => MDO_Connector_Huerta_Ana_Mary::class,
 			'el-catedratico',
 			'puente-robles',
