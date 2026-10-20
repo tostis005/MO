@@ -43,6 +43,27 @@ if ( $mode === 'rollback' ) {
     }
     exit;
 }
+if ( $mode === 'verify' ) {
+    foreach ( $ids as $slug => $id ) {
+        $settings = get_user_meta( $id, 'wcfmmp_profile_settings', true );
+        if ( ! is_array( $settings ) ) {
+            throw new RuntimeException( 'Missing settings: ' . $slug );
+        }
+        $banner = (int) ( $settings['banner'] ?? 0 );
+        $list = (int) ( $settings['list_banner'] ?? 0 );
+        $url = $banner ? wp_get_attachment_url( $banner ) : '';
+        $filepath = $banner ? get_attached_file( $banner ) : '';
+        if ( ! $banner || $banner !== $list ||
+             ! $url || ! str_contains( $url, 'emdo-producer-' . $slug . '-banner-20261020.webp' ) ||
+             ! $filepath || ! is_readable( $filepath ) ||
+             hash_file( 'sha256', $filepath ) !== hash_file( 'sha256', $base . $slug . '.webp' ) ) {
+            throw new RuntimeException( 'WCFM native store/list banner mismatch: ' . $slug );
+        }
+        echo 'WCFM_STORE_AND_LIST_VERIFIED ' . $slug . ' attachment=' . $banner . PHP_EOL;
+    }
+    echo 'ALL_TEN_WCFM_NATIVE_BANNERS_VERIFIED' . PHP_EOL;
+    exit;
+}
 if ( ! in_array( $mode, ['audit', 'apply'], true ) ) {
     throw new RuntimeException( 'Unknown mode' );
 }
