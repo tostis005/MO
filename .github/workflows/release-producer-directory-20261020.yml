@@ -314,6 +314,30 @@ jobs:
                 }
               }
               console.log('PRODUCERS_RESPONSIVE_QA_SUCCESS');
+              const slugs=['1957','hidalgo-de-la-jara','tolecarnes','la-huerta-de-ana-mary','montjam',
+                'selectos-de-castilla','latitudes','chocolates-artesanos-isabel','ikore-kofi','tropitop'];
+              await page.setViewport({width:1440,height:950});
+              await page.goto('https://www.elmercadodeorigen.com/productores/?all-banners='+process.env.GITHUB_RUN_ID,{waitUntil:'domcontentloaded',timeout:60000});
+              await page.waitForSelector('#wcfmmp-stores-wrap li.wcfmmp-single-store',{timeout:25000});
+              const directory=await page.evaluate(slugs=>{
+                const cards=[...document.querySelectorAll('#wcfmmp-stores-wrap li.wcfmmp-single-store')];
+                return slugs.map(slug=>{
+                  const card=cards.find(el=>el.querySelector('.store-data h2 a')?.href.includes('/tienda/'+slug));
+                  return {slug,src:card?.querySelector('.store-info')?getComputedStyle(card.querySelector('.store-info')).backgroundImage:''};
+                });
+              },slugs);
+              console.log('ALL_DIRECTORY_BANNER_IMAGES',JSON.stringify(directory));
+              for(const item of directory) {
+                if(!item.src.includes('/producer-banners/'+item.slug+'.webp')) throw Error('Directory banner mismatch '+JSON.stringify(item));
+              }
+              for(const slug of slugs){
+                await page.goto('https://www.elmercadodeorigen.com/tienda/'+slug+'/?banner-check='+process.env.GITHUB_RUN_ID,{waitUntil:'domcontentloaded',timeout:60000});
+                const pageHtml=await page.content();
+                const found=pageHtml.includes('emdo-producer-'+slug+'-banner-20261020');
+                console.log('WCFM_SHOP_HEADER_BANNER',slug,found,page.url());
+                if(!found) throw Error('WCFM shop banner not visible for '+slug);
+              }
+              console.log('ALL_TEN_DIRECTORY_AND_SHOP_BANNERS_VISIBLE');
             } finally { await browser.close(); }
           })().catch(error=>{console.error(error);process.exit(1);});
           NODE
