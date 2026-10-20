@@ -43,17 +43,26 @@ add_action(
 				background: #fff !important;
 				box-shadow: none !important;
 			}
-			/* Misma escala tipográfica que .emo-about-intro en editorial.css.
-			 * No redefinimos el .emo-kicker: se hereda tal cual del sitio. */
+			/* Colores de texto explícitos: WCFM heredaba blanco del antiguo hero.
+			 * La estructura y tipografías siguen compartidas con Quiénes somos. */
+			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-main .emo-about-intro.emo-producers-intro .emo-kicker {
+				color: #557258 !important;
+				-webkit-text-fill-color: #557258 !important;
+			}
+
 			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-main .emo-about-intro.emo-producers-intro h2 {
 				max-width: 720px !important;
 				margin: 0 !important;
 				font-size: clamp(2.6rem, 5vw, 4.8rem) !important;
+				color: #173f32 !important;
+				-webkit-text-fill-color: #173f32 !important;
 			}
 			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-main .emo-about-intro.emo-producers-intro > p {
 				margin: 0 0 .35rem !important;
 				font-size: clamp(1.02rem, 1.5vw, 1.2rem) !important;
 				line-height: 1.75 !important;
+				color: #536158 !important;
+				-webkit-text-fill-color: #536158 !important;
 			}
 			@media (max-width: 991px) {
 				html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-main .emo-about-intro.emo-producers-intro {
