@@ -1,0 +1,61 @@
+/**
+ * High contrast PhotoSwipe toolbar for the product image viewer.
+ * Keep navigation, touch gestures, keyboard and image zoom intact.
+ */
+body.single-product .pswp .pswp__top-bar {
+  display:flex!important;align-items:flex-start!important;justify-content:flex-end!important;
+  gap:8px!important;height:auto!important;min-height:64px!important;padding:10px 12px!important;
+  box-sizing:border-box!important;background:linear-gradient(to bottom,rgba(15,23,42,.68),transparent)!important;
+}
+body.single-product .pswp .pswp__counter {
+  position:static!important;flex:1 1 auto;width:auto!important;height:44px!important;
+  margin:0!important;padding:0 8px!important;color:#fff!important;opacity:1!important;
+  font-size:14px!important;font-weight:700!important;line-height:44px!important;white-space:nowrap;
+}
+body.single-product .pswp .pswp__top-bar > .pswp__button--close,
+body.single-product .pswp .pswp__top-bar > .pswp__button--share,
+body.single-product .pswp .pswp__top-bar > .pswp__button--fs,
+body.single-product .pswp .pswp__top-bar > .pswp__button--zoom {
+  position:relative!important;float:none!important;flex:0 0 auto;width:auto!important;
+  min-width:72px!important;height:44px!important;margin:0!important;padding:0 13px!important;
+  border:1px solid rgba(255,255,255,.45)!important;border-radius:10px!important;
+  background:rgba(16,35,32,.94)!important;background-image:none!important;
+  box-shadow:0 2px 12px rgba(0,0,0,.22)!important;color:#fff!important;
+  font-family:inherit!important;font-size:14px!important;font-weight:700!important;
+  line-height:42px!important;letter-spacing:0!important;text-align:center!important;
+  text-indent:0!important;text-transform:none!important;white-space:nowrap!important;
+  opacity:1!important;cursor:pointer;
+}
+body.single-product .pswp .pswp__top-bar > .pswp__button--close::before,
+body.single-product .pswp .pswp__top-bar > .pswp__button--share::before,
+body.single-product .pswp .pswp__top-bar > .pswp__button--fs::before,
+body.single-product .pswp .pswp__top-bar > .pswp__button--zoom::before {
+  position:static!important;display:inline-block!important;width:auto!important;height:auto!important;
+  margin:0 7px 0 0!important;background:none!important;transform:none!important;
+  color:inherit!important;font-family:Arial,sans-serif!important;font-size:22px!important;
+  font-weight:400!important;line-height:1!important;vertical-align:-2px!important;
+}
+body.single-product .pswp .pswp__button--close::before {content:"\00d7"!important;}
+body.single-product .pswp .pswp__button--share::before {content:"\2197"!important;}
+body.single-product .pswp .pswp__button--fs::before {content:"\26f6"!important;}
+body.single-product .pswp .pswp__button--zoom::before {content:"+"!important;}
+body.single-product .pswp .pswp__button--close::after {content:"Cerrar";}
+body.single-product .pswp .pswp__button--share::after {content:"Compartir";}
+body.single-product .pswp .pswp__button--fs::after {content:"Pantalla completa";}
+body.single-product .pswp .pswp__button--zoom::after {content:"Zoom";}
+body.single-product .pswp .pswp__top-bar > .pswp__button:hover,
+body.single-product .pswp .pswp__top-bar > .pswp__button:focus-visible {
+  background:#236a54!important;border-color:#fff!important;opacity:1!important;
+}
+body.single-product .pswp .pswp__top-bar > .pswp__button:focus-visible {
+  outline:3px solid #e9be72!important;outline-offset:2px!important;
+}
+@media (max-width:640px) {
+  body.single-product .pswp .pswp__top-bar {gap:7px!important;min-height:60px!important;padding:8px!important;}
+  body.single-product .pswp .pswp__top-bar > .pswp__button--share,
+  body.single-product .pswp .pswp__top-bar > .pswp__button--fs {display:none!important;}
+  body.single-product .pswp .pswp__top-bar > .pswp__button--close,
+  body.single-product .pswp .pswp__top-bar > .pswp__button--zoom {
+    min-width:80px!important;padding:0 9px!important;font-size:13px!important;
+  }
+}

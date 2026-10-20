@@ -180,6 +180,7 @@ $elmercado_modules = array(
 	'inc/adsterra-blog-010290.php',
 	'inc/cart-cross-sells-layout-010314.php',
 	'inc/montjam-dop-attributes-010317.php',
+	'inc/product-gallery-controls-010318.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
