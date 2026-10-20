@@ -182,9 +182,9 @@ final class MDO_Connector_Tropitop {
     /** Product-specific copy only: strip outbound shop links and seller-first-person voice. */
     private static function product_description( DOMXPath $xp ): string {
         $nodes = $xp->query(
-            '//*[@id="description"]//*[contains(concat(" ", normalize-space(@class), " "), " product-description ")]'
-            . ' | //*[@id="description"]//*[contains(concat(" ", normalize-space(@class), " "), " rte-content ")]'
-            . ' | //*[@id="description"] | //*[@id="product-description-short"]'
+            '//*[@id="main-product-wrapper"]//*[contains(concat(" ",normalize-space(@class)," ")," product-description ")]'
+            . ' | //*[@id="col-product-info"]//*[contains(concat(" ",normalize-space(@class)," ")," rte-content ")]'
+            . ' | //*[@id="description"]'
         );
         $candidate = '';
         foreach ( $nodes ?: array() as $node ) {
@@ -318,7 +318,11 @@ final class MDO_Connector_Tropitop {
             throw new RuntimeException( 'Tropitop: categoría desconocida.' );
         }
         // Category slug "aguacates" needs its PrestaShop category ID.
-        $known = array( 'aguacates' => '12-aguacates', 'frutas' => '57-frutas', 'verduras' => '72-verduras' );
+        $known = array( 'aguacates' => '12-aguacates', 'frutas' => '62-frutas', 'verduras' => '80-verduras',
+            'frutas-tropicales' => '63-frutas-tropicales', 'frutas-del-mundo' => '106-frutas-del-mundo',
+            'gourmet' => '79-gourmet', 'packs' => '87-packs',
+            'cajas-de-temporada' => '89-cajas-de-temporada',
+            'home-verduras' => '80-verduras', 'productos' => '62-frutas' );
         $category = $known[ $slug ] ?? '';
         if ( ! $category ) {
             throw new RuntimeException( 'Tropitop: configurar una URL de categoría para extraer las variantes.' );
