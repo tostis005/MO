@@ -138,6 +138,14 @@ final class MDO_Woo_Importer {
 			$product->set_status( 'draft' );
 			$product->set_catalog_visibility( 'hidden' );
 		}
+		// Never auto-publish an unreviewed new SKU merely because this vendor
+		// becomes active later. Human-validated existing products retain their
+		// approved publication state during regular nightly stock updates.
+		if ( 'tropitop' === (string) $supplier['code'] &&
+			( ! $existing_id || '1' !== (string) get_post_meta( $existing_id, '_mdo_tropitop_prelaunch_validated', true ) ) ) {
+			$product->set_status( 'draft' );
+			$product->set_catalog_visibility( 'hidden' );
+		}
 		$category_result = class_exists( 'MDO_Auto_Categorizer' )
 			? MDO_Auto_Categorizer::maybe_assign( $product, $payload, $row )
 			: array();
