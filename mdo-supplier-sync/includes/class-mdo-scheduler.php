@@ -95,7 +95,13 @@ final class MDO_Scheduler {
 				foreach ( (array) ( $source_discovery['products'] ?? array() ) as $url ) {
 					$url = esc_url_raw( (string) $url );
 					if ( $url ) {
-						$products_by_url[ $url ] = $url;
+						$key = $url;
+						if ( 'tropitop' === (string) $supplier['code'] &&
+							preg_match( '~/([0-9]+)(?:-[0-9]+)?-[a-z0-9-]+\\.html$~i',
+								(string) wp_parse_url( $url, PHP_URL_PATH ), $m ) ) {
+							$key = 'tropitop:' . $m[1];
+						}
+						if ( ! isset( $products_by_url[ $key ] ) ) { $products_by_url[ $key ] = $url; }
 					}
 				}
 				foreach ( (array) ( $source_discovery['excluded'] ?? array() ) as $url ) {
@@ -130,8 +136,20 @@ final class MDO_Scheduler {
 				return;
 			}
 
-			foreach ( $products as $url ) {
-				self::enqueue_action( self::PRODUCT_HOOK, array( $supplier_id, $run_id, $url, $trigger_type ) );
+			foreach ( $products as $index => $url ) {
+				$args = array( $supplier_id, $run_id, $url, $trigger_type );
+				if ( 'tropitop' === (string) $supplier['code'] ) {
+					// Steady pacing protects the storefront and source while its
+					// 150+ product pages are checked; other vendors are unchanged.
+					$when = time() + 15 + 90 * $index;
+					if ( function_exists( 'as_schedule_single_action' ) ) {
+						as_schedule_single_action( $when, self::PRODUCT_HOOK, $args, 'mdo-supplier-sync' );
+					} else {
+						wp_schedule_single_event( $when, self::PRODUCT_HOOK, $args );
+					}
+				} else {
+					self::enqueue_action( self::PRODUCT_HOOK, $args );
+				}
 			}
 		} catch ( Throwable $error ) {
 			self::log_event( $run_id, $supplier_id, 'catalog_error', 'error', $error->getMessage() );
