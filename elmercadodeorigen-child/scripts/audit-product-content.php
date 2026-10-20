@@ -96,9 +96,10 @@ do {
 } while ( count( $ids ) === 150 );
 
 fclose( $handle );
-WP_CLI::log(
+fwrite(
+	STDERR,
 	sprintf(
-		'Auditados: %d productos. Frases de proveedor detectadas: %d. Sin fotos adicionales: %d (verificar con fuentes antes de importar).',
+		'Auditados: %d productos. Frases de proveedor detectadas: %d. Sin fotos adicionales: %d (verificar con fuentes antes de importar).\n',
 		$checked,
 		$copy_flags,
 		$no_gallery
