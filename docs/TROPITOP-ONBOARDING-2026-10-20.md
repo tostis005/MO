@@ -47,6 +47,8 @@ Todas las cotizaciones siguientes se realizaron añadiendo **aguacate piel lisa 
 
 Evidencia de ejecuciones y logs de prueba: [1](https://github.com/tostis005/MO/actions/runs/39416987424), [2](https://github.com/tostis005/MO/actions/runs/39417128578), [3](https://github.com/tostis005/MO/actions/runs/39417295821). La respuesta AJAX `cart.subtotals.shipping.amount` devuelve el porte observado, aunque el HTML de la página muestre `Transporte: Por determinar`.
 
+**Limitación de la prueba:** un intento adicional para 15, 21, 30, 33 y 45 kg terminó con errores de conexión (timeout) en el proveedor; esos cinco casos **no están verificados** y se detuvieron las consultas. No seguir insistiendo automáticamente ante timeouts.
+
 **Patrón inferido**, pendiente de verificar en los límites de cada escalón y en un checkout con código postal: 0–5 kg ~2,95 €; 5–10 kg ~5,95 €; 10–15 kg ~7,95 €; 15–20 kg ~10,95 €; 20–25 kg ~12,95 €; 25–30 kg ~15,95 €; 35–40 kg ~20,95 €. Los importes de rangos sin muestra completa no son una tarifa oficial.
 
 - **Preparación/salida**: cosecha y expedición martes/miércoles. Pedidos hasta miércoles 13 h se preparan en esa semana; los posteriores pasan a la siguiente. Tránsito habitual anunciado: 24–48 h **desde el envío**, sujeto al destino.
