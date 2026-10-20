@@ -26,10 +26,13 @@ if ( ! $supplier || (int) $supplier['id'] !== 8 ||
 }
 $seller_disabled = (bool) get_user_meta( 4971, '_disable_vendor', true );
 $checkout_ready = MDO_Tropitop_Shipping::is_ready();
-// Seller and verified shipping must move together. An in-between state
-// would risk offering a product with no valid shipping method.
-if ( $seller_disabled === $checkout_ready ) {
-    throw new RuntimeException( 'Inconsistent WCFM vendor and shipping readiness.' );
+// A vendor can already be enabled by WCFM while EMDO shipping is still
+// blocked. That is a legitimate PRE-ACTIVATION state: the shipping guard
+// returns zero available rates and our importer keeps new SKUs as drafts.
+// Permit the activation preflight to repair it, never assume free delivery.
+// Only a disabled vendor with checkout marked ready is inconsistent.
+if ( $seller_disabled && $checkout_ready ) {
+    throw new RuntimeException( 'Disabled Tropitop vendor with shipping incorrectly marked ready.' );
 }
 if ( get_option( 'woocommerce_weight_unit' ) !== 'kg' ) {
     throw new RuntimeException( 'Woo shop weight unit is not kg.' );
