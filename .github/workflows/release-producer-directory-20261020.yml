@@ -30,8 +30,9 @@ jobs:
           set -Eeuo pipefail
           php -l elmercadodeorigen-child/inc/producer-list-image-square-010242.php
           php -l elmercadodeorigen-child/inc/editorial-finish.php
+          php -l elmercadodeorigen-child/inc/editorial-system.php
           grep -q 'elmercado-producer-directory-editorial-20261020' elmercadodeorigen-child/inc/producer-list-image-square-010242.php
-          grep -q -- '-webkit-text-fill-color: #173f32' elmercadodeorigen-child/inc/producer-list-image-square-010242.php
+          grep -q 'emo-about-intro emo-producers-intro' elmercadodeorigen-child/inc/editorial-system.php
           ! grep -q 'elmercado-producer-layout-normalizer' elmercadodeorigen-child/inc/editorial-finish.php
           grep -q 'producer-list-image-square-010242.php' elmercadodeorigen-child/functions.php
           : "${STAGING_HOST:?SSH host absent}"
@@ -62,16 +63,18 @@ jobs:
           BACKUP="$ROOT/wp-content/.emdo-producers-design-backup-$GITHUB_RUN_ID"
           ONE=producer-list-image-square-010242.php
           TWO=editorial-finish.php
+          THREE=editorial-system.php
           rollback() {
             status=$?
             trap - EXIT
             if [ "$status" -ne 0 ]; then
-              echo "::error::Publicación sin verificar; restaurando los dos archivos anteriores"
+              echo "::error::Publicación sin verificar; restaurando los tres archivos anteriores"
               sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$INC' '$BACKUP' '$STAGE'" <<'RESTORE' || true
               set -eu
               inc="$1"; backup="$2"; stage="$3"
               test -s "$backup/producer-list-image-square-010242.php" && cp -p "$backup/producer-list-image-square-010242.php" "$inc/"
               test -s "$backup/editorial-finish.php" && cp -p "$backup/editorial-finish.php" "$inc/"
+              test -s "$backup/editorial-system.php" && cp -p "$backup/editorial-system.php" "$inc/"
               rm -rf "$stage"
               php_bin="$(command -v php || true)"; wp_bin="$(command -v wp || true)"
               root="$(dirname "$(dirname "$(dirname "$(dirname "$inc")")")")"
@@ -84,7 +87,7 @@ jobs:
           }
           trap rollback EXIT
           sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$STAGE'"
-          sshpass -e scp $SCP_OPTS "elmercadodeorigen-child/inc/$ONE" "elmercadodeorigen-child/inc/$TWO" "$STAGING_USER@$STAGING_HOST:$STAGE/"
+          sshpass -e scp $SCP_OPTS "elmercadodeorigen-child/inc/$ONE" "elmercadodeorigen-child/inc/$TWO" "elmercadodeorigen-child/inc/$THREE" "$STAGING_USER@$STAGING_HOST:$STAGE/"
           sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$ROOT' '$STAGE' '$BACKUP'" <<'REMOTE'
           set -Eeuo pipefail
           root="$1"; stage="$2"; backup="$3"
@@ -99,7 +102,7 @@ jobs:
             https://elmercadodeorigen.com|https://www.elmercadodeorigen.com|http://elmercadodeorigen.com|http://www.elmercadodeorigen.com) ;;
             *) echo "La instalación no es la de producción: $url" >&2; exit 1;;
           esac
-          for f in producer-list-image-square-010242.php editorial-finish.php; do
+          for f in producer-list-image-square-010242.php editorial-finish.php editorial-system.php; do
             test -s "$inc/$f" && test -s "$stage/$f"
             "$php_bin" -l "$stage/$f"
           done
@@ -107,12 +110,16 @@ jobs:
           mkdir -p "$backup"
           cp -p "$inc/producer-list-image-square-010242.php" "$backup/"
           cp -p "$inc/editorial-finish.php" "$backup/"
+          cp -p "$inc/editorial-system.php" "$backup/"
           cp "$stage/producer-list-image-square-010242.php" "$inc/"
           cp "$stage/editorial-finish.php" "$inc/"
+          cp "$stage/editorial-system.php" "$inc/"
           cmp "$inc/producer-list-image-square-010242.php" "$stage/producer-list-image-square-010242.php"
           cmp "$inc/editorial-finish.php" "$stage/editorial-finish.php"
+          cmp "$inc/editorial-system.php" "$stage/editorial-system.php"
           "$php_bin" -l "$inc/producer-list-image-square-010242.php"
           "$php_bin" -l "$inc/editorial-finish.php"
+          "$php_bin" -l "$inc/editorial-system.php"
           "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$root" --skip-plugins --allow-root || true
           # Sólo invalida la copia estática de estas rutas, nunca otros productos o el blog.
           "$php_bin" -r '
@@ -154,6 +161,9 @@ jobs:
                   return {
                     intro:{found:!!intro,bg:introStyle?.backgroundColor||null,image:introStyle?.backgroundImage||null,
                       columns:introStyle?.gridTemplateColumns||null,display:introStyle?.display||null,
+                      sharedClass:intro?.classList.contains('emo-about-intro')||false,
+                      sharedMarkup:!!intro?.querySelector('.emo-producers-intro__heading > .emo-kicker'),
+                      kickerFont:intro?.querySelector('.emo-kicker')?getComputedStyle(intro.querySelector('.emo-kicker')).fontSize:null,
                       headingColor:intro?.querySelector('h2')?getComputedStyle(intro.querySelector('h2')).color:null,
                       paragraphColor:intro?.querySelector('p')?getComputedStyle(intro.querySelector('p')).color:null,
                       radius:introStyle?.borderTopLeftRadius||null,
@@ -181,7 +191,7 @@ jobs:
                   };
                 });
                 console.log('PRODUCERS_LAYOUT',width,JSON.stringify(data));
-                if(!data.intro.found||data.intro.bg!=='rgb(243, 236, 223)'||data.intro.image==='none'||data.intro.display!=='grid'||data.intro.headingColor!=='rgb(23, 63, 50)'||data.intro.width<250||!data.navBg.startsWith('rgba(255, 255, 255, 0.98)')) throw new Error('Producer header must share inner-page design, opaque beige background and normal site nav '+width+' '+JSON.stringify(data.intro)+' nav='+data.navBg);
+                if(!data.intro.found||!data.intro.sharedClass||!data.intro.sharedMarkup||data.intro.bg!=='rgb(255, 255, 255)'||data.intro.image!=='none'||data.intro.display!=='grid'||data.intro.width<250||!data.navBg.startsWith('rgba(255, 255, 255, 0.98)')) throw new Error('Producer intro must use real shared About markup and opaque plain-white background '+width+' '+JSON.stringify(data.intro)+' nav='+data.navBg);
                 if (!data.hasHeadStyle||data.hasOldNormalizer||data.cards<3) throw new Error('Missing or replaced directory at '+width);
                 const expected=width>=1200?3:width>760?2:1;
                 if(data.columns!==expected) throw new Error('Wrong column count '+width+': '+data.columns);
