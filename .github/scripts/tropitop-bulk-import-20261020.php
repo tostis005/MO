@@ -273,7 +273,22 @@ if ( 'activate' === $phase ) {
 
 $limit = max( 1, min( 5, (int) ( getenv( 'TROPITOP_BULK_BATCH' ) ?: 2 ) ) );
 $start = (int) $state['cursor'];
-$end = min( $total, $start + $limit );
+$retrying = false;
+// The saved cursor is authoritative for first-pass progress. After reaching
+// the end, retry only failed source URLs (at most twice), never regenerate the
+// entire catalog merely because a previous upload was interrupted.
+if ( $start >= $total && ! empty( $state['failed'] ) ) {
+    foreach ( $state['failed'] as $failed_pid => $failure ) {
+        if ( (int) ( $state['retry_attempts'][$failed_pid] ?? 0 ) >= 2 ) { continue; }
+        $index = array_search( (string) ( $failure['url'] ?? '' ), $state['urls'], true );
+        if ( false !== $index ) {
+            $start = (int) $index;
+            $retrying = true;
+            break;
+        }
+    }
+}
+$end = $retrying ? min( $total, $start + 1 ) : min( $total, $start + $limit );
 for ( $i = $start; $i < $end; $i++ ) {
     $woo_id = 0;
     $url = (string) $state['urls'][$i];
@@ -380,12 +395,21 @@ for ( $i = $start; $i < $end; $i++ ) {
             'source_id' => $pid, 'error' => $e->getMessage(),
         ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . "\n";
     }
-    $state['cursor'] = $i + 1;
+    if ( $retrying ) {
+        $state['retry_attempts'][$pid] = (int) ( $state['retry_attempts'][$pid] ?? 0 ) + 1;
+    } else {
+        $state['cursor'] = $i + 1;
+    }
     update_option( $key, $state, false );
     unset( $payload, $woo );
     gc_collect_cycles();
 }
-if ( (int) $state['cursor'] >= $total ) {
+$outstanding = 0;
+foreach ( (array) ( $state['failed'] ?? array() ) as $fid => $failed ) {
+    if ( (int) ( $state['retry_attempts'][$fid] ?? 0 ) < 2 &&
+        in_array( (string) ( $failed['url'] ?? '' ), (array) $state['urls'], true ) ) { $outstanding++; }
+}
+if ( (int) $state['cursor'] >= $total && 0 === $outstanding ) {
     $state['finished_at'] = gmdate( 'c' );
     update_option( $key, $state, false );
     // Enable *source synchronisation*, not publication. The Woo seller stays
@@ -399,10 +423,12 @@ if ( (int) $state['cursor'] >= $total ) {
         'discovered' => $total,
         'imported' => count( $state['imported'] ),
         'review_required' => count( $state['failed'] ),
+        'retried_failed' => count( (array)( $state['retry_attempts'] ?? array() ) ),
         'seller_disabled' => $seller_disabled, 'checkout_enabled' => $checkout_ready,
     ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . "\n";
 } else {
     echo 'TROPITOP_BULK_PROGRESS=' . (int) $state['cursor'] . '/' . $total .
         ' imported=' . count( $state['imported'] ) .
-        ' review=' . count( $state['failed'] ) . "\n";
+        ' review=' . count( $state['failed'] ) .
+        ' retry_remaining=' . $outstanding . "\n";
 }
