@@ -65,8 +65,11 @@ add_action('muplugins_loaded', static function (): void {
         if (!$post instanceof WP_Post || $post->post_status !== 'publish') return $html;
         $en_slug = (string)get_post_meta($id, '_en_US_post_name', true);
         if ($en_slug === '') return $html;
-        $es_url = (string)get_permalink($id);
-        $en_url = (string)home_url('/en/' . $en_slug . '/');
+        $site_root = untrailingslashit((string)get_option('home'));
+        $site_root = (string)preg_replace('~/en/?$~i', '', $site_root);
+        // Direct native URLs: get_permalink() is language-filtered by TranslatePress on /en/ routes.
+        $es_url = $site_root . '/' . $post->post_name . '/';
+        $en_url = $site_root . '/en/' . $en_slug . '/';
         $english = (bool)preg_match('~^/en/~i', (string)wp_parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH));
         $meta_desc = (string)get_post_meta($id, $english ? '_en_US_seo_description' : '_emdo_seo_description', true);
         $post_title = $english ? (string)get_post_meta($id, '_en_US_post_title', true) : $post->post_title;
