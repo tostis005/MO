@@ -39,6 +39,19 @@ jobs:
           : "${STAGING_USER:?SSH user absent}"
           : "${SSHPASS:?SSH password absent}"
 
+      - name: Validar las dos imágenes definitivas de jamón
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p /tmp/emdo-final-hams
+          curl --fail --silent --show-error --location --max-time 90 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-a0a8-820e-841e-f60d4493205a/raw?se=2026-10-20T19%3A54%3A29Z&sp=r&sv=2026-02-06&sr=b&scid=44b3c3c3-03dc-53e4-af08-53f9565adb64&skoid=bdd24bd8-9af5-4138-bfb1-19fba97a8611&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-20T10%3A01%3A28Z&ske=2026-10-21T10%3A01%3A28Z&sks=b&skv=2026-02-06&sig=ih2QbLGrh9DgZyKr0XbG01NfC6SONAnJjXB04su1A38%3D' -o /tmp/emdo-final-hams/hidalgo-de-la-jara.webp
+          echo '7c97e33d81cf6f659af7fbf2c90af3126f71394f177e1fab634df72ee4ea083e  /tmp/emdo-final-hams/hidalgo-de-la-jara.webp' | sha256sum --check --status
+          test "$(wc -c < /tmp/emdo-final-hams/hidalgo-de-la-jara.webp)" -eq 329826
+          echo 'FINAL_HAM_VERIFIED hidalgo-de-la-jara'
+          curl --fail --silent --show-error --location --max-time 90 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-13dc-820e-81aa-f21f8887491c/raw?se=2026-10-20T19%3A54%3A29Z&sp=r&sv=2026-02-06&sr=b&scid=e98ed0d9-343c-5fdf-8bb2-854c06f6f737&skoid=bdd24bd8-9af5-4138-bfb1-19fba97a8611&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-19T21%3A56%3A51Z&ske=2026-10-20T21%3A56%3A51Z&sks=b&skv=2026-02-06&sig=LpEAGQj7cAX13rKMBhSbeJfkJLyztCCMjMq2ETL4ZmU%3D' -o /tmp/emdo-final-hams/montjam.webp
+          echo '01cb6148648dbeda0fba4590714413e4a76d6644ca18f9547e7c9300771cd1fc  /tmp/emdo-final-hams/montjam.webp' | sha256sum --check --status
+          test "$(wc -c < /tmp/emdo-final-hams/montjam.webp)" -eq 267740
+          echo 'FINAL_HAM_VERIFIED montjam'
       - name: Instalar utilidades de despliegue y navegador
         run: |
           set -Eeuo pipefail
