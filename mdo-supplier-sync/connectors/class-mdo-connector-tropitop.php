@@ -105,15 +105,23 @@ final class MDO_Connector_Tropitop {
             throw new RuntimeException( 'Tropitop: precio de una presentación no verificado.' );
         }
         $variations = array();
-        foreach ( $sizes as $kg => $row ) {
-            $variations[] = array(
-                'variation_id' => $id . '-kg-' . str_replace( '.', '_', (string) $kg ),
-                'attributes' => array( 'Peso' => self::format_kg( (float) $kg ) ),
+        foreach ( $sizes as $key => $row ) {
+            $amount = (float) $row['amount'];
+            $unit = (string) $row['unit'];
+            $v = array(
+                'variation_id' => $id . '-' . $unit . '-' . str_replace( '.', '_', number_format( $amount, 3, '.', '' ) ),
+                'attributes' => 'kg' === $unit
+                    ? array( 'Peso' => self::format_kg( $amount ) )
+                    : array( 'Unidades' => rtrim( rtrim( number_format( $amount, 2, '.', '' ), '0' ), '.' ) . ' unidades' ),
                 'display_price' => (float) $row['price'],
                 'display_regular_price' => (float) $row['price'],
                 'is_in_stock' => 'instock' === $stock && ! $row['unavailable'],
-                'weight_kg' => (float) $kg,
             );
+            // Never pretend that 5 fruit pieces weigh 5kg. Unit-only packs
+            // are staged as drafts, with shipping blocked until actual
+            // packed weights are verified by the supplier.
+            if ( 'kg' === $unit ) { $v['weight_kg'] = $amount; }
+            $variations[] = $v;
         }
         if ( ! $variations ) {
             throw new RuntimeException( 'Tropitop: solo se permite importar productos con precio y peso verificables.' );
@@ -247,22 +255,23 @@ final class MDO_Connector_Tropitop {
             $text = trim( preg_replace( '/\s+/u', ' ', html_entity_decode( (string) $node->textContent, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) ) );
             // Only explicit size + EUR price pairs can become a variation.
             // Do not treat €/kg unit prices as a box price.
-            if ( ! preg_match( '/\b(\d+(?:[.,]\d+)?)\s*kg\b/iu', $text, $weight_match ) ) { continue; }
+            if ( ! preg_match( '/\b(\d+(?:[.,]\d+)?)\s*(kg|kilos?|unid(?:ades)?|uds?)\b/iu', $text, $weight_match ) ) { continue; }
             if ( ! preg_match( '/(\d{1,5}(?:[.,]\d{2}))\s*€/u', $text, $price_match ) ) { continue; }
             if ( preg_match( '/€\s*\/\s*kg|€\s*por\s*kg/iu', $text ) ) { continue; }
-            $kg = (float) str_replace( ',', '.', $weight_match[1] );
+            $amount = (float) str_replace( ',', '.', $weight_match[1] );
+            $unit = preg_match( '/^kg|^kilo/iu', $weight_match[2] ) ? 'kg' : 'unid';
             $price = (float) str_replace( ',', '.', $price_match[1] );
-            if ( $kg <= 0 || $kg > 60 || $price <= 0 || $price > 10000 ) { continue; }
-            $key = number_format( $kg, 3, '.', '' );
-            // Ignore ancestor nodes containing multiple choices to avoid
-            // associating the wrong peso with another combination's price.
-            if ( preg_match_all( '/\b\d+(?:[.,]\d+)?\s*kg\b/iu', $text ) !== 1 ) { continue; }
+            if ( $amount <= 0 || $amount > 60 || $price <= 0 || $price > 10000 ) { continue; }
+            $key = $unit . ':' . number_format( $amount, 3, '.', '' );
+            // Ignore ancestor nodes containing multiple options.
+            if ( preg_match_all( '/\b\d+(?:[.,]\d+)?\s*(?:kg|kilos?|unid(?:ades)?|uds?)\b/iu', $text ) !== 1 ) { continue; }
             $output[ $key ] = array(
+                'amount' => $amount, 'unit' => $unit,
                 'price' => $price,
                 'unavailable' => (bool) preg_match( '/agotad[oa]|sin\s*stock|out\s*of\s*stock/iu', $text ),
             );
         }
-        ksort( $output, SORT_NUMERIC );
+        ksort( $output, SORT_NATURAL );
         return $output;
     }
 
