@@ -130,6 +130,34 @@ $ship=get_user_meta($vid,'_wcfmmp_shipping',true);$ship=is_array($ship)?$ship:[]
 $ship['_wcfmmp_user_shipping_enable']='yes';$ship['_wcfmmp_user_shipping_type']='by_zone';
 update_user_meta($vid,'_wcfmmp_shipping',$ship);
 update_option('mdo_tropitop_shipping_rates_verified','0',false);
+// Exercise the full WooCommerce shipping hook using a temporary, request-only
+// filter: it simulates verified readiness without opening live checkout.
+$fake_ready=static fn()=>'1';
+add_filter('pre_option_mdo_tropitop_shipping_rates_verified',$fake_ready,10,0);
+$shipping_samples=[3=>2.95,4=>2.95,6=>5.95,8=>5.95,9=>5.95,
+ 12=>7.95,18=>10.95,20=>10.95,24=>12.95,27=>15.95,36=>20.95];
+try {
+ foreach($shipping_samples as $kg=>$expected) {
+   $fake=new WC_Product_Simple();
+   $fake->set_weight((string)$kg);
+   $package=['contents'=>[['product_id'=>$product_id,'data'=>$fake,'quantity'=>1]],
+     'vendor_id'=>$vid,'destination'=>['country'=>'ES','postcode'=>'28001','state'=>'M']];
+   $rate=new WC_Shipping_Rate('wcfmmp_product_shipping_by_zone:test','Tropitop',2.95,[],'wcfmmp_product_shipping_by_zone',1);
+   $result=MDO_Tropitop_Shipping::filter_rates(['native'=>$rate],$package);
+   $actual=$result?(float)reset($result)->get_cost():null;
+   if($actual===null || abs($actual-$expected)>0.001)throw new RuntimeException('Bad shipping QA at '.$kg.'kg: '.var_export($actual,true));
+ }
+ $banned=['ES'=>'07001','PT'=>'1000-001','FR'=>'75001'];
+ foreach($banned as $country=>$postcode) {
+   $package['destination']=['country'=>$country,'postcode'=>$postcode];
+   if(MDO_Tropitop_Shipping::filter_rates(['native'=>$rate],$package)!==[])
+     throw new RuntimeException('Unverified destination was not blocked '.$country);
+ }
+} finally {
+ remove_filter('pre_option_mdo_tropitop_shipping_rates_verified',$fake_ready,10);
+}
+if(MDO_Tropitop_Shipping::is_ready())throw new RuntimeException('Shipping unexpectedly enabled');
+echo 'TROPITOP_SHIPPING_SMOKE_OK weight_samples='.count($shipping_samples)."\\n";
 echo 'TROPITOP_DRAFT_QA='.wp_json_encode([
  'vendor_id'=>$vid,'supplier_id'=>(int)$r['id'],'product_id'=>$product_id,
  'status'=>$p->get_status(),'category_id'=>(int)$avocado->term_id,
