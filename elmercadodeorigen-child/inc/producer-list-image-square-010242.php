@@ -300,13 +300,15 @@ add_action(
 				'1957',
 				'tolecarnes',
 				'latitudes',
+				'hidalgo-de-la-jara',
+				'montjam',
 			);
 			foreach ( $emo_banner_slugs as $emo_banner_slug ) {
 				$emo_banner_relative = '/assets/images/producer-banners/' . $emo_banner_slug . '.webp';
 				if ( ! is_readable( get_stylesheet_directory() . $emo_banner_relative ) ) {
 					continue;
 				}
-				$emo_banner_url = get_stylesheet_directory_uri() . $emo_banner_relative . '?v=20261020-2';
+				$emo_banner_url = get_stylesheet_directory_uri() . $emo_banner_relative . '?v=20261020-final';
 				printf(
 					'html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap li.wcfmmp-single-store:has(.store-data h2 a[href*="/tienda/%1$s"]) .store-info {background-image:url("%2$s") !important;}',
 					esc_attr( $emo_banner_slug ),
