@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 final class MDO_Connector_Tropitop {
     private const HOST = 'tropitop.com';
-    private const MAX_PAGES = 12;
+    private const MAX_PAGES = 24;
 
     public static function discover( array $supplier ): array {
         $source = self::canonical( (string) ( $supplier['source_url'] ?? '' ) );
@@ -88,7 +88,7 @@ final class MDO_Connector_Tropitop {
             }
         }
         $has_selector = (bool) $xp->query( '//*[contains(@class,"product-variants")]|//select[starts-with(@name,"group")]|//*[@data-product-attribute]' )->length;
-        if ( $has_selector && ( count( $sizes ) < 2 || self::missing_prices( $sizes ) ) ) {
+        if ( $has_selector && ( ! $sizes || self::missing_prices( $sizes ) ) ) {
             throw new RuntimeException( 'Tropitop: matriz de pesos/precios incompleta; no se importa como simple.' );
         }
         if ( self::missing_prices( $sizes ) ) {
@@ -111,8 +111,12 @@ final class MDO_Connector_Tropitop {
         $min = min( array_column( $variations, 'display_price' ) );
         // Write original neutral text; the source's descriptions and photography
         // must not be reproduced until usage rights have been confirmed.
-        $description = '<p>' . esc_html( $name ) . '. Presentación en caja, seleccionada por peso. Consulta la variedad y el origen indicados en el etiquetado del producto.</p>';
-        $short_description = 'Caja de fruta fresca. Elige el peso antes de comprar.';
+        $description = self::product_description( $xp );
+        if ( '' === trim( wp_strip_all_tags( $description ) ) ) {
+            throw new RuntimeException( 'Tropitop: descripción comercial de origen insuficiente.' );
+        }
+        $name = self::product_title( $name );
+        $short_description = self::product_short_description( $xp, $name );
         // The original editorial copy for this known SKU is factual and is not a
         // reproduction of the supplier's product text. Keep claims of organic
         // certification outside this copy pending current documentary QA.
@@ -143,6 +147,7 @@ final class MDO_Connector_Tropitop {
         $payload = array(
             'source_url' => $url,
             'source_product_id' => $id,
+            'source_category' => (string) ( explode( '/', trim( (string) wp_parse_url( $url, PHP_URL_PATH ), '/' ) )[1] ?? '' ),
             'title' => sanitize_text_field( $name ),
             'description' => $description,
             'short_description' => $short_description,
@@ -162,6 +167,55 @@ final class MDO_Connector_Tropitop {
         // Existing EMDO repository behavior: stable URL key, hash diffs and
         // review-only new products. Avoid introducing a second persistence path.
         return MDO_Connector_Huerta_Ana_Mary::upsert_product( $supplier_id, $product );
+    }
+
+    /** Product-specific copy only: strip outbound shop links and seller-first-person voice. */
+    private static function product_description( DOMXPath $xp ): string {
+        $nodes = $xp->query(
+            '//*[@id="description"]//*[contains(concat(" ", normalize-space(@class), " "), " product-description ")]'
+            . ' | //*[@id="description"]//*[contains(concat(" ", normalize-space(@class), " "), " rte-content ")]'
+            . ' | //*[@id="description"] | //*[@id="product-description-short"]'
+        );
+        $candidate = '';
+        foreach ( $nodes ?: array() as $node ) {
+            if ( ! $node instanceof DOMElement ) { continue; }
+            $plain = trim( (string) $node->textContent );
+            if ( mb_strlen( $plain ) < 65 ) { continue; }
+            $html = '';
+            foreach ( $node->childNodes as $child ) { $html .= $node->ownerDocument->saveHTML( $child ); }
+            if ( mb_strlen( wp_strip_all_tags( $html ) ) > mb_strlen( wp_strip_all_tags( $candidate ) ) ) {
+                $candidate = $html;
+            }
+        }
+        $candidate = preg_replace( '~<a\b[^>]*>(.*?)</a>~isu', '$1', $candidate );
+        $candidate = wp_kses( $candidate, array(
+            'p' => array(), 'h2' => array(), 'h3' => array(), 'h4' => array(),
+            'ul' => array(), 'ol' => array(), 'li' => array(),
+            'strong' => array(), 'b' => array(), 'em' => array(),
+            'br' => array(), 'span' => array(),
+        ) );
+        $candidate = preg_replace( '/\bEn Tropitop (?:cultivamos|seleccionamos|ofrecemos|preparamos)\b/iu', 'Tropitop ofrece', (string) $candidate );
+        $candidate = preg_replace( '/\b(?:nuestros|nuestras)\s+(?:frutas|verduras|productos)\b/iu', 'estos productos', (string) $candidate );
+        if ( class_exists( 'MDO_Woo_Importer' ) ) {
+            $candidate = MDO_Woo_Importer::remove_source_attribution( (string) $candidate );
+        }
+        return trim( (string) $candidate );
+    }
+
+    private static function product_title( string $name ): string {
+        $name = trim( (string) preg_replace( '/^(?:COMPRAR|Comprar)\s+/u', '', $name ) );
+        $name = preg_replace( '/\s+ONLINE(?:\s+DIRECTOS?\s+DEL\s+AGRICULTOR)?\s*$/iu', '', (string) $name );
+        return sanitize_text_field( trim( (string) $name ) );
+    }
+
+    private static function product_short_description( DOMXPath $xp, string $name ): string {
+        $short = self::text( $xp, '//*[@id="product-description-short"]' );
+        $short = trim( (string) preg_replace( '/\s+/u', ' ', $short ) );
+        if ( mb_strlen( $short ) > 45 && mb_strlen( $short ) <= 500 ) {
+            $short = preg_replace( '/\bEn Tropitop\b/iu', 'Tropitop', $short );
+            return sanitize_text_field( (string) $short );
+        }
+        return sanitize_text_field( $name . '. Selecciona el formato y el peso disponible.' );
     }
 
     private static function sizes( DOMXPath $xp, ?DOMNode $context = null ): array {
@@ -208,10 +262,17 @@ final class MDO_Connector_Tropitop {
     }
 
     private static function stock( DOMXPath $xp ): string {
-        $p = strtolower( self::text( $xp, '//*[@id="product-availability"] | //div[contains(@class,"product-availability")] | //div[contains(@class,"product-add-to-cart")]' ) );
-        if ( preg_match( '/no\s+disponible|agotad|sin\s+stock|out\s+of\s+stock/u', $p ) ) { return 'outofstock'; }
-        // Only verified, buyable checkout widgets signal available stock.
-        if ( $xp->query( '//button[@data-button-action="add-to-cart" and not(@disabled)]' )->length ) { return 'instock'; }
+        // The source can expose an enabled buy button at the same time as
+        // "no disponible temporalmente": the explicit stock warning wins.
+        $availability = mb_strtolower( self::text( $xp,
+            '//*[@id="product-availability"] | //*[contains(concat(" ",normalize-space(@class)," ")," product-availability ")]'
+        ), 'UTF-8' );
+        $button = mb_strtolower( self::text( $xp, '//button[@data-button-action="add-to-cart"]' ), 'UTF-8' );
+        if ( preg_match( '/no\s+disponible|agotad|sin\s+stock|out\s+of\s+stock|temporalmente\s+no\s+disponible/u',
+            $availability . ' ' . $button ) ) { return 'outofstock'; }
+        if ( $xp->query( '//button[@data-button-action="add-to-cart" and not(@disabled)]' )->length ) {
+            return 'instock';
+        }
         return 'unknown';
     }
 
