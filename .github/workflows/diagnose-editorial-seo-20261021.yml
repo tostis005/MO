@@ -51,3 +51,21 @@ jobs:
           trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $REMOTE" >/dev/null 2>&1 || true' EXIT
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE' --path='$PROD' --allow-root" | tee /tmp/probe.log
           grep -q '^EMDO_REPAIR_DIAG ' /tmp/probe.log
+      - name: Inspect live SEO head and heading snippets
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import urllib.request,re,html
+          pages=['https://www.elmercadodeorigen.com/cafe-arabica-robusta-diferencias-cual-elegir/',
+                 'https://www.elmercadodeorigen.com/en/arabica-vs-robusta-coffee-differences-which-to-buy/']
+          for url in pages:
+              try:
+                  request=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 Editorial quality check'})
+                  with urllib.request.urlopen(request,timeout=45) as res: page=res.read(3000000).decode('utf-8','replace')
+                  h=re.findall(r'<h1\\b[^>]*>[\\s\\S]*?</h1>',page,re.I)
+                  print('HEADINGS_URL',url,'H1_COUNT',len(h))
+                  for value in h:print('H1_FRAGMENT',re.sub(r'\\s+',' ',value)[:700])
+                  for value in re.findall(r'<meta[^>]+(?:og:image|twitter:image)[^>]*>',page,re.I)[:8]:print('IMAGE_META',value[:500])
+                  for value in re.findall(r'<link[^>]*hreflang[^>]*>',page,re.I)[:5]:print('HREFLANG',value[:550])
+              except Exception as e:print('SEO_FETCH_ERROR',url,repr(e))
+          PY
