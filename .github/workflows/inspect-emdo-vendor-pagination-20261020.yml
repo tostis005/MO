@@ -1,0 +1,50 @@
+name: Inspect EMDO vendor pagination and cache before deployment
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/inspect-emdo-vendor-pagination-20261020.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Check real HTML pagination and cache headers without changes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          chmod 600 ~/.ssh/known_hosts
+          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ConnectTimeout=15 -p "$PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          ROOT=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+          echo '=== LOCAL PRODUCTION CACHE FILE ==='
+          sha256sum "$ROOT/wp-content/advanced-cache.php" || true
+          echo '=== EXISTING STORE HTML AND PAGINATION ==='
+          for entry in es-hidalgo:/tienda/hidalgo-de-la-jara/ es-hidalgo-2:/tienda/hidalgo-de-la-jara/page/2/ en-hidalgo-2:/en/store/hidalgo-de-la-jara/page/2/ es-montjam:/tienda/montjam/; do
+            name="${entry%%:*}";path="${entry#*:}"
+            echo "TEST=$name PATH=$path"
+            curl -sS -L -o "/tmp/emdo-paginate-$name.html" -D "/tmp/emdo-paginate-$name.headers" --max-time 25 -A 'MDO-PaginationAudit/1.0' -w 'HTTP=%{http_code} TTFB=%{time_starttransfer} TOTAL=%{time_total} FINAL=%{url_effective}\n' "https://www.elmercadodeorigen.com$path" || true
+            grep -iE '^(x-el-mercado-[^:]+|cache-control):' "/tmp/emdo-paginate-$name.headers" | head -n 10 || true
+            python3 - "$name" <<'PY'
+          import sys,re,html,os
+          n=sys.argv[1];f='/tmp/emdo-paginate-'+n+'.html'
+          if not os.path.exists(f):raise SystemExit()
+          s=open(f,errors='replace').read()
+          print('BYTES',len(s),'STORE_ID',bool(re.search(r'id=["\\x27]wcfmmp-store',s,re.I)),'STORE_TEXT',s.lower().count('wcfmmp-store'),'GRID',bool(re.search(r'<ul[^>]+class=["\\x27][^"\\x27]*\\bproducts\\b',s,re.I)),'ITEMS',len(re.findall(r'<li[^>]*class=["\\x27][^"\\x27]*\\bproduct\\b',s,re.I)),'CONTINUOUS', 'emo-continuous-catalog' in s)
+          anchors=re.findall(r'<a\\b[^>]*\\bhref=["\\x27]([^"\\x27]+)["\\x27][^>]*>',s,re.I)
+          page=[html.unescape(a) for a in anchors if ('/page/' in a or 'paged=' in a or 'product-page=' in a or 'page-numbers' in a)]
+          print('PAGING_LINKS',page[:20])
+          PY
+          done
+          REMOTE
