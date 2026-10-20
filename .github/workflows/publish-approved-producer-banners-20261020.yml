@@ -3,7 +3,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'approved-banners/banners_productores_aprobados_20261020.zip'
+      - 'banners_productores_aprobados_20261020.zip'
   workflow_dispatch:
 
 permissions:
@@ -32,7 +32,7 @@ jobs:
           : "${STAGING_USER:?SSH user absent}"
           : "${SSHPASS:?SSH password absent}"
           php -l elmercadodeorigen-child/inc/producer-list-image-square-010242.php
-          ZIP=approved-banners/banners_productores_aprobados_20261020.zip
+          ZIP=banners_productores_aprobados_20261020.zip
           test -s "$ZIP"
           unzip -t "$ZIP" >/dev/null
           mkdir -p /tmp/emdo-approved-banners
