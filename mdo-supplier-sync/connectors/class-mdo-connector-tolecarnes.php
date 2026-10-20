@@ -293,7 +293,8 @@ final class MDO_Connector_Tolecarnes {
 			$path = (string) wp_parse_url( $url, PHP_URL_PATH );
 			// Product images must come from this producer, never from related products,
 			// trackers or other domains. WP-generated square thumbnails are not originals.
-			if ( $host !== $base_host || ! preg_match( '~\.(?:jpe?g|png|webp)$~i', $path ) ) { return; }
+			if ( in_array( $base_host, array( 'latitudes.es', 'www.latitudes.es' ), true ) &&
+				( $host !== $base_host || ! preg_match( '~\.(?:jpe?g|png|webp)$~i', $path ) ) ) { return; }
 			if ( 'latitudes.es' === $host || 'www.latitudes.es' === $host ) {
 				if ( ! str_contains( $path, '/wp-content/uploads/' ) ) { return; }
 				$path = preg_replace( '/-[0-9]{2,4}x[0-9]{2,4}(?=\.(?:jpe?g|png|webp)$)/i', '', $path );
