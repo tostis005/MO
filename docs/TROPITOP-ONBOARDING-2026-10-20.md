@@ -24,7 +24,31 @@
 
 Según la política de Tropitop:
 - **Destinos**: España peninsular, Portugal, Francia, Países Bajos, Luxemburgo, Polonia, Dinamarca, Suecia, Austria, Rumanía y Finlandia. No Canarias, Ceuta, Melilla ni Baleares (la cobertura declarada es sólo peninsular).
-- **Precio del envío**: varía con destino y cantidad; **no hay una tabla pública exacta**. NO poner tarifa fija, envío gratis ni inventar importes.
+- **Precio del envío**: varía con destino, cantidad y peso. Aunque no publica una tabla oficial desglosada, el **carrito anónimo de la tienda /es/ devuelve importes numéricos**. Estos importes aún no están confirmados para un código postal específico; NO se deben trasladar automáticamente a otros destinos.
+
+### Mediciones directas del carrito Tropitop (20/10/2026, sin dirección)
+
+Todas las cotizaciones siguientes se realizaron añadiendo **aguacate piel lisa BIO** directamente al carrito español de Tropitop, usando una sesión nueva por caso, sin pedido ni pago:
+
+| Presentación y cantidad | Peso conjunto | Importe transporte | Subtotal de productos | Total |
+|---|---:|---:|---:|---:|
+| 3 kg × 1 | 3 kg | **2,95 €** | 14,90 € | 17,85 € |
+| 4 kg × 1 | 4 kg | **2,95 €** | 17,90 € | 20,85 € |
+| 3 kg × 2 | 6 kg | **5,95 €** | 29,80 € | 35,75 € |
+| 4 kg × 2 | 8 kg | **5,95 €** | 35,80 € | 41,75 € |
+| 3 kg × 3 | 9 kg | **5,95 €** | 44,70 € | 50,65 € |
+| 9 kg × 1 | 9 kg | **5,95 €** | 32,90 € | 38,85 € |
+| 4 kg × 3 | 12 kg | **7,95 €** | 53,70 € | 61,65 € |
+| 9 kg × 2 | 18 kg | **10,95 €** | 65,80 € | 76,75 € |
+| 4 kg × 5 | 20 kg | **10,95 €** | 89,50 € | 100,45 € |
+| 4 kg × 6 | 24 kg | **12,95 €** | 107,40 € | 120,35 € |
+| 9 kg × 3 | 27 kg | **15,95 €** | 98,70 € | 114,65 € |
+| 9 kg × 4 | 36 kg | **20,95 €** | 131,60 € | 152,55 € |
+
+Evidencia de ejecuciones y logs de prueba: [1](https://github.com/tostis005/MO/actions/runs/39416987424), [2](https://github.com/tostis005/MO/actions/runs/39417128578), [3](https://github.com/tostis005/MO/actions/runs/39417295821). La respuesta AJAX `cart.subtotals.shipping.amount` devuelve el porte observado, aunque el HTML de la página muestre `Transporte: Por determinar`.
+
+**Patrón inferido**, pendiente de verificar en los límites de cada escalón y en un checkout con código postal: 0–5 kg ~2,95 €; 5–10 kg ~5,95 €; 10–15 kg ~7,95 €; 15–20 kg ~10,95 €; 20–25 kg ~12,95 €; 25–30 kg ~15,95 €; 35–40 kg ~20,95 €. Los importes de rangos sin muestra completa no son una tarifa oficial.
+
 - **Preparación/salida**: cosecha y expedición martes/miércoles. Pedidos hasta miércoles 13 h se preparan en esa semana; los posteriores pasan a la siguiente. Tránsito habitual anunciado: 24–48 h **desde el envío**, sujeto al destino.
 - La clase `MDO_Tropitop_Shipping` impide calcular tarifas y tramitar checkout del proveedor si `mdo_tropitop_shipping_rates_verified` no está activado tras validar la tabla completa en WCFM.
 - La validación de zonas actúa sobre **paquetes del vendedor**, no sobre otros proveedores del carrito.
