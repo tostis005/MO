@@ -10,7 +10,10 @@ home=s.get("https://tropitop.com/es/",timeout=20)
 cats={}
 for a in BeautifulSoup(home.content,"html.parser").select('a[href]'):
     u=urljoin(home.url,a.get("href",""))
-    m=re.search(r'^/es/(\\d+-[a-z0-9-]+)/?for p in range(1,9):
+    m=re.search(r'^/es/([0-9]+-[a-z0-9-]+)/?$',urlparse(u).path)
+    if m: cats[m.group(1)]=cats.get(m.group(1),0)+1
+print("TROPITOP_HOME_CATEGORY_LINKS="+json.dumps(cats,ensure_ascii=False,separators=(",",":")))
+for p in range(1,9):
     rr=s.get(f"https://tropitop.com/es/84-disponible?page={p}",timeout=20)
     if rr.status_code!=200: break
     soup=BeautifulSoup(rr.text,"html.parser")
@@ -52,6 +55,17 @@ for i,entry in enumerate(selection):
         hjson=soup.select_one('script[type="application/ld+json"]')
         scripts=len(soup.select('script[type="application/ld+json"]'))
         micro=soup.select('[itemprop="weight"],[itemprop="availability"],[itemprop="price"]')
+        phrase=None
+        if entry['category']=='frutas' and 'kiwi-amarillo' in u:
+            for text in soup.find_all(string=re.compile("kiwi amarillo es",re.I)):
+                el=text.parent
+                ancestry=[]
+                for par in list(el.parents)[:6]:
+                    ancestry.append({"tag":par.name,"id":par.get('id'),"class":par.get('class'),
+                                      "chars":len(par.get_text(' ',strip=True))})
+                phrase=ancestry
+                break
+            print("TROPITOP_DESCRIPTION_DOM="+json.dumps(phrase,ensure_ascii=False,separators=(",",":")))
         details={
           "category":entry['category'],"url":u,"status":r.status_code,"title":h.get_text(' ',strip=True)[:80] if h else '',
           "selector":vtext, "groups":groups,
