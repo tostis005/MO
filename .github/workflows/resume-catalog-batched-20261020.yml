@@ -30,6 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           php -l .github/scripts/resume-catalog-batched-20261020.php
+          php -l .github/scripts/resume-last-source-products-20261020.php
           php -l mdo-supplier-sync/connectors/class-mdo-connector-tolecarnes.php
           : "${HOST:?Missing SSH host}" "${USER:?Missing SSH user}" "${SSHPASS:?Missing SSH credentials}"
 
@@ -86,6 +87,7 @@ jobs:
           WORK="/tmp/emdo-resume-gallery-${GITHUB_RUN_ID}"
           sshpass -e ssh "${SSH[@]}" "$SERVER" "mkdir -p '$WORK'"
           sshpass -e scp "${SCP[@]}" .github/scripts/resume-catalog-batched-20261020.php "$SERVER:$WORK/repair.php"
+          sshpass -e scp "${SCP[@]}" .github/scripts/resume-last-source-products-20261020.php "$SERVER:$WORK/source.php"
           : > /tmp/emdo-catalog-repair-batches.log
 
           run_batch() {
@@ -124,6 +126,52 @@ jobs:
               print('PREFLIGHT_PASS',d['task'],d['checked'],len(d['errors']))
           PY
 
+          # Before changing catalog entries, check the latest CREATED product,
+          # never scrape/recreate existing supplier rows, and wait for the
+          # exact importer version that supports direct publication and timeout
+          # recovery. Source import is limited to 3 pending SKUs per batch.
+          EXPECTED_IMPORTER="$(sha256sum mdo-supplier-sync/includes/class-mdo-woo-importer.php | awk '{print $1}')"
+          sshpass -e ssh "${SSH[@]}" "$SERVER" "sh -s -- '$PROD' '$EXPECTED_IMPORTER'" <<'REMOTE'
+          set -eu
+          expected="$2"; file="$1/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-woo-importer.php"
+          for i in $(seq 1 120); do
+            sha="$(sha256sum "$file" 2>/dev/null | awk '{print $1}' || true)"
+            if [ "$sha" = "$expected" ]; then echo 'SOURCE_IMPORTER_VERSION_OK'; exit 0; fi
+            sleep 5
+          done
+          echo 'New importer has not yet deployed; stop without importing.' >&2
+          exit 31
+          REMOTE
+          run_source() {
+            mode="$1"
+            sshpass -e ssh "${SSH[@]}" "$SERVER" "sh -s -- '$PROD' '$WORK' '$mode'" <<'REMOTE'
+          set -eu
+          wp_path="$1"; work="$2"; mode="$3"
+          php="$(command -v php || true)"
+          [ -n "$php" ] || php="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp="$(command -v wp)"
+          timeout --kill-after=20s 650s env MDO_RESUME_SOURCE_MODE="$mode" MDO_RESUME_SOURCE_LIMIT=3 \
+            "$php" -d memory_limit=1536M -d max_execution_time=0 "$wp" eval-file "$work/source.php" --path="$wp_path" --allow-root
+          REMOTE
+          }
+          run_source audit | tee /tmp/emdo-last-product-inspection.log
+          : > /tmp/emdo-incremental-source.log
+          for (( IMPORT_BATCH=0; IMPORT_BATCH<30; IMPORT_BATCH++ )); do
+            if ! run_source apply | tee -a /tmp/emdo-incremental-source.log; then
+              echo "Source product batch interrupted. The next execution will resume from pending records." >&2
+              exit 32
+            fi
+            MORE="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+          r=[json.loads(x.split('=',1)[1]) for x in Path('/tmp/emdo-incremental-source.log').read_text().splitlines() if x.startswith('EMDO_LAST_SOURCE_RESUME=')]
+          assert r
+          print('yes' if r[-1]['imported'] else 'no')
+          PY
+            )"
+            [ "$MORE" = 'yes' ] || break
+          done
+
           # Copies: batches of 100, including all published and draft products.
           for OFFSET in 0 100 200 300 400 500 600 700 800; do
             if ! run_batch copy apply "$OFFSET" 100 | tee -a /tmp/emdo-catalog-repair-batches.log; then
@@ -158,7 +206,13 @@ jobs:
           total=int(Path('/tmp/emdo-supplier-total').read_text())
           assert gallery[-1].get('complete') is True, 'Gallery cursor did not reach the end'
           assert not any(r['errors'] for r in gallery), 'Some product images need retry'
+          source_rows=[json.loads(line.split('=',1)[1]) for line in Path('/tmp/emdo-incremental-source.log').read_text().splitlines() if line.startswith('EMDO_LAST_SOURCE_RESUME=')]
+          latest_snapshot=[json.loads(line.split('=',1)[1]) for line in Path('/tmp/emdo-last-product-inspection.log').read_text().splitlines() if line.startswith('EMDO_LAST_SOURCE_RESUME=')]
+          assert latest_snapshot, 'Last-created product inspection was not recorded'
           summary={
+              'source_latest_product_inspection':latest_snapshot[-1]['suppliers'],
+              'source_imported':sum(len(row['imported']) for row in source_rows),
+              'source_import_errors':[err for row in source_rows for err in row['errors']],
               'completed_at':gallery[-1]['at'],
               'copy_products_checked':sum(r['checked'] for r in copy),
               'copy_products_updated':sum(r['changed'] for r in copy),
