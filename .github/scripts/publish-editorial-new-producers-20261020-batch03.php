@@ -73,26 +73,24 @@ function emdo_np_featured_for(WP_Term $term): int {
 }
 function emdo_np_editorial_link(string $html, string $kind, string $url, bool $english): string {
     $link=esc_url($url);
-    // Optional commercial reference only when the exact shop category contains visible, purchasable, in-stock products.
-    // Contextual placement varies by manuscript; no repeated sales template appended.
-    $replacements=[
-        'aguacates'=>[
-            'La disponibilidad, el calibre y la variedad se consultan siempre en la ficha del vendedor.' =>
-            'La disponibilidad, el calibre y la variedad se consultan en las <a href="'.$link.'">fichas de los aguacates disponibles</a>, no en una promesa genérica.',
-            'Always consult the current listing for the variety, pack size and availability.' =>
-            'Always consult the <a href="'.$link.'">current avocado selection</a> for the variety, pack size and availability.',
+    $phrases=[
+        'mangos'=>[
+            'Después, comprueba <strong>variedad exacta, origen, peso y estado previsto a la entrega</strong>.'=>
+            'Después, comprueba <a href="'.$link.'">qué mangos están disponibles</a> y revisa su <strong>variedad exacta, origen, peso y estado previsto a la entrega</strong>.',
+            'Then confirm <strong>the actual variety, origin, weight and anticipated condition on delivery</strong>.'=>
+            'Then check <a href="'.$link.'">the mango selection</a> for the <strong>actual variety, origin, weight and anticipated condition on delivery</strong>.'
         ],
-        'citricos'=>[
-            'Antes de añadir una caja al carrito, comprueba qué naranjas están disponibles ahora' =>
-            'Antes de añadir una caja al carrito, comprueba <a href="'.$link.'">qué naranjas están disponibles ahora</a>',
-            'Before purchasing, check the currently available variety, the weight' =>
-            'Before purchasing, check <a href="'.$link.'">the currently available varieties</a>, the weight',
-        ],
+        'frutas'=>[
+            'Si buscas una recomendación práctica, empieza con un pedido de tamaño moderado'=>
+            'Si buscas una recomendación práctica, empieza con un <a href="'.$link.'">pedido de fruta fresca</a> de tamaño moderado',
+            'A sensible first order is a moderate quantity of varieties you already enjoy.'=>
+            'A sensible first order is a moderate quantity of varieties you already enjoy from the <a href="'.$link.'">fresh fruit selection</a>.'
+        ]
     ];
-    if(!isset($replacements[$kind]))return $html;
-    $keys=array_keys($replacements[$kind]);
+    if(!isset($phrases[$kind])) return $html;
+    $keys=array_keys($phrases[$kind]);
     $key=$keys[$english?1:0]??'';
-    return $key!=='' ? str_replace($key, $replacements[$kind][$key], $html) : $html;
+    return $key!==''?str_replace($key,$phrases[$kind][$key],$html):$html;
 }
 
 $articles=emdo_np_posts();
