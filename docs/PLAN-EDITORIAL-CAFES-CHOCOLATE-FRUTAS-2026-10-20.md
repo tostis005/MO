@@ -90,3 +90,12 @@ Estado: **24 temas aprobados; 24 publicados y verificados en español e inglés;
 ## Comprobaciones previas
 - Inventario de referencia: `.deploy-status/blog-related-products-inventory-20261019.json` (595 artículos), que debe contrastarse con producción en cada tanda.
 - Las herramientas externas de volumen SEO no facilitaron cifras en esta sesión: NO asignar volúmenes imaginados ni afirmar que las prioridades están medidas.
+
+## Auditoría y reparación posterior — 21/10/2026
+
+- **Intervención completada en WordPress** sin crear nuevos artículos: 24 registros actualizados, 48 rutas cubiertas por la capa SEO.
+- **15 imágenes genéricas sustituidas** por imágenes existentes de productores y productos pertinentes (9 café, 3 mango, 3 cítricos); 9 fotografías previas conservadas.
+- **Enlaces de compra verificados**: categoría con seis cafés disponibles de Ikore Kofi y productos mixtos reales con mango/naranjas donde corresponda. No se enlazan productos inexistentes o agotados.
+- **Correcciones SEO:** `hreflang` ES/EN/x-default, un único H1 visible y `og:image` más metadescripciones bilingües en las 48 rutas mediante plugin MU limitado a esta cohorte.
+- **QA en producción:** cuatro pares ES/EN muestreados han superado comprobación de respuesta 200, H1, `hreflang` recíproco, `og:image`, descripción. Portada, blog y tienda accesibles: https://github.com/tostis005/MO/actions/runs/39508487641
+- **Registro de auditoría y limitaciones:** [docs/AUDITORIA-ARTICULOS-24-20261020.md](AUDITORIA-ARTICULOS-24-20261020.md). La comprobación pública reciente cubrió una muestra de 8 páginas, no se afirma nueva comprobación HTTP individual de las 48. La auditoría global de otros artículos ingleses queda fuera de este plan.
