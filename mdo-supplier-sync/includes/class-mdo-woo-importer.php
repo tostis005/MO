@@ -219,6 +219,13 @@ final class MDO_Woo_Importer {
 		}
 
 		self::sync_images( $product, $payload );
+		// A product without a real, imported cover cannot be offered for sale.
+		// Keep it recoverable as a draft for the next incremental sync.
+		if ( 'tropitop' === (string) $supplier['code'] && ! $product->get_image_id() ) {
+			$product->set_status( 'draft' );
+			$product->set_catalog_visibility( 'hidden' );
+			$product->save();
+		}
 		if ( $is_variable ) {
 			self::sync_variations( $product, $variations );
 			WC_Product_Variable::sync( $product_id );
