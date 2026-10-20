@@ -277,6 +277,27 @@ if ( 'activate' === $phase ) {
 $limit = max( 1, min( 5, (int) ( getenv( 'TROPITOP_BULK_BATCH' ) ?: 2 ) ) );
 $start = (int) $state['cursor'];
 $retrying = false;
+// One bounded recovery cycle specifically for price-matrix errors now fixed
+// by parsing genuine producer variant boxes and named unit presentations.
+// Never touch verified imported products or reset the 187-item catalog.
+// Missing packed shipping weights remain in drafts; blind retries cannot
+// establish a verified WCFM delivery charge.
+if ( $start >= $total && empty( $state['variant_box_retry_20261021'] ) ) {
+    $unlocked = 0;
+    foreach ( (array) ( $state['failed'] ?? array() ) as $pid => $failure ) {
+        $reason = (string) ( $failure['reason'] ?? '' );
+        if ( str_contains( $reason, 'matriz de pesos/precios incompleta' ) ||
+            str_contains( $reason, 'precio de una presentación no verificado' ) ||
+            str_contains( $reason, 'solo se permite importar productos con precio y peso verificables' ) ) {
+            $state['retry_attempts'][$pid] = 0;
+            ++$unlocked;
+        }
+    }
+    $state['variant_box_retry_20261021'] = 1;
+    if ( $unlocked ) { unset( $state['finished_at'] ); }
+    update_option( $key, $state, false );
+    echo 'TROPITOP_VARIANT_RETRY_UNLOCKED=' . $unlocked . "\n";
+}
 // A corrected, explicit producer category mapping merits ONE additional
 // bounded recovery cycle for affected failures after the main pass completes.
 // Never reset the catalog cursor, the approved products, or unrelated
