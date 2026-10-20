@@ -70,7 +70,7 @@ if ( ! in_array( $mode, ['audit', 'apply'], true ) ) {
 $state = [];
 foreach ( $ids as $slug => $id ) {
     $user = get_user_by( 'id', $id );
-    if ( ! $user || $user->user_nicename !== $slug ) {
+    if ( ! $user || $user->user_nicename !== (string) $slug ) {
         throw new RuntimeException( 'Vendor slug/ID mismatch: ' . $slug );
     }
     $settings = get_user_meta( $id, 'wcfmmp_profile_settings', true );
