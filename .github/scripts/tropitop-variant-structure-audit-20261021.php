@@ -17,7 +17,7 @@ $cases=array(
 foreach($cases as $id=>$url){
  $out=array('sku'=>$id);
  try{
-  $r=wp_remote_get($url,array('timeout'=>15,'redirection'=>2,'limit_response_size'=>450000,'headers'=>array('Accept-Language'=>'es-ES,es;q=0.9','Accept'=>'text/html')));
+  $r=wp_remote_get($url,array('timeout'=>15,'redirection'=>2,'limit_response_size'=>2500000,'headers'=>array('Accept-Language'=>'es-ES,es;q=0.9','Accept'=>'text/html')));
   if(is_wp_error($r))throw new RuntimeException($r->get_error_message());
   $html=wp_remote_retrieve_body($r);
   $out['status']=(int)wp_remote_retrieve_response_code($r);
@@ -55,6 +55,20 @@ foreach($cases as $id=>$url){
     if(count($out['description_weight_text'])>=8)break;
     $txt=trim(preg_replace('/\s+/u',' ',(string)$n->textContent));
     if(preg_match('/\b(?:kg|kilos|gramos|g\b|ml\b|unidades|botes|caja|l(?:itro)?s?)\b/iu',$txt))$out['description_weight_text'][]=mb_substr($txt,0,240);
+  }
+
+  $out['product_embedded']=array();
+  foreach($xp->query('//script') as $jsnode){
+   $js=(string)$jsnode->textContent;
+   if(!str_contains($js,'var prestashop ='))continue;
+   $keys=array('"weight":','"weight_unit":','"attributes":','"combinations":','"product":','"price":','"product_weight":','"quantity":','"available_for_order":','"groups":','"id_product_attribute":');
+   foreach($keys as $key){
+     $pos=strpos($js,$key);
+     if($pos!==false){$out['product_embedded'][$key]=substr($js,max(0,$pos-60),500);}
+   }
+   $pos=strpos($js,'"product":');
+   if($pos!==false)$out['product_json_around']=substr($js,max(0,$pos-60),1200);
+   break;
   }
   $out['script_indicators']=array();
   foreach($xp->query('//script') as $n){
