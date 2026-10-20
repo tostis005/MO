@@ -1,9 +1,5 @@
 name: Publicar rediseño del directorio de productores
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/release-producer-directory-20261020.yml'
   workflow_dispatch:
 
 permissions:
@@ -44,11 +40,11 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir -p /tmp/emdo-final-hams
-          curl --fail --silent --show-error --location --max-time 90 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-bdd8-820e-89dd-80c3cc3d46ad/raw?se=2026-10-20T20%3A02%3A13Z&sp=r&sv=2026-02-06&sr=b&scid=ad9b5530-a7fd-5505-b3f0-0ef614c0edd9&skoid=bdd24bd8-9af5-4138-bfb1-19fba97a8611&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-20T12%3A10%3A59Z&ske=2026-10-21T12%3A10%3A59Z&sks=b&skv=2026-02-06&sig=YrC96CmzogaQTzds7gTEvUm2l/jrHTaqTQMKsp%2BZBKg%3D' -o /tmp/emdo-final-hams/hidalgo-de-la-jara.webp
+          curl --fail --silent --show-error --location --max-time 90 "https://www.elmercadodeorigen.com/wp-content/uploads/2026/10/emdo-producer-hidalgo-de-la-jara-banner-20261020.webp" -o /tmp/emdo-final-hams/hidalgo-de-la-jara.webp
           echo '7c97e33d81cf6f659af7fbf2c90af3126f71394f177e1fab634df72ee4ea083e  /tmp/emdo-final-hams/hidalgo-de-la-jara.webp' | sha256sum --check --status
           test "$(wc -c < /tmp/emdo-final-hams/hidalgo-de-la-jara.webp)" -eq 329826
           echo 'FINAL_HAM_VERIFIED hidalgo-de-la-jara'
-          curl --fail --silent --show-error --location --max-time 90 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-44cc-820e-a311-24e76a432e16/raw?se=2026-10-20T20%3A02%3A13Z&sp=r&sv=2026-02-06&sr=b&scid=bca6a434-1306-52fd-8fbf-4656f60700e9&skoid=bdd24bd8-9af5-4138-bfb1-19fba97a8611&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-20T12%3A10%3A59Z&ske=2026-10-21T12%3A10%3A59Z&sks=b&skv=2026-02-06&sig=fjYPL71BLgFey9qCmyIAY7UPkbeuXL8j5uj6EPMrY9I%3D' -o /tmp/emdo-final-hams/montjam.webp
+          curl --fail --silent --show-error --location --max-time 90 "https://www.elmercadodeorigen.com/wp-content/uploads/2026/10/emdo-producer-montjam-banner-20261020.webp" -o /tmp/emdo-final-hams/montjam.webp
           echo '01cb6148648dbeda0fba4590714413e4a76d6644ca18f9547e7c9300771cd1fc  /tmp/emdo-final-hams/montjam.webp' | sha256sum --check --status
           test "$(wc -c < /tmp/emdo-final-hams/montjam.webp)" -eq 267740
           echo 'FINAL_HAM_VERIFIED montjam'
