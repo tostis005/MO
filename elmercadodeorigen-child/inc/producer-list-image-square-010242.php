@@ -36,7 +36,7 @@ add_action(
 				padding: clamp(2rem, 5vw, 4rem) !important;
 				border: 0 !important;
 				border-radius: var(--emo-radius-lg, 20px) !important;
-				background: radial-gradient(circle at 90% 8%, rgba(215, 168, 79, .2), transparent 28%), var(--emo-forest-950, #173f32) !important;
+				background: #173f32 !important;
 				box-shadow: var(--emo-shadow-sm, 0 5px 20px rgba(24,47,31,.09)) !important;
 				color: rgba(255,255,255,.76) !important;
 			}
