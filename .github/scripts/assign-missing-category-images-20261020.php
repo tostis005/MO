@@ -19,6 +19,11 @@ $defs = array(
     'name'=>'Café de especialidad',
     'alt'=>'Taza de espresso y granos de café tostado sobre pizarra negra'
   ),
+  'frutas' => array(
+    'filename'=>'categoria-frutas-20261020.webp',
+    'name'=>'Frutas',
+    'alt'=>'Frutas variadas con mango, naranja, aguacate, limón, uvas y fresas sobre pizarra negra'
+  ),
   'huevos' => array(
     'filename'=>'categoria-huevos-20261020.webp',
     'name'=>'Huevos',
