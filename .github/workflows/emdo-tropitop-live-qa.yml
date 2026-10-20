@@ -1,0 +1,20 @@
+name: EMDO Tropitop live HTML QA (read only)
+on:
+  pull_request:
+    paths:
+      - 'tests/tropitop-live-qa.php'
+      - '.github/workflows/emdo-tropitop-live-qa.yml'
+      - 'mdo-supplier-sync/connectors/class-mdo-connector-tropitop.php'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP DOM extension
+        run: sudo apt-get update -qq && sudo apt-get install -y php-xml >/dev/null
+      - name: Run read-only live price-variant parser test
+        run: php tests/tropitop-live-qa.php
