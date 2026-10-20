@@ -74,3 +74,15 @@ Evidencia de ejecuciones y logs de prueba: [1](https://github.com/tostis005/MO/a
 - Las rutas de otros proveedores y sus gastos de envío no cambian.
 - No se copian imágenes, logotipos ni textos del origen sin licencia.
 - Sin relación de proveedor/operativa de dropshipping confirmada, no activar venta.
+
+
+## Auditoría adicional realizada el 20/10/2026
+
+- **Conector real validado**, no sólo fixture: `https://tropitop.com/es/aguacates/33-comprar-aguacate-bacon.html` devolvió HTTP 200. Detectadas tres presentaciones reales: **3 kg 14,90 €, 4 kg 17,90 €, 9 kg 32,90 €**, las tres con stock disponible en la captura. [Prueba automatizada de lectura real](https://github.com/tostis005/MO/actions/runs/39421021419).
+- **Contenido**: la ficha del aguacate recibe una descripción editorial propia con información contrastada sobre variedad Bacon, zona de cultivo Artana, pesos y maduración. Evitamos adjudicar certificaciones no comprobadas documentalmente.
+- **Categoría**: el importador exige `product_cat/aguacates` para el ID origen 33. Sin esa categoría la importación aborta: no usar categorías incorrectas o genéricas.
+- **WordPress producción (auditoría sólo lectura)**: EMDO **1.0.66**; **no existe** proveedor EMDO `tropitop`, usuario vendedor `tropitop` ni producto SKU `TROPITOP-33`; `mdo_tropitop_shipping_rates_verified=false`. No se detectó categoría existente `Aguacates` o `Frutas` en la búsqueda de taxonomías. [Auditoría](https://github.com/tostis005/MO/actions/runs/39421568291).
+- **Comercial**: no se ha encontrado correspondencia de Tropitop en el buzón Gmail conectado, por lo que **no se ha podido acreditar** un acuerdo para recibir pedidos, política de reenvío directo, margen/commission o autorización de fotos y logotipo.
+- **Matriz de transporte**: cotizaciones españolas anónimas reproducidas hasta 36 kg, pendientes de confirmar contra un código postal y en los destinos internacionales; no marcar `mdo_tropitop_shipping_rates_verified=true` basándose en estas muestras.
+- **Estado**: conector y editorial preparados en PR. **Sin despliegue, sin vendedor y sin productos publicados**, hasta confirmar acuerdos, tarifa final y medios gráficos.
+
