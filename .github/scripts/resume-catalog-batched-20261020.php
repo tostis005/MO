@@ -120,7 +120,6 @@ if ( 'copy' === $task ) {
 		require_once ABSPATH . 'wp-admin/includes/image.php';
 	}
 	foreach ( $rows as $row ) {
-		$errors_at_start = count( $report['errors'] );
 		$id=(int)$row['wc_product_id'];
 		$url=(string)$row['source_url'];
 		$product=wc_get_product($id);
@@ -220,7 +219,7 @@ if ( 'copy' === $task ) {
 			$report['added']+=$added;
 			// Advance only when every asset in this source product succeeded.
 			// Any failed image holds the cursor at the last saved product.
-			if ( $apply && count( $report['errors'] ) === $errors_at_start ) {
+			if ( $apply && empty( $report['errors'] ) ) {
 				update_option( $cursor_key, (int) $row['id'], false );
 				$report['cursor_after'] = (int) $row['id'];
 			}
