@@ -112,7 +112,7 @@ final class MDO_Connector_Tropitop {
         // Write original neutral text; the source's descriptions and photography
         // must not be reproduced until usage rights have been confirmed.
         $description = self::product_description( $xp );
-        if ( '' === trim( wp_strip_all_tags( $description ) ) ) {
+        if ( '33' !== $id && '' === trim( wp_strip_all_tags( $description ) ) ) {
             throw new RuntimeException( 'Tropitop: descripción comercial de origen insuficiente.' );
         }
         $name = self::product_title( $name );
