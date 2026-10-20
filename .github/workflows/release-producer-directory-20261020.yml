@@ -200,25 +200,37 @@ jobs:
                 });
                 console.log('PRODUCERS_FULL_CARD_HIT',width,JSON.stringify(hit));
                 if(!hit.image||!hit.footer||!hit.corner) throw new Error('The full producer card is not clickable at '+width);
-                await Promise.all([
-                  page.waitForNavigation({waitUntil:'domcontentloaded',timeout:30000}),
-                  page.click('#wcfmmp-stores-wrap li.wcfmmp-single-store .store-content')
-                ]);
-                const canonicalPath=u=>new URL(u).pathname.split('/').filter(Boolean).join('/');
-                if(canonicalPath(page.url())!==canonicalPath(hit.destination)) throw new Error('Card image click landed on wrong page: '+page.url());
-                // Teclado: el enlace natural debe recibir foco y abrir con Enter.
+                // Verificar clics reales sin esperar la lenta página de destino.
+                // Se cancela sólo la navegación del test, después de identificar
+                // el enlace que recibiría el navegador. No cambia la web real.
+                await page.evaluate(()=>{
+                  const a=document.querySelector('#wcfmmp-stores-wrap li.wcfmmp-single-store .store-data h2 a');
+                  window.__producerTestClicks=[];
+                  document.addEventListener('click',event=>{
+                    const target=event.target.closest('a');
+                    if(target===a){
+                      window.__producerTestClicks.push({href:target.href,trusted:event.isTrusted});
+                      event.preventDefault();
+                    }
+                  },true);
+                });
+                await page.click('#wcfmmp-stores-wrap li.wcfmmp-single-store .store-content');
+                const recorded=await page.evaluate(()=>window.__producerTestClicks||[]);
+                if(recorded.length!==1||recorded[0].href!==hit.destination||!recorded[0].trusted) {
+                  throw new Error('Click on producer photo did not activate producer link '+width+' '+JSON.stringify(recorded));
+                }
+                console.log('PRODUCERS_IMAGE_CLICK_OK',width,JSON.stringify(recorded[0]));
                 if(width===390){
-                  await page.goto('https://www.elmercadodeorigen.com/productores/?keyboard='+process.env.GITHUB_RUN_ID,{waitUntil:'domcontentloaded',timeout:60000});
-                  await page.waitForSelector('#wcfmmp-stores-wrap li.wcfmmp-single-store .store-data h2 a',{timeout:25000});
                   const keyboardUrl=await page.evaluate(()=>{
                     const a=document.querySelector('#wcfmmp-stores-wrap li.wcfmmp-single-store .store-data h2 a');
-                    a.focus(); return a.href;
+                    a.focus(); return {url:a.href,focused:document.activeElement===a};
                   });
-                  await Promise.all([
-                    page.waitForNavigation({waitUntil:'domcontentloaded',timeout:30000}),
-                    page.keyboard.press('Enter')
-                  ]);
-                  if(canonicalPath(page.url())!==canonicalPath(keyboardUrl)) throw new Error('Keyboard Enter did not open producer');
+                  if(!keyboardUrl.focused) throw new Error('Producer card link cannot receive keyboard focus');
+                  await page.keyboard.press('Enter');
+                  const keyboardRecorded=await page.evaluate(()=>window.__producerTestClicks||[]);
+                  if(keyboardRecorded.length!==2||keyboardRecorded[1].href!==keyboardUrl.url) {
+                    throw new Error('Keyboard Enter did not activate the producer link '+JSON.stringify(keyboardRecorded));
+                  }
                   console.log('PRODUCERS_KEYBOARD_ENTER_OK');
                 }
               }
