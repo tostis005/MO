@@ -167,7 +167,7 @@ add_action(
 				margin: 0 !important;
 				padding: 0 !important;
 				background-color: #efede6 !important;
-				background-size: cover !important;
+				background-size: contain !important; /* Logos existentes sin recortar; los nuevos banners 16:9 llenarán el marco. */
 				background-position: center center !important;
 				background-repeat: no-repeat !important;
 				transform: none !important;
