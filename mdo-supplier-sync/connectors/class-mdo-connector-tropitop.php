@@ -87,7 +87,19 @@ final class MDO_Connector_Tropitop {
         $sizes = self::sizes( $xp );
         // Product detail sometimes omits prices of unselected combinations.
         // The product card in its exact Spanish category can supply that matrix.
-        if ( count( $sizes ) < 2 || self::missing_prices( $sizes ) ) {
+        // A single fully priced presentation is valid. Older releases fetched
+        // an extra category page whenever count<2, then rejected the product
+        // on transient category timeouts or unknown aliases. Only request a
+        // fallback when variants visible in the source form are missing.
+        $form = $xp->query( '//*[contains(concat(" ",normalize-space(@class)," ")," product-variants ")]' );
+        $selector = $form && $form->length ? $form->item(0) : null;
+        $option_nodes = $selector ? $xp->query(
+            './/input[@data-product-attribute] | .//input[contains(concat(" ",normalize-space(@class)," ")," input-radio ")] | .//select[starts-with(@name,"group")]/option[@value!=""]',
+            $selector
+        ) : null;
+        $expected_choices = $option_nodes ? $option_nodes->length : 0;
+        if ( ! $sizes || self::missing_prices( $sizes ) ||
+            ( $expected_choices > 1 && count( $sizes ) < $expected_choices ) ) {
             $category = self::category_url( $url );
             $listing = self::xpath( self::fetch( $category ) );
             foreach ( $listing->query( '//*[@data-id-product="' . $id . '"]' ) ?: array() as $card ) {
@@ -109,10 +121,12 @@ final class MDO_Connector_Tropitop {
             $amount = (float) $row['amount'];
             $unit = (string) $row['unit'];
             $v = array(
-                'variation_id' => $id . '-' . $unit . '-' . str_replace( '.', '_', number_format( $amount, 3, '.', '' ) ),
+                'variation_id' => $id . '-' . $unit . '-' . str_replace( '.', '_', number_format( $amount, 3, '.', '' ) )
+                    . ( ! empty( $row['label'] ) ? '-' . substr( hash( 'sha256', $row['label'] ), 0, 8 ) : '' ),
                 'attributes' => 'kg' === $unit
                     ? array( 'Peso' => self::format_kg( $amount ) )
-                    : array( 'Unidades' => rtrim( rtrim( number_format( $amount, 2, '.', '' ), '0' ), '.' ) . ' unidades' ),
+                    : array( 'Unidades' => rtrim( rtrim( number_format( $amount, 2, '.', '' ), '0' ), '.' ) . ' unidades'
+                        . ( ! empty( $row['label'] ) ? ' — ' . $row['label'] : '' ) ),
                 'display_price' => (float) $row['price'],
                 'display_regular_price' => (float) $row['price'],
                 'is_in_stock' => 'instock' === $stock && ! $row['unavailable'],
@@ -248,26 +262,34 @@ final class MDO_Connector_Tropitop {
         if ( ! $root ) { return array(); }
         $output = array();
         $nodes = $xp->query(
-            './/option | .//li | .//a | .//button | .//label',
+            './/div[contains(concat(" ",normalize-space(@class)," ")," variant-box ")]'
+            . ' | .//option | .//li | .//a | .//button | .//label',
             $root
         );
         foreach ( $nodes ?: array() as $node ) {
             $text = trim( preg_replace( '/\s+/u', ' ', html_entity_decode( (string) $node->textContent, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) ) );
             // Only explicit size + EUR price pairs can become a variation.
             // Do not treat €/kg unit prices as a box price.
-            if ( ! preg_match( '/\b(\d+(?:[.,]\d+)?)\s*(kg|kilos?|unid(?:ades)?|uds?)\b/iu', $text, $weight_match ) ) { continue; }
+            if ( ! preg_match( '/\b(\d+(?:[.,]\d+)?)\s*(kg|kilos?|unid(?:ades)?|uds?|u)\b/iu',
+                $text, $weight_match, PREG_OFFSET_CAPTURE ) ) { continue; }
             if ( ! preg_match( '/(\d{1,5}(?:[.,]\d{2}))\s*€/u', $text, $price_match ) ) { continue; }
             if ( preg_match( '/€\s*\/\s*kg|€\s*por\s*kg/iu', $text ) ) { continue; }
-            $amount = (float) str_replace( ',', '.', $weight_match[1] );
-            $unit = preg_match( '/^kg|^kilo/iu', $weight_match[2] ) ? 'kg' : 'unid';
+            $amount = (float) str_replace( ',', '.', $weight_match[1][0] );
+            $unit = preg_match( '/^(?:kg|kilo)/iu', $weight_match[2][0] ) ? 'kg' : 'unid';
+            $label = trim( (string) preg_replace( '/[\s\-–—:]+$/u', '',
+                substr( $text, 0, $weight_match[0][1] ) ) );
+            // Source labels such as "Tradicional - 4 u." and "Sin azúcar - 4 u."
+            // are distinct variations, even when both boxes contain four jars.
+            // Never merge different prices under the same quantity.
+            $label = mb_substr( sanitize_text_field( $label ), 0, 70 );
             $price = (float) str_replace( ',', '.', $price_match[1] );
             if ( $amount <= 0 || $amount > 60 || $price <= 0 || $price > 10000 ) { continue; }
-            $key = $unit . ':' . number_format( $amount, 3, '.', '' );
+            $key = $unit . ':' . number_format( $amount, 3, '.', '' ) . ( $label !== '' ? ':' . mb_strtolower( $label ) : '' );
             // Ignore ancestor nodes containing multiple options.
-            if ( preg_match_all( '/\b\d+(?:[.,]\d+)?\s*(?:kg|kilos?|unid(?:ades)?|uds?)\b/iu', $text ) !== 1 ) { continue; }
+            if ( preg_match_all( '/\b\d+(?:[.,]\d+)?\s*(?:kg|kilos?|unid(?:ades)?|uds?|u)\b/iu', $text ) !== 1 ) { continue; }
             $output[ $key ] = array(
                 'amount' => $amount, 'unit' => $unit,
-                'price' => $price,
+                'label' => $label, 'price' => $price,
                 'unavailable' => (bool) preg_match( '/agotad[oa]|sin\s*stock|out\s*of\s*stock/iu', $text ),
             );
         }
