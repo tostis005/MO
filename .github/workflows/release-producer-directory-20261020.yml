@@ -88,6 +88,18 @@ jobs:
               test -s "$backup/producer-list-image-square-010242.php" && cp -p "$backup/producer-list-image-square-010242.php" "$inc/"
               test -s "$backup/editorial-finish.php" && cp -p "$backup/editorial-finish.php" "$inc/"
               test -s "$backup/editorial-system.php" && cp -p "$backup/editorial-system.php" "$inc/"
+              root="$(dirname "$(dirname "$(dirname "$(dirname "$inc")")")")"
+              if [ -s "$backup/native-wcfm-profile-settings.ser" ] && [ -s "$stage/sync-approved-wcfm-banners-20261020.php" ]; then
+                EMDO_BANNER_MODE=rollback EMDO_BANNER_META_BACKUP="$backup/native-wcfm-profile-settings.ser" /opt/plesk/php/8.2/bin/php -d memory_limit=512M "$(command -v wp)" eval-file "$stage/sync-approved-wcfm-banners-20261020.php" --path="$root" --allow-root || true
+              fi
+              dest="$(dirname "$inc")/assets/images/producer-banners"
+              for slug in hidalgo-de-la-jara montjam; do
+                if [ -s "$backup/previous-ham-images/$slug.webp" ]; then
+                  cp -p "$backup/previous-ham-images/$slug.webp" "$dest/$slug.webp"
+                else
+                  rm -f "$dest/$slug.webp"
+                fi
+              done
               rm -rf "$stage"
               php_bin="$(command -v php || true)"; wp_bin="$(command -v wp || true)"
               root="$(dirname "$(dirname "$(dirname "$(dirname "$inc")")")")"
