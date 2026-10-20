@@ -189,7 +189,7 @@ ready=[];failed=[]
 for i,p in enumerate(items):
     try:
         en=p.get('existing_english',{})
-        title=translate_field(p['title']) if field_needs[p['id']]['title'] else en['title']
+        title=html.unescape(translate_field(p['title'])) if field_needs[p['id']]['title'] else en['title']
         excerpt=translate_field(p['excerpt']) if field_needs[p['id']]['excerpt'] else en['excerpt']
         content=translate_field(p['content']) if field_needs[p['id']]['content'] else en['content']
         slug=en.get('slug') or slugify(title)
