@@ -2,7 +2,7 @@ name: Inspect Tropitop live import cursor and remaining products
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/tropitop-cursor-progress-readonly-20261020.yml']
+    paths: ['.github/workflows/tropitop-cursor-progress-readonly-20261020.yml', '.github/scripts/tropitop-cursor-progress-readonly-20261020.php']
   pull_request:
     paths: ['.github/workflows/tropitop-cursor-progress-readonly-20261020.yml', '.github/scripts/tropitop-cursor-progress-readonly-20261020.php']
   workflow_dispatch:
