@@ -100,7 +100,7 @@ final class MDO_Connector_Tropitop {
         $expected_choices = $option_nodes ? $option_nodes->length : 0;
         if ( ! $sizes || self::missing_prices( $sizes ) ||
             ( $expected_choices > 1 && count( $sizes ) < $expected_choices ) ) {
-            $category = self::category_url( $url );
+            $category = self::category_url( $url, $xp );
             $listing = self::xpath( self::fetch( $category ) );
             foreach ( $listing->query( '//*[@data-id-product="' . $id . '"]' ) ?: array() as $card ) {
                 $listed = self::sizes( $listing, $card );
@@ -342,7 +342,7 @@ final class MDO_Connector_Tropitop {
         return $m[1];
     }
 
-    private static function category_url( string $url ): string {
+    private static function category_url( string $url, ?DOMXPath $xp = null ): string {
         $parts = explode( '/', trim( (string) wp_parse_url( $url, PHP_URL_PATH ), '/' ) );
         $slug = $parts[1] ?? '';
         if ( '' === $slug || ! preg_match( '/^[a-z0-9-]+$/i', $slug ) ) {
@@ -360,6 +360,32 @@ final class MDO_Connector_Tropitop {
             'bio' => '109-bio', 'mangos' => '10-mangos',
             'citricos' => '62-citricos', 'apadrina-un-arbol' => '77-apadrina-un-arbol' );
         $category = $known[ $slug ] ?? '';
+        if ( ! $category && $xp ) {
+            // Only a breadcrumb on this exact product page may prove an
+            // unknown category ID. A menu/recommendation URL is not evidence.
+            $links = $xp->query(
+                '//*[@id="breadcrumb"]//a[@href]'
+                . ' | //nav[contains(@class,"breadcrumb")]//a[@href]'
+                . ' | //ol[contains(@class,"breadcrumb")]//a[@href]'
+                . ' | //div[contains(@class,"breadcrumb")]//a[@href]'
+            );
+            foreach ( $links ?: array() as $link ) {
+                $href = (string) $link->getAttribute( 'href' );
+                if ( str_starts_with( $href, '/es/' ) ) {
+                    $href = 'https://' . self::HOST . $href;
+                }
+                try {
+                    $href = self::canonical( $href );
+                    $p = (string) wp_parse_url( $href, PHP_URL_PATH );
+                    if ( preg_match( '~^/es/([0-9]+)-([a-z0-9-]+)/?$~i', $p, $m ) &&
+                        strtolower( $m[2] ) === strtolower( $slug ) ) {
+                        return $href;
+                    }
+                } catch ( Throwable $e ) {
+                    // Skip malformed/external breadcrumb references.
+                }
+            }
+        }
         if ( ! $category ) {
             throw new RuntimeException( 'Tropitop: configurar una URL de categoría para extraer las variantes.' );
         }
