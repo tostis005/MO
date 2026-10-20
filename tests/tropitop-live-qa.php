@@ -52,5 +52,22 @@ try{
         if(!$found)throw new RuntimeException('Missing real weight price '.$weight);
     }
     if($p['stock_status']!=='instock')throw new RuntimeException('Stock not conclusively verified');
+    $catalog = MDO_Connector_Tropitop::discover( array(
+        'source_url' => 'https://tropitop.com/es/84-disponible',
+        'exclusion_url_fragments' => '[]',
+    ) );
+    $count = count( $catalog['products'] ?? array() );
+    echo 'TROPITOP_DISCOVERED_AVAILABLE=' . $count . "\n";
+    if ( $count < 130 ) { throw new RuntimeException( 'Catalog pagination incomplete: ' . $count ); }
+    $kiwi = MDO_Connector_Tropitop::scrape_product(
+        'https://tropitop.com/es/frutas/2723-4798-kiwi-amarillo.html' );
+    echo 'TROPITOP_KIWI_QA=' . json_encode( array(
+        'title'=>$kiwi['title'],'stock'=>$kiwi['stock_status'],'variants'=>$kiwi['variation_count'],
+        'copy_length'=>strlen( $kiwi['description'] ),'images'=>$kiwi['image_count'],
+    ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . "\n";
+    if ( $kiwi['variation_count'] < 3 || $kiwi['image_count'] < 1 ||
+        strlen( $kiwi['description'] ) < 100 ) {
+        throw new RuntimeException( 'General Tropitop parser missing Kiwi attributes or content.' );
+    }
     echo "TROPITOP_LIVE_QA_OK\n";
 }catch(Throwable $e){fwrite(STDERR,'TROPITOP_LIVE_QA_FAILED '.$e->getMessage()."\n");exit(1);}
