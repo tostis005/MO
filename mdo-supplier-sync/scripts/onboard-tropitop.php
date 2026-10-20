@@ -10,8 +10,16 @@
  * commercial terms, scrape copyrighted media or make products purchasable.
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
+// Bootstrap only the data classes when WP-CLI is run with --skip-plugins,
+ // avoiding resource-heavy unrelated front-end plugins during provisioning.
+if ( ! class_exists( 'MDO_Database' ) ) {
+    require_once dirname( __DIR__ ) . '/includes/class-mdo-database.php';
+}
 if ( ! class_exists( 'MDO_Supplier_Repository' ) ) {
-    WP_CLI::error( 'EMDO debe estar instalado y activo.' );
+    require_once dirname( __DIR__ ) . '/includes/class-mdo-supplier-repository.php';
+}
+if ( ! class_exists( 'MDO_Supplier_Repository' ) ) {
+    WP_CLI::error( 'El repositorio EMDO no está disponible.' );
 }
 global $wpdb;
 $table = MDO_Database::table( 'suppliers' );
