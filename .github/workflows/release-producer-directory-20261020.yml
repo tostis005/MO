@@ -77,7 +77,7 @@ jobs:
               if [ -n "$php_bin" ] && [ -n "$wp_bin" ]; then
                 "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$root" --skip-plugins --allow-root || true
               fi
-RESTORE
+          RESTORE
             fi
             exit "$status"
           }
@@ -124,7 +124,7 @@ RESTORE
           ' "$root"
           rm -rf "$stage"
           echo 'PRODUCERS_TARGETED_FILES_INSTALLED'
-REMOTE
+          REMOTE
           # Validar HTML público sin la caché de navegación; si falla, restaurar.
           url="https://www.elmercadodeorigen.com/productores/?design-check=$GITHUB_RUN_ID"
           curl -fsSL --max-time 60 -A 'EMDO-Producer-Design-Verify/1.0' "$url" -o /tmp/emdo-producers-release.html
@@ -173,7 +173,7 @@ REMOTE
               console.log('PRODUCERS_RESPONSIVE_QA_SUCCESS');
             } finally { await browser.close(); }
           })().catch(error=>{console.error(error);process.exit(1);});
-NODE
+          NODE
           node /tmp/emdo-producers-check.cjs
           # La confirmación final debe comprobar la ruta sin parámetro.
           curl -fsSL --max-time 60 'https://www.elmercadodeorigen.com/productores/' -o /tmp/emdo-producers-public.html
