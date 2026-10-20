@@ -17,11 +17,13 @@ jobs:
           site='https://tropitop.com'
           product=site+'/es/aguacates/33-3063-comprar-aguacate-bacon.html'
           cases=[
-            ('Aguacate 3kg x1',3061,1),
-            ('Aguacate 4kg x1',3062,1),
-            ('Aguacate 9kg x1',3063,1),
-            ('Aguacate 9kg x2',3063,2),
-            ('Aguacate 9kg x3',3063,3),
+            ('Aguacate 3kg x2',3061,2),
+            ('Aguacate 3kg x3',3061,3),
+            ('Aguacate 4kg x2',3062,2),
+            ('Aguacate 4kg x3',3062,3),
+            ('Aguacate 4kg x5',3062,5),
+            ('Aguacate 4kg x6',3062,6),
+            ('Aguacate 9kg x4',3063,4),
           ]
           for name,combination,quantity in cases:
             s=requests.Session()
