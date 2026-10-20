@@ -87,7 +87,7 @@ jobs:
           }
           trap rollback EXIT
           sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$STAGE'"
-          sshpass -e scp $SCP_OPTS "elmercadodeorigen-child/inc/$ONE" "elmercadodeorigen-child/inc/$TWO" "elmercadodeorigen-child/inc/$THREE" "$STAGING_USER@$STAGING_HOST:$STAGE/"
+          sshpass -e scp $SCP_OPTS "elmercadodeorigen-child/inc/$ONE" "elmercadodeorigen-child/inc/$TWO" "elmercadodeorigen-child/inc/$THREE" ".github/scripts/audit-producer-store-banners-20261020.php" "$STAGING_USER@$STAGING_HOST:$STAGE/"
           sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$ROOT' '$STAGE' '$BACKUP'" <<'REMOTE'
           set -Eeuo pipefail
           root="$1"; stage="$2"; backup="$3"
@@ -102,6 +102,7 @@ jobs:
             https://elmercadodeorigen.com|https://www.elmercadodeorigen.com|http://elmercadodeorigen.com|http://www.elmercadodeorigen.com) ;;
             *) echo "La instalación no es la de producción: $url" >&2; exit 1;;
           esac
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval-file "$stage/audit-producer-store-banners-20261020.php" --path="$root" --allow-root
           for f in producer-list-image-square-010242.php editorial-finish.php editorial-system.php; do
             test -s "$inc/$f" && test -s "$stage/$f"
             "$php_bin" -l "$stage/$f"
