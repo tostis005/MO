@@ -132,6 +132,145 @@ if ( 'status' === $phase ) {
     ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . "\n";
     return;
 }
+if ( 'activate' === $phase ) {
+    // Sales activation is explicitly requested by the merchant. It is allowed
+    // only after the WCFM mainland shipping configuration passes live QA.
+    // Portugal/Canary Islands/Balearics stay blocked: no verified quote.
+    if ( ! class_exists( 'WCFMmp_Shipping_Zone' ) ) {
+        throw new RuntimeException( 'WCFM shipping zones unavailable.' );
+    }
+    if ( $checkout_ready && ! $seller_disabled ) {
+        echo 'TROPITOP_SALES_ALREADY_ACTIVE=1' . "\n";
+        return;
+    }
+    $vendor = get_user_by( 'id', 4971 );
+    if ( ! $vendor || ! in_array( 'wcfm_vendor', (array) $vendor->roles, true ) ) {
+        throw new RuntimeException( 'Tropitop has no active WCFM vendor account.' );
+    }
+    $zone = new WC_Shipping_Zone( 1 );
+    if ( 'España (península)' !== $zone->get_zone_name() ) {
+        throw new RuntimeException( 'WooCommerce mainland shipping zone has changed.' );
+    }
+    $ship = get_user_meta( 4971, '_wcfmmp_shipping', true );
+    if ( ! is_array( $ship ) || (string)( $ship['_wcfmmp_user_shipping_type'] ?? '' ) !== 'by_zone' ||
+        (string)( $ship['_wcfmmp_user_shipping_enable'] ?? '' ) !== 'yes' ) {
+        throw new RuntimeException( 'Tropitop WCFM by-zone shipping is not enabled.' );
+    }
+    $method_table = $wpdb->prefix . 'wcfm_marketplace_shipping_zone_methods';
+    $methods = $wpdb->get_results( $wpdb->prepare(
+        "SELECT zone_id,method_id,is_enabled FROM $method_table WHERE vendor_id=%d", 4971
+    ), ARRAY_A );
+    if ( count( (array)$methods ) !== 1 || (int)$methods[0]['zone_id'] !== 1 ||
+        (string)$methods[0]['method_id'] !== 'flat_rate' || (int)$methods[0]['is_enabled'] !== 1 ) {
+        throw new RuntimeException( 'Tropitop WCFM zone rate is missing or ambiguous.' );
+    }
+    $previous_ready=(string)get_option('mdo_tropitop_shipping_rates_verified','0');
+    $original_active=(int)$supplier['active'];
+    $fake_ready=static fn()=>'1';
+    add_filter( 'pre_option_mdo_tropitop_shipping_rates_verified', $fake_ready, 10, 0 );
+    try {
+        $checks=array(3=>2.95,4=>2.95,6=>5.95,8=>5.95,9=>5.95,12=>7.95,18=>10.95,20=>10.95,24=>12.95,27=>15.95,36=>20.95);
+        foreach($checks as $kg=>$expect) {
+            $p=new WC_Product_Simple();
+            $p->set_weight((string)$kg);
+            $package=array('contents'=>array(array('product_id'=>0,'data'=>$p,'quantity'=>1)),
+                'vendor_id'=>4971,'destination'=>array('country'=>'ES','postcode'=>'28001','state'=>'M'));
+            // Package detection requires a product authored by this vendor.
+            $bacon_id=wc_get_product_id_by_sku('TROPITOP-33');
+            if(!$bacon_id || (int)get_post_field('post_author',$bacon_id)!==4971){
+                throw new RuntimeException('Approved Bacon product/vendor reference missing.');
+            }
+            $package['contents'][0]['product_id']=$bacon_id;
+            $rate=new WC_Shipping_Rate('wcfmmp_product_shipping_by_zone:test','Tropitop',2.95,array(),'wcfmmp_product_shipping_by_zone',1);
+            $result=MDO_Tropitop_Shipping::filter_rates(array('rate'=>$rate),$package);
+            $actual=$result?(float)reset($result)->get_cost():null;
+            if(null===$actual || abs($actual-$expect)>0.001){
+                throw new RuntimeException('Shipping preflight failed for '.$kg.' kg.');
+            }
+        }
+        foreach(array(array('ES','07001'),array('PT','1000-001'),array('FR','75001')) as $dest){
+            $package['destination']=array('country'=>$dest[0],'postcode'=>$dest[1]);
+            if(MDO_Tropitop_Shipping::filter_rates(array('rate'=>$rate),$package)!==array()){
+                throw new RuntimeException('Unverified destination incorrectly allowed.');
+            }
+        }
+    } finally {
+        remove_filter( 'pre_option_mdo_tropitop_shipping_rates_verified', $fake_ready, 10 );
+    }
+    $enabled=0;
+    try {
+        update_option( 'mdo_tropitop_shipping_rates_verified', '1', false );
+        delete_user_meta( 4971, '_disable_vendor' );
+        $ok=$wpdb->update( $sup_table,
+            array('active'=>1,'sync_frequency'=>'daily','updated_at'=>current_time('mysql')),
+            array('id'=>8) );
+        if(false===$ok){throw new RuntimeException('Supplier activation DB error.');}
+        $enabled=1;
+    } finally {
+        if(!$enabled){
+            update_option('mdo_tropitop_shipping_rates_verified',$previous_ready,false);
+            if($seller_disabled)update_user_meta(4971,'_disable_vendor',1);
+            $wpdb->update($sup_table,array('active'=>$original_active),array('id'=>8));
+        }
+    }
+    $state['sales_active']=1;
+    $state['sales_activated_at']=gmdate('c');
+    update_option($key,$state,false);
+    // Resume from the current cursor: existing records are inspected locally,
+    // never scraped again just to convert approved draft listings to published.
+    $existing=$wpdb->get_results($wpdb->prepare(
+        "SELECT id,wc_product_id,source_payload FROM $src_table WHERE supplier_id=%d AND wc_product_id>0 ORDER BY id",8
+    ),ARRAY_A);
+    $published=0;$held=0;$errors=array();
+    foreach($existing as $row) {
+        $wc_id=(int)$row['wc_product_id'];
+        $woo=wc_get_product($wc_id);
+        $payload=json_decode((string)$row['source_payload'],true);
+        $ok=$woo && is_array($payload) && $woo->is_type('variable')
+            && (int)get_post_field('post_author',$wc_id)===4971
+            && (bool)$woo->get_image_id() && (bool)$woo->get_category_ids()
+            && in_array((string)($payload['stock_status']??''),array('instock','outofstock'),true);
+        $vars=(array)($payload['variations']??array());
+        if(!$vars || count($vars)!==(int)($payload['variation_count']??-1) ||
+            count($woo?$woo->get_children():array())!==count($vars)){$ok=false;}
+        foreach($vars as $v) {
+            $kg=isset($v['weight_kg'])&&is_numeric($v['weight_kg'])?(float)$v['weight_kg']:0;
+            if($kg<=0 || null===MDO_Tropitop_Shipping::cost_for_weight($kg)
+                || !isset($v['display_price']) || (float)$v['display_price']<=0){$ok=false;break;}
+        }
+        if($ok){
+            foreach($woo->get_children() as $child_id){
+                $child=wc_get_product($child_id);
+                if(!$child || (float)$child->get_weight()<=0 ||
+                    null===MDO_Tropitop_Shipping::cost_for_weight((float)$child->get_weight())){
+                    $ok=false;break;
+                }
+            }
+        }
+        try {
+            if($ok){
+                $woo->set_status('publish');
+                $woo->set_catalog_visibility('visible');
+                $woo->save();
+                $published++;
+            } else {
+                if($woo){
+                    $woo->set_status('draft');$woo->set_catalog_visibility('hidden');$woo->save();
+                }
+                $held++;
+            }
+        } catch(Throwable $e) {
+            $errors[$wc_id]=mb_substr($e->getMessage(),0,160);
+        }
+    }
+    echo 'TROPITOP_SALES_ACTIVATED='.wp_json_encode(array(
+        'seller_enabled'=>true,'mainland_shipping_verified'=>true,'portugal_sales_blocked'=>true,
+        'existing_published'=>$published,'held_for_validation'=>$held,'errors'=>$errors,
+        'cursor'=>(int)$state['cursor'],'total'=>$total
+    ),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+    return;
+}
+
 $limit = max( 1, min( 5, (int) ( getenv( 'TROPITOP_BULK_BATCH' ) ?: 2 ) ) );
 $start = (int) $state['cursor'];
 $end = min( $total, $start + $limit );
