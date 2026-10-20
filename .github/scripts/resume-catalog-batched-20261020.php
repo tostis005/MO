@@ -86,9 +86,30 @@ if ( 'copy' === $task ) {
 	$supplier_table = MDO_Database::table( 'suppliers' );
 	$lat = $wpdb->get_row( $wpdb->prepare( "SELECT id,vendor_user_id FROM {$supplier_table} WHERE code=%s", 'latitudes' ), ARRAY_A );
 	if ( ! $lat ) { throw new RuntimeException( 'Latitudes no existe en EMDO.' ); }
+	// Persist a per-product cursor in WordPress: a crashed Actions job
+	// starts strictly after the last completely verified source record.
+	$cursor_key = 'mdo_latitudes_gallery_resume_source_id_20261020';
+	$cursor = (int) get_option( $cursor_key, 0 );
+	$report['cursor_before'] = $cursor;
+	$latest = $wpdb->get_row( $wpdb->prepare(
+		"SELECT id,wc_product_id,source_url FROM {$table}
+		 WHERE supplier_id=%d AND wc_product_id>0 ORDER BY wc_product_id DESC LIMIT 1",
+		(int)$lat['id'] ), ARRAY_A );
+	if ( $latest ) {
+		$last_product = wc_get_product( (int) $latest['wc_product_id'] );
+		$report['latest_created'] = array(
+			'id'=>(int)$latest['wc_product_id'],
+			'name'=>$last_product ? $last_product->get_name() : '',
+			'status'=>$last_product ? $last_product->get_status() : 'missing',
+			'image_id'=>$last_product ? (int)$last_product->get_image_id() : 0,
+			'gallery_count'=>$last_product ? count($last_product->get_gallery_image_ids()) : 0,
+			'source_url'=>(string)$latest['source_url'],
+		);
+	}
 	$rows = $wpdb->get_results( $wpdb->prepare(
-		"SELECT id,wc_product_id,source_url FROM {$table} WHERE supplier_id=%d AND wc_product_id>0 ORDER BY id LIMIT %d OFFSET %d",
-		(int)$lat['id'], $size, $offset
+		"SELECT id,wc_product_id,source_url FROM {$table}
+		 WHERE supplier_id=%d AND wc_product_id>0 AND id>%d ORDER BY id LIMIT %d",
+		(int)$lat['id'], $cursor, $size
 	), ARRAY_A );
 	$total = (int)$wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE supplier_id=%d AND wc_product_id>0", (int)$lat['id'] ) );
 	if ( $total < 125 || $total > 165 ) { throw new RuntimeException( 'Conteo Latitudes inconsistente: ' . $total ); }
@@ -99,6 +120,7 @@ if ( 'copy' === $task ) {
 		require_once ABSPATH . 'wp-admin/includes/image.php';
 	}
 	foreach ( $rows as $row ) {
+		$errors_at_start = count( $report['errors'] );
 		$id=(int)$row['wc_product_id'];
 		$url=(string)$row['source_url'];
 		$product=wc_get_product($id);
@@ -196,11 +218,18 @@ if ( 'copy' === $task ) {
 				}
 			}
 			$report['added']+=$added;
+			// Advance only when every asset in this source product succeeded.
+			// Any failed image holds the cursor at the last saved product.
+			if ( $apply && count( $report['errors'] ) === $errors_at_start ) {
+				update_option( $cursor_key, (int) $row['id'], false );
+				$report['cursor_after'] = (int) $row['id'];
+			}
 			if(count($report['sample'])<8){$report['sample'][]=array('id'=>$id,'source_count'=>count($urls),'before'=>count($gallery),'after'=>count($new_ids),'added'=>$added);}
 		} catch(Throwable $e) {
 			$report['errors'][]=array('id'=>$id,'error'=>mb_substr($e->getMessage(),0,230));
 		}
 	}
 }
+$report['complete'] = 'gallery' !== $task || ! isset( $rows ) || count( $rows ) < $size;
 echo 'EMDO_RESUME_BATCH='.wp_json_encode($report,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
-if($report['checked']===0 && 'gallery'===$task){throw new RuntimeException('Lote de galería vacío, revisar el desplazamiento.');}
+if( $apply && 'gallery'===$task && $report['errors'] ){ throw new RuntimeException( 'Galería pendiente de reintento: no se avanza el cursor al siguiente producto.' ); }
