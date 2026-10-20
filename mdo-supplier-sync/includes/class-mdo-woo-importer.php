@@ -439,6 +439,13 @@ final class MDO_Woo_Importer {
             'gourmet' => array( 'Gourmet', 'gourmet', '' ),
             'packs' => array( 'Packs y lotes', 'packs-y-lotes', '' ),
             'cajas-de-temporada' => array( 'Cajas de temporada', 'cajas-de-temporada', 'packs-y-lotes' ),
+            'cestas-de-fruta' => array( 'Cestas de fruta', 'cestas-de-fruta', 'packs-y-lotes' ),
+            'citricos' => array( 'Cítricos', 'citricos', 'frutas' ),
+            'mangos' => array( 'Mangos', 'mangos', 'frutas' ),
+            'bio' => array( 'Productos BIO', 'productos-bio', '' ),
+            'apadrina-un-arbol' => array( 'Apadrina un árbol', 'apadrina-un-arbol', '' ),
+            'cosmetica' => array( 'Cosmética', 'cosmetica', 'gourmet' ),
+            'zumos-y-tes' => array( 'Zumos e infusiones', 'zumos-y-tes', 'gourmet' ),
         );
         if ( ! isset( $map[ $key ] ) ) {
             throw new RuntimeException( 'Categoría Tropitop no verificada: ' . $key );
