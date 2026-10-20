@@ -303,17 +303,50 @@ add_action(
 				'hidalgo-de-la-jara',
 				'montjam',
 			);
+			/*
+			 * Las fotos del directorio no necesitan los 2022 px de la portada
+			 * individual WCFM. image-set elige 1x/2x según DPR; la tablet de
+			 * dos columnas dispone de un par de tamaños ligeramente mayores.
+			 * Los originales permanecen intactos para las tiendas. Si falta
+			 * alguna variante se recupera inmediatamente el banner anterior.
+			 */
 			foreach ( $emo_banner_slugs as $emo_banner_slug ) {
 				$emo_banner_relative = '/assets/images/producer-banners/' . $emo_banner_slug . '.webp';
 				if ( ! is_readable( get_stylesheet_directory() . $emo_banner_relative ) ) {
 					continue;
 				}
-				$emo_banner_url = get_stylesheet_directory_uri() . $emo_banner_relative . '?v=20261020-final';
-				printf(
-					'html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap li.wcfmmp-single-store:has(.store-data h2 a[href*="/tienda/%1$s"]) .store-info {background-image:url("%2$s") !important;}',
-					esc_attr( $emo_banner_slug ),
-					esc_url( $emo_banner_url )
-				);
+				$emo_selector = 'html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap li.wcfmmp-single-store:has(.store-data h2 a[href*="/tienda/' . esc_attr( $emo_banner_slug ) . '"]) .store-info';
+				$emo_dir = '/assets/images/producer-banners/';
+				$emo_sizes = array( 480, 640, 960, 1280 );
+				$emo_optimized = array();
+				foreach ( $emo_sizes as $emo_size ) {
+					$emo_relative = $emo_dir . $emo_banner_slug . '-list-' . $emo_size . '.webp';
+					if ( ! is_readable( get_stylesheet_directory() . $emo_relative ) ) {
+						$emo_optimized = array();
+						break;
+					}
+					$emo_optimized[$emo_size] = esc_url( get_stylesheet_directory_uri() . $emo_relative . '?v=20261020-responsive' );
+				}
+				if ( count( $emo_optimized ) === count( $emo_sizes ) ) {
+					printf(
+						'%1$s {background-image:url("%3$s") !important; background-image:image-set(url("%2$s") 1x, url("%3$s") 2x) !important;}',
+						$emo_selector,
+						$emo_optimized[480],
+						$emo_optimized[960]
+					);
+					printf(
+						'@media (min-width: 761px) and (max-width: 1199px) {%1$s {background-image:url("%3$s") !important; background-image:image-set(url("%2$s") 1x, url("%3$s") 2x) !important;}}',
+						$emo_selector,
+						$emo_optimized[640],
+						$emo_optimized[1280]
+					);
+				} else {
+					printf(
+						'%1$s {background-image:url("%2$s") !important;}',
+						$emo_selector,
+						esc_url( get_stylesheet_directory_uri() . $emo_banner_relative . '?v=20261020-final' )
+					);
+				}
 			}
 			?>
 		</style>
