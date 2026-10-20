@@ -84,9 +84,9 @@ function emdo_np_editorial_link(string $html, string $kind, string $url, bool $e
         ],
         'citricos'=>[
             'Antes de añadir una caja al carrito, comprueba qué naranjas están disponibles ahora' =>
-            'Antes de añadir una caja al carrito, revisa <a href="'.$link.'">las naranjas disponibles ahora</a> y comprueba',
+            'Antes de añadir una caja al carrito, comprueba <a href="'.$link.'">qué naranjas están disponibles ahora</a>',
             'Before purchasing, check the currently available variety, the weight' =>
-            'Before purchasing, check the <a href="'.$link.'">currently available oranges</a>, the weight',
+            'Before purchasing, check <a href="'.$link.'">the currently available varieties</a>, the weight',
         ],
     ];
     if(!isset($replacements[$kind]))return $html;
