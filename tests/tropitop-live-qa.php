@@ -69,5 +69,16 @@ try{
         strlen( $kiwi['description'] ) < 100 ) {
         throw new RuntimeException( 'General Tropitop parser missing Kiwi attributes or content.' );
     }
+    $unit_pack = MDO_Connector_Tropitop::scrape_product(
+        'https://tropitop.com/es/packs/2732-4810-comprar-pack-tropical-smoothie-online.html' );
+    $unit_variants = (array) ( $unit_pack['variations'] ?? array() );
+    echo 'TROPITOP_UNIT_PACK_QA=' . json_encode( array(
+        'title'=>$unit_pack['title'],'stock'=>$unit_pack['stock_status'],
+        'count'=>$unit_pack['variation_count'],'variations'=>$unit_variants,
+    ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . "\n";
+    if ( !$unit_variants || empty( $unit_variants[0]['attributes']['Unidades'] ) ||
+        isset( $unit_variants[0]['weight_kg'] ) ) {
+        throw new RuntimeException( 'Unit-only products must retain real unit count and no invented kg.' );
+    }
     echo "TROPITOP_LIVE_QA_OK\n";
 }catch(Throwable $e){fwrite(STDERR,'TROPITOP_LIVE_QA_FAILED '.$e->getMessage()."\n");exit(1);}
