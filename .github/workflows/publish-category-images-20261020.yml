@@ -30,7 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           php -l .github/scripts/assign-missing-category-images-20261020.php
-          for asset in categoria-chocolates-artesanos-20261020.webp categoria-cafe-de-especialidad-20261020.webp categoria-huevos-20261020.webp; do
+          for asset in categoria-chocolates-artesanos-20261020.webp categoria-cafe-de-especialidad-20261020.webp categoria-huevos-20261020.webp categoria-frutas-20261020.webp; do
             file=".github/assets/category-images-20261020/$asset"
             test -s "$file"
             php -r '$m=getimagesize($argv[1]); if(!$m || $m["mime"]!=="image/webp" || $m[0]<250 || $m[1]<375){exit(1);}' "$file"
@@ -69,8 +69,8 @@ jobs:
           sshpass -e scp $SCP .github/assets/category-images-20261020/*.webp "$STAGING_USER@$STAGING_HOST:$REMOTE/assets/"
           sshpass -e scp $SCP .github/scripts/assign-missing-category-images-20261020.php "$STAGING_USER@$STAGING_HOST:$REMOTE/assign.php"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "EMDO_CATEGORY_IMAGES_DIR='$REMOTE/assets' '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/assign.php' --path='$PROD' --allow-root" > /tmp/category-publish-result.json
-          jq -e '.batch=="category-images-20261020" and (.categories | length)==3' /tmp/category-publish-result.json
-          for slug in chocolates-artesanos cafe-de-especialidad huevos; do
+          jq -e '.batch=="category-images-20261020" and (.categories | length)==4' /tmp/category-publish-result.json
+          for slug in chocolates-artesanos cafe-de-especialidad huevos frutas; do
             URL="$(jq -r --arg slug "$slug" '.categories[$slug].image_url' /tmp/category-publish-result.json)"
             test -n "$URL"
             curl -fsSL --max-time 30 -o /dev/null "$URL"
