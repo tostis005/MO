@@ -21,90 +21,43 @@ add_action(
 		}
 		?>
 		<style id="elmercado-producer-directory-editorial-20261020">
-			/* Cabecera de página interior: la misma retícula, tipografía y tonos claros de Quiénes Somos/Tienda. */
-			html body:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .emo-producers-intro {
+			/*
+			 * La introducción comparte la misma estructura real y la clase
+			 * .emo-about-intro de «Quiénes somos»: etiqueta, titular a la
+			 * izquierda y descripción a la derecha. No es un hero especial,
+			 * ni una tarjeta con bordes, sombra o gradiente distintos.
+			 * Fondo blanco explícito para evitar que aparezca transparente.
+			 */
+			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-main .emo-about-intro.emo-producers-intro {
 				display: grid !important;
 				box-sizing: border-box !important;
-				width: 100% !important;
+				width: min(100%, 1180px) !important;
 				max-width: 1180px !important;
-				min-height: 0 !important;
-				grid-template-columns: minmax(0, 1.08fr) minmax(280px, .72fr) !important;
-				grid-template-rows: auto 1fr !important;
+				grid-template-columns: minmax(0, 1.08fr) minmax(300px, .72fr) !important;
 				align-items: end !important;
-				gap: clamp(10px, 1.3vw, 16px) clamp(30px, 5vw, 68px) !important;
-				margin: 0 auto clamp(26px, 4vw, 48px) !important;
-				padding: clamp(32px, 4vw, 54px) clamp(28px, 4vw, 50px) !important;
-				border: 1px solid rgba(23, 63, 50, .11) !important;
-				border-radius: 16px !important;
-				background-color: #f3ecdf !important;
-				background-image: radial-gradient(circle at 82% 18%, rgba(201, 109, 69, .10), transparent 23%), linear-gradient(135deg, #f3ecdf, #f8f5ee) !important;
-				background-blend-mode: normal !important;
-				box-shadow: 0 6px 22px rgba(23, 63, 50, .055) !important;
+				gap: clamp(2rem, 7vw, 7rem) !important;
+				margin: 0 auto clamp(2.5rem, 5vw, 4.5rem) !important;
+				padding: 0 !important;
+				border: 0 !important;
+				border-radius: 0 !important;
+				background: #fff !important;
+				box-shadow: none !important;
 			}
-			html body:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .emo-producers-intro .emo-kicker {
-				color: #557258 !important;
-				font-size: .72rem !important;
-				font-weight: 750 !important;
-				letter-spacing: .16em !important;
-				line-height: 1.5 !important;
-			}
-			html body:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .emo-producers-intro h2 {
-				max-width: 900px !important;
+			/* Misma escala tipográfica que .emo-about-intro en editorial.css.
+			 * No redefinimos el .emo-kicker: se hereda tal cual del sitio. */
+			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-main .emo-about-intro.emo-producers-intro h2 {
+				max-width: 720px !important;
 				margin: 0 !important;
-				color: #173f32 !important;
-				font-family: Georgia, "Times New Roman", serif !important;
-				font-size: clamp(2.45rem, 4vw, 3.85rem) !important;
-				font-weight: 600 !important;
-				letter-spacing: -.036em !important;
-				line-height: 1.12 !important;
-				text-wrap: balance;
+				font-size: clamp(2.6rem, 5vw, 4.8rem) !important;
 			}
-			html body:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .emo-producers-intro p {
-				width: 100% !important;
-				max-width: 760px !important;
-				margin: 0 !important;
-				color: #536158 !important;
-				font-size: clamp(.98rem, 1.22vw, 1.1rem) !important;
-				line-height: 1.66 !important;
-			}
-			/* Los encabezados del tema llevan reglas de color de gran especificidad.
-			 * Este bloque garantiza contraste sobre el papel crema, sin tocar otras páginas. */
-			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-content .site-main section.emo-producers-intro h2 {
-				color: #173f32 !important;
-				-webkit-text-fill-color: #173f32 !important;
-			}
-			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-content .site-main section.emo-producers-intro p {
-				color: #536158 !important;
-				-webkit-text-fill-color: #536158 !important;
-			}
-			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-content .site-main section.emo-producers-intro .emo-kicker {
-				color: #557258 !important;
-				-webkit-text-fill-color: #557258 !important;
-			}
-			/* Adaptar las tres piezas de la entradilla al mismo encabezado editorial en dos columnas. */
-			html body:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .emo-producers-intro .emo-kicker {
-				grid-column: 1 !important;
-				grid-row: 1 !important;
-				align-self: end !important;
-			}
-			html body:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .emo-producers-intro h2 {
-				grid-column: 1 !important;
-				grid-row: 2 !important;
-			}
-			html body:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .emo-producers-intro p {
-				grid-column: 2 !important;
-				grid-row: 1 / 3 !important;
-				align-self: end !important;
+			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-main .emo-about-intro.emo-producers-intro > p {
+				margin: 0 0 .35rem !important;
+				font-size: clamp(1.02rem, 1.5vw, 1.2rem) !important;
+				line-height: 1.75 !important;
 			}
 			@media (max-width: 991px) {
-				html body:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .emo-producers-intro {
+				html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-main .emo-about-intro.emo-producers-intro {
 					grid-template-columns: minmax(0, 1fr) !important;
-					grid-template-rows: auto auto auto !important;
-					gap: 12px !important;
-				}
-				html body:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .emo-producers-intro :is(.emo-kicker,h2,p) {
-					grid-column: 1 !important;
-					grid-row: auto !important;
 				}
 			}
 			/* Tres banners por fila en escritorio. WCFM no decide posiciones con masonry. */
