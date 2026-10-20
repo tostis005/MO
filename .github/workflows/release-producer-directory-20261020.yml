@@ -32,7 +32,7 @@ jobs:
           php -l elmercadodeorigen-child/inc/editorial-finish.php
           php -l elmercadodeorigen-child/inc/editorial-system.php
           grep -q 'elmercado-producer-directory-editorial-20261020' elmercadodeorigen-child/inc/producer-list-image-square-010242.php
-          grep -q 'emo-about-intro emo-producers-intro' elmercadodeorigen-child/inc/editorial-system.php
+          grep -q 'emo-contact-aside emo-producers-intro' elmercadodeorigen-child/inc/editorial-system.php
           ! grep -q 'elmercado-producer-layout-normalizer' elmercadodeorigen-child/inc/editorial-finish.php
           grep -q 'producer-list-image-square-010242.php' elmercadodeorigen-child/functions.php
           : "${STAGING_HOST:?SSH host absent}"
