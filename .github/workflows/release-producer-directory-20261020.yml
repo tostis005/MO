@@ -139,13 +139,27 @@ jobs:
             "$php_bin" -l "$stage/$f"
           done
           grep -q 'producer-list-image-square-010242.php' "$root/wp-content/themes/elmercadodeorigen-child/functions.php"
-          mkdir -p "$backup"
+          mkdir -p "$backup/previous-ham-images"
+          dest="$root/wp-content/themes/elmercadodeorigen-child/assets/images/producer-banners"
+          mkdir -p "$dest"
+          for slug in hidalgo-de-la-jara montjam; do
+            if [ -f "$dest/$slug.webp" ]; then
+              cp -p "$dest/$slug.webp" "$backup/previous-ham-images/$slug.webp"
+            fi
+          done
           cp -p "$inc/producer-list-image-square-010242.php" "$backup/"
           cp -p "$inc/editorial-finish.php" "$backup/"
           cp -p "$inc/editorial-system.php" "$backup/"
           cp "$stage/producer-list-image-square-010242.php" "$inc/"
           cp "$stage/editorial-finish.php" "$inc/"
           cp "$stage/editorial-system.php" "$inc/"
+          touch "$backup/ham-deployment-started"
+          for slug in hidalgo-de-la-jara montjam; do
+            cp "$stage/$slug.webp" "$dest/$slug.webp"
+            cmp "$stage/$slug.webp" "$dest/$slug.webp"
+            echo "HAM_MEDIA_INSTALLED $slug"
+          done
+          EMDO_BANNER_MODE=apply EMDO_BANNER_META_BACKUP="$backup/native-wcfm-profile-settings.ser" "$php_bin" -d memory_limit=512M "$wp_bin" eval-file "$stage/sync-approved-wcfm-banners-20261020.php" --path="$root" --allow-root
           cmp "$inc/producer-list-image-square-010242.php" "$stage/producer-list-image-square-010242.php"
           cmp "$inc/editorial-finish.php" "$stage/editorial-finish.php"
           cmp "$inc/editorial-system.php" "$stage/editorial-system.php"
