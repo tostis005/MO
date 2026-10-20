@@ -19,6 +19,22 @@ verify( reflected( 'canonical', $a ) === $b, 'Combos need one canonical source U
 verify( reflected( 'canonical', $b ) === $b, 'Canonical URL must be stable.' );
 verify( reflected( 'product_id', $b ) === '33', 'Preserve original product ID.' );
 verify( reflected( 'category_url', $b ) === 'https://tropitop.com/es/12-aguacates', 'Spanish category URL is required.' );
+foreach ( array(
+    'disponible' => '84-disponible',
+    'cestas-de-fruta' => '52-cestas-de-fruta',
+    'bio' => '109-bio',
+    'mangos' => '10-mangos',
+    'apadrina-un-arbol' => '77-apadrina-un-arbol',
+) as $slug => $category ) {
+    $source_url = 'https://tropitop.com/es/' . $slug . '/1234-una-caja.html';
+    verify( reflected( 'category_url', $source_url ) === 'https://tropitop.com/es/' . $category,
+        'Known producer category must resolve: ' . $slug );
+}
+$unknown_category_rejected = false;
+try { reflected( 'category_url', 'https://tropitop.com/es/otra-categoria/1234-una-caja.html' ); }
+catch ( RuntimeException $e ) { $unknown_category_rejected = true; }
+verify( $unknown_category_rejected, 'Unknown producer category cannot be guessed.' );
+
 
 $rejected = false;
 try { reflected( 'canonical', 'http://tropitop.com/es/aguacates/33-comprar-aguacate-bacon.html' ); }
