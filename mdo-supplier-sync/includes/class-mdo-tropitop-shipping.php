@@ -33,10 +33,12 @@ final class MDO_Tropitop_Shipping {
         $code = preg_replace( '/\s+/', '', strtoupper( $postcode ) );
         if ( ! in_array( $country, self::COUNTRIES, true ) ) { return false; }
         if ( 'ES' === $country ) {
-            if ( strlen( $code ) < 2 ) { return false; } // postcode required for islands
+            if ( '' === $code ) { return true; } // country-only browsing before postcode is entered
+            if ( strlen( $code ) < 2 ) { return false; }
             return ! in_array( substr( $code, 0, 2 ), array( '07', '35', '38', '51', '52' ), true );
         }
         if ( 'PT' === $country ) {
+            if ( '' === $code ) { return true; } // country-only browsing
             if ( strlen( $code ) < 4 ) { return false; }
             $first = (int) substr( $code, 0, 4 );
             return $first < 9000; // Madeira and Azores
@@ -70,7 +72,7 @@ final class MDO_Tropitop_Shipping {
         $contains = $package_vendor ? $package_vendor === $vendor : self::contains_tropitop( (array) ( $package['contents'] ?? array() ) );
         if ( ! $contains ) { return $rates; }
         $dst = (array) ( $package['destination'] ?? array() );
-        if ( ! self::is_ready() || ! self::allowed( (string) ( $dst['country'] ?? '' ), (string) ( $dst['postcode'] ?? '' ) ) ) {
+        if ( ! self::is_ready() || ( '' === trim( (string) ( $dst['postcode'] ?? '' ) ) && in_array( strtoupper( (string) ( $dst['country'] ?? '' ) ), array( 'ES', 'PT' ), true ) ) || ! self::allowed( (string) ( $dst['country'] ?? '' ), (string) ( $dst['postcode'] ?? '' ) ) ) {
             return array();
         }
         return $rates;
@@ -87,7 +89,7 @@ final class MDO_Tropitop_Shipping {
         $ship = ! empty( $data['ship_to_different_address'] );
         $country = (string) ( $data[ $ship ? 'shipping_country' : 'billing_country' ] ?? '' );
         $postcode = (string) ( $data[ $ship ? 'shipping_postcode' : 'billing_postcode' ] ?? '' );
-        if ( ! self::allowed( $country, $postcode ) ) {
+        if ( ( '' === trim( $postcode ) && in_array( strtoupper( $country ), array( 'ES', 'PT' ), true ) ) || ! self::allowed( $country, $postcode ) ) {
             $errors->add( 'mdo_tropitop_destination',
                 'Tropitop no realiza envíos a este destino. Selecciona una dirección admitida o elimina sus productos del carrito.' );
         }
