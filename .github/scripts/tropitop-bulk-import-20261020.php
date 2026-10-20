@@ -275,6 +275,7 @@ $limit = max( 1, min( 5, (int) ( getenv( 'TROPITOP_BULK_BATCH' ) ?: 2 ) ) );
 $start = (int) $state['cursor'];
 $end = min( $total, $start + $limit );
 for ( $i = $start; $i < $end; $i++ ) {
+    $woo_id = 0;
     $url = (string) $state['urls'][$i];
     $m = array();
     preg_match( '~/([0-9]+)(?:-[0-9]+)?-[a-z0-9-]+\.html$~i',
@@ -321,9 +322,12 @@ for ( $i = $start; $i < $end; $i++ ) {
         if ( ! $source_id ) { throw new RuntimeException( 'Origen sin registrar tras upsert.' ); }
         $woo_id = MDO_Woo_Importer::import_source_product( $source_id );
         $woo = wc_get_product( $woo_id );
+        $can_publish_now = ! $needs_weight && ! $seller_disabled && $checkout_ready && (int)$supplier['active']===1;
+        $expected_status = $can_publish_now ? 'publish' : 'draft';
+        $expected_visibility = $can_publish_now ? 'visible' : 'hidden';
         if ( ! $woo || ! $woo->is_type( 'variable' ) ||
             (int) get_post_field( 'post_author', $woo_id ) !== 4971 ||
-            $woo->get_status() !== 'draft' || $woo->get_catalog_visibility() !== 'hidden' ||
+            $woo->get_status() !== $expected_status || $woo->get_catalog_visibility() !== $expected_visibility ||
             ! $woo->get_image_id() ||
             1 + count( $woo->get_gallery_image_ids() ) < min( 20, (int) $payload['image_count'] ) ||
             ! $woo->get_category_ids() ) {
@@ -362,8 +366,16 @@ for ( $i = $start; $i < $end; $i++ ) {
         ), JSON_UNESCAPED_SLASHES ) . "\n";
     } catch ( Throwable $e ) {
         $state['failed'][$pid] = array( 'url' => $url, 'reason' => substr( $e->getMessage(), 0, 250 ) );
-        // If a partial Woo record was created before an exception, always
-        // leave it invisible: the vendor and checkout are disabled as well.
+        // The seller can now be active: quarantine a SKU failing final QA.
+        // Never leave an incomplete gallery/variation unexpectedly buyable.
+        if ( $woo_id ) {
+            $unsafe = wc_get_product( (int) $woo_id );
+            if ( $unsafe ) {
+                $unsafe->set_status( 'draft' );
+                $unsafe->set_catalog_visibility( 'hidden' );
+                $unsafe->save();
+            }
+        }
         echo 'TROPITOP_IMPORT_REVIEW=' . wp_json_encode( array(
             'source_id' => $pid, 'error' => $e->getMessage(),
         ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . "\n";
@@ -387,7 +399,7 @@ if ( (int) $state['cursor'] >= $total ) {
         'discovered' => $total,
         'imported' => count( $state['imported'] ),
         'review_required' => count( $state['failed'] ),
-        'seller_disabled' => true, 'checkout_enabled' => false,
+        'seller_disabled' => $seller_disabled, 'checkout_enabled' => $checkout_ready,
     ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . "\n";
 } else {
     echo 'TROPITOP_BULK_PROGRESS=' . (int) $state['cursor'] . '/' . $total .
