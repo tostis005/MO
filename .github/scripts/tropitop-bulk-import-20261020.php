@@ -24,8 +24,12 @@ if ( ! $supplier || (int) $supplier['id'] !== 8 ||
     abs( (float) $supplier['commission_percent'] - 10.0 ) > 0.001 ) {
     throw new RuntimeException( 'Tropitop identity or agreed 10% commission not verified.' );
 }
-if ( ! get_user_meta( 4971, '_disable_vendor', true ) || MDO_Tropitop_Shipping::is_ready() ) {
-    throw new RuntimeException( 'Refusing bulk onboarding unless seller and checkout remain disabled.' );
+$seller_disabled = (bool) get_user_meta( 4971, '_disable_vendor', true );
+$checkout_ready = MDO_Tropitop_Shipping::is_ready();
+// Seller and verified shipping must move together. An in-between state
+// would risk offering a product with no valid shipping method.
+if ( $seller_disabled === $checkout_ready ) {
+    throw new RuntimeException( 'Inconsistent WCFM vendor and shipping readiness.' );
 }
 if ( get_option( 'woocommerce_weight_unit' ) !== 'kg' ) {
     throw new RuntimeException( 'Woo shop weight unit is not kg.' );
@@ -96,7 +100,7 @@ if ( 'init' === $phase ) {
     ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) . "\n";
     return;
 }
-if ( ! in_array( $phase, array( 'step', 'status' ), true ) ) {
+if ( ! in_array( $phase, array( 'step', 'status', 'activate' ), true ) ) {
     throw new RuntimeException( 'Unknown phase ' . $phase );
 }
 if ( empty( $state['urls'] ) || ! is_array( $state['urls'] ) ) {
@@ -110,7 +114,21 @@ if ( 'status' === $phase ) {
         'failed' => count( (array) $state['failed'] ),
         'failed_samples' => array_slice( (array) $state['failed'], 0, 12, true ),
         'producer_active' => (int) $supplier['active'],
-        'seller_disabled' => true,
+        'seller_disabled' => $seller_disabled,
+        'shipping_ready' => $checkout_ready,
+        'last_source_url' => (string) ( $state['urls'][max( 0, (int)$state['cursor'] - 1 )] ?? '' ),
+        'last_woocommerce_product' => (static function () use ($wpdb, $src_table) {
+            $row=$wpdb->get_row($wpdb->prepare(
+                "SELECT wc_product_id,title FROM $src_table WHERE supplier_id=%d AND wc_product_id>0 ORDER BY wc_product_id DESC LIMIT 1", 8
+            ),ARRAY_A);
+            if(!$row) return null;
+            $woo=wc_get_product((int)$row['wc_product_id']);
+            return array(
+                'id'=>(int)$row['wc_product_id'], 'name'=>$woo?$woo->get_name():(string)$row['title'],
+                'status'=>$woo?$woo->get_status():'missing',
+                'image_count'=>$woo?((int)(bool)$woo->get_image_id()+count($woo->get_gallery_image_ids())):0,
+            );
+        })(),
     ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . "\n";
     return;
 }
