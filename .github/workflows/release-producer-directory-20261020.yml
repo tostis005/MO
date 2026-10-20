@@ -185,6 +185,18 @@ jobs:
           grep -q 'elmercado-producer-directory-editorial-20261020' /tmp/emdo-producers-release.html
           ! grep -q 'elmercado-producer-layout-normalizer' /tmp/emdo-producers-release.html
           ! grep -Eqi 'Fatal error:|Parse error:|Uncaught Error:|critical error on this website' /tmp/emdo-producers-release.html
+          # Confirmar que ambos campos WCFM apuntan al archivo correcto en las diez tiendas.
+          sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$ROOT' '$STAGE'" <<'WCFMCHECK'
+          set -Eeuo pipefail
+          root="$1"; stage="$2"
+          EMDO_BANNER_MODE=verify /opt/plesk/php/8.2/bin/php -d memory_limit=512M "$(command -v wp)" eval-file "$stage/sync-approved-wcfm-banners-20261020.php" --path="$root" --allow-root
+          WCFMCHECK
+          for slug in hidalgo-de-la-jara montjam; do
+            url="https://www.elmercadodeorigen.com/wp-content/themes/elmercadodeorigen-child/assets/images/producer-banners/$slug.webp"
+            curl -fsSL --max-time 50 "$url" -o "/tmp/live-$slug.webp"
+            cmp "/tmp/live-$slug.webp" "/tmp/emdo-final-hams/$slug.webp"
+            echo "FINAL_HAM_PUBLIC_IMAGE_OK $slug"
+          done
           echo 'PRODUCERS_HTTP_AND_HEAD_STYLES_OK'
           cat > /tmp/emdo-producers-check.cjs <<'NODE'
           const puppeteer = require(process.cwd() + '/node_modules/puppeteer-core');
