@@ -31,6 +31,18 @@ foreach ( array(
     verify( reflected( 'category_url', $source_url ) === 'https://tropitop.com/es/' . $category,
         'Known producer category must resolve: ' . $slug );
 }
+
+// If an official product breadcrumb supplies the same category slug and a
+// numeric category ID, recover it without guessing the vendor's taxonomy.
+$bdoc = new DOMDocument();
+@$bdoc->loadHTML( '<?xml encoding="UTF-8" ?><nav class="breadcrumb">'
+    . '<a href="https://tropitop.com/es/315-fruta-de-temporada">Temporada</a>'
+    . '</nav><aside><a href="https://example.org/es/315-fruta-de-temporada">Invalid</a></aside>' );
+verify( reflected( 'category_url',
+    'https://tropitop.com/es/fruta-de-temporada/2340-algo.html',
+    new DOMXPath( $bdoc ) ) === 'https://tropitop.com/es/315-fruta-de-temporada',
+    'Only a matching producer breadcrumb may prove a new category URL.' );
+
 $unknown_category_rejected = false;
 try { reflected( 'category_url', 'https://tropitop.com/es/otra-categoria/1234-una-caja.html' ); }
 catch ( RuntimeException $e ) { $unknown_category_rejected = true; }
