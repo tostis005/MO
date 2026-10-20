@@ -137,15 +137,23 @@ for ( $i = $start; $i < $end; $i++ ) {
         if ( ! $variations || count( $variations ) !== (int) ( $payload['variation_count'] ?? 0 ) ) {
             throw new RuntimeException( 'Variaciones incompletas.' );
         }
+        $needs_weight = false;
         foreach ( $variations as $variation ) {
             if ( empty( $variation['attributes'] ) ||
-                ! isset( $variation['display_price'], $variation['weight_kg'] ) ||
+                ! isset( $variation['display_price'] ) ||
                 ! is_numeric( $variation['display_price'] ) ||
-                (float) $variation['display_price'] <= 0.0 ||
-                ! is_numeric( $variation['weight_kg'] ) ||
+                (float) $variation['display_price'] <= 0.0 ) {
+                throw new RuntimeException( 'Precio o variante inválida.' );
+            }
+            if ( ! isset( $variation['weight_kg'] ) ) {
+                if ( empty( $variation['attributes']['Unidades'] ) ) {
+                    throw new RuntimeException( 'Unidad de presentación no identificada.' );
+                }
+                $needs_weight = true;
+            } elseif ( ! is_numeric( $variation['weight_kg'] ) ||
                 (float) $variation['weight_kg'] <= 0.0 ||
                 (float) $variation['weight_kg'] > 36.0 ) {
-                throw new RuntimeException( 'Precio/peso/variante inválida: no se calcula un porte inventado.' );
+                throw new RuntimeException( 'Peso inviable o no cotizable.' );
             }
         }
         MDO_Connector_Tropitop::upsert_product( 8, $payload );
@@ -167,20 +175,30 @@ for ( $i = $start; $i < $end; $i++ ) {
         $weight_values = array();
         foreach ( $woo->get_children() as $child_id ) {
             $child = wc_get_product( $child_id );
-            if ( ! $child || (float) $child->get_weight() <= 0 ) {
-                throw new RuntimeException( 'Variación Woo sin peso de envío.' );
-            }
+            if ( ! $child ) { throw new RuntimeException( 'Variación Woo no encontrada.' ); }
+            if ( (float) $child->get_weight() <= 0 ) { $needs_weight = true; }
             $weight_values[] = (float) $child->get_weight();
         }
         if ( count( $weight_values ) !== count( $variations ) ) {
             throw new RuntimeException( 'Número de variaciones guardadas diferente a origen.' );
         }
-        update_post_meta( $woo_id, '_mdo_tropitop_prelaunch_validated', '1' );
-        $state['imported'][$pid] = array(
-            'woo_id' => (int) $woo_id, 'stock' => $stock,
-            'options' => count( $variations ), 'images' => 1 + count( $woo->get_gallery_image_ids() ),
-        );
-        unset( $state['failed'][$pid] );
+        if ( $needs_weight ) {
+            update_post_meta( $woo_id, '_mdo_tropitop_prelaunch_validated', '0' );
+            update_post_meta( $woo_id, '_mdo_tropitop_missing_shipping_weight', '1' );
+            $state['failed'][$pid] = array(
+                'url' => $url, 'woo_id' => (int) $woo_id,
+                'reason' => 'Ficha guardada en borrador con variantes por unidades: falta el peso embalado para calcular los portes.',
+            );
+            echo 'TROPITOP_IMPORT_DRAFT_NEEDS_WEIGHT=' . (int) $woo_id . "\n";
+        } else {
+            update_post_meta( $woo_id, '_mdo_tropitop_prelaunch_validated', '1' );
+            delete_post_meta( $woo_id, '_mdo_tropitop_missing_shipping_weight' );
+            $state['imported'][$pid] = array(
+                'woo_id' => (int) $woo_id, 'stock' => $stock,
+                'options' => count( $variations ), 'images' => 1 + count( $woo->get_gallery_image_ids() ),
+            );
+            unset( $state['failed'][$pid] );
+        }
         echo 'TROPITOP_IMPORT_OK=' . wp_json_encode( array(
             'source_id' => $pid, 'woo_id' => (int) $woo_id,
             'stock' => $stock, 'options' => count( $variations ),
