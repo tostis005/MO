@@ -1,11 +1,62 @@
 {
-  "completed_at": "2026-10-20T16:04:20+00:00",
+  "source_latest_product_inspection": {
+    "latitudes": {
+      "active": true,
+      "vendor_disabled": false,
+      "shipping_ready": null,
+      "source_rows": 138,
+      "created_products": 138,
+      "source_pending": 0,
+      "can_publish": true,
+      "latest_created": {
+        "product_id": 17485,
+        "source_row": 655,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "cover": true,
+        "gallery_count": 5,
+        "url": "https://www.elmercadodeorigen.com/producto/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      }
+    },
+    "tropitop": {
+      "active": false,
+      "vendor_disabled": false,
+      "shipping_ready": false,
+      "source_rows": 20,
+      "created_products": 20,
+      "source_pending": 0,
+      "can_publish": false,
+      "latest_created": {
+        "product_id": 18636,
+        "source_row": 781,
+        "name": "Mix mandarinas y naranjas",
+        "status": "draft",
+        "cover": true,
+        "gallery_count": 11,
+        "url": "https://www.elmercadodeorigen.com/?post_type=product&p=18636"
+      }
+    }
+  },
+  "source_imported": 0,
+  "source_import_errors": [],
+  "completed_at": "2026-10-20T16:21:34+00:00",
   "copy_products_checked": 478,
   "copy_products_updated": 0,
   "gallery_source_products": 138,
+  "latest_created": {
+    "id": 17485,
+    "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+    "status": "publish",
+    "image_id": 17486,
+    "gallery_count": 5,
+    "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+  },
+  "resume_cursor_first": 0,
+  "resume_cursor_last": 655,
+  "gallery_reached_end": true,
   "gallery_products_checked": 138,
-  "gallery_products_updated": 27,
-  "photos_imported": 102,
+  "gallery_products_updated": 0,
+  "photos_imported": 0,
   "errors": [],
   "batches": [
     {
@@ -20,7 +71,8 @@
       "candidates": 0,
       "errors": [],
       "sample": [],
-      "at": "2026-10-20T15:35:12+00:00"
+      "at": "2026-10-20T16:15:40+00:00",
+      "complete": true
     },
     {
       "task": "copy",
@@ -34,7 +86,8 @@
       "candidates": 0,
       "errors": [],
       "sample": [],
-      "at": "2026-10-20T15:35:17+00:00"
+      "at": "2026-10-20T16:15:47+00:00",
+      "complete": true
     },
     {
       "task": "copy",
@@ -48,7 +101,8 @@
       "candidates": 0,
       "errors": [],
       "sample": [],
-      "at": "2026-10-20T15:35:23+00:00"
+      "at": "2026-10-20T16:15:52+00:00",
+      "complete": true
     },
     {
       "task": "copy",
@@ -62,7 +116,8 @@
       "candidates": 0,
       "errors": [],
       "sample": [],
-      "at": "2026-10-20T15:35:29+00:00"
+      "at": "2026-10-20T16:15:57+00:00",
+      "complete": true
     },
     {
       "task": "copy",
@@ -76,7 +131,8 @@
       "candidates": 0,
       "errors": [],
       "sample": [],
-      "at": "2026-10-20T15:35:35+00:00"
+      "at": "2026-10-20T16:16:02+00:00",
+      "complete": true
     },
     {
       "task": "copy",
@@ -90,17 +146,18 @@
       "candidates": 0,
       "errors": [],
       "sample": [],
-      "at": "2026-10-20T15:35:41+00:00"
+      "at": "2026-10-20T16:16:07+00:00",
+      "complete": true
     },
     {
       "task": "gallery",
       "mode": "apply",
       "offset": 0,
-      "size": 6,
-      "checked": 6,
+      "size": 3,
+      "checked": 3,
       "changed": 0,
       "added": 0,
-      "already_present": 11,
+      "already_present": 2,
       "candidates": 0,
       "errors": [],
       "sample": [
@@ -124,7 +181,34 @@
           "before": 2,
           "after": 2,
           "added": 0
-        },
+        }
+      ],
+      "at": "2026-10-20T16:16:12+00:00",
+      "cursor_before": 0,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 520,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 9,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
         {
           "id": 17182,
           "source_count": 6,
@@ -147,18 +231,29 @@
           "added": 0
         }
       ],
-      "at": "2026-10-20T15:35:46+00:00",
-      "total": 138
+      "at": "2026-10-20T16:16:19+00:00",
+      "cursor_before": 520,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 523,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 6,
-      "size": 6,
-      "checked": 6,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
       "changed": 0,
       "added": 0,
-      "already_present": 14,
+      "already_present": 6,
       "candidates": 0,
       "errors": [],
       "sample": [
@@ -182,7 +277,34 @@
           "before": 2,
           "after": 2,
           "added": 0
-        },
+        }
+      ],
+      "at": "2026-10-20T16:16:26+00:00",
+      "cursor_before": 523,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 526,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 8,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
         {
           "id": 17194,
           "source_count": 3,
@@ -205,18 +327,29 @@
           "added": 0
         }
       ],
-      "at": "2026-10-20T15:35:55+00:00",
-      "total": 138
+      "at": "2026-10-20T16:16:33+00:00",
+      "cursor_before": 526,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 529,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 12,
-      "size": 6,
-      "checked": 6,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
       "changed": 0,
       "added": 0,
-      "already_present": 17,
+      "already_present": 7,
       "candidates": 0,
       "errors": [],
       "sample": [
@@ -240,7 +373,34 @@
           "before": 3,
           "after": 3,
           "added": 0
-        },
+        }
+      ],
+      "at": "2026-10-20T16:16:39+00:00",
+      "cursor_before": 529,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 532,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 10,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
         {
           "id": 17206,
           "source_count": 5,
@@ -263,18 +423,29 @@
           "added": 0
         }
       ],
-      "at": "2026-10-20T15:36:04+00:00",
-      "total": 138
+      "at": "2026-10-20T16:16:46+00:00",
+      "cursor_before": 532,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 535,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 18,
-      "size": 6,
-      "checked": 6,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
       "changed": 0,
       "added": 0,
-      "already_present": 14,
+      "already_present": 7,
       "candidates": 0,
       "errors": [],
       "sample": [
@@ -298,7 +469,34 @@
           "before": 3,
           "after": 3,
           "added": 0
-        },
+        }
+      ],
+      "at": "2026-10-20T16:16:53+00:00",
+      "cursor_before": 535,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 538,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 7,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
         {
           "id": 17218,
           "source_count": 4,
@@ -321,18 +519,29 @@
           "added": 0
         }
       ],
-      "at": "2026-10-20T15:36:15+00:00",
-      "total": 138
+      "at": "2026-10-20T16:17:00+00:00",
+      "cursor_before": 538,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 541,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 24,
-      "size": 6,
-      "checked": 6,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
       "changed": 0,
       "added": 0,
-      "already_present": 5,
+      "already_present": 3,
       "candidates": 0,
       "errors": [],
       "sample": [
@@ -356,7 +565,34 @@
           "before": 0,
           "after": 0,
           "added": 0
-        },
+        }
+      ],
+      "at": "2026-10-20T16:17:06+00:00",
+      "cursor_before": 541,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 544,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 2,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
         {
           "id": 17230,
           "source_count": 1,
@@ -379,18 +615,29 @@
           "added": 0
         }
       ],
-      "at": "2026-10-20T15:36:36+00:00",
-      "total": 138
+      "at": "2026-10-20T16:17:13+00:00",
+      "cursor_before": 544,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 547,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 30,
-      "size": 6,
-      "checked": 6,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
       "changed": 0,
       "added": 0,
-      "already_present": 3,
+      "already_present": 2,
       "candidates": 0,
       "errors": [],
       "sample": [
@@ -414,7 +661,34 @@
           "before": 0,
           "after": 0,
           "added": 0
-        },
+        }
+      ],
+      "at": "2026-10-20T16:17:19+00:00",
+      "cursor_before": 547,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 550,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 1,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
         {
           "id": 17242,
           "source_count": 1,
@@ -437,18 +711,29 @@
           "added": 0
         }
       ],
-      "at": "2026-10-20T15:36:44+00:00",
-      "total": 138
+      "at": "2026-10-20T16:17:25+00:00",
+      "cursor_before": 550,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 553,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 36,
-      "size": 6,
-      "checked": 6,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
       "changed": 0,
       "added": 0,
-      "already_present": 14,
+      "already_present": 8,
       "candidates": 0,
       "errors": [],
       "sample": [
@@ -472,7 +757,34 @@
           "before": 4,
           "after": 4,
           "added": 0
-        },
+        }
+      ],
+      "at": "2026-10-20T16:17:31+00:00",
+      "cursor_before": 553,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 556,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 6,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
         {
           "id": 17254,
           "source_count": 4,
@@ -495,18 +807,29 @@
           "added": 0
         }
       ],
-      "at": "2026-10-20T15:36:52+00:00",
-      "total": 138
+      "at": "2026-10-20T16:17:37+00:00",
+      "cursor_before": 556,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 559,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 42,
-      "size": 6,
-      "checked": 6,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
       "changed": 0,
       "added": 0,
-      "already_present": 17,
+      "already_present": 6,
       "candidates": 0,
       "errors": [],
       "sample": [
@@ -530,7 +853,34 @@
           "before": 1,
           "after": 1,
           "added": 0
-        },
+        }
+      ],
+      "at": "2026-10-20T16:17:43+00:00",
+      "cursor_before": 559,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 562,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 11,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
         {
           "id": 17266,
           "source_count": 4,
@@ -553,18 +903,29 @@
           "added": 0
         }
       ],
-      "at": "2026-10-20T15:37:01+00:00",
-      "total": 138
+      "at": "2026-10-20T16:17:49+00:00",
+      "cursor_before": 562,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 565,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 48,
-      "size": 6,
-      "checked": 6,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
       "changed": 0,
       "added": 0,
-      "already_present": 11,
+      "already_present": 5,
       "candidates": 0,
       "errors": [],
       "sample": [
@@ -588,7 +949,34 @@
           "before": 3,
           "after": 3,
           "added": 0
-        },
+        }
+      ],
+      "at": "2026-10-20T16:17:56+00:00",
+      "cursor_before": 565,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 568,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 6,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
         {
           "id": 17278,
           "source_count": 2,
@@ -611,18 +999,29 @@
           "added": 0
         }
       ],
-      "at": "2026-10-20T15:37:09+00:00",
-      "total": 138
+      "at": "2026-10-20T16:18:02+00:00",
+      "cursor_before": 568,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 571,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 54,
-      "size": 6,
-      "checked": 6,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
       "changed": 0,
       "added": 0,
-      "already_present": 7,
+      "already_present": 5,
       "candidates": 0,
       "errors": [],
       "sample": [
@@ -646,7 +1045,34 @@
           "before": 0,
           "after": 0,
           "added": 0
-        },
+        }
+      ],
+      "at": "2026-10-20T16:18:09+00:00",
+      "cursor_before": 571,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 574,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 2,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
         {
           "id": 17290,
           "source_count": 1,
@@ -669,18 +1095,29 @@
           "added": 0
         }
       ],
-      "at": "2026-10-20T15:37:18+00:00",
-      "total": 138
+      "at": "2026-10-20T16:18:15+00:00",
+      "cursor_before": 574,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 577,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 60,
-      "size": 6,
-      "checked": 6,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
       "changed": 0,
       "added": 0,
-      "already_present": 13,
+      "already_present": 7,
       "candidates": 0,
       "errors": [],
       "sample": [
@@ -704,7 +1141,34 @@
           "before": 2,
           "after": 2,
           "added": 0
-        },
+        }
+      ],
+      "at": "2026-10-20T16:18:21+00:00",
+      "cursor_before": 577,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 580,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 6,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
         {
           "id": 17306,
           "source_count": 1,
@@ -727,18 +1191,29 @@
           "added": 0
         }
       ],
-      "at": "2026-10-20T15:37:26+00:00",
-      "total": 138
+      "at": "2026-10-20T16:18:27+00:00",
+      "cursor_before": 580,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 583,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 66,
-      "size": 6,
-      "checked": 6,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
       "changed": 0,
       "added": 0,
-      "already_present": 10,
+      "already_present": 5,
       "candidates": 0,
       "errors": [],
       "sample": [
@@ -762,7 +1237,34 @@
           "before": 2,
           "after": 2,
           "added": 0
-        },
+        }
+      ],
+      "at": "2026-10-20T16:18:33+00:00",
+      "cursor_before": 583,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 586,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 5,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
         {
           "id": 17318,
           "source_count": 3,
@@ -785,18 +1287,29 @@
           "added": 0
         }
       ],
-      "at": "2026-10-20T15:37:35+00:00",
-      "total": 138
+      "at": "2026-10-20T16:18:40+00:00",
+      "cursor_before": 586,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 589,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 72,
-      "size": 6,
-      "checked": 6,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
       "changed": 0,
       "added": 0,
-      "already_present": 9,
+      "already_present": 1,
       "candidates": 0,
       "errors": [],
       "sample": [
@@ -820,7 +1333,34 @@
           "before": 0,
           "after": 0,
           "added": 0
-        },
+        }
+      ],
+      "at": "2026-10-20T16:18:46+00:00",
+      "cursor_before": 589,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 592,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 8,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
         {
           "id": 17330,
           "source_count": 3,
@@ -843,18 +1383,29 @@
           "added": 0
         }
       ],
-      "at": "2026-10-20T15:37:44+00:00",
-      "total": 138
+      "at": "2026-10-20T16:18:53+00:00",
+      "cursor_before": 592,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 595,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 78,
-      "size": 6,
-      "checked": 6,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
       "changed": 0,
       "added": 0,
-      "already_present": 8,
+      "already_present": 2,
       "candidates": 0,
       "errors": [],
       "sample": [
@@ -878,7 +1429,34 @@
           "before": 0,
           "after": 0,
           "added": 0
-        },
+        }
+      ],
+      "at": "2026-10-20T16:18:59+00:00",
+      "cursor_before": 595,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 598,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 6,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
         {
           "id": 17347,
           "source_count": 1,
@@ -901,18 +1479,29 @@
           "added": 0
         }
       ],
-      "at": "2026-10-20T15:37:52+00:00",
-      "total": 138
+      "at": "2026-10-20T16:19:06+00:00",
+      "cursor_before": 598,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 601,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 84,
-      "size": 6,
-      "checked": 6,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
       "changed": 0,
       "added": 0,
-      "already_present": 11,
+      "already_present": 2,
       "candidates": 0,
       "errors": [],
       "sample": [
@@ -936,7 +1525,34 @@
           "before": 0,
           "after": 0,
           "added": 0
-        },
+        }
+      ],
+      "at": "2026-10-20T16:19:12+00:00",
+      "cursor_before": 601,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 604,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 9,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
         {
           "id": 17362,
           "source_count": 3,
@@ -959,18 +1575,29 @@
           "added": 0
         }
       ],
-      "at": "2026-10-20T15:38:01+00:00",
-      "total": 138
+      "at": "2026-10-20T16:19:18+00:00",
+      "cursor_before": 604,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 607,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 90,
-      "size": 6,
-      "checked": 6,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
       "changed": 0,
       "added": 0,
-      "already_present": 19,
+      "already_present": 15,
       "candidates": 0,
       "errors": [],
       "sample": [
@@ -994,7 +1621,34 @@
           "before": 5,
           "after": 5,
           "added": 0
-        },
+        }
+      ],
+      "at": "2026-10-20T16:19:25+00:00",
+      "cursor_before": 607,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 610,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 4,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
         {
           "id": 17378,
           "source_count": 4,
@@ -1017,18 +1671,29 @@
           "added": 0
         }
       ],
-      "at": "2026-10-20T15:38:09+00:00",
-      "total": 138
+      "at": "2026-10-20T16:19:32+00:00",
+      "cursor_before": 610,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 613,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 96,
-      "size": 6,
-      "checked": 6,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
       "changed": 0,
       "added": 0,
-      "already_present": 26,
+      "already_present": 11,
       "candidates": 0,
       "errors": [],
       "sample": [
@@ -1052,7 +1717,34 @@
           "before": 3,
           "after": 3,
           "added": 0
-        },
+        }
+      ],
+      "at": "2026-10-20T16:19:41+00:00",
+      "cursor_before": 613,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 616,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 15,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
         {
           "id": 17390,
           "source_count": 5,
@@ -1075,19 +1767,30 @@
           "added": 0
         }
       ],
-      "at": "2026-10-20T15:38:18+00:00",
-      "total": 138
+      "at": "2026-10-20T16:19:57+00:00",
+      "cursor_before": 616,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 619,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 102,
-      "size": 6,
-      "checked": 6,
-      "changed": 1,
-      "added": 4,
-      "already_present": 7,
-      "candidates": 4,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 8,
+      "candidates": 0,
       "errors": [],
       "sample": [
         {
@@ -1107,10 +1810,37 @@
         {
           "id": 17404,
           "source_count": 5,
-          "before": 0,
+          "before": 4,
           "after": 4,
-          "added": 4
-        },
+          "added": 0
+        }
+      ],
+      "at": "2026-10-20T16:20:09+00:00",
+      "cursor_before": 619,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 622,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 3,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
         {
           "id": 17406,
           "source_count": 3,
@@ -1133,19 +1863,30 @@
           "added": 0
         }
       ],
-      "at": "2026-10-20T15:38:27+00:00",
-      "total": 138
+      "at": "2026-10-20T16:20:17+00:00",
+      "cursor_before": 622,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 625,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 108,
-      "size": 6,
-      "checked": 6,
-      "changed": 4,
-      "added": 17,
-      "already_present": 6,
-      "candidates": 17,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 8,
+      "candidates": 0,
       "errors": [],
       "sample": [
         {
@@ -1165,53 +1906,91 @@
         {
           "id": 17420,
           "source_count": 4,
-          "before": 0,
+          "before": 3,
           "after": 3,
-          "added": 2
-        },
-        {
-          "id": 17422,
-          "source_count": 5,
-          "before": 0,
-          "after": 4,
-          "added": 4
-        },
-        {
-          "id": 17424,
-          "source_count": 8,
-          "before": 0,
-          "after": 7,
-          "added": 7
-        },
-        {
-          "id": 17426,
-          "source_count": 5,
-          "before": 0,
-          "after": 4,
-          "added": 4
+          "added": 0
         }
       ],
-      "at": "2026-10-20T15:39:46+00:00",
-      "total": 138
+      "at": "2026-10-20T16:20:24+00:00",
+      "cursor_before": 625,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 628,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 114,
-      "size": 6,
-      "checked": 6,
-      "changed": 5,
-      "added": 19,
-      "already_present": 0,
-      "candidates": 19,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 15,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
+        {
+          "id": 17422,
+          "source_count": 5,
+          "before": 4,
+          "after": 4,
+          "added": 0
+        },
+        {
+          "id": 17424,
+          "source_count": 8,
+          "before": 7,
+          "after": 7,
+          "added": 0
+        },
+        {
+          "id": 17426,
+          "source_count": 5,
+          "before": 4,
+          "after": 4,
+          "added": 0
+        }
+      ],
+      "at": "2026-10-20T16:20:31+00:00",
+      "cursor_before": 628,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 631,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 8,
+      "candidates": 0,
       "errors": [],
       "sample": [
         {
           "id": 17428,
           "source_count": 3,
-          "before": 0,
+          "before": 2,
           "after": 2,
-          "added": 2
+          "added": 0
         },
         {
           "id": 17430,
@@ -1223,132 +2002,235 @@
         {
           "id": 17432,
           "source_count": 7,
-          "before": 0,
+          "before": 6,
           "after": 6,
-          "added": 6
-        },
-        {
-          "id": 17434,
-          "source_count": 5,
-          "before": 0,
-          "after": 4,
-          "added": 4
-        },
-        {
-          "id": 17436,
-          "source_count": 4,
-          "before": 0,
-          "after": 3,
-          "added": 3
-        },
-        {
-          "id": 17438,
-          "source_count": 5,
-          "before": 0,
-          "after": 4,
-          "added": 4
+          "added": 0
         }
       ],
-      "at": "2026-10-20T15:46:12+00:00",
-      "total": 138
+      "at": "2026-10-20T16:20:39+00:00",
+      "cursor_before": 631,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 634,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 120,
-      "size": 6,
-      "checked": 6,
-      "changed": 6,
-      "added": 12,
-      "already_present": 0,
-      "candidates": 12,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 11,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
+        {
+          "id": 17434,
+          "source_count": 5,
+          "before": 4,
+          "after": 4,
+          "added": 0
+        },
+        {
+          "id": 17436,
+          "source_count": 4,
+          "before": 3,
+          "after": 3,
+          "added": 0
+        },
+        {
+          "id": 17438,
+          "source_count": 5,
+          "before": 4,
+          "after": 4,
+          "added": 0
+        }
+      ],
+      "at": "2026-10-20T16:20:46+00:00",
+      "cursor_before": 634,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 637,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 6,
+      "candidates": 0,
       "errors": [],
       "sample": [
         {
           "id": 17440,
           "source_count": 2,
-          "before": 0,
+          "before": 1,
           "after": 1,
-          "added": 1
+          "added": 0
         },
         {
           "id": 17442,
           "source_count": 4,
-          "before": 0,
+          "before": 3,
           "after": 3,
-          "added": 3
+          "added": 0
         },
         {
           "id": 17447,
           "source_count": 3,
-          "before": 0,
+          "before": 2,
           "after": 2,
-          "added": 2
-        },
-        {
-          "id": 17449,
-          "source_count": 3,
-          "before": 0,
-          "after": 2,
-          "added": 2
-        },
-        {
-          "id": 17451,
-          "source_count": 4,
-          "before": 0,
-          "after": 3,
-          "added": 3
-        },
-        {
-          "id": 17453,
-          "source_count": 2,
-          "before": 0,
-          "after": 1,
-          "added": 1
+          "added": 0
         }
       ],
-      "at": "2026-10-20T15:52:19+00:00",
-      "total": 138
+      "at": "2026-10-20T16:20:53+00:00",
+      "cursor_before": 637,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 640,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 126,
-      "size": 6,
-      "checked": 6,
-      "changed": 5,
-      "added": 21,
-      "already_present": 0,
-      "candidates": 21,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 6,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
+        {
+          "id": 17449,
+          "source_count": 3,
+          "before": 2,
+          "after": 2,
+          "added": 0
+        },
+        {
+          "id": 17451,
+          "source_count": 4,
+          "before": 3,
+          "after": 3,
+          "added": 0
+        },
+        {
+          "id": 17453,
+          "source_count": 2,
+          "before": 1,
+          "after": 1,
+          "added": 0
+        }
+      ],
+      "at": "2026-10-20T16:21:01+00:00",
+      "cursor_before": 640,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 643,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 15,
+      "candidates": 0,
       "errors": [],
       "sample": [
         {
           "id": 17455,
           "source_count": 6,
-          "before": 0,
+          "before": 5,
           "after": 5,
-          "added": 5
+          "added": 0
         },
         {
           "id": 17457,
           "source_count": 4,
-          "before": 0,
+          "before": 3,
           "after": 3,
-          "added": 3
+          "added": 0
         },
         {
           "id": 17459,
           "source_count": 8,
-          "before": 0,
+          "before": 7,
           "after": 7,
-          "added": 7
-        },
+          "added": 0
+        }
+      ],
+      "at": "2026-10-20T16:21:07+00:00",
+      "cursor_before": 643,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 646,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 6,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
         {
           "id": 17461,
           "source_count": 3,
-          "before": 0,
+          "before": 2,
           "after": 2,
-          "added": 2
+          "added": 0
         },
         {
           "id": 17463,
@@ -1360,71 +2242,145 @@
         {
           "id": 17465,
           "source_count": 5,
-          "before": 0,
+          "before": 4,
           "after": 4,
-          "added": 4
+          "added": 0
         }
       ],
-      "at": "2026-10-20T15:56:34+00:00",
-      "total": 138
+      "at": "2026-10-20T16:21:14+00:00",
+      "cursor_before": 646,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 649,
+      "complete": false
     },
     {
       "task": "gallery",
       "mode": "apply",
-      "offset": 132,
-      "size": 6,
-      "checked": 6,
-      "changed": 6,
-      "added": 29,
-      "already_present": 0,
-      "candidates": 29,
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 15,
+      "candidates": 0,
       "errors": [],
       "sample": [
         {
           "id": 17471,
           "source_count": 3,
-          "before": 0,
+          "before": 2,
           "after": 2,
-          "added": 2
+          "added": 0
         },
         {
           "id": 17473,
           "source_count": 9,
-          "before": 0,
+          "before": 8,
           "after": 8,
-          "added": 8
+          "added": 0
         },
         {
           "id": 17479,
           "source_count": 6,
-          "before": 0,
+          "before": 5,
           "after": 5,
-          "added": 5
-        },
+          "added": 0
+        }
+      ],
+      "at": "2026-10-20T16:21:21+00:00",
+      "cursor_before": 649,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 652,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 3,
+      "changed": 0,
+      "added": 0,
+      "already_present": 14,
+      "candidates": 0,
+      "errors": [],
+      "sample": [
         {
           "id": 17481,
           "source_count": 6,
-          "before": 0,
+          "before": 5,
           "after": 5,
-          "added": 5
+          "added": 0
         },
         {
           "id": 17483,
           "source_count": 5,
-          "before": 0,
+          "before": 4,
           "after": 4,
-          "added": 4
+          "added": 0
         },
         {
           "id": 17485,
           "source_count": 6,
-          "before": 0,
+          "before": 5,
           "after": 5,
-          "added": 5
+          "added": 0
         }
       ],
-      "at": "2026-10-20T16:04:20+00:00",
-      "total": 138
+      "at": "2026-10-20T16:21:27+00:00",
+      "cursor_before": 652,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "cursor_after": 655,
+      "complete": false
+    },
+    {
+      "task": "gallery",
+      "mode": "apply",
+      "offset": 0,
+      "size": 3,
+      "checked": 0,
+      "changed": 0,
+      "added": 0,
+      "already_present": 0,
+      "candidates": 0,
+      "errors": [],
+      "sample": [],
+      "at": "2026-10-20T16:21:34+00:00",
+      "cursor_before": 655,
+      "latest_created": {
+        "id": 17485,
+        "name": "Vacío de wagyu australiano (800-900 gr. apróx.)",
+        "status": "publish",
+        "image_id": 17486,
+        "gallery_count": 5,
+        "source_url": "https://latitudes.es/premium/wagyu/vacio-de-wagyu-australiano-800-900-gr-aprox/"
+      },
+      "total": 138,
+      "complete": true
     }
   ]
 }
