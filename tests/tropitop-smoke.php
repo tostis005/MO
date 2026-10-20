@@ -52,7 +52,7 @@ if ( class_exists( 'DOMDocument' ) && class_exists( 'DOMXPath' ) ) {
 }
 if ( class_exists( 'DOMDocument' ) ) {
     $u = new DOMDocument();
-    @$u->loadHTML( '<div class="product-variants"><ul><li><a>5.00 unid 32,90 €</a></li></ul></div>' );
+    @$u->loadHTML( '<?xml encoding="UTF-8" ?><div class="product-variants"><ul><li><a>5.00 unid 32,90 €</a></li></ul></div>' );
     $unit_sizes = reflected( 'sizes', new DOMXPath( $u ) );
     verify( count( $unit_sizes ) === 1 && ( $unit_sizes['unid:5.000']['unit'] ?? '' ) === 'unid',
         'Unit presentations must not be mislabelled as kilograms.' );
