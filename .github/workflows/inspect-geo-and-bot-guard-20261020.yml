@@ -49,6 +49,49 @@ jobs:
           for i in 1 2 3; do
             curl -sS -o /dev/null --max-time 10 -w 'http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total}\n' 'https://www.elmercadodeorigen.com/wp-content/themes/elmercadodeorigen-child/assets/ad-geo-fast.php' || true
           done
+          echo '=== GEOIP2 LOADED AND GLOBAL NGINX MAPS ==='
+          nginx -T 2>&1 | grep -E 'load_module.*geoip|geoip2 |limit_req_zone|emdo_filter|include.*conf.d' | head -n 38 | sed -E 's#(/[a-zA-Z0-9_.-]+){3,}#REDACTED_PATH#g' || true
+          echo '=== DYNAMIC MODULE PATHS ==='
+          ls -la /usr/share/nginx/modules /etc/nginx/modules-enabled /usr/lib/nginx/modules 2>/dev/null | grep -Ei 'geoip|total|modules|^l' | head -n 28 || true
+          echo '=== NGINX VHOST CONFIG FILTER AND GEOCHECK (NO ADDRESS VALUES) ==='
+          python3 - "$vhost/vhost_nginx.conf" <<'PY'
+          import sys
+          p=sys.argv[1]
+          if not __import__('os').path.exists(p):raise SystemExit()
+          lines=open(p).read().splitlines()
+          for i,l in enumerate(lines):
+              if 'limit_req' in l or 'filter_' in l or 'geoip' in l or 'location = ' in l:
+                  print(i+1,l[:230])
+          PY
+          echo '=== LIVE GEOIP2 MODULE CANDIDATES ==='
+          find /usr/share/nginx/modules /usr/lib/nginx/modules -maxdepth 2 -iname '*geoip*' -printf '%p\n' 2>/dev/null | head -n 15
+          echo '=== 24H GEO SOURCE DRILLDOWN FOR TARGET PATH (NO IPS PRINTED) ==='
+          "$(/usr/bin/which php)" -v | head -n 1 || true
+          PHP=/opt/plesk/php/8.2/bin/php
+          "$PHP" -r '
+          $autoload="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/woocommerce/vendor/autoload.php";
+          $db="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wordfence/lib/geoip.mmdb";
+          if(!is_file($autoload)||!is_file($db)){echo "maxmind reader/db unavailable\n";exit;}
+          require_once $autoload;
+          $reader=new MaxMind\Db\Reader($db);
+          $log="/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log";
+          $start=time()-86400;
+          $ctr=[];$uniq=[];$total=0;$sample=0;
+          $fh=fopen($log,"rb");
+          if(!$fh)exit;
+          while(($line=fgets($fh))!==false){
+              if(strpos($line,"/tienda/hidalgo-de-la-jara/")===false)continue;
+              if(!preg_match("~^(\S+).*?\[([^]]+)\]\s+\"GET\s+/tienda/hidalgo-de-la-jara/\?~",$line,$m))continue;
+              $t=strtotime($m[2]);if(!$t||$t<$start)continue;
+              $ip=$m[1];
+              if(!isset($uniq[$ip])){
+                  try{$data=$reader->get($ip);$uniq[$ip]=strtoupper((string)($data["country"]["iso_code"]??"UNKNOWN"));}catch(Throwable $e){$uniq[$ip]="UNKNOWN";}
+              }
+              $country=$uniq[$ip];$ctr[$country]=($ctr[$country]??0)+1;$total++;
+          }
+          fclose($fh);$reader->close();
+          arsort($ctr);echo "total=". $total." unique_ips=".count($uniq)."\n";echo json_encode(array_slice($ctr,0,22,true),JSON_UNESCAPED_SLASHES)."\n";
+          ' 2>&1 | head -n 12 || true
           echo '=== STORE CACHE SOURCE SIZE ==='
           sha256sum "$root/wp-content/advanced-cache.php" || true
           echo '=== REST OF WORLD SHIPPING ==='
