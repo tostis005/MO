@@ -1,0 +1,149 @@
+name: Deploy fast GeoIP2 faceted crawler guard EMDO 20261020
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/deploy-fast-geoip2-facet-guard-20261020.yml']
+permissions:
+  contents: read
+concurrency:
+  group: emdo-nginx-geoip2-guard
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install and validate geo-filter at Nginx; rollback automatically if invalid
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          chmod 600 ~/.ssh/known_hosts
+          sshpass -e ssh -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ConnectTimeout=15 -p "$PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          module=/etc/nginx/modules.conf.d/50-emdo-geoip2.conf
+          rules=/etc/nginx/conf.d/99-emdo-geoip2-facet-guard.conf
+          vhost=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          db=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wordfence/lib/geoip.mmdb
+          stamp=$(date -u +%Y%m%dT%H%M%SZ)
+          backup=/root/emdo-nginx-geofacet-backup-$stamp
+          test -s "$db"
+          test -f /usr/share/nginx/modules/ngx_http_geoip2_module.so
+          test -f "$vhost"
+          test ! -e "$module"
+          test ! -e "$rules"
+          install -d -m 0700 "$backup"
+          cp -p "$vhost" "$backup/vhost_nginx.conf"
+          rollback() {
+            status=$?
+            trap - EXIT
+            if [ "$status" -ne 0 ]; then
+              echo 'ROLLBACK: RESTORING NGINX DOMAIN CONFIG AND REMOVING NEW GEOIP2 FILES'
+              cp -p "$backup/vhost_nginx.conf" "$vhost"
+              rm -f "$module" "$rules"
+              nginx -t || true
+              systemctl reload nginx || true
+            fi
+            exit "$status"
+          }
+          trap rollback EXIT
+          echo 'load_module modules/ngx_http_geoip2_module.so;' > "$module"
+          chmod 0644 "$module"
+          cat > "$rules" <<'CONF'
+          # EMDO 2026-10-20: inexpensive, in-memory GeoIP2 protection for
+          # distributed crawlers requesting expensive non-European faceted catalogs.
+          # This database is already maintained for the site geo-ad functionality.
+          # Unknown countries fail open. Normal catalog URLs and single filters pass.
+          geoip2 /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wordfence/lib/geoip.mmdb {
+              auto_reload 1h;
+              $emdo_geo_country country iso_code;
+          }
+
+          map $emdo_geo_country $emdo_is_outside_europe {
+              default 1;
+              "" 0;
+              AD 0; AL 0; AT 0; BA 0; BE 0; BG 0; BY 0; CH 0;
+              CY 0; CZ 0; DE 0; DK 0; EE 0; ES 0; FI 0; FO 0;
+              FR 0; GB 0; GG 0; GI 0; GR 0; HR 0; HU 0; IE 0;
+              IM 0; IS 0; IT 0; JE 0; LI 0; LT 0; LU 0; LV 0;
+              MC 0; MD 0; ME 0; MK 0; MT 0; NL 0; NO 0; PL 0;
+              PT 0; RO 0; RS 0; RU 0; SE 0; SI 0; SJ 0; SK 0;
+              SM 0; TR 0; UA 0; VA 0; XK 0;
+          }
+
+          # Limit to storefront and catalog categories, including infinite-scroll
+          # pagination. Product detail, blog, cart, checkout, REST are untouched.
+          map $uri $emdo_is_faceted_catalog {
+              default 0;
+              ~*^/(?:tienda|en/store|categoria-producto|en/product-category)/[a-z0-9-]+(?:/page/[1-9][0-9]*)?/?$ 1;
+          }
+
+          # The abusive 2026-10-20 burst consistently contains all three:
+          # emo_vendor_cat, filter_* attribute A, filter_* attribute B.
+          map $args $emdo_facet_vendor_cat {
+              default 0;
+              ~*(?:^|&)emo_vendor_cat= 1;
+          }
+          map $args $emdo_facet_two_attributes {
+              default 0;
+              ~*(?:^|&)filter_[^=&]+=[^&]*&(?:[^&]*&)*filter_[^=&]+= 1;
+          }
+
+          # Search engine UA exception is intentionally narrow. It does not
+          # classify as authenticated: the pre-existing global rate guard still
+          # applies. Bots mimicking Chrome are not exempt.
+          map $http_user_agent $emdo_search_agent_hint {
+              default 0;
+              ~*(?:Googlebot|AdsBot-Google|GoogleOther|Google-InspectionTool|bingbot|BingPreview) 1;
+          }
+
+          map "$emdo_is_outside_europe:$emdo_is_faceted_catalog:$emdo_facet_vendor_cat:$emdo_facet_two_attributes:$emdo_search_agent_hint" $emdo_geofacet_reject {
+              default 0;
+              "1:1:1:1:0" 1;
+          }
+          CONF
+          chmod 0644 "$rules"
+          python3 - "$vhost" <<'PY'
+          import sys
+          p=sys.argv[1];s=open(p,encoding='utf8').read()
+          start='# BEGIN EMDO GEO-FACET EARLY GUARD 20261020'
+          end='# END EMDO GEO-FACET EARLY GUARD 20261020'
+          if start in s:raise ValueError('rule already installed')
+          block=start+'\nif ($emdo_geofacet_reject) { return 429; }\n'+end+'\n'
+          open(p,'w',encoding='utf8').write(block+s)
+          PY
+          echo '=== VALIDATE CONFIG ==='
+          nginx -t
+          echo '=== RELOAD NGINX WITHOUT RESTARTING PHP/APACHE ==='
+          systemctl reload nginx
+          sleep 1
+          systemctl is-active nginx
+          echo '=== VERIFY PUBLIC SITE AND ROOT CACHED CONTENT ==='
+          curl -sS --max-time 15 -o /dev/null -w 'home=%{http_code}\n' 'https://www.elmercadodeorigen.com/' | grep -q 'home=200'
+          curl -sS --max-time 15 -o /dev/null -w 'store=%{http_code}\n' 'https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/' | grep -q 'store=200'
+          echo '=== VERIFIED: GEO-FACET GUARD INSTALLED WITHOUT DOWNTIME ==='
+          echo "ROLLBACK_BACKUP_DIR=$backup"
+          REMOTE
+      - name: Verify external non-European vs. normal store traffic
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SITE=https://www.elmercadodeorigen.com
+          GEO=$(curl -fsS --max-time 15 "$SITE/wp-content/themes/elmercadodeorigen-child/assets/ad-geo-fast.php")
+          echo "External country endpoint: $GEO"
+          for t in root:/tienda/hidalgo-de-la-jara/ filtered:/tienda/hidalgo-de-la-jara/; do :; done
+          for spec in 'root|/tienda/hidalgo-de-la-jara/' 'page2|/tienda/hidalgo-de-la-jara/page/2/' 'normal-product|/producto/foie-gras-de-pato-extra-desvenado/'; do
+            n="${spec%%|*}";p="${spec#*|}"
+            curl -sS -L --max-time 22 -o /dev/null -w "$n code=%{http_code} ttfb=%{time_starttransfer}s\n" "$SITE$p"
+          done
+          # Probe with a representative, non-state-changing, impossible-value faceted GET.
+          curl -sS -L --max-time 15 -o /dev/null -w 'multi-facet code=%{http_code} ttfb=%{time_starttransfer}s\n' "$SITE/tienda/hidalgo-de-la-jara/?emo_vendor_cat=__emdo_test_nonexistent__&filter_rango-peso=__emdo_test_nonexistent__&filter_preparacion=__emdo_test_nonexistent__"
