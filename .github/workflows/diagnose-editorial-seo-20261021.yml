@@ -49,5 +49,5 @@ jobs:
           REMOTE="/tmp/emdo-diag-editorial-$GITHUB_RUN_ID.php"
           sshpass -e scp $SCP .github/scripts/diagnose-editorial-24-20261021.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
           trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $REMOTE" >/dev/null 2>&1 || true' EXIT
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' eval-file '$REMOTE' --path='$PROD' --allow-root" | tee /tmp/probe.log
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE' --path='$PROD' --allow-root" | tee /tmp/probe.log
           grep -q '^EMDO_REPAIR_DIAG ' /tmp/probe.log
