@@ -45,6 +45,18 @@ jobs:
           anchors=re.findall(r'<a\\b[^>]*\\bhref=["\\x27]([^"\\x27]+)["\\x27][^>]*>',s,re.I)
           page=[html.unescape(a) for a in anchors if ('/page/' in a or 'paged=' in a or 'product-page=' in a or 'page-numbers' in a)]
           print('PAGING_LINKS',page[:20])
+          from html.parser import HTMLParser
+          class Parse(HTMLParser):
+              def __init__(self):
+                  super().__init__();self.links=[];self.ul_classes=[];self.li_classes=[]
+              def handle_starttag(self,tag,attrs):
+                  a=dict(attrs)
+                  if tag=='a' and a.get('href'):self.links.append(a['href'])
+                  if tag=='ul':self.ul_classes.append(a.get('class',''))
+                  if tag=='li' and ('product' in a.get('class','')):self.li_classes.append(a.get('class','')[:70])
+          pp=Parse();pp.feed(s)
+          print('HTMLPARSER', 'ul_sample',pp.ul_classes[:8],'product_li_count',len(pp.li_classes),'page_links',[a for a in pp.links if '/page/' in a or 'paged=' in a or 'product_page=' in a or 'product-page=' in a][:20])
+
           PY
           done
           REMOTE
