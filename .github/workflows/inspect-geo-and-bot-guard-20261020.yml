@@ -92,6 +92,14 @@ jobs:
           fclose($fh);$reader->close();
           arsort($ctr);echo "total=". $total." unique_ips=".count($uniq)."\n";echo json_encode(array_slice($ctr,0,22,true),JSON_UNESCAPED_SLASHES)."\n";
           ' 2>&1 | head -n 12 || true
+          echo '=== NGINX MAIN CONFIG LOADING (LINES 1-45) ==='
+          sed -n '1,45p' /etc/nginx/nginx.conf | grep -Ei 'load_module|include|events|http|^user|worker' | head -n 28
+          echo '=== NGINX GLOBAL FILTER MAP FULL ==='
+          for f in /etc/nginx/conf.d/*.conf; do [ -f "$f" ] || continue; if grep -q 'emdo_filter_global_key' "$f"; then echo "MAP_FILE=$f"; sed -n '1,100p' "$f"; fi; done
+          echo '=== NGINX LOAD GEOIP2 STATUS ==='
+          nginx -T 2>&1 | grep -Ei '^load_module.*geoip|geoip2.*\{|^[[:space:]]*\$.*country.*iso_code' | head -n 18 || true
+          echo '=== COUNTRY DATA AND SUPPORTED PRODUCT DESTINATIONS ==='
+          php -r 'echo "php_cli_exists\n";' || true
           echo '=== STORE CACHE SOURCE SIZE ==='
           sha256sum "$root/wp-content/advanced-cache.php" || true
           echo '=== REST OF WORLD SHIPPING ==='
