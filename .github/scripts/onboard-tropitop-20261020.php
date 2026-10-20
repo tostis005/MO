@@ -95,7 +95,7 @@ $ids=$p->get_children();$weights=[];foreach($ids as $child_id){
 sort($weights);
 if($p->get_status()!=='draft'||$p->get_catalog_visibility()!=='hidden'||$weights!==[3.0,4.0,9.0]
   || !has_term((int)$avocado->term_id,'product_cat',$product_id)
-  || count($p->get_gallery_image_ids())<7 || !$p->get_image_id())
+  || (1+count($p->get_gallery_image_ids()))!==min(20,(int)$payload['image_count']) || !$p->get_image_id())
  throw new RuntimeException('Draft product validation failed: status, weights, taxonomy or image gallery');
 $settings=get_user_meta($vid,'wcfmmp_profile_settings',true);$settings=is_array($settings)?$settings:[];
 if(empty($settings['banner'])) {
