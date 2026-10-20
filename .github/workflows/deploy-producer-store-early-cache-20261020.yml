@@ -1,0 +1,92 @@
+name: Deploy safe 5-minute producer storefront cache 20261020
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/deploy-producer-store-early-cache-20261020.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: emdo-producer-store-cache-deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint updated early cache PHP
+        run: php -l elmercadodeorigen-child/dropins/advanced-cache.php
+      - name: Install SSH and stage validated source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          chmod 600 ~/.ssh/known_hosts
+          sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=yes -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no elmercadodeorigen-child/dropins/advanced-cache.php "$STAGING_USER@$STAGING_HOST:/tmp/emdo-producer-store-early-cache-20261020.php"
+      - name: Backup, activate, verify and auto-rollback on failure
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ConnectTimeout=15 -p "$PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+          TARGET="$ROOT/wp-content/advanced-cache.php"
+          STAGED=/tmp/emdo-producer-store-early-cache-20261020.php
+          PHP=/opt/plesk/php/8.2/bin/php
+          test -s "$TARGET" && test -s "$STAGED"
+          "$PHP" -l "$STAGED"
+          STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+          BACKUP="$TARGET.before-store-cache-$STAMP"
+          cp -p "$TARGET" "$BACKUP"
+          echo "BACKUP_FILE=$(basename "$BACKUP")"
+          rollback() {
+            code=$?
+            trap - EXIT
+            if [ "$code" -ne 0 ]; then
+              echo "::error::Cache validation failed: rolling back to verified backup"
+              cp -p "$BACKUP" "$TARGET"
+              "$PHP" -l "$TARGET" || true
+            fi
+            rm -f "$STAGED"
+            exit "$code"
+          }
+          trap rollback EXIT
+          install -m 0644 -o root -g root "$STAGED" "$TARGET"
+          "$PHP" -l "$TARGET"
+          echo '=== TEST CLEAN SPANISH STORE ROOT AND PAGINATION ==='
+          for spec in 'hidalgo-root|/tienda/hidalgo-de-la-jara/' 'hidalgo-page2|/tienda/hidalgo-de-la-jara/page/2/' 'montjam-root|/tienda/montjam/' 'montjam-page2|/tienda/montjam/page/2/' 'hidalgo-en-page2|/en/store/hidalgo-de-la-jara/page/2/'; do
+            name="${spec%%|*}";path="${spec#*|}"
+            for iteration in 1 2; do
+              out="/tmp/emdo-store-cache-${name}-${iteration}.html"
+              headers="/tmp/emdo-store-cache-${name}-${iteration}.headers"
+              code=$(curl -sS -L -o "$out" -D "$headers" --max-time 35 -w '%{http_code}' -A 'MDO-Store-Cache-Deploy-Verify/1.0' "https://www.elmercadodeorigen.com$path")
+              flag=$(grep -i '^x-el-mercado-hot-early-cache:' "$headers" | tail -1 | tr -d '\r' || true)
+              printf '%s iteration=%s http=%s %s size=%s\n' "$name" "$iteration" "$code" "$flag" "$(wc -c < "$out")"
+              test "$code" = 200
+              grep -q 'id="wcfmmp-store"' "$out"
+              grep -q 'emo-continuous-catalog' "$out"
+              grep -q 'class="products ' "$out"
+              if [ "$iteration" = 2 ]; then
+                echo "$flag" | grep -qi 'HIT'
+              fi
+            done
+          done
+          echo '=== TEST PERSONALIZED AND FACET REQUESTS NEVER HIT HTML CACHE ==='
+          curl -sS -L --max-time 22 -o /dev/null -D /tmp/emdo-store-cache-filter.headers -w 'FILTER_HTTP=%{http_code}\n' 'https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/?filter_rango-peso=50' || true
+          ! grep -iq '^x-el-mercado-hot-early-cache: HIT' /tmp/emdo-store-cache-filter.headers
+          curl -sS -L --max-time 22 -o /dev/null -D /tmp/emdo-store-cache-cookie.headers -H 'Cookie: wordpress_logged_in_example=unit_test' -w 'SESSION_HTTP=%{http_code}\n' 'https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/' || true
+          ! grep -iq '^x-el-mercado-hot-early-cache: HIT' /tmp/emdo-store-cache-cookie.headers
+          echo '=== RESULTS: COMMITTED; CACHE ACTIVE ==='
+          uptime
+          REMOTE
