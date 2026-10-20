@@ -1,9 +1,5 @@
 name: Publicar tres banners aprobados de productores
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/publish-three-approved-producer-banners-20261020.yml'
   workflow_dispatch:
 
 permissions:
@@ -24,7 +20,7 @@ jobs:
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Validar e importar los tres archivos de imagen aprobados
+      - name: Obtener las imágenes ya publicadas y comprobar su integridad
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -33,15 +29,15 @@ jobs:
           : "${SSHPASS:?SSH password absent}"
           php -l elmercadodeorigen-child/inc/producer-list-image-square-010242.php
           mkdir -p /tmp/emdo-approved-banners/banners
-          curl --fail --silent --show-error --location --retry 2 --connect-timeout 12 --max-time 70 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-16d4-820e-a873-fcd6af2dc72c/raw?se=2026-10-20T18%3A38%3A40Z&sp=r&sv=2026-02-06&sr=b&scid=c6a45c4f-e0d1-5db1-a353-a7cf11d18248&skoid=bdd24bd8-9af5-4138-bfb1-19fba97a8611&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-20T13%3A04%3A53Z&ske=2026-10-21T13%3A04%3A53Z&sks=b&skv=2026-02-06&sig=/9111O8LGGNYtq7RKvgAG/DEgJfIuJtXBFEieRNX22g%3D' -o /tmp/emdo-approved-banners/banners/1957.webp
+          curl --fail --silent --show-error --location --retry 2 --max-time 65 "https://www.elmercadodeorigen.com/wp-content/themes/elmercadodeorigen-child/assets/images/producer-banners/1957.webp" -o /tmp/emdo-approved-banners/banners/1957.webp
           echo '87b6a2ee0438b9c7533267a2b5f13df09eb63299c61bf01b5827daafeb58cf81  /tmp/emdo-approved-banners/banners/1957.webp' | sha256sum --check --status
           test "$(wc -c < /tmp/emdo-approved-banners/banners/1957.webp)" -eq 213598
           echo 'APPROVED_BANNER_HASH_OK 1957'
-          curl --fail --silent --show-error --location --retry 2 --connect-timeout 12 --max-time 70 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-76fc-820e-9543-182e0f996b90/raw?se=2026-10-20T18%3A38%3A41Z&sp=r&sv=2026-02-06&sr=b&scid=c23553e7-e2da-5b66-ab61-80f0a56073c3&skoid=bdd24bd8-9af5-4138-bfb1-19fba97a8611&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-20T12%3A28%3A16Z&ske=2026-10-21T12%3A28%3A16Z&sks=b&skv=2026-02-06&sig=xI7HFpOiwWNjwlB0MmsDNqbfhWlLYZbngSD7xwN8moI%3D' -o /tmp/emdo-approved-banners/banners/tolecarnes.webp
+          curl --fail --silent --show-error --location --retry 2 --max-time 65 "https://www.elmercadodeorigen.com/wp-content/themes/elmercadodeorigen-child/assets/images/producer-banners/tolecarnes.webp" -o /tmp/emdo-approved-banners/banners/tolecarnes.webp
           echo '4dadf5407366b5ecce4f8cc4dcb9fe7283284a94b48b18d508e4c32d80c673a3  /tmp/emdo-approved-banners/banners/tolecarnes.webp' | sha256sum --check --status
           test "$(wc -c < /tmp/emdo-approved-banners/banners/tolecarnes.webp)" -eq 366180
           echo 'APPROVED_BANNER_HASH_OK tolecarnes'
-          curl --fail --silent --show-error --location --retry 2 --connect-timeout 12 --max-time 70 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-cf3c-820e-8865-4cf61564b955/raw?se=2026-10-20T18%3A38%3A40Z&sp=r&sv=2026-02-06&sr=b&scid=b52c856d-d9b7-5a23-8dbf-4bf896fc1132&skoid=bdd24bd8-9af5-4138-bfb1-19fba97a8611&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-20T10%3A47%3A14Z&ske=2026-10-21T10%3A47%3A14Z&sks=b&skv=2026-02-06&sig=jTlANpeYhwl2O69%2BWpmvG9/nQef8X/kLZzPUQpN/3ms%3D' -o /tmp/emdo-approved-banners/banners/latitudes.webp
+          curl --fail --silent --show-error --location --retry 2 --max-time 65 "https://www.elmercadodeorigen.com/wp-content/themes/elmercadodeorigen-child/assets/images/producer-banners/latitudes.webp" -o /tmp/emdo-approved-banners/banners/latitudes.webp
           echo '534c2dabf5e5b885d1b79c554b7e31d6c0a43e05cb31ee41b9707b6370ba43b6  /tmp/emdo-approved-banners/banners/latitudes.webp' | sha256sum --check --status
           test "$(wc -c < /tmp/emdo-approved-banners/banners/latitudes.webp)" -eq 345304
           echo 'APPROVED_BANNER_HASH_OK latitudes'
