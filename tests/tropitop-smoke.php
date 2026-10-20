@@ -3,6 +3,7 @@
 define( 'ABSPATH', __DIR__ . '/' );
 function wp_parse_url( $url, $part = -1 ) { return $part === -1 ? parse_url( $url ) : parse_url( $url, $part ); }
 function esc_url_raw( $url ) { return $url; }
+function sanitize_text_field( $text ) { return trim( strip_tags( (string) $text ) ); }
 require_once dirname( __DIR__ ) . '/mdo-supplier-sync/connectors/class-mdo-connector-tropitop.php';
 require_once dirname( __DIR__ ) . '/mdo-supplier-sync/includes/class-mdo-tropitop-shipping.php';
 
@@ -30,6 +31,18 @@ foreach ( array(
     verify( reflected( 'category_url', $source_url ) === 'https://tropitop.com/es/' . $category,
         'Known producer category must resolve: ' . $slug );
 }
+
+// If an official product breadcrumb supplies the same category slug and a
+// numeric category ID, recover it without guessing the vendor's taxonomy.
+$bdoc = new DOMDocument();
+@$bdoc->loadHTML( '<?xml encoding="UTF-8" ?><nav class="breadcrumb">'
+    . '<a href="https://tropitop.com/es/315-fruta-de-temporada">Temporada</a>'
+    . '</nav><aside><a href="https://example.org/es/315-fruta-de-temporada">Invalid</a></aside>' );
+verify( reflected( 'category_url',
+    'https://tropitop.com/es/fruta-de-temporada/2340-algo.html',
+    new DOMXPath( $bdoc ) ) === 'https://tropitop.com/es/315-fruta-de-temporada',
+    'Only a matching producer breadcrumb may prove a new category URL.' );
+
 $unknown_category_rejected = false;
 try { reflected( 'category_url', 'https://tropitop.com/es/otra-categoria/1234-una-caja.html' ); }
 catch ( RuntimeException $e ) { $unknown_category_rejected = true; }
@@ -73,6 +86,33 @@ if ( class_exists( 'DOMDocument' ) ) {
     verify( count( $unit_sizes ) === 1 && ( $unit_sizes['unid:5.000']['unit'] ?? '' ) === 'unid',
         'Unit presentations must not be mislabelled as kilograms.' );
 }
+
+// Real-world producer format: two different 4-jar boxes with separate
+// prices. Do not collapse to one "4 unidades" variant or borrow prices from
+// recommendation cards elsewhere on the page.
+if ( class_exists( 'DOMDocument' ) ) {
+    $d = new DOMDocument();
+    @$d->loadHTML( '<?xml encoding="UTF-8" ?><div class="product-variants">'
+        . '<div class="variant-box">Tradicional - 4 u. 17,90 €</div>'
+        . '<div class="variant-box">Sin azúcar - 4 u. 23,90 €</div>'
+        . '</div><aside class="related"><div class="variant-box">3 kg 4,90 €</div></aside>', LIBXML_NONET );
+    $options = reflected( 'sizes', new DOMXPath( $d ) );
+    verify( count( $options ) === 2, 'Both labeled 4-unit packs must be separate variants.' );
+    $by_label = array();
+    foreach ( $options as $opt ) { $by_label[ $opt['label'] ] = $opt; }
+    verify( isset( $by_label['Tradicional'], $by_label['Sin azúcar'] ), 'Both pack labels must be preserved.' );
+    verify( abs( (float) $by_label['Tradicional']['price'] - 17.9 ) < 0.001, 'Traditional pack price verified.' );
+    verify( abs( (float) $by_label['Sin azúcar']['price'] - 23.9 ) < 0.001, 'Sugar-free pack price verified.' );
+    verify( (string) $by_label['Tradicional']['unit'] === 'unid' &&
+        (float) $by_label['Tradicional']['amount'] === 4.0,
+        'Units must never be converted to kilograms.' );
+    $d1 = new DOMDocument();
+    @$d1->loadHTML( '<?xml encoding="UTF-8" ?><div class="product-variants">'
+        . '<div class="variant-box">4.00 unid 22,90 €</div></div>', LIBXML_NONET );
+    verify( count( reflected( 'sizes', new DOMXPath( $d1 ) ) ) === 1,
+        'Single correctly priced 4-unit product must be parsable.' );
+}
+
 echo "Tropitop connector and shipping smoke checks passed.\n";
 
 $expected = array( 3 => 2.95, 4 => 2.95, 6 => 5.95, 8 => 5.95, 9 => 5.95,
