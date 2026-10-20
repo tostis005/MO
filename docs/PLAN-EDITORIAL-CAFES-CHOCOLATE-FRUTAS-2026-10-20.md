@@ -1,6 +1,6 @@
 # Plan editorial aprobado — Nuevos productores (20-10-2026)
 
-Estado: **24 temas aprobados; 15 publicados y verificados en español e inglés; 9 pendientes**. Este archivo es la fuente persistente de control del trabajo en el repositorio MO (no sustituirlo por la memoria de una conversación).
+Estado: **24 temas aprobados; 19 publicados y verificados en español e inglés; 5 pendientes**. Este archivo es la fuente persistente de control del trabajo en el repositorio MO (no sustituirlo por la memoria de una conversación).
 
 ## Reglas editoriales acordadas
 - Publicar siempre versión española e inglesa con redacción natural, no traducción mecánica.
@@ -21,10 +21,10 @@ Estado: **24 temas aprobados; 15 publicados y verificados en español e inglés;
 | 3 | Café | Café de especialidad: qué es y por qué merece la pena | **Publicado · ES/EN verificado** |
 | 4 | Café | Qué café comprar para una cafetera italiana | **Publicado · ES/EN verificado** |
 | 5 | Café | Qué café elegir para una cafetera superautomática | **Publicado · ES/EN verificado** |
-| 6 | Café | Café arábica o robusta: diferencias y cuál es mejor | Pendiente |
-| 7 | Café | Café natural, torrefacto o mezcla: diferencias y cuál elegir | Pendiente |
-| 8 | Café | Qué café elegir para preparar un buen espresso en casa | Pendiente |
-| 9 | Café | Tipos de tueste del café: claro, medio y oscuro | Pendiente |
+| 6 | Café | Café arábica o robusta: diferencias y cuál es mejor | **Publicado · ES/EN verificado** |
+| 7 | Café | Café natural, torrefacto o mezcla: diferencias y cuál elegir | **Publicado · ES/EN verificado** |
+| 8 | Café | Qué café elegir para preparar un buen espresso en casa | **Publicado · ES/EN verificado** |
+| 9 | Café | Tipos de tueste del café: claro, medio y oscuro | **Publicado · ES/EN verificado** |
 | 10 | Chocolate | Cremas de cacao: diferencias, ingredientes y cómo elegir una buena | **Publicado · ES/EN verificado** |
 | 11 | Aguacates | Tipos de aguacate: Hass, Bacon, Fuerte y sus diferencias | **Publicado · ES/EN verificado** |
 | 12 | Aguacates | Cómo saber si un aguacate está maduro y cómo madurarlo | **Publicado · ES/EN verificado** |
@@ -69,7 +69,13 @@ Estado: **24 temas aprobados; 15 publicados y verificados en español e inglés;
 - Nº 16: https://www.elmercadodeorigen.com/como-saber-mango-maduro-elegir-bueno/ · EN: https://www.elmercadodeorigen.com/en/how-to-tell-if-a-mango-is-ripe-and-choose-one/
 - Nº 17: https://www.elmercadodeorigen.com/cuando-temporada-mango-espana-cosecha/ · EN: https://www.elmercadodeorigen.com/en/mango-season-in-spain-harvest-calendar/
 - **Galería comercial:** aguacates nº 13 y 14 tienen imagen y categoría disponibles; café nº 4 y 5 y mango nº 16 y 17 siguen con imagen editorial genérica hasta disponer de fotografías de catálogo y categoría en stock.
-- **Siguiente tanda prevista:** nº 6, 7, 8 y 9 (café); nº 19 y 20 (cítricos). Restan además nº 21, 23 y 24 (frutas).
+- **Quinta tanda publicada y verificada:** artículos nº 6, 7, 8 y 9, cuatro guías de café con ocho URL públicas correctas.
+- Ejecución verificada: https://github.com/tostis005/MO/actions/runs/39494204560
+- Nº 6: https://www.elmercadodeorigen.com/cafe-arabica-robusta-diferencias-cual-elegir/ · EN: https://www.elmercadodeorigen.com/en/arabica-vs-robusta-coffee-differences-which-to-buy/
+- Nº 7: https://www.elmercadodeorigen.com/cafe-natural-torrefacto-mezcla-diferencias-elegir/ · EN: https://www.elmercadodeorigen.com/en/natural-roast-torrefacto-coffee-blends-explained/
+- Nº 8: https://www.elmercadodeorigen.com/que-cafe-elegir-buen-espresso-casa/ · EN: https://www.elmercadodeorigen.com/en/how-to-choose-coffee-for-home-espresso/
+- Nº 9: https://www.elmercadodeorigen.com/tipos-tueste-cafe-claro-medio-oscuro/ · EN: https://www.elmercadodeorigen.com/en/light-medium-dark-coffee-roasts-how-to-choose/
+- **Próxima tanda:** nº 19, 20 (naranjas y cítricos), nº 21 (calendario de frutas), nº 23 (frutas tropicales) y nº 24 (cajas de fruta de temporada). Revisar stock antes de insertar enlaces comerciales.
 - Los restantes temas se producirán de forma progresiva, respetando este orden editorial o modificándolo con documentación del motivo.
 
 ## Comprobaciones previas
