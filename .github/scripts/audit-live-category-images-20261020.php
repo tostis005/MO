@@ -35,4 +35,22 @@ foreach ($rows as $row) {
     'image_file' => (string)($media['file'] ?? ''),
   );
 }
+$fruit_terms = get_terms( array( 'taxonomy' => 'product_cat', 'hide_empty' => false ) );
+$out['fruit_candidates'] = array();
+if ( ! is_wp_error( $fruit_terms ) ) {
+  foreach ( $fruit_terms as $term ) {
+    if ( ! preg_match( '/frut|fruit|aguacat|mango/i', $term->slug . ' ' . $term->name ) ) { continue; }
+    $tid = (int) $term->term_id;
+    $thumb = (int) get_term_meta( $tid, 'thumbnail_id', true );
+    $out['fruit_candidates'][] = array(
+      'id' => $tid,
+      'slug' => $term->slug,
+      'name' => $term->name,
+      'parent' => (int) $term->parent,
+      'native_count' => (int) $term->count,
+      'thumbnail_id' => $thumb,
+      'image_url' => $thumb ? wp_get_attachment_image_url( $thumb, 'full' ) : false,
+    );
+  }
+}
 echo wp_json_encode($out, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
