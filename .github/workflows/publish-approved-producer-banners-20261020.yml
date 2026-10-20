@@ -1,0 +1,190 @@
+name: Publicar cinco banners aprobados de productores
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'approved-banners/banners_productores_aprobados_20261020.zip'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emdo-production-producer-directory-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validar los cinco medios originales y el componente
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          : "${STAGING_HOST:?SSH host absent}"
+          : "${STAGING_USER:?SSH user absent}"
+          : "${SSHPASS:?SSH password absent}"
+          php -l elmercadodeorigen-child/inc/producer-list-image-square-010242.php
+          ZIP=approved-banners/banners_productores_aprobados_20261020.zip
+          test -s "$ZIP"
+          unzip -t "$ZIP" >/dev/null
+          mkdir -p /tmp/emdo-approved-banners
+          unzip -oq "$ZIP" -d /tmp/emdo-approved-banners
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, hashlib
+          target=Path('/tmp/emdo-approved-banners')
+          expected=('selectos-de-castilla','la-huerta-de-ana-mary',
+                    'chocolates-artesanos-isabel','ikore-kofi','tropitop')
+          data=json.loads((target/'manifest.json').read_text())
+          assert set(data)==set(expected), set(data)
+          for slug in expected:
+              p=target/'banners'/(slug+'.webp')
+              b=p.read_bytes()
+              assert b[:4]==b'RIFF' and b[8:12]==b'WEBP'
+              assert len(b)>100_000
+              assert hashlib.sha256(b).hexdigest()==data[slug]['sha256']
+              assert data[slug]['size']==[2022,778]
+              print('VALIDATED',slug,len(b))
+          PY
+      - name: Instalar SSH y navegador para control real
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null
+      - name: Publicar solo las cinco fotografías y verificar producción
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          ROOT=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+          CHILD="$ROOT/wp-content/themes/elmercadodeorigen-child"
+          DEST="$CHILD/assets/images/producer-banners"
+          INC="$CHILD/inc"
+          STAGE="/tmp/emdo-banners-stage-$GITHUB_RUN_ID"
+          BACKUP="/tmp/emdo-banners-backup-$GITHUB_RUN_ID"
+          NAMES='selectos-de-castilla la-huerta-de-ana-mary chocolates-artesanos-isabel ikore-kofi tropitop'
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          chmod 600 ~/.ssh/known_hosts
+          SSH_OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP_OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          installed=0
+          rollback() {
+            status=$?
+            trap - EXIT
+            if [ "$status" -ne 0 ] && [ "$installed" -eq 1 ]; then
+              echo "::error::Falló comprobación de banners; restaurando archivos anteriores"
+              sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$DEST' '$INC' '$BACKUP'" <<'ROLLBACK' || true
+          set -eu
+          dest="$1"; inc="$2"; backup="$3"
+          for slug in selectos-de-castilla la-huerta-de-ana-mary chocolates-artesanos-isabel ikore-kofi tropitop; do
+            if [ -f "$backup/$slug.webp" ]; then
+              cp "$backup/$slug.webp" "$dest/$slug.webp"
+            else
+              rm -f "$dest/$slug.webp"
+            fi
+          done
+          if [ -f "$backup/producer-list-image-square-010242.php" ]; then
+            cp "$backup/producer-list-image-square-010242.php" "$inc/"
+          fi
+          ROLLBACK
+            fi
+            exit "$status"
+          }
+          trap rollback EXIT
+          sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$STAGE' '$BACKUP'"
+          sshpass -e scp $SCP_OPTS /tmp/emdo-approved-banners/banners/*.webp elmercadodeorigen-child/inc/producer-list-image-square-010242.php "$STAGING_USER@$STAGING_HOST:$STAGE/"
+          sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$ROOT' '$STAGE' '$BACKUP'" <<'INSTALL'
+          set -Eeuo pipefail
+          root="$1"; stage="$2"; backup="$3"
+          child="$root/wp-content/themes/elmercadodeorigen-child"
+          dest="$child/assets/images/producer-banners"
+          inc="$child/inc"
+          php_bin=/opt/plesk/php/8.2/bin/php
+          wp_bin="$(command -v wp)"
+          site="$("$php_bin" "$wp_bin" option get siteurl --path="$root" --skip-plugins --skip-themes --allow-root)"
+          case "$site" in
+            https://elmercadodeorigen.com|https://www.elmercadodeorigen.com|http://elmercadodeorigen.com|http://www.elmercadodeorigen.com) ;;
+            *) echo "Unexpected WordPress root $site"; exit 1;;
+          esac
+          mkdir -p "$dest" "$backup"
+          for slug in selectos-de-castilla la-huerta-de-ana-mary chocolates-artesanos-isabel ikore-kofi tropitop; do
+            test -s "$stage/$slug.webp"
+            if [ -f "$dest/$slug.webp" ]; then
+              cp -p "$dest/$slug.webp" "$backup/$slug.webp"
+            fi
+          done
+          cp -p "$inc/producer-list-image-square-010242.php" "$backup/"
+          "$php_bin" -l "$stage/producer-list-image-square-010242.php"
+          for slug in selectos-de-castilla la-huerta-de-ana-mary chocolates-artesanos-isabel ikore-kofi tropitop; do
+            cp "$stage/$slug.webp" "$dest/$slug.webp"
+            cmp "$stage/$slug.webp" "$dest/$slug.webp"
+          done
+          cp "$stage/producer-list-image-square-010242.php" "$inc/"
+          "$php_bin" -l "$inc/producer-list-image-square-010242.php"
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$root" --skip-plugins --allow-root || true
+          "$php_bin" -r '
+          $dir=$argv[1]."/wp-content/uploads/elmercado-blog-static-v2";
+          foreach (["www.elmercadodeorigen.com","elmercadodeorigen.com"] as $host) {
+            foreach (["/productores/","/en/producers/"] as $path) {
+              $file=$dir."/".hash("sha256",$host."|".$path).".html";
+              if (is_file($file)) unlink($file);
+            }
+          }
+          ' "$root"
+          INSTALL
+          installed=1
+          echo 'APPROVED_PRODUCER_IMAGES_INSTALLED'
+          for slug in $NAMES; do
+            u="https://www.elmercadodeorigen.com/wp-content/themes/elmercadodeorigen-child/assets/images/producer-banners/$slug.webp"
+            curl --fail --silent --show-error --location --max-time 40 "$u" -o "/tmp/check-$slug.webp"
+            cmp "/tmp/check-$slug.webp" "/tmp/emdo-approved-banners/banners/$slug.webp"
+            echo "PUBLIC_IMAGE_OK $slug"
+          done
+          cat >/tmp/verify-five-banners.cjs <<'NODE'
+          const puppeteer=require(process.cwd()+'/node_modules/puppeteer-core');
+          const expected=['selectos-de-castilla','la-huerta-de-ana-mary',
+            'chocolates-artesanos-isabel','ikore-kofi','tropitop'];
+          (async()=>{
+            const browser=await puppeteer.launch({headless:true,executablePath:'/usr/bin/google-chrome',
+              args:['--no-sandbox','--disable-dev-shm-usage']});
+            try{
+              const page=await browser.newPage();
+              for(const width of [1440,900,390]){
+                await page.setViewport({width,height:1000});
+                await page.goto('https://www.elmercadodeorigen.com/productores/?banners='+process.env.GITHUB_RUN_ID+'-'+width,
+                  {waitUntil:'domcontentloaded',timeout:60000});
+                await page.waitForSelector('#wcfmmp-stores-wrap li.wcfmmp-single-store',{timeout:30000});
+                const result=await page.evaluate(expected=>{
+                  const cards=[...document.querySelectorAll('#wcfmmp-stores-wrap li.wcfmmp-single-store')];
+                  const list=document.querySelector('#wcfmmp-stores-wrap ul.wcfmmp-store-wrap');
+                  return {count:cards.length,columns:getComputedStyle(list).gridTemplateColumns.split(' ').length,
+                    checked:expected.map(slug=>{
+                      const item=cards.find(li=>li.querySelector('.store-data h2 a')?.href.includes('/tienda/'+slug));
+                      const img=item?.querySelector('.store-info');
+                      return {slug,found:!!item,background:img?getComputedStyle(img).backgroundImage:null};
+                    })};
+                },expected);
+                console.log('APPROVED_BANNERS_CHECK',width,JSON.stringify(result));
+                if(result.count<10 || result.columns!==(width>=1200?3:width>760?2:1))
+                  throw Error('Producer card count or grid changed '+width);
+                for(const item of result.checked){
+                  if(!item.found||!item.background?.includes('/producer-banners/'+item.slug+'.webp'))
+                    throw Error('Banner incorrect or not assigned '+width+' '+JSON.stringify(item));
+                }
+              }
+              console.log('ALL_FIVE_PRODUCER_BANNERS_PUBLISHED');
+            } finally {await browser.close();}
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          node /tmp/verify-five-banners.cjs
