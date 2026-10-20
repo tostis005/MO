@@ -39,3 +39,13 @@ foreach(['mango','naranja','mandarina','cafe'] as $needle){
  $matches[$needle]=array_map(static function($q){$p=wc_get_product($q->ID);return ['id'=>$q->ID,'name'=>$q->post_title,'stock'=>$p&&$p->is_in_stock(),'buyable'=>$p&&$p->is_purchasable(),'image'=>$p?$p->get_image_id():0];},$prods);
 }
 echo 'EMDO_MEDIA_DIAG '.wp_json_encode(['media'=>$media,'matches'=>$matches],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
+
+$owners=[];
+foreach(glob(WPMU_PLUGIN_DIR.'/*.php') ?: [] as $filename) {
+    $content=@file_get_contents($filename);
+    if(!is_string($content))continue;
+    $i=stripos($content,'data-mdo-hreflang');
+    if($i===false)$i=stripos($content,'hreflang="es-ES"');
+    if($i!==false)$owners[]=['name'=>basename($filename),'size'=>strlen($content),'snippet'=>substr($content,max(0,$i-450),1050)];
+}
+echo 'EMDO_HREFLANG_OWNERS '.wp_json_encode($owners,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE).PHP_EOL;
