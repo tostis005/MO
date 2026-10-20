@@ -1,0 +1,127 @@
+name: Publish new producers bilingual editorial batch 03
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/data/editorial-nuevos-productores-20261020-03.json'
+      - '.github/data/editorial-nuevos-productores-20261020-15.json'
+      - '.github/data/editorial-nuevos-productores-20261020-22.json'
+      - '.github/scripts/publish-editorial-new-producers-20261020-batch03.php'
+      - '.github/workflows/publish-editorial-new-producers-20261020-batch03.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: new-producers-editorial-20261020-batch03
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Manuscript quality and PHP syntax preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/publish-editorial-new-producers-20261020-batch03.php
+          python3 - <<'PY'
+          import json,re,pathlib,html
+          seen_es=set();seen_en=set();first_es=set();first_en=set()
+          for n in (3,15,22):
+              p=json.loads(pathlib.Path(f'.github/data/editorial-nuevos-productores-20261020-{n:02}.json').read_text())
+              assert p['id']==n
+              assert p['slug'] not in seen_es and p['en_slug'] not in seen_en
+              seen_es.add(p['slug']);seen_en.add(p['en_slug'])
+              for lang,minimum,seen in [('es',750,first_es),('en',700,first_en)]:
+                  body=p[lang]
+                  clean=re.sub(r'\s+',' ',html.unescape(re.sub('<[^>]+>',' ',body))).strip()
+                  words=re.findall(r'\w+',clean)
+                  assert len(words)>=minimum,(n,lang,len(words))
+                  assert body.count('<p>')>=5 and body.count('<h2>')>=2
+                  assert '<script' not in body.lower() and '<iframe' not in body.lower()
+                  assert clean[:120] not in seen,(n,lang,'duplicate opening')
+                  seen.add(clean[:120])
+                  desc=p['seo_description' if lang=='es' else 'en_seo_description']
+                  assert 60<len(desc)<=165,(n,lang,'SEO description')
+              print('EDITORIAL_QA_OK',n,p['slug'])
+          print('EDITORIAL_MANUSCRIPTS_APPROVED=3')
+          PY
+          : "${STAGING_HOST:?Missing host}"
+          : "${STAGING_USER:?Missing user}"
+          : "${STAGING_PASSWORD:?Missing password}"
+      - name: Publish in actual live WordPress and check Spanish plus English
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-P $PORT -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] && [ -n "$php" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s|%s|%s" "$p" "$php" "$wp"; break;;
+              esac
+            done
+          ')"
+          [ -n "$INFO" ] || { echo 'Production WordPress path unavailable'; exit 3; }
+          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
+          REMOTE="/tmp/emdo-newprod-editorial-$GITHUB_RUN_ID"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE'"
+          sshpass -e scp $SCP .github/data/editorial-nuevos-productores-20261020-{03,15,22}.json \
+            .github/scripts/publish-editorial-new-producers-20261020-batch03.php \
+            "$STAGING_USER@$STAGING_HOST:$REMOTE/"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf $REMOTE" >/dev/null 2>&1 || true' EXIT
+          FILE="$REMOTE/publish-editorial-new-producers-20261020-batch03.php"
+          PREFIX="export PATH='$(dirname "$PHP")':\$PATH; EMDO_NEW_PRODUCERS_DATA_DIR='$REMOTE'"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" \
+            "$PREFIX EMDO_NEW_PRODUCERS_PREFLIGHT=1 '$PHP' -d memory_limit=768M '$WP' eval-file '$FILE' --path='$PROD' --allow-root" \
+            | tee /tmp/emdo-newprod-preflight.log
+          sed -n 's/^EMDO_NP_PREFLIGHT //p' /tmp/emdo-newprod-preflight.log | tail -n1 | jq -e '.ok==true and .count==3' >/dev/null
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" \
+            "$PREFIX '$PHP' -d memory_limit=768M '$WP' eval-file '$FILE' --path='$PROD' --allow-root" \
+            | tee /tmp/emdo-newprod-published.log
+          sed -n 's/^EMDO_NP_PUBLISHED //p' /tmp/emdo-newprod-published.log | tail -n1 > /tmp/emdo-newprod-result.json
+          jq -e '.verified==true and .count==3 and (.posts|length)==3 and all(.posts[]; .es_words>=750 and .en_words>=700 and .image_id>0)' /tmp/emdo-newprod-result.json >/dev/null
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" \
+            "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+          python3 - <<'PY'
+          import json,subprocess,re,html
+          from pathlib import Path
+          posts=json.loads(Path('/tmp/emdo-newprod-result.json').read_text())['posts']
+          for post in posts:
+              src=json.loads(Path(f'.github/data/editorial-nuevos-productores-20261020-{post["plan_id"]:02}.json').read_text())
+              for lang in ('es','en'):
+                  url=post['es_url' if lang=='es' else 'en_url']
+                  title=src['title' if lang=='es' else 'en_title']
+                  heading=re.search(r'<h2>(.*?)</h2>',src[lang],re.S|re.I).group(1)
+                  rsp=subprocess.run(['curl','-L','-sS','--retry','2','--connect-timeout','15','--max-time','45',
+                    '-A','Mozilla/5.0 (EMDO live editorial QA)','-H','Cache-Control: no-cache',
+                    '-w','\nEMDO_CODE=%{http_code}',url+('?emdo_editorial_qa=20261020')],
+                    capture_output=True,text=True)
+                  if rsp.returncode or 'EMDO_CODE=' not in rsp.stdout: raise SystemExit(f'Fetch failed {url}')
+                  page,code=rsp.stdout.rsplit('EMDO_CODE=',1)
+                  visible=re.sub(r'\s+',' ',html.unescape(re.sub('<[^>]+>',' ',page)))
+                  if code.strip()!='200' or len(page)<7000 or not re.search(r'<h1\b',page,re.I) or title not in visible or heading not in visible:
+                      raise SystemExit(f'Live ES/EN verification failed: {lang} {url} {code.strip()}')
+                  print('EMDO_EDITORIAL_LIVE_OK',lang,url)
+          for url in ('https://www.elmercadodeorigen.com/','https://www.elmercadodeorigen.com/blog/','https://www.elmercadodeorigen.com/tienda/'):
+              r=subprocess.run(['curl','-sS','-L','--max-time','30','-o','/dev/null','-w','%{http_code}',url],capture_output=True,text=True)
+              if r.returncode or r.stdout.strip()!='200': raise SystemExit(f'Critical page failed: {url}')
+          print('EMDO_EDITORIAL_PUBLISHED_VERIFIED=3_ES_3_EN')
+          PY
