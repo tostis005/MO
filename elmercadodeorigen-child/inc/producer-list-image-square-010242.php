@@ -66,11 +66,11 @@ add_action(
 				font-size: clamp(.92rem, 1.15vw, 1.04rem) !important;
 				line-height: 1.66 !important;
 			}
-			/* Dos columnas de banners amplios. WCFM no decide posiciones con masonry. */
+			/* Tres banners por fila en escritorio. WCFM no decide posiciones con masonry. */
 			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap ul.wcfmmp-store-wrap {
 				display: grid !important;
 				box-sizing: border-box !important;
-				grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+				grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
 				align-items: stretch !important;
 				gap: clamp(22px, 2.8vw, 36px) !important;
 				width: 100% !important;
@@ -267,6 +267,11 @@ add_action(
 			}
 			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap .wcfmmp-single-store .store-data h2 a:focus-visible {
 				outline-offset: 5px !important;
+			}
+			@media (min-width: 761px) and (max-width: 1199px) {
+				html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap ul.wcfmmp-store-wrap {
+					grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+				}
 			}
 			@media (max-width: 760px) {
 				html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap ul.wcfmmp-store-wrap {
