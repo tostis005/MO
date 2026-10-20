@@ -1,0 +1,106 @@
+name: Repair editorial 24 bilingual SEO media commerce 20261021
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/mdo-editorial-24-seo-runtime-20261021.php'
+      - '.github/scripts/repair-editorial-24-commerce-media-20261021.php'
+      - '.github/workflows/repair-editorial-24-20261021.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint both PHP scripts
+        run: |
+          php -l .github/scripts/mdo-editorial-24-seo-runtime-20261021.php
+          php -l .github/scripts/repair-editorial-24-commerce-media-20261021.php
+      - name: Back up and repair WordPress production
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-P $PORT -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] && [ -n "$php" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s|%s|%s" "$p" "$php" "$wp"; break;;
+              esac
+            done
+          ')"
+          [ -n "$INFO" ] || exit 3
+          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
+          REMOTE="/tmp/emdo-editorial-24-fix-$GITHUB_RUN_ID"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE'"
+          sshpass -e scp $SCP .github/scripts/mdo-editorial-24-seo-runtime-20261021.php .github/scripts/repair-editorial-24-commerce-media-20261021.php "$STAGING_USER@$STAGING_HOST:$REMOTE/"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf $REMOTE" >/dev/null 2>&1 || true' EXIT
+          SCRIPT="$REMOTE/repair-editorial-24-commerce-media-20261021.php"
+          MODULE="$REMOTE/mdo-editorial-24-seo-runtime-20261021.php"
+          MUP="$PROD/wp-content/mu-plugins/0000-emdo-editorial-24-seo-20261021.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_REPAIR_PREFLIGHT=1 '$PHP' -d memory_limit=768M '$WP' eval-file '$SCRIPT' --path='$PROD' --allow-root" | tee /tmp/repair-preflight.log
+          sed -n 's/^EMDO_REPAIR_PREFLIGHT //p' /tmp/repair-preflight.log | tail -n1 | jq -e '.ok == true and .count == 24' >/dev/null
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; [ ! -f '$MUP' ] || cp -a '$MUP' '$MUP.bak-$GITHUB_RUN_ID'; cp '$MODULE' '$MUP.tmp-$GITHUB_RUN_ID'; '$PHP' -l '$MUP.tmp-$GITHUB_RUN_ID'; mv -f '$MUP.tmp-$GITHUB_RUN_ID' '$MUP'"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$SCRIPT' --path='$PROD' --allow-root" | tee /tmp/repair-applied.log
+          sed -n 's/^EMDO_REPAIR_APPLIED //p' /tmp/repair-applied.log | tail -n1 | jq -e '.ok == true and .count == 24 and (.posts | length) == 24' >/dev/null
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+          echo 'EMDO_EDITORIAL_24_REPAIR_DB=SUCCESS'
+      - name: Verify public bilingual SEO, H1 and Open Graph
+        run: |
+          python3 - <<'PY'
+          import urllib.request,re
+          base='https://www.elmercadodeorigen.com'
+          pairs=[
+            ('/cafe-arabica-robusta-diferencias-cual-elegir/','/en/arabica-vs-robusta-coffee-differences-which-to-buy/'),
+            ('/tipos-de-mango-variedades-diferencias-cual-elegir/','/en/types-of-mango-varieties-differences-which-to-choose/'),
+            ('/tipos-naranjas-variedades-sabor-cual-elegir/','/en/types-of-oranges-varieties-flavour-which-to-choose/'),
+            ('/cremas-de-cacao-como-elegir-ingredientes-diferencias/','/en/chocolate-spreads-how-to-choose-ingredients-and-differences/')
+          ]
+          failures=[]
+          for es,en in pairs:
+            for path in (es,en):
+              url=base+path
+              try:
+                req=urllib.request.Request(url+'?emdo_seo_20261021=1',headers={'User-Agent':'Mozilla/5.0 EMDO live postdeploy QA'})
+                with urllib.request.urlopen(req,timeout=60) as response:
+                  code=response.status
+                  body=response.read(5000000).decode('utf-8','replace')
+                h1=len(re.findall(r'<h1\b',body,re.I))
+                alternate=dict(re.findall(r'<link\b[^>]*hreflang=["\x27]([^"\x27]+)["\x27][^>]*href=["\x27]([^"\x27]+)',body,re.I))
+                img=bool(re.search(r'<meta\b[^>]*property=["\x27]og:image["\x27]',body,re.I))
+                desc=bool(re.search(r'<meta\b[^>]*name=["\x27]description["\x27]',body,re.I))
+                ok=(code==200 and h1==1 and img and desc and
+                    alternate.get('es-ES')==base+es and alternate.get('en')==base+en and alternate.get('x-default')==base+es)
+                print('REPAIR_LIVE_SEO',('OK' if ok else 'FAILED'),path,'H1',h1,'OG',img,'HREFLANG_ES',alternate.get('es-ES'),flush=True)
+                if not ok:failures.append(path)
+              except Exception as exc:
+                print('REPAIR_FETCH_FAILED',path,repr(exc),flush=True);failures.append(path)
+          for path in ('/','/blog/','/tienda/'):
+            try:
+              with urllib.request.urlopen(base+path,timeout=60) as r:code=r.status
+              if code!=200:failures.append(path)
+              print('CRITICAL_LIVE_PAGE',path,code,flush=True)
+            except Exception as exc:
+              print('CRITICAL_FETCH_FAILED',path,repr(exc),flush=True);failures.append(path)
+          if failures:raise SystemExit('Needs review: '+str(failures))
+          print('EMDO_EDITORIAL_24_REPAIR_PUBLIC_QA=PASS')
+          PY
