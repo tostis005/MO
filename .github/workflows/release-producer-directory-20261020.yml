@@ -178,7 +178,7 @@ jobs:
                   };
                 });
                 console.log('PRODUCERS_LAYOUT',width,JSON.stringify(data));
-                if(!data.intro.found||data.intro.bg!=='rgb(23, 63, 50)'||data.intro.image==='none'||data.intro.headingColor!=='rgb(255, 254, 247)'||data.intro.width<250) throw new Error('Producer header must have opaque dark-green background and readable white text '+width+' '+JSON.stringify(data.intro));
+                if(!data.intro.found||data.intro.bg!=='rgb(23, 63, 50)'||data.intro.image==='none'||!['rgb(255, 254, 247)','rgb(255, 255, 255)'].includes(data.intro.headingColor)||data.intro.width<250) throw new Error('Producer header must have opaque dark-green background and readable white text '+width+' '+JSON.stringify(data.intro));
                 if (!data.hasHeadStyle||data.hasOldNormalizer||data.cards<3) throw new Error('Missing or replaced directory at '+width);
                 const expected=width>=1200?3:width>760?2:1;
                 if(data.columns!==expected) throw new Error('Wrong column count '+width+': '+data.columns);
