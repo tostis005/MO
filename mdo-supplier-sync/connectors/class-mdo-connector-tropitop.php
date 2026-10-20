@@ -142,7 +142,15 @@ final class MDO_Connector_Tropitop {
     }
 
     private static function sizes( DOMXPath $xp, ?DOMNode $context = null ): array {
-        $root = $context ?? $xp->document;
+        // On a product detail page inspect only the product's variant selector,
+        // not related-product cards or the global menu (which may display other
+        // box weights and prices). A category card is scoped by its product ID.
+        $root = $context;
+        if ( null === $root ) {
+            $matching = $xp->query( '//*[contains(concat(" ",normalize-space(@class)," ")," product-variants ")] | //form[@id="add-to-cart-or-refresh"]//*[contains(@class,"product-variants")]' );
+            $root = $matching && $matching->length ? $matching->item( 0 ) : null;
+        }
+        if ( ! $root ) { return array(); }
         $output = array();
         $nodes = $xp->query(
             './/option | .//li | .//a | .//button | .//label',
