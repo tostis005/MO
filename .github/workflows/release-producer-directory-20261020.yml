@@ -192,7 +192,7 @@ jobs:
                   };
                 });
                 console.log('PRODUCERS_LAYOUT',width,JSON.stringify(data));
-                if(!data.intro.found||!data.intro.sharedClass||!data.intro.sharedMarkup||data.intro.bg!=='rgb(23, 63, 50)'||data.intro.image==='none'||data.intro.headingColor!=='rgb(255, 255, 255)'||data.intro.paragraphColor!=='rgba(255, 255, 255, 0.74)'||data.intro.kickerColor!=='rgb(233, 217, 169)'||data.intro.display!=='block'||data.intro.width<250||!data.navBg.startsWith('rgba(255, 255, 255, 0.98)')) throw new Error('Producer intro must use real shared About markup and opaque plain-white background '+width+' '+JSON.stringify(data.intro)+' nav='+data.navBg);
+                if(!data.intro.found||!data.intro.sharedClass||!data.intro.sharedMarkup||data.intro.bg!=='rgb(23, 63, 50)'||data.intro.image!=='none'||data.intro.headingColor!=='rgb(255, 255, 255)'||data.intro.paragraphColor!=='rgba(255, 255, 255, 0.74)'||data.intro.kickerColor!=='rgb(233, 217, 169)'||data.intro.display!=='block'||data.intro.width<250||!data.navBg.startsWith('rgba(255, 255, 255, 0.98)')) throw new Error('Producer header must match the dark Contact header and remain legible '+width+' '+JSON.stringify(data.intro)+' nav='+data.navBg);
                 if (!data.hasHeadStyle||data.hasOldNormalizer||data.cards<3) throw new Error('Missing or replaced directory at '+width);
                 const expected=width>=1200?3:width>760?2:1;
                 if(data.columns!==expected) throw new Error('Wrong column count '+width+': '+data.columns);
