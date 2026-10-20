@@ -1,6 +1,6 @@
 # Plan editorial aprobado — Nuevos productores (20-10-2026)
 
-Estado: **24 temas aprobados; 19 publicados y verificados en español e inglés; 5 pendientes**. Este archivo es la fuente persistente de control del trabajo en el repositorio MO (no sustituirlo por la memoria de una conversación).
+Estado: **24 temas aprobados; 24 publicados y verificados en español e inglés; 0 pendientes**. Este archivo es la fuente persistente de control del trabajo en el repositorio MO (no sustituirlo por la memoria de una conversación).
 
 ## Reglas editoriales acordadas
 - Publicar siempre versión española e inglesa con redacción natural, no traducción mecánica.
@@ -34,12 +34,12 @@ Estado: **24 temas aprobados; 19 publicados y verificados en español e inglés;
 | 16 | Mangos | Cómo saber si un mango está maduro y cómo elegir uno bueno | **Publicado · ES/EN verificado** |
 | 17 | Mangos | Cuándo es temporada de mango en España | **Publicado · ES/EN verificado** |
 | 18 | Cítricos | Naranjas de mesa y de zumo: diferencias y cuáles comprar | **Publicado · ES/EN verificado** |
-| 19 | Cítricos | Tipos de naranjas: variedades, sabor y cuál elegir | Pendiente |
-| 20 | Cítricos | Temporada de naranjas y mandarinas en España: calendario y variedades | Pendiente |
-| 21 | Frutas | Frutas de temporada en España: calendario mes a mes | Pendiente |
+| 19 | Cítricos | Tipos de naranjas: variedades, sabor y cuál elegir | **Publicado · ES/EN verificado** |
+| 20 | Cítricos | Temporada de naranjas y mandarinas en España: calendario y variedades | **Publicado · ES/EN verificado** |
+| 21 | Frutas | Frutas de temporada en España: calendario mes a mes | **Publicado · ES/EN verificado** |
 | 22 | Frutas | Comprar fruta online: cómo elegir fruta fresca y de calidad | **Publicado · ES/EN verificado** |
-| 23 | Frutas | Frutas tropicales: cuáles son, a qué saben y cómo elegirlas | Pendiente |
-| 24 | Frutas | Cajas de fruta de temporada a domicilio: cómo elegir y qué cantidad comprar | Pendiente |
+| 23 | Frutas | Frutas tropicales: cuáles son, a qué saben y cómo elegirlas | **Publicado · ES/EN verificado** |
+| 24 | Frutas | Cajas de fruta de temporada a domicilio: cómo elegir y qué cantidad comprar | **Publicado · ES/EN verificado** |
 
 ## Tandas
 - **Primera tanda publicada y verificada en producción el 20/10/2026:** nº 1 (café), nº 10 (cremas de cacao), nº 11 (variedades de aguacate).
@@ -75,7 +75,16 @@ Estado: **24 temas aprobados; 19 publicados y verificados en español e inglés;
 - Nº 7: https://www.elmercadodeorigen.com/cafe-natural-torrefacto-mezcla-diferencias-elegir/ · EN: https://www.elmercadodeorigen.com/en/natural-roast-torrefacto-coffee-blends-explained/
 - Nº 8: https://www.elmercadodeorigen.com/que-cafe-elegir-buen-espresso-casa/ · EN: https://www.elmercadodeorigen.com/en/how-to-choose-coffee-for-home-espresso/
 - Nº 9: https://www.elmercadodeorigen.com/tipos-tueste-cafe-claro-medio-oscuro/ · EN: https://www.elmercadodeorigen.com/en/light-medium-dark-coffee-roasts-how-to-choose/
-- **Próxima tanda:** nº 19, 20 (naranjas y cítricos), nº 21 (calendario de frutas), nº 23 (frutas tropicales) y nº 24 (cajas de fruta de temporada). Revisar stock antes de insertar enlaces comerciales.
+- **Sexta y última tanda publicada y verificada en producción:** nº 19, 20, 21, 23 y 24. Se comprobaron públicamente diez URLs y las rutas principales del sitio.
+- Ejecución completada correctamente: https://github.com/tostis005/MO/actions/runs/39495559178
+- Nº 19: https://www.elmercadodeorigen.com/tipos-naranjas-variedades-sabor-cual-elegir/ · EN: https://www.elmercadodeorigen.com/en/types-of-oranges-varieties-flavour-which-to-choose/
+- Nº 20: https://www.elmercadodeorigen.com/temporada-naranjas-mandarinas-espana-calendario/ · EN: https://www.elmercadodeorigen.com/en/orange-mandarin-season-spain-harvest-calendar/
+- Nº 21: https://www.elmercadodeorigen.com/frutas-de-temporada-espana-calendario-mes-a-mes/ · EN: https://www.elmercadodeorigen.com/en/seasonal-fruit-in-spain-month-by-month-calendar/
+- Nº 23: https://www.elmercadodeorigen.com/frutas-tropicales-tipos-sabor-como-elegir/ · EN: https://www.elmercadodeorigen.com/en/tropical-fruits-types-flavours-how-to-choose/
+- Nº 24: https://www.elmercadodeorigen.com/cajas-fruta-temporada-domicilio-elegir-cantidad/ · EN: https://www.elmercadodeorigen.com/en/seasonal-fruit-box-delivery-how-to-choose-size/
+- **Imágenes y enlaces:** nº 21, 23 y 24 disponen de imagen específica de producto en stock y enlazan a categoría activa; nº 19 y 20 conservan imagen editorial por ausencia de categoría comercial con stock de cítricos/naranjas en publicación.
+- **Plan completado al 100 %:** 24 artículos originales en español e inglés publicados en WordPress, 48 versiones públicas con QA verificadas en cada tanda (1-6).
+- **Mejoras editoriales pospublicación pendientes y no bloqueantes:** personalizar imágenes genéricas de artículos sobre café, mango y naranjas cuando se disponga de fotografías adecuadas; añadir enlaces comerciales en los artículos sin categoría con productos activos una vez aparezcan en el marketplace.
 - Los restantes temas se producirán de forma progresiva, respetando este orden editorial o modificándolo con documentación del motivo.
 
 ## Comprobaciones previas
