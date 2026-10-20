@@ -48,7 +48,14 @@ if ( class_exists( 'DOMDocument' ) && class_exists( 'DOMXPath' ) ) {
     $xp = new DOMXPath( $doc );
     $sizes = reflected( 'sizes', $xp );
     verify( count( $sizes ) === 3, 'Three official weights, no related products.' );
-    verify( abs( (float) $sizes['9.000']['price'] - 32.90 ) < 0.001, 'Weight and exact box price must match.' );
+    verify( abs( (float) $sizes['kg:9.000']['price'] - 32.90 ) < 0.001, 'Weight and exact box price must match.' );
+}
+if ( class_exists( 'DOMDocument' ) ) {
+    $u = new DOMDocument();
+    @$u->loadHTML( '<div class="product-variants"><ul><li><a>5.00 unid 32,90 €</a></li></ul></div>' );
+    $unit_sizes = reflected( 'sizes', new DOMXPath( $u ) );
+    verify( count( $unit_sizes ) === 1 && ( $unit_sizes['unid:5.000']['unit'] ?? '' ) === 'unid',
+        'Unit presentations must not be mislabelled as kilograms.' );
 }
 echo "Tropitop connector and shipping smoke checks passed.\n";
 
