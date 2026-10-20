@@ -1,0 +1,60 @@
+name: Probe Tropitop public cart shipping
+
+on:
+  pull_request:
+    paths: [".github/workflows/tropitop-shipping-probe.yml"]
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Query public Tropitop cart without submitting an order
+        shell: bash
+        run: |
+          python - <<'PY'
+          import requests,re,html,json
+          from urllib.parse import urljoin
+          s=requests.Session()
+          s.headers.update({'User-Agent':'Mozilla/5.0 (compatible; ElMercadoDeOrigen shipping QA)' ,'Accept-Language':'es-ES,es;q=0.9'})
+          product='https://tropitop.com/es/aguacates/33-3063-comprar-aguacate-bacon.html'
+          try:
+            r=s.get(product,timeout=18)
+            print('PRODUCT',r.status_code,r.url,'length',len(r.content),'cookies',list(s.cookies.keys()))
+            t=r.text
+            for x in ['name="token"','prestashop =','id_product_attribute','data-id-product-attribute','product-variants','shipping','delivery','carrier','carrito','controller=cart','action=update','ps_shoppingcart']:
+              match=re.search(re.escape(x),t,re.I)
+              if match:
+                clip=re.sub(r'\s+',' ',t[max(0,match.start()-110):match.end()+250])
+                # Remove tokens and any potentially user-generated content.
+                clip=re.sub(r'(?i)(token|secure_key|password)(.{0,8})[a-zA-Z0-9]{20,}',r'\1=<REDACTED>',clip)
+                print('HTML',x,clip[:320])
+            cart=s.get('https://tropitop.com/es/carrito',timeout=18)
+            print('EMPTY_CART',cart.status_code,cart.url,'length',len(cart.content))
+            # Add one item to a temporary anonymous cart; no checkout or order.
+            tm=re.search(r'"token"\s*:\s*"([^"]+)"',t)
+            if not tm: tm=re.search(r'name="token"\s+value="([^"]+)"',t)
+            if not tm:
+              print('NO_TOKEN: unable to add cart safely')
+            else:
+              token=tm.group(1)
+              data={'token':token,'id_product':'33','id_product_attribute':'3063','qty':'1','add':'1','action':'update','ajax':'1'}
+              a=s.post('https://tropitop.com/es/carrito',data=data,timeout=18)
+              print('ADD',a.status_code,a.url,'length',len(a.content))
+              try:
+                j=a.json()
+                print('ADD_JSON_KEYS',list(j.keys())[:25])
+                print('ADD_ERRORS',str(j.get('errors',[]))[:250])
+              except ValueError: print('ADD_HTML',re.sub(r'\s+',' ',a.text[:300]))
+              c=s.get('https://tropitop.com/es/carrito',timeout=18)
+              print('CART',c.status_code,c.url,'length',len(c.content))
+              cleaned=re.sub(r'<script[\s\S]*?</script>|<style[\s\S]*?</style>',' ',c.text,flags=re.I)
+              cleaned=html.unescape(re.sub(r'<[^>]+>',' ',cleaned))
+              cleaned=re.sub(r'\s+',' ',cleaned)
+              for word in ('Envío','envío','Transporte','portes','Entrega','Total','14,90','32,90'):
+                matches=list(re.finditer(re.escape(word),cleaned,re.I))
+                print('CART_MATCH',word,'n=',len(matches),[(cleaned[max(0,m.start()-110):m.end()+110])[:235] for m in matches[-5:]])
+          except Exception as e:
+            print('PROBE_ERROR',type(e).__name__,str(e)[:450])
+          PY
