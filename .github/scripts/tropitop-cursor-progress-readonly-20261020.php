@@ -28,6 +28,7 @@ $failed=(array)($state['failed']??array());
 $retry_attempts=(array)($state['retry_attempts']??array());
 $retry_attempted=0;$retry_exhausted=0;$retry_remaining=0;$retry_total=0;
 $retry_recovered=0;$failure_types=array();
+$failure_exact_reasons=array();
 foreach($retry_attempts as $id=>$attempt){
     $n=(int)$attempt;$retry_total+=$n;
     if($n>0){$retry_attempted++;}
@@ -37,6 +38,8 @@ foreach($failed as $id=>$entry){
     $n=(int)($retry_attempts[$id]??0);
     if($n>=2){$retry_exhausted++;}
     elseif(in_array((string)($entry['url']??''),$urls,true)){$retry_remaining++;}
+    $exact=mb_substr(trim((string)($entry['reason']??'')),0,140);
+    $failure_exact_reasons[$exact]=($failure_exact_reasons[$exact]??0)+1;
     $error=mb_strtolower((string)($entry['reason']??''),'UTF-8');
     $kind='other';
     if(str_contains($error,'timeout')||str_contains($error,'timed out')||str_contains($error,'cURL error 28')){$kind='timeout';}
@@ -48,6 +51,7 @@ foreach($failed as $id=>$entry){
     $failure_types[$kind]=($failure_types[$kind]??0)+1;
 }
 ksort($failure_types);
+arsort($failure_exact_reasons,SORT_NUMERIC);
 
 $source_count=$wpdb->get_results($wpdb->prepare(
     "SELECT status,COUNT(*) AS cnt, SUM(CASE WHEN wc_product_id>0 THEN 1 ELSE 0 END) AS linked
@@ -82,6 +86,7 @@ $out=array(
   'imported_approved_in_cursor'=>count($imported),
   'failed_recorded'=>count($failed),
   'failed_reason_counts'=>$failure_types,
+  'exact_failure_reason_counts'=>$failure_exact_reasons,
   'retry_attempted_distinct_products'=>$retry_attempted,
   'retry_attempts_total'=>$retry_total,
   'retry_recovered'=>$retry_recovered,
