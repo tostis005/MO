@@ -44,6 +44,15 @@ foreach(array('latitudes','tropitop') as $code){
 		):null,
 	);
 	if($code!=='tropitop'||!$ready||$mode!=='apply'){continue;}
+	// The dedicated full-catalog importer owns the saved Tropitop URL cursor.
+	// Never import those same products concurrently from a second workflow.
+	$bulk=get_option('mdo_tropitop_full_catalog_20261020',array());
+	if(is_array($bulk) && !empty($bulk['urls']) && (int)($bulk['cursor']??0)<count($bulk['urls'])){
+		$report['suppliers'][$code]['bulk_cursor']=(int)($bulk['cursor']??0);
+		$report['suppliers'][$code]['bulk_total']=count($bulk['urls']);
+		$report['suppliers'][$code]['bulk_owns_import']=true;
+		continue;
+	}
 	// A prior timeout might have created a Woo item but not updated the source
 	// link in older releases. Match only its verified supplier-specific SKU.
 	$todo=$wpdb->get_results($wpdb->prepare(
