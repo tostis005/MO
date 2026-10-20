@@ -86,12 +86,13 @@ if ( class_exists( 'DOMDocument' ) ) {
         . '</div><aside class="related"><div class="variant-box">3 kg 4,90 €</div></aside>', LIBXML_NONET );
     $options = reflected( 'sizes', new DOMXPath( $d ) );
     verify( count( $options ) === 2, 'Both labeled 4-unit packs must be separate variants.' );
-    $all = array_values( $options );
-    verify( abs( (float) $all[0]['price'] - 17.9 ) < 0.001, 'Traditional pack price verified.' );
-    verify( abs( (float) $all[1]['price'] - 23.9 ) < 0.001, 'Sugar-free pack price verified.' );
-    verify( (string) $all[0]['label'] === 'Tradicional', 'Traditional variant label required.' );
-    verify( (string) $all[1]['label'] === 'Sin azúcar', 'Sugar-free variant label required.' );
-    verify( (string) $all[0]['unit'] === 'unid' && (float) $all[0]['amount'] === 4.0,
+    $by_label = array();
+    foreach ( $options as $opt ) { $by_label[ $opt['label'] ] = $opt; }
+    verify( isset( $by_label['Tradicional'], $by_label['Sin azúcar'] ), 'Both pack labels must be preserved.' );
+    verify( abs( (float) $by_label['Tradicional']['price'] - 17.9 ) < 0.001, 'Traditional pack price verified.' );
+    verify( abs( (float) $by_label['Sin azúcar']['price'] - 23.9 ) < 0.001, 'Sugar-free pack price verified.' );
+    verify( (string) $by_label['Tradicional']['unit'] === 'unid' &&
+        (float) $by_label['Tradicional']['amount'] === 4.0,
         'Units must never be converted to kilograms.' );
     $d1 = new DOMDocument();
     @$d1->loadHTML( '<?xml encoding="UTF-8" ?><div class="product-variants">'
