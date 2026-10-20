@@ -88,10 +88,11 @@ jobs:
           set -Eeuo pipefail
           root="$1"; stage="$2"; backup="$3"
           inc="$root/wp-content/themes/elmercadodeorigen-child/inc"
-          php_bin="$(command -v php || true)"
+          php_bin=/opt/plesk/php/8.2/bin/php
           wp_bin="$(command -v wp || true)"
           test -f "$root/wp-config.php"
-          test -n "$php_bin" && test -n "$wp_bin"
+          test -x "$php_bin" && test -n "$wp_bin"
+          printf 'REMOTE_PHP=%s WP_CLI=%s\\n' "$php_bin" "$wp_bin"
           url="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$root" --skip-plugins --skip-themes --allow-root)"
           case "$url" in
             https://elmercadodeorigen.com|https://www.elmercadodeorigen.com|http://elmercadodeorigen.com|http://www.elmercadodeorigen.com) ;;
