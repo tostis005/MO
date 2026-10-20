@@ -51,7 +51,7 @@ jobs:
                       opened=len(re.findall(fr'<{tag}(?:\s[^>]*)?>',body))
                       closed=len(re.findall(fr'</{tag}>',body))
                       assert opened==closed,(n,lang,'unbalanced',tag,opened,closed)
-                  assert not re.search(r'</[A-Za-z]+(?![A-Za-z>])',body),(n,lang,'broken HTML close')
+                  assert not re.search(r'</[A-Za-z][A-Za-z0-9]*(?![A-Za-z0-9>])',body),(n,lang,'broken HTML close')
                   assert '<script' not in body.lower() and '<iframe' not in body.lower()
                   assert clean[:120] not in seen,(n,lang,'duplicate opening')
                   seen.add(clean[:120])
