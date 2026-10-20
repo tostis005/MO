@@ -39,6 +39,22 @@ jobs:
                 return out;
               });
               console.log('PRODUCER_HEADER_STYLES='+JSON.stringify(headers));
+              const compareStyles=async(label,selector)=>{
+                const data=await page.evaluate(selector=>{
+                  const root=document.querySelector(selector);
+                  if(!root)return null;
+                  const nodes={root,kicker:root.querySelector('.emo-kicker'),title:root.querySelector('h2'),desc:root.querySelector('p')};
+                  const out={};
+                  for(const [key,n] of Object.entries(nodes)){
+                    if(!n)continue;
+                    const c=getComputedStyle(n),r=n.getBoundingClientRect();
+                    out[key]={text:n.textContent?.trim().slice(0,85),tag:n.tagName,fontFamily:c.fontFamily,fontSize:c.fontSize,fontWeight:c.fontWeight,lineHeight:c.lineHeight,letterSpacing:c.letterSpacing,textTransform:c.textTransform,color:c.color,background:c.backgroundColor,bgImage:c.backgroundImage,padding:c.padding,margin:c.margin,border:c.border,borderRadius:c.borderRadius,boxShadow:c.boxShadow,display:c.display,gridTemplateColumns:c.gridTemplateColumns,rect:{width:r.width,height:r.height,top:r.top}};
+                  }
+                  return out;
+                },selector);
+                console.log('STYLES_'+label+'='+JSON.stringify(data));
+              };
+              await compareStyles('PRODUCERS','.emo-producers-intro');
               for(const slug of ['tienda','quienes-somos','contacto','blog']){
                 const destination='https://www.elmercadodeorigen.com/'+slug+'/?audit='+process.env.GITHUB_RUN_ID;
                 try{
@@ -55,6 +71,8 @@ jobs:
                     return result;
                   });
                   console.log('REFERENCE_HEADER_'+slug.toUpperCase()+'='+JSON.stringify(diagnostic));
+                  if(slug==='quienes-somos')await compareStyles('ABOUT','.emo-about-intro');
+                  if(slug==='contacto')await compareStyles('CONTACT','.emo-contact-aside');
                 }catch(e){console.log('REFERENCE_HEADER_ERROR_'+slug.toUpperCase()+'='+e.message)}
               }
               const snapshot=await page.evaluate(()=>{
