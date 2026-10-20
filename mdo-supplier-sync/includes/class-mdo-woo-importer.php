@@ -141,17 +141,13 @@ final class MDO_Woo_Importer {
 		$category_result = class_exists( 'MDO_Auto_Categorizer' )
 			? MDO_Auto_Categorizer::maybe_assign( $product, $payload, $row )
 			: array();
-		// The known Tropitop avocado SKU has a verified, deterministic taxonomy.
-		// Never publish it under an accidental generic meat/uncategorized term.
+		// Source category paths are matched against an explicit, bounded
+		// mapping, never guessed by the generic meat-oriented categorizer.
 		if ( 'tropitop' === (string) $supplier['code'] ) {
-			$term_slug = '33' === (string) ( $payload['source_product_id'] ?? '' ) ? 'aguacates' : '';
-			$term = $term_slug ? get_term_by( 'slug', $term_slug, 'product_cat' ) : false;
-			if ( ! $term instanceof WP_Term ) {
-				throw new RuntimeException( 'Tropitop: la categoría comercial del producto todavía no está validada.' );
-			}
-			$product->set_category_ids( array( (int) $term->term_id ) );
+			$categories = self::tropitop_category_ids( $payload );
+			$product->set_category_ids( $categories );
 			$category_result = array( 'assigned' => true, 'reason' => 'tropitop_source_category',
-				'category_ids' => array( (int) $term->term_id ), 'score' => null );
+				'category_ids' => $categories, 'score' => null );
 		}
 		if ( $is_variable ) {
 			self::apply_variable_product( $product, $variations );
@@ -405,6 +401,72 @@ final class MDO_Woo_Importer {
 		$clean = preg_replace( array_keys( $patterns ), array_values( $patterns ), $html );
 		return wp_kses_post( is_string( $clean ) ? $clean : $html );
 	}
+
+    /**
+     * Tropitop catalog taxonomy: explicit source-path map, not heuristic
+     * scoring (meat/chocolate categories elsewhere in this marketplace).
+     * A new term is created only for these audited product category slugs.
+     */
+    private static function tropitop_category_ids( array $payload ): array {
+        $source = (string) ( $payload['source_url'] ?? '' );
+        if ( ! in_array( strtolower( (string) wp_parse_url( $source, PHP_URL_HOST ) ),
+            array( 'tropitop.com', 'www.tropitop.com' ), true ) ) {
+            throw new RuntimeException( 'Categoría Tropitop: host de origen incorrecto.' );
+        }
+        $path = explode( '/', trim( (string) wp_parse_url( $source, PHP_URL_PATH ), '/' ) );
+        $key = sanitize_title( (string) ( $path[1] ?? '' ) );
+        $title = mb_strtolower( (string) ( $payload['title'] ?? '' ) );
+        $is_pack = (bool) preg_match( '/\b(?:pack|mix|caja(?:s)? de|lote|cesta)\b/u', $title );
+        if ( $key === 'productos' ) {
+            $key = preg_match( '/pimient|tomate|patata|verdura/u', $title ) ? 'verduras' : 'frutas';
+        }
+        if ( $key === 'home-verduras' ) { $key = 'verduras'; }
+        if ( $key === 'disponible' ) { $key = 'packs'; }
+        $map = array(
+            'aguacates' => array( 'Aguacates', 'aguacates', 'frutas' ),
+            'frutas' => array( 'Frutas', 'frutas', '' ),
+            'frutas-tropicales' => array( 'Frutas tropicales', 'frutas-tropicales', 'frutas' ),
+            'frutas-del-mundo' => array( 'Frutas del mundo', 'frutas-del-mundo', 'frutas' ),
+            'verduras' => array( 'Verduras', 'verduras', '' ),
+            'gourmet' => array( 'Gourmet', 'gourmet', '' ),
+            'packs' => array( 'Packs y lotes', 'packs-y-lotes', '' ),
+            'cajas-de-temporada' => array( 'Cajas de temporada', 'cajas-de-temporada', 'packs-y-lotes' ),
+        );
+        if ( ! isset( $map[ $key ] ) ) {
+            throw new RuntimeException( 'Categoría Tropitop no verificada: ' . $key );
+        }
+        $target = $map[ $key ];
+        $parent_id = 0;
+        if ( $target[2] ) {
+            $parent = get_term_by( 'slug', $target[2], 'product_cat' );
+            if ( ! $parent instanceof WP_Term && isset( $map[ $target[2] ] ) ) {
+                $p = $map[ $target[2] ];
+                $result = wp_insert_term( $p[0], 'product_cat', array( 'slug' => $p[1] ) );
+                if ( is_wp_error( $result ) ) { throw new RuntimeException( $result->get_error_message() ); }
+                $parent = get_term( (int) $result['term_id'], 'product_cat' );
+            }
+            if ( ! $parent instanceof WP_Term ) {
+                throw new RuntimeException( 'Categoría padre Tropitop ausente: ' . $target[2] );
+            }
+            $parent_id = (int) $parent->term_id;
+        }
+        $term = get_term_by( 'slug', $target[1], 'product_cat' );
+        if ( ! $term instanceof WP_Term ) {
+            $result = wp_insert_term( $target[0], 'product_cat', array(
+                'slug' => $target[1], 'parent' => $parent_id,
+                'description' => 'Selección de productos disponibles del productor Tropitop.',
+            ) );
+            if ( is_wp_error( $result ) ) { throw new RuntimeException( $result->get_error_message() ); }
+            $term = get_term( (int) $result['term_id'], 'product_cat' );
+        }
+        if ( ! $term instanceof WP_Term ) { throw new RuntimeException( 'No se guardó la categoría Tropitop.' ); }
+        $ids = array( (int) $term->term_id );
+        if ( $is_pack && 'packs' !== $key && 'cajas-de-temporada' !== $key ) {
+            $pack = get_term_by( 'slug', 'packs-y-lotes', 'product_cat' );
+            if ( $pack instanceof WP_Term ) { $ids[] = (int) $pack->term_id; }
+        }
+        return array_values( array_unique( $ids ) );
+    }
 
 	private static function apply_common_fields( WC_Product $product, array $payload ): void {
 		$product->set_name( MDO_Text::normalize_title( (string) $payload['title'] ) );
