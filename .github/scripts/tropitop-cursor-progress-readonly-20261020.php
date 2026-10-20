@@ -24,6 +24,31 @@ $cursor=(int)($state['cursor']??0);
 $done=max(0,min($total,$cursor));
 $imported=(array)($state['imported']??array());
 $failed=(array)($state['failed']??array());
+
+$retry_attempts=(array)($state['retry_attempts']??array());
+$retry_attempted=0;$retry_exhausted=0;$retry_remaining=0;$retry_total=0;
+$retry_recovered=0;$failure_types=array();
+foreach($retry_attempts as $id=>$attempt){
+    $n=(int)$attempt;$retry_total+=$n;
+    if($n>0){$retry_attempted++;}
+    if(!isset($failed[$id]) && $n>0){$retry_recovered++;}
+}
+foreach($failed as $id=>$entry){
+    $n=(int)($retry_attempts[$id]??0);
+    if($n>=2){$retry_exhausted++;}
+    elseif(in_array((string)($entry['url']??''),$urls,true)){$retry_remaining++;}
+    $error=mb_strtolower((string)($entry['reason']??''),'UTF-8');
+    $kind='other';
+    if(str_contains($error,'timeout')||str_contains($error,'timed out')||str_contains($error,'cURL error 28')){$kind='timeout';}
+    elseif(str_contains($error,'categoría')||str_contains($error,'category')){$kind='category_variant_url';}
+    elseif(str_contains($error,'matriz')||str_contains($error,'variaci')||str_contains($error,'variante')){$kind='price_or_variants';}
+    elseif(str_contains($error,'título')||str_contains($error,'página vacía')||str_contains($error,'http ')){$kind='page_unavailable';}
+    elseif(str_contains($error,'peso')||str_contains($error,'shipping')||str_contains($error,'unidades')){$kind='unverified_shipping_weight';}
+    elseif(str_contains($error,'qa woo')||str_contains($error,'galería')||str_contains($error,'foto')){$kind='woo_image_or_qa';}
+    $failure_types[$kind]=($failure_types[$kind]??0)+1;
+}
+ksort($failure_types);
+
 $source_count=$wpdb->get_results($wpdb->prepare(
     "SELECT status,COUNT(*) AS cnt, SUM(CASE WHEN wc_product_id>0 THEN 1 ELSE 0 END) AS linked
      FROM {$src} WHERE supplier_id=%d GROUP BY status",$source_id),ARRAY_A);
@@ -56,6 +81,12 @@ $out=array(
   'completed_first_pass_percent'=>$total?round(100*$done/$total,1):0,
   'imported_approved_in_cursor'=>count($imported),
   'failed_recorded'=>count($failed),
+  'failed_reason_counts'=>$failure_types,
+  'retry_attempted_distinct_products'=>$retry_attempted,
+  'retry_attempts_total'=>$retry_total,
+  'retry_recovered'=>$retry_recovered,
+  'retry_remaining'=>$retry_remaining,
+  'retry_exhausted'=>$retry_exhausted,
   'failed_sample'=>array_slice($failed,0,5,true),
   'last_processed_source_url'=>$last_url,'next_source_url'=>$next_url,
   'wp_linked_products'=>$linked,'source_status_counts'=>$by_status,
