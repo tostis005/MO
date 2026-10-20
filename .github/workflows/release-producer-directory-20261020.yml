@@ -152,6 +152,8 @@ jobs:
                   const introStyle=intro?getComputedStyle(intro):null;
                   return {
                     intro:{found:!!intro,bg:introStyle?.backgroundColor||null,image:introStyle?.backgroundImage||null,
+                      headingColor:intro?.querySelector('h2')?getComputedStyle(intro.querySelector('h2')).color:null,
+                      paragraphColor:intro?.querySelector('p')?getComputedStyle(intro.querySelector('p')).color:null,
                       radius:introStyle?.borderTopLeftRadius||null,
                       width:intro?.getBoundingClientRect().width||0},
                     hasHeadStyle:!!document.querySelector('#elmercado-producer-directory-editorial-20261020'),
@@ -176,9 +178,9 @@ jobs:
                   };
                 });
                 console.log('PRODUCERS_LAYOUT',width,JSON.stringify(data));
-                if(!data.intro.found||data.intro.bg==='rgba(0, 0, 0, 0)'||data.intro.bg==='transparent'||data.intro.image==='none'||data.intro.width<250) throw new Error('Producer header background is missing or transparent '+width+' '+JSON.stringify(data.intro));
+                if(!data.intro.found||data.intro.bg!=='rgb(23, 63, 50)'||data.intro.image==='none'||data.intro.headingColor!=='rgb(255, 254, 247)'||data.intro.width<250) throw new Error('Producer header must have opaque dark-green background and readable white text '+width+' '+JSON.stringify(data.intro));
                 if (!data.hasHeadStyle||data.hasOldNormalizer||data.cards<3) throw new Error('Missing or replaced directory at '+width);
-                const expected=width>760?2:1;
+                const expected=width>=1200?3:width>760?2:1;
                 if(data.columns!==expected) throw new Error('Wrong column count '+width+': '+data.columns);
                 for(const m of data.measurements){
                   if(!m.titleBox||!m.link||m.linkTabIndex!==0||!m.oldButtonHidden||m.linkOverlay!=='absolute'||m.wrapperPointer!=='pointer'||!m.imageBox||m.bannerFit!=='cover'||m.overflow>3) throw new Error('Card links or geometry issue '+width+' '+JSON.stringify(m));
