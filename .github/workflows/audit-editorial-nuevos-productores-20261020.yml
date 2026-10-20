@@ -1,0 +1,18 @@
+name: Audit new producer editorial 20261020
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/scripts/audit-editorial-nuevos-productores-20261020.py
+      - .github/workflows/audit-editorial-nuevos-productores-20261020.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit sources and live pages
+        run: python3 .github/scripts/audit-editorial-nuevos-productores-20261020.py
