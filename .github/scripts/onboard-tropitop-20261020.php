@@ -13,10 +13,18 @@ $sup=$wpdb->prefix.'mdo_suppliers';$src=$wpdb->prefix.'mdo_source_products';
 $r=$wpdb->get_row($wpdb->prepare("SELECT * FROM $sup WHERE code=%s",'tropitop'),ARRAY_A);
 if(!$r)throw new RuntimeException('Missing Tropitop supplier');
 if((int)$r['active']===1) {
- if((int)$r['vendor_user_id']!==4971 || !get_user_meta(4971,'_disable_vendor',true) ||
-    MDO_Tropitop_Shipping::is_ready())throw new RuntimeException('Unexpected active seller or checkout state');
- echo 'TROPITOP_DRAFT_PREP_SKIP_ALREADY_SYNCING_IN_BACKGROUND'."\\n";
- return;
+ if((int)$r['vendor_user_id']!==4971)throw new RuntimeException('Unexpected Tropitop seller account');
+ $disabled=(bool)get_user_meta(4971,'_disable_vendor',true);
+ $ready=MDO_Tropitop_Shipping::is_ready();
+ if(!$disabled && $ready) {
+  echo 'TROPITOP_ALREADY_PUBLISHED_AND_READY'."\\n";
+  return;
+ }
+ if($disabled && !$ready) {
+  echo 'TROPITOP_DRAFT_PREP_SKIP_ALREADY_SYNCING_IN_BACKGROUND'."\\n";
+  return;
+ }
+ throw new RuntimeException('Vendor enablement and shipping readiness are inconsistent');
 }
 if((int)$r['active']!==0)throw new RuntimeException('Invalid Tropitop registry status');
 $vendor=get_user_by('login','tropitop');
