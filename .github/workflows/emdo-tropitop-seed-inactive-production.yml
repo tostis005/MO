@@ -54,8 +54,11 @@ jobs:
           PHP_BIN=$(command -v php || true)
           [ -n "$PHP_BIN" ] || PHP_BIN=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
           test -n "$PHP_BIN" && test -n "$WP_BIN"
-          VERSION=$("$PHP_BIN" "$WP_BIN" plugin get mdo-supplier-sync --field=version --path="$P" --allow-root)
+          # Read the installed plugin header directly; avoid an unneeded full WP plugin load.
+          VERSION=$(sed -n 's/^ \* Version: //p' "$P/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php" | head -n1 | tr -d '\r')
           test "$VERSION" = '1.0.67'
+          echo 'TROPITOP_SEED_PLUGIN_HEADER_VERIFIED'
+          echo 'TROPITOP_SEED_BEGIN_WP_CLI'
           "$PHP_BIN" -d memory_limit=1536M "$WP_BIN" eval-file "$P/wp-content/plugins/mdo-supplier-sync/scripts/onboard-tropitop.php" --path="$P" --allow-root --skip-plugins --skip-themes
           "$PHP_BIN" "$WP_BIN" option get mdo_tropitop_shipping_rates_verified --path="$P" --allow-root 2>/dev/null | grep -qx '1' && { echo 'ERROR: Tropitop shipping unexpectedly enabled'; exit 1; } || true
           echo 'TROPITOP_INACTIVE_SUPPLIER_SEED_DONE'
