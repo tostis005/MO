@@ -22,52 +22,44 @@ add_action(
 		?>
 		<style id="elmercado-producer-directory-editorial-20261020">
 			/*
-			 * La introducción comparte la misma estructura real y la clase
-			 * .emo-about-intro de «Quiénes somos»: etiqueta, titular a la
-			 * izquierda y descripción a la derecha. No es un hero especial,
-			 * ni una tarjeta con bordes, sombra o gradiente distintos.
-			 * Fondo blanco explícito para evitar que aparezca transparente.
+			 * Misma cabecera que «Contacto»: la clase compartida emo-contact-aside
+			 * proporciona superficie forest, esquinas, sombra y tipografía.
+			 * Estas reglas sólo neutralizan la antigua rejilla del directorio.
 			 */
-			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-main .emo-about-intro.emo-producers-intro {
-				display: grid !important;
+			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-main .emo-contact-aside.emo-producers-intro {
+				display: block !important;
 				box-sizing: border-box !important;
 				width: min(100%, 1180px) !important;
 				max-width: 1180px !important;
-				grid-template-columns: minmax(0, 1.08fr) minmax(300px, .72fr) !important;
-				align-items: end !important;
-				gap: clamp(2rem, 7vw, 7rem) !important;
+				min-height: 0 !important;
 				margin: 0 auto clamp(2.5rem, 5vw, 4.5rem) !important;
-				padding: 0 !important;
+				padding: clamp(2rem, 5vw, 4rem) !important;
 				border: 0 !important;
-				border-radius: 0 !important;
-				background: #fff !important;
-				box-shadow: none !important;
+				border-radius: var(--emo-radius-lg, 20px) !important;
+				background: radial-gradient(circle at 90% 8%, rgba(215, 168, 79, .2), transparent 28%), var(--emo-forest-950, #173f32) !important;
+				box-shadow: var(--emo-shadow-sm, 0 5px 20px rgba(24,47,31,.09)) !important;
+				color: rgba(255,255,255,.76) !important;
 			}
-			/* Colores de texto explícitos: WCFM heredaba blanco del antiguo hero.
-			 * La estructura y tipografías siguen compartidas con Quiénes somos. */
-			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-main .emo-about-intro.emo-producers-intro .emo-kicker {
-				color: #557258 !important;
-				-webkit-text-fill-color: #557258 !important;
+			/* Evitar que el CSS antiguo del directorio cambie el título de Contacto. */
+			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-main .emo-contact-aside.emo-producers-intro .emo-kicker {
+				color: #e9d9a9 !important;
+				-webkit-text-fill-color: #e9d9a9 !important;
 			}
-
-			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-main .emo-about-intro.emo-producers-intro h2 {
-				max-width: 720px !important;
+			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-main .emo-contact-aside.emo-producers-intro h2 {
+				max-width: 800px !important;
+				margin: 0 0 1.25rem !important;
+				color: #fff !important;
+				-webkit-text-fill-color: #fff !important;
+				font-size: clamp(2.3rem, 4.5vw, 4rem) !important;
+				line-height: 1.13 !important;
+			}
+			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-main .emo-contact-aside.emo-producers-intro > p {
+				max-width: 760px !important;
 				margin: 0 !important;
-				font-size: clamp(2.6rem, 5vw, 4.8rem) !important;
-				color: #173f32 !important;
-				-webkit-text-fill-color: #173f32 !important;
-			}
-			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-main .emo-about-intro.emo-producers-intro > p {
-				margin: 0 0 .35rem !important;
-				font-size: clamp(1.02rem, 1.5vw, 1.2rem) !important;
+				color: rgba(255,255,255,.74) !important;
+				-webkit-text-fill-color: rgba(255,255,255,.74) !important;
+				font-size: 1.02rem !important;
 				line-height: 1.75 !important;
-				color: #536158 !important;
-				-webkit-text-fill-color: #536158 !important;
-			}
-			@media (max-width: 991px) {
-				html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-main .emo-about-intro.emo-producers-intro {
-					grid-template-columns: minmax(0, 1fr) !important;
-				}
 			}
 			/* Tres banners por fila en escritorio. WCFM no decide posiciones con masonry. */
 			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap ul.wcfmmp-store-wrap {
