@@ -73,7 +73,7 @@ jobs:
               test -s "$backup/editorial-finish.php" && cp -p "$backup/editorial-finish.php" "$inc/"
               rm -rf "$stage"
               php_bin="$(command -v php || true)"; wp_bin="$(command -v wp || true)"
-              root="$(dirname "$(dirname "$(dirname "$inc")")")"
+              root="$(dirname "$(dirname "$(dirname "$(dirname "$inc")")")")"
               if [ -n "$php_bin" ] && [ -n "$wp_bin" ]; then
                 "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$root" --skip-plugins --allow-root || true
               fi
@@ -84,7 +84,7 @@ jobs:
           trap rollback EXIT
           sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$STAGE'"
           sshpass -e scp $SCP_OPTS "elmercadodeorigen-child/inc/$ONE" "elmercadodeorigen-child/inc/$TWO" "$STAGING_USER@$STAGING_HOST:$STAGE/"
-          sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$ROOT' '$STAGE' '$BACKUP'" <<'REMOTE'
+          sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$ROOT' '$STAGE' '$BACKUP'" <<'REMOTE'
           set -Eeuo pipefail
           root="$1"; stage="$2"; backup="$3"
           inc="$root/wp-content/themes/elmercadodeorigen-child/inc"
