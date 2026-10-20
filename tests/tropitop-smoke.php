@@ -30,6 +30,7 @@ catch ( RuntimeException $e ) { $rejected = true; }
 verify( $rejected, 'Untrusted hosts must be rejected.' );
 
 verify( MDO_Tropitop_Shipping::allowed( 'ES', '28013' ), 'Madrid allowed.' );
+verify( MDO_Tropitop_Shipping::allowed( 'ES', '' ), 'Country-only catalog browsing is allowed.' );
 verify( ! MDO_Tropitop_Shipping::allowed( 'ES', '07001' ), 'Balearics excluded.' );
 verify( ! MDO_Tropitop_Shipping::allowed( 'ES', '35001' ), 'Canaries excluded.' );
 verify( ! MDO_Tropitop_Shipping::allowed( 'ES', '51001' ), 'Ceuta excluded.' );
@@ -40,7 +41,7 @@ verify( ! MDO_Tropitop_Shipping::allowed( 'US', '10001' ), 'Outside supply list 
 
 if ( class_exists( 'DOMDocument' ) && class_exists( 'DOMXPath' ) ) {
     $doc = new DOMDocument();
-    @$doc->loadHTML( '<div class="product-variants"><ul>'
+    @$doc->loadHTML( '<?xml encoding="UTF-8" ?><div class="product-variants"><ul>'
         . '<li><a>3.00 kg 14,90 €</a></li><li><a>4.00 kg 17,90 €</a></li>'
         . '<li><a>9.00 kg 32,90 €</a></li></ul></div>'
         . '<aside class="related"><a>9 kg 2,00 €</a></aside>', LIBXML_NONET );
