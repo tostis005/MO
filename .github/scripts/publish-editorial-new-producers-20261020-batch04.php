@@ -41,7 +41,8 @@ function emdo_np_posts(): array {
         }
         if (isset($es[$p['slug']]) || isset($en[$p['en_slug']])) throw new RuntimeException('Duplicate slug in manifest');
         $es[$p['slug']]=true; $en[$p['en_slug']]=true;
-        if (emdo_np_words($p['es']) < 750 || emdo_np_words($p['en']) < 700) throw new RuntimeException('Editorial length failure ' . $p['slug']);
+        $wc_es=emdo_np_words($p['es']); $wc_en=emdo_np_words($p['en']);
+        if ($wc_es < 750 || $wc_en < 700) throw new RuntimeException('Editorial length failure ' . $p['slug'] . ' ES=' . $wc_es . ' EN=' . $wc_en);
         if (!emdo_np_body_ok($p['es']) || !emdo_np_body_ok($p['en'])) throw new RuntimeException('Unsafe or thin markup ' . $p['slug']);
         if (!is_array($p['product_category_terms']) || !$p['product_category_terms']) throw new RuntimeException('Category missing');
         $posts[]=$p;
