@@ -47,6 +47,11 @@ jobs:
                   words=re.findall(r'\w+',clean)
                   assert len(words)>=minimum,(n,lang,len(words))
                   assert body.count('<p>')>=5 and body.count('<h2>')>=2
+                  for tag in ('p','h2','a','strong','em'):
+                      opened=len(re.findall(fr'<{tag}(?:\\s[^>]*)?>',body))
+                      closed=len(re.findall(fr'</{tag}>',body))
+                      assert opened==closed,(n,lang,'unbalanced',tag,opened,closed)
+                  assert not re.search(r'</[A-Za-z]+(?![A-Za-z>])',body),(n,lang,'broken HTML close')
                   assert '<script' not in body.lower() and '<iframe' not in body.lower()
                   assert clean[:120] not in seen,(n,lang,'duplicate opening')
                   seen.add(clean[:120])
