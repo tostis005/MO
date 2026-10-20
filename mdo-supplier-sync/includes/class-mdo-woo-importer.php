@@ -52,6 +52,20 @@ final class MDO_Woo_Importer {
 		}
 
 		$existing_id = ! empty( $row['wc_product_id'] ) ? (int) $row['wc_product_id'] : 0;
+		// Recover products created by older releases that timed out BEFORE
+		// persisting their Woo ID. Verify the supplier-specific SKU and author;
+		// never create a second entry with that SKU or attach another vendor's.
+		if ( ! $existing_id && 'tropitop' === (string) $supplier['code'] &&
+			! empty( $payload['sku'] ) ) {
+			$matched_id = wc_get_product_id_by_sku( sanitize_text_field( (string) $payload['sku'] ) );
+			if ( $matched_id ) {
+				if ( (int) get_post_field( 'post_author', $matched_id ) !== $vendor_id ) {
+					throw new RuntimeException( 'Referencia Tropitop ya existente con otro vendedor: revisar antes de importar.' );
+				}
+				$existing_id = (int) $matched_id;
+				$wpdb->update( $table, array( 'wc_product_id' => $existing_id ), array( 'id' => $source_product_id ) );
+			}
+		}
 		$product     = $existing_id ? wc_get_product( $existing_id ) : false;
 		$is_variable = ! empty( $variations );
 
