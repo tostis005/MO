@@ -1,0 +1,39 @@
+name: EMDO Tropitop connector checks
+
+on:
+  pull_request:
+    paths:
+      - 'mdo-supplier-sync/connectors/class-mdo-connector-tropitop.php'
+      - 'mdo-supplier-sync/includes/class-mdo-tropitop-shipping.php'
+      - 'mdo-supplier-sync/includes/class-mdo-scheduler.php'
+      - 'mdo-supplier-sync/includes/class-mdo-woo-importer.php'
+      - 'mdo-supplier-sync/includes/class-mdo-admin.php'
+      - 'mdo-supplier-sync/mdo-supplier-sync.php'
+      - 'mdo-supplier-sync/scripts/onboard-tropitop.php'
+      - 'tests/tropitop-smoke.php'
+      - '.github/workflows/emdo-tropitop-checks.yml'
+  workflow_dispatch:
+
+jobs:
+  lint-and-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: dom, libxml, mbstring
+          coverage: none
+      - name: Syntax check
+        run: |
+          php -l mdo-supplier-sync/connectors/class-mdo-connector-tropitop.php
+          php -l mdo-supplier-sync/includes/class-mdo-tropitop-shipping.php
+          php -l mdo-supplier-sync/includes/class-mdo-scheduler.php
+          php -l mdo-supplier-sync/includes/class-mdo-admin.php
+          php -l mdo-supplier-sync/includes/class-mdo-woo-importer.php
+          php -l mdo-supplier-sync/mdo-supplier-sync.php
+          php -l mdo-supplier-sync/scripts/onboard-tropitop.php
+          php -l tests/tropitop-smoke.php
+      - name: Unit smoke
+        run: php tests/tropitop-smoke.php
