@@ -526,7 +526,11 @@ final class MDO_Woo_Importer {
 		if ( ! $urls ) {
 			return;
 		}
-		$urls = array_slice( $urls, 0, 12 );
+		// Tropitop's authorized PrestaShop gallery can contain more than 12
+		// photos. Preserve every verified image (bounded to 20), without changing
+		// the image budget of any other marketplace supplier.
+		$max_images = 'tropitop.com' === strtolower( (string) wp_parse_url( (string) ( $payload['source_url'] ?? '' ), PHP_URL_HOST ) ) ? 20 : 12;
+		$urls = array_slice( $urls, 0, $max_images );
 		$map  = json_decode( (string) get_post_meta( $product->get_id(), '_emdo_image_map', true ), true );
 		$map  = is_array( $map ) ? $map : array();
 		$ids  = array();
