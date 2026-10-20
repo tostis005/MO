@@ -1,0 +1,31 @@
+name: Ikore Kofi official source audit
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ikore-official-audit-20261020.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          python -m pip -q install beautifulsoup4 requests
+          python - <<'PY'
+          import requests,json
+          from bs4 import BeautifulSoup
+          base='https://ikorekofi.com'
+          home=BeautifulSoup(requests.get(base,timeout=60).text,'html.parser')
+          urls=[base,'https://ikorekofi.com/nosotros/']
+          for a in home.select('a[href]'):
+            u=a['href']
+            if any(s in u for s in ['/chiriqui/','/el-indio/','/villa-sarch','/typica-mejorado/','/adumu/','/geisha/']):
+              if u not in urls: urls.append(u)
+          for u in urls:
+            soup=BeautifulSoup(requests.get(u,timeout=60).text,'html.parser')
+            variations=[json.loads(f.get('data-product_variations','[]')) for f in soup.select('form.variations_form')]
+            imgs=[{k:i.get(k) for k in ['src','data-src','alt','class']} for i in soup.select('img')]
+            print('SOURCE='+json.dumps(dict(url=u,text=soup.get_text(' ',strip=True)[:15000],variations=variations,images=imgs),ensure_ascii=False))
+          PY
