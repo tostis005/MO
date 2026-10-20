@@ -112,11 +112,15 @@ jobs:
               lines=[s.split('=',1)[1] for s in Path(path).read_text().splitlines() if s.startswith('EMDO_RESUME_BATCH=')]
               assert lines, f'No preflight report: {path}'
               d=json.loads(lines[-1])
-              assert d['checked']>0 and d['mode']=='audit'
+              assert d['mode']=='audit'
               if d['task']=='gallery':
                   assert 125<=d['total']<=165, 'Unexpected Latitudes inventory'
-                  assert d['checked']>=5
+                  assert d.get('latest_created',{}).get('id'), 'Missing newest imported product'
                   Path('/tmp/emdo-supplier-total').write_text(str(d['total']))
+                  print('LAST_CREATED_PRODUCT',json.dumps(d['latest_created'],ensure_ascii=False))
+                  print('START_CURSOR',d.get('cursor_before',0))
+              else:
+                  assert d['checked']>0, 'Copy preflight contains no products'
               print('PREFLIGHT_PASS',d['task'],d['checked'],len(d['errors']))
           PY
 
@@ -130,14 +134,18 @@ jobs:
             [ "$THIS_CHECKED" != 0 ] || break
           done
 
-          # Gallery: batches of 6. Each individual product persists its own
-          # image IDs and URL map, so a retry does not download saved photos.
+          # Persisted source-row cursor in WordPress makes this *strictly*
+          # resumable, even if the prior GitHub job died in mid-batch.
+          # Inspect the last-created Woo product first; process next source row.
+          # A later rerun sees the stored cursor and skips all finished products.
           TOTAL="$(cat /tmp/emdo-supplier-total)"
-          for (( OFFSET=0; OFFSET<TOTAL; OFFSET+=6 )); do
-            if ! run_batch gallery apply "$OFFSET" 6 | tee -a /tmp/emdo-catalog-repair-batches.log; then
-              echo "Gallery batch failed at $OFFSET; review logs before re-running." >&2
+          for (( BATCH=0; BATCH<90; BATCH++ )); do
+            if ! run_batch gallery apply 0 3 | tee -a /tmp/emdo-catalog-repair-batches.log; then
+              echo "Gallery batch $BATCH failed; next run will start at the last saved source ID." >&2
               exit 22
             fi
+            BATCH_DONE="$(python3 -c 'import json; d=[json.loads(a.split("=",1)[1]) for a in open("/tmp/emdo-catalog-repair-batches.log") if a.startswith("EMDO_RESUME_BATCH=") and "\"task\":\"gallery\"" in a]; print("1" if d[-1]["complete"] else "0")')"
+            [ "$BATCH_DONE" = '0' ] || break
           done
 
           python3 - <<'PY'
@@ -148,12 +156,17 @@ jobs:
           gallery=[r for r in rows if r['task']=='gallery']
           assert copy and gallery, 'No applied batches'
           total=int(Path('/tmp/emdo-supplier-total').read_text())
-          assert sum(r['checked'] for r in gallery)==total, 'Gallery coverage is incomplete'
+          assert gallery[-1].get('complete') is True, 'Gallery cursor did not reach the end'
+          assert not any(r['errors'] for r in gallery), 'Some product images need retry'
           summary={
               'completed_at':gallery[-1]['at'],
               'copy_products_checked':sum(r['checked'] for r in copy),
               'copy_products_updated':sum(r['changed'] for r in copy),
               'gallery_source_products':total,
+              'latest_created':gallery[-1].get('latest_created'),
+              'resume_cursor_first':gallery[0].get('cursor_before'),
+              'resume_cursor_last':gallery[-1].get('cursor_after',gallery[-1].get('cursor_before')),
+              'gallery_reached_end':gallery[-1].get('complete'),
               'gallery_products_checked':sum(r['checked'] for r in gallery),
               'gallery_products_updated':sum(r['changed'] for r in gallery),
               'photos_imported':sum(r['added'] for r in gallery),
