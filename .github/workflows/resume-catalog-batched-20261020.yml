@@ -20,10 +20,10 @@ jobs:
     timeout-minutes: 180
     environment: production
     env:
-      HOST: ${ secrets.STAGING_HOST }}
-      PORT: ${ secrets.STAGING_PORT }}
-      USER: ${ secrets.STAGING_USER }}
-      SSHPASS: ${ secrets.STAGING_PASSWORD }}
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - name: Validate repair script and deployed supplier connector
