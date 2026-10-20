@@ -21,7 +21,7 @@ add_action(
 		}
 		?>
 		<style id="elmercado-producer-directory-editorial-20261020">
-			/* Editorial sobria: sin panel gigante ni decoración que compita con las fotos. */
+			/* Cabecera editorial opaca: superficie crema como el resto de la galería. */
 			html body:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .emo-producers-intro {
 				display: flex !important;
 				box-sizing: border-box !important;
@@ -33,12 +33,12 @@ add_action(
 				justify-content: center !important;
 				gap: 14px !important;
 				margin: 0 auto clamp(24px, 3.2vw, 44px) !important;
-				padding: clamp(16px, 2vw, 28px) 0 clamp(18px, 2.5vw, 32px) !important;
-				border: 0 !important;
-				border-bottom: 1px solid rgba(23, 63, 50, .14) !important;
-				border-radius: 0 !important;
-				background: transparent !important;
-				box-shadow: none !important;
+				padding: clamp(27px, 3.4vw, 48px) clamp(25px, 4vw, 56px) !important;
+				border: 1px solid rgba(23, 63, 50, .11) !important;
+				border-radius: 20px !important;
+				background-color: #f5f3ec !important;
+				background-image: linear-gradient(118deg, #f8f6f0 0%, #eff2e9 100%) !important;
+				box-shadow: 0 5px 20px rgba(24, 47, 31, .045) !important;
 			}
 			html body:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .emo-producers-intro .emo-kicker {
 				color: #69816a !important;
@@ -281,7 +281,8 @@ add_action(
 					padding: 19px 22px !important;
 				}
 				html body:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .emo-producers-intro {
-					padding: 8px 0 22px !important;
+					padding: 27px 23px !important;
+					border-radius: 16px !important;
 				}
 			}
 		</style>
