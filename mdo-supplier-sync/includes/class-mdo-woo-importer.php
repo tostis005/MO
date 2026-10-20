@@ -52,6 +52,20 @@ final class MDO_Woo_Importer {
 		}
 
 		$existing_id = ! empty( $row['wc_product_id'] ) ? (int) $row['wc_product_id'] : 0;
+		// Recover products created by older releases that timed out BEFORE
+		// persisting their Woo ID. Verify the supplier-specific SKU and author;
+		// never create a second entry with that SKU or attach another vendor's.
+		if ( ! $existing_id && 'tropitop' === (string) $supplier['code'] &&
+			! empty( $payload['sku'] ) ) {
+			$matched_id = wc_get_product_id_by_sku( sanitize_text_field( (string) $payload['sku'] ) );
+			if ( $matched_id ) {
+				if ( (int) get_post_field( 'post_author', $matched_id ) !== $vendor_id ) {
+					throw new RuntimeException( 'Referencia Tropitop ya existente con otro vendedor: revisar antes de importar.' );
+				}
+				$existing_id = (int) $matched_id;
+				$wpdb->update( $table, array( 'wc_product_id' => $existing_id ), array( 'id' => $source_product_id ) );
+			}
+		}
 		$product     = $existing_id ? wc_get_product( $existing_id ) : false;
 		$is_variable = ! empty( $variations );
 
@@ -138,13 +152,34 @@ final class MDO_Woo_Importer {
 			$product->set_status( 'draft' );
 			$product->set_catalog_visibility( 'hidden' );
 		}
-		// Never auto-publish an unreviewed new SKU merely because this vendor
-		// becomes active later. Human-validated existing products retain their
-		// approved publication state during regular nightly stock updates.
-		if ( 'tropitop' === (string) $supplier['code'] &&
-			( ! $existing_id || '1' !== (string) get_post_meta( $existing_id, '_mdo_tropitop_prelaunch_validated', true ) ) ) {
-			$product->set_status( 'draft' );
-			$product->set_catalog_visibility( 'hidden' );
+		// An enabled, confirmed Tropitop supplier is allowed to publish newly
+		// imported products directly, *only* when checkout and every option are
+		// fully shippable. Never require a manual flag for each new reference.
+		// Unsupported unit-only packs, unknown prices or invalid shipping remain
+		// drafts, rather than selling without a valid delivery quote.
+		if ( 'tropitop' === (string) $supplier['code'] ) {
+			$ready_to_sell = ! empty( $supplier['active'] )
+				&& ! get_user_meta( $vendor_id, '_disable_vendor', true )
+				&& MDO_Tropitop_Shipping::is_ready()
+				&& count( $variations ) > 0
+				&& count( $variations ) === $declared_variations
+				&& ! empty( $payload['images'] )
+				&& ! empty( $payload['description'] );
+			foreach ( $variations as $source_variation ) {
+				$kg = isset( $source_variation['weight_kg'] ) && is_numeric( $source_variation['weight_kg'] )
+					? (float) $source_variation['weight_kg'] : 0.0;
+				if ( $kg <= 0 || null === MDO_Tropitop_Shipping::cost_for_weight( $kg ) ||
+					! isset( $source_variation['display_price'] ) ||
+					! is_numeric( $source_variation['display_price'] ) ||
+					(float) $source_variation['display_price'] <= 0 ) {
+					$ready_to_sell = false;
+					break;
+				}
+			}
+			if ( ! $ready_to_sell ) {
+				$product->set_status( 'draft' );
+				$product->set_catalog_visibility( 'hidden' );
+			}
 		}
 		$category_result = class_exists( 'MDO_Auto_Categorizer' )
 			? MDO_Auto_Categorizer::maybe_assign( $product, $payload, $row )
@@ -173,10 +208,29 @@ final class MDO_Woo_Importer {
                 $product->set_weight((string)$latitudes_inferred_weight['kg']);
             }
         }
+        // New Tropitop products become public immediately after the full
+        // photo and variation commit, not midway through a slow image request.
+        $publish_after_verified_import = 'tropitop' === (string) $supplier['code']
+            && ! $existing_id && 'publish' === $product->get_status();
+        if ( $publish_after_verified_import ) {
+            $product->set_status( 'draft' );
+            $product->set_catalog_visibility( 'hidden' );
+        }
         $product_id = $product->save();
 		if ( ! $product_id ) {
 			throw new RuntimeException( 'WooCommerce no pudo guardar el producto.' );
 		}
+
+		// A network timeout during image upload must never create a second Woo
+		// product on retry. Save the source-to-Woo ID immediately, before any
+		// remote image request. The source stays "importing" until completion.
+		$wpdb->update(
+			$table,
+			array( 'wc_product_id' => $product_id ),
+			array( 'id' => $source_product_id ),
+			array( '%d' ),
+			array( '%d' )
+		);
 
         if ($latitudes_inferred_weight && 'verified_manual' !== (string)get_post_meta($product_id,'_mdo_latitudes_weight_basis',true)) {
             update_post_meta($product_id,'_mdo_latitudes_weight_basis',(string)$latitudes_inferred_weight['basis']);
@@ -187,12 +241,28 @@ final class MDO_Woo_Importer {
 		}
 
 		self::sync_images( $product, $payload );
+		// A product without a real, imported cover cannot be offered for sale.
+		// Keep it recoverable as a draft for the next incremental sync.
+		if ( 'tropitop' === (string) $supplier['code'] && ! $product->get_image_id() ) {
+			$product->set_status( 'draft' );
+			$product->set_catalog_visibility( 'hidden' );
+			$product->save();
+		}
 		if ( $is_variable ) {
 			self::sync_variations( $product, $variations );
 			WC_Product_Variable::sync( $product_id );
 		}
 		if ( class_exists( 'MDO_YITH_Extras' ) ) {
 			MDO_YITH_Extras::sync_product( $product_id, $payload );
+		}
+		if ( $publish_after_verified_import ) {
+			$fresh = wc_get_product( $product_id );
+			if ( $fresh && $fresh->get_image_id() &&
+				( ! $is_variable || count( $fresh->get_children() ) === count( $variations ) ) ) {
+				$fresh->set_status( 'publish' );
+				$fresh->set_catalog_visibility( 'visible' );
+				$fresh->save();
+			}
 		}
 
 		update_post_meta( $product_id, '_emdo_source_product_id', $source_product_id );
@@ -616,41 +686,61 @@ final class MDO_Woo_Importer {
 	}
 
 	private static function sync_images( WC_Product $product, array $payload ): void {
-		$urls = isset( $payload['images'] ) && is_array( $payload['images'] ) ? array_values( array_unique( array_filter( array_map( 'esc_url_raw', $payload['images'] ) ) ) ) : array();
-		if ( ! $urls ) {
-			return;
-		}
-		// Tropitop's authorized PrestaShop gallery can contain more than 12
-		// photos. Preserve every verified image (bounded to 20), without changing
-		// the image budget of any other marketplace supplier.
+		$urls = isset( $payload['images'] ) && is_array( $payload['images'] )
+			? array_values( array_unique( array_filter( array_map( 'esc_url_raw', $payload['images'] ) ) ) )
+			: array();
+		if ( ! $urls ) { return; }
 		$max_images = 'tropitop.com' === strtolower( (string) wp_parse_url( (string) ( $payload['source_url'] ?? '' ), PHP_URL_HOST ) ) ? 20 : 12;
 		$urls = array_slice( $urls, 0, $max_images );
-		$map  = json_decode( (string) get_post_meta( $product->get_id(), '_emdo_image_map', true ), true );
-		$map  = is_array( $map ) ? $map : array();
-		$ids  = array();
-
+		$map = json_decode( (string) get_post_meta( $product->get_id(), '_emdo_image_map', true ), true );
+		$map = is_array( $map ) ? $map : array();
+		$ids = array();
 		require_once ABSPATH . 'wp-admin/includes/media.php';
 		require_once ABSPATH . 'wp-admin/includes/file.php';
 		require_once ABSPATH . 'wp-admin/includes/image.php';
 
 		foreach ( $urls as $url ) {
-			$attachment_id = isset( $map[ $url ] ) ? absint( $map[ $url ] ) : 0;
-			if ( ! $attachment_id || 'attachment' !== get_post_type( $attachment_id ) ) {
-				$attachment_id = media_sideload_image( $url, $product->get_id(), $product->get_name(), 'id' );
-				if ( is_wp_error( $attachment_id ) ) {
+			$aid = isset( $map[ $url ] ) ? absint( $map[ $url ] ) : 0;
+			if ( $aid && 'attachment' !== get_post_type( $aid ) ) { $aid = 0; }
+			if ( ! $aid ) {
+				// download_url() supports a short per-image timeout. The default
+				// 300-second sideload can block an entire importer batch.
+				$tmp = download_url( $url, 12 );
+				if ( is_wp_error( $tmp ) ) { continue; }
+				$bytes = (int) filesize( $tmp );
+				$info = @getimagesize( $tmp );
+				if ( $bytes <= 0 || $bytes > 14000000 || ! $info ||
+					! in_array( (string) ( $info['mime'] ?? '' ), array( 'image/jpeg', 'image/png', 'image/webp' ), true ) ) {
+					@unlink( $tmp );
 					continue;
 				}
-				$map[ $url ] = (int) $attachment_id;
+				$path = (string) wp_parse_url( $url, PHP_URL_PATH );
+				$file = array( 'name' => sanitize_file_name( basename( $path ) ), 'tmp_name' => $tmp, 'size' => $bytes, 'error' => 0 );
+				$result = media_handle_sideload( $file, $product->get_id(), $product->get_name() );
+				if ( is_wp_error( $result ) ) { @unlink( $tmp ); continue; }
+				$aid = absint( $result );
+				update_post_meta( $aid, '_source_url', esc_url_raw( $url ) );
+				$map[ $url ] = $aid;
+				// Persist the checkpoint after EVERY valid image; a timeout
+				// never invalidates finished uploads or triggers duplicate work.
+				update_post_meta( $product->get_id(), '_emdo_image_map', wp_json_encode( $map, JSON_UNESCAPED_SLASHES ) );
 			}
-			$ids[] = (int) $attachment_id;
+			$ids[] = $aid;
 		}
-
-		if ( $ids ) {
-			$product->set_image_id( array_shift( $ids ) );
-			$product->set_gallery_image_ids( array_values( array_unique( $ids ) ) );
-			$product->save();
-			update_post_meta( $product->get_id(), '_emdo_image_map', wp_json_encode( $map, JSON_UNESCAPED_SLASHES ) );
+		if ( ! $ids ) { return; }
+		$cover = (int) $product->get_image_id();
+		if ( ! $cover ) {
+			$cover = (int) array_shift( $ids );
+			$product->set_image_id( $cover );
 		}
+		// Existing galleries may already contain additional correct photos:
+		// never erase them simply because today's source request was partial.
+		$gallery = array_map( 'intval', $product->get_gallery_image_ids() );
+		foreach ( $ids as $aid ) {
+			if ( $aid !== $cover && ! in_array( $aid, $gallery, true ) ) { $gallery[] = $aid; }
+		}
+		$product->set_gallery_image_ids( array_values( array_unique( $gallery ) ) );
+		$product->save();
 	}
 
 	private static function usable_variations( array $payload ): array {

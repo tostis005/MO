@@ -1,4 +1,4 @@
-name: Tropitop safe full catalog import (hidden drafts)
+name: Tropitop incremental catalog import and verified direct publication
 on:
   pull_request:
     paths:
@@ -36,7 +36,7 @@ jobs:
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Import only to hidden production Woo drafts
+      - name: Resume saved cursor and publish only delivery-ready products
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -47,7 +47,7 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=40 -p $PORT"
           SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
           PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
             set -e
@@ -63,31 +63,46 @@ jobs:
           test -n "$PROD_PATH"
           SCRIPT="/tmp/tropitop-bulk-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP .github/scripts/tropitop-bulk-import-20261020.php "$STAGING_USER@$STAGING_HOST:$SCRIPT"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH' '$SCRIPT'" <<'REMOTE'
+          # One SHORT-LIVED SSH session per batch. The previous workflow used
+          # a single SSH connection for all 187 references and failed with
+          # "client_loop: send disconnect: Broken pipe". Product-level state is
+          # already persisted in WP option mdo_tropitop_full_catalog_20261020.
+          remote_phase() {
+            phase="$1"
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH' '$SCRIPT' '$phase'" <<'REMOTE'
           set -Eeuo pipefail
-          P="$1"; SCRIPT="$2"
-          trap 'rm -f "$SCRIPT"' EXIT
-          WP_BIN=$(command -v wp)
-          PHP_BIN=$(command -v php || true)
-          [ -n "$PHP_BIN" ] || PHP_BIN=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-          test -n "$PHP_BIN" && test -n "$WP_BIN"
-          run_wp() {
-            TROPITOP_BULK_PHASE="$1" TROPITOP_BULK_BATCH=3 "$PHP_BIN" -d memory_limit=1536M \
-              "$WP_BIN" eval-file "$SCRIPT" --path="$P" --allow-root --skip-plugins=woostify-sites-library
+          P="$1"; SCRIPT="$2"; phase="$3"
+          WP_BIN="$(command -v wp)"
+          PHP_BIN="$(command -v php || true)"
+          [ -n "$PHP_BIN" ] || PHP_BIN="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          [ -n "$PHP_BIN" ] && [ -n "$WP_BIN" ]
+          timeout --kill-after=20s 650s env TROPITOP_BULK_PHASE="$phase" TROPITOP_BULK_BATCH=2 \
+            "$PHP_BIN" -d memory_limit=1536M -d max_execution_time=0 \
+            "$WP_BIN" eval-file "$SCRIPT" --path="$P" --allow-root --skip-plugins=woostify-sites-library
+          REMOTE
           }
-          run_wp init
+          # Idempotent init returns without modifying an existing catalog or
+          # resetting the saved cursor. Always inspect the last imported SKU.
+          remote_phase init
+          # Merchant authorized direct publication: activate ONLY after the
+          # importer verifies live WCFM mainland shipping, product identity,
+          # destination guards and the contracted supplier configuration.
+          remote_phase activate
+          remote_phase status
           complete=0
-          for ((batch=1; batch<=240; batch++)); do
-            result=$(run_wp step)
+          for ((batch=1; batch<=300; batch++)); do
+            if ! result="$(remote_phase step)"; then
+              echo "Tropitop batch $batch disconnected/failed. Retain the saved cursor and retry in next workflow." >&2
+              remote_phase status || true
+              exit 21
+            fi
             printf '%s\n' "$result" | grep -E '^TROPITOP_(IMPORT_OK|IMPORT_REVIEW|BULK_PROGRESS|BULK_DONE)=' || true
-            if grep -q 'TROPITOP_BULK_DONE=' <<< "$result"; then complete=1; break; fi
+            if grep -q '^TROPITOP_BULK_DONE=' <<< "$result"; then complete=1; break; fi
             sleep 2
           done
+          remote_phase status
           if [ "$complete" -ne 1 ]; then
-            run_wp status
-            echo 'TROPITOP_BULK_INCOMPLETE; rerun workflow to resume'
-            exit 1
+            echo 'TROPITOP_BULK_INCOMPLETE: the next workflow will resume its WP cursor' >&2
+            exit 22
           fi
-          run_wp status
           echo 'TROPITOP_BULK_PIPELINE_DONE'
-          REMOTE
