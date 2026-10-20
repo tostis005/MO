@@ -21,7 +21,7 @@ add_action(
 		}
 		?>
 		<style id="elmercado-producer-directory-editorial-20261020">
-			/* Cabecera editorial opaca: superficie crema como el resto de la galería. */
+			/* Cabecera editorial de marca: fondo verde realmente opaco y contrastado. */
 			html body:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .emo-producers-intro {
 				display: flex !important;
 				box-sizing: border-box !important;
@@ -34,14 +34,15 @@ add_action(
 				gap: 14px !important;
 				margin: 0 auto clamp(24px, 3.2vw, 44px) !important;
 				padding: clamp(27px, 3.4vw, 48px) clamp(25px, 4vw, 56px) !important;
-				border: 1px solid rgba(23, 63, 50, .11) !important;
+				border: 1px solid #204d3e !important;
 				border-radius: 20px !important;
-				background-color: #f5f3ec !important;
-				background-image: linear-gradient(118deg, #f8f6f0 0%, #eff2e9 100%) !important;
-				box-shadow: 0 5px 20px rgba(24, 47, 31, .045) !important;
+				background-color: #173f32 !important;
+				background-image: linear-gradient(115deg, #123629 0%, #1b4635 56%, #315d46 100%) !important;
+				background-blend-mode: normal !important;
+				box-shadow: 0 12px 34px rgba(24, 47, 31, .14) !important;
 			}
 			html body:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .emo-producers-intro .emo-kicker {
-				color: #69816a !important;
+				color: #e4ce9f !important;
 				font-size: .72rem !important;
 				font-weight: 750 !important;
 				letter-spacing: .16em !important;
@@ -50,7 +51,7 @@ add_action(
 			html body:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .emo-producers-intro h2 {
 				max-width: 900px !important;
 				margin: 0 !important;
-				color: #173f32 !important;
+				color: #fffef7 !important;
 				font-family: Georgia, "Times New Roman", serif !important;
 				font-size: clamp(2rem, 3.5vw, 3.35rem) !important;
 				font-weight: 600 !important;
@@ -62,9 +63,14 @@ add_action(
 				width: 100% !important;
 				max-width: 760px !important;
 				margin: 0 !important;
-				color: #5a665e !important;
+				color: #e4eee6 !important;
 				font-size: clamp(.92rem, 1.15vw, 1.04rem) !important;
 				line-height: 1.66 !important;
+			}
+			/* En esta página la navegación también permanece completamente opaca. */
+			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) :is(.site-header,.site-header-inner,.site-header-inner .woostify-container) {
+				background-color: #fff !important;
+				background-image: none !important;
 			}
 			/* Tres banners por fila en escritorio. WCFM no decide posiciones con masonry. */
 			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap ul.wcfmmp-store-wrap {
