@@ -177,8 +177,7 @@ jobs:
             }
           }
           ' "$root"
-          rm -rf "$stage"
-          echo 'PRODUCERS_TARGETED_FILES_INSTALLED'
+          echo 'PRODUCERS_AND_TEN_NATIVE_WCFM_BANNERS_INSTALLED'
           REMOTE
           # Validar HTML público sin la caché de navegación; si falla, restaurar.
           url="https://www.elmercadodeorigen.com/productores/?design-check=$GITHUB_RUN_ID"
