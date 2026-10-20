@@ -124,9 +124,21 @@ final class MDO_Connector_Tropitop {
             $short_description = 'Aguacate Bacon de piel lisa cultivado en Castellón. Selecciona tu caja de 3, 4 o 9 kg. Pulpa cremosa y textura suave; puede llegar firme para completar la maduración en casa.';
         }
         $images = array();
-        if ( (bool) apply_filters( 'mdo_tropitop_media_authorized', false ) ) {
-            $image = self::meta( $xp, 'og:image' );
-            if ( $image && self::safe_image( $image ) ) { $images[] = $image; }
+        // The producer has expressly authorized original product images for
+        // listings on El Mercado de Origen. PrestaShop's src is often a tiny
+        // lazy-load SVG; always use the real large photograph, not that SVG.
+        if ( (bool) apply_filters( 'mdo_tropitop_media_authorized', true ) ) {
+            $nodes = $xp->query( '//*[contains(concat(" ",normalize-space(@class)," ")," product-cover ")]//img[@data-image-large-src] | //div[contains(concat(" ",normalize-space(@class)," ")," product-images ")]//img[@data-image-large-src]' );
+            foreach ( $nodes ?: array() as $node ) {
+                $candidate = trim( (string) $node->getAttribute( 'data-image-large-src' ) );
+                if ( $candidate && self::safe_image( $candidate ) ) { $images[ $candidate ] = $candidate; }
+                if ( count( $images ) >= 16 ) { break; }
+            }
+            if ( ! $images ) {
+                $fallback = self::meta( $xp, 'og:image' );
+                if ( $fallback && self::safe_image( $fallback ) ) { $images[ $fallback ] = $fallback; }
+            }
+            $images = array_values( $images );
         }
         $payload = array(
             'source_url' => $url,

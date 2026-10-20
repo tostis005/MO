@@ -30,13 +30,13 @@ catch ( RuntimeException $e ) { $rejected = true; }
 verify( $rejected, 'Untrusted hosts must be rejected.' );
 
 verify( MDO_Tropitop_Shipping::allowed( 'ES', '28013' ), 'Madrid allowed.' );
-verify( MDO_Tropitop_Shipping::allowed( 'ES', '' ), 'Country-only catalog browsing is allowed.' );
+verify( ! MDO_Tropitop_Shipping::allowed( 'ES', '' ), 'Postcode is mandatory for a shipping quote.' );
 verify( ! MDO_Tropitop_Shipping::allowed( 'ES', '07001' ), 'Balearics excluded.' );
 verify( ! MDO_Tropitop_Shipping::allowed( 'ES', '35001' ), 'Canaries excluded.' );
 verify( ! MDO_Tropitop_Shipping::allowed( 'ES', '51001' ), 'Ceuta excluded.' );
-verify( MDO_Tropitop_Shipping::allowed( 'PT', '1000-001' ), 'Continental Portugal allowed.' );
+verify( ! MDO_Tropitop_Shipping::allowed( 'PT', '1000-001' ), 'Portugal blocked until validated quotes.' );
 verify( ! MDO_Tropitop_Shipping::allowed( 'PT', '9000-001' ), 'Portuguese islands excluded.' );
-verify( MDO_Tropitop_Shipping::allowed( 'FR', '75001' ), 'France allowed.' );
+verify( ! MDO_Tropitop_Shipping::allowed( 'FR', '75001' ), 'France blocked until validated quotes.' );
 verify( ! MDO_Tropitop_Shipping::allowed( 'US', '10001' ), 'Outside supply list blocked.' );
 
 if ( class_exists( 'DOMDocument' ) && class_exists( 'DOMXPath' ) ) {
@@ -51,3 +51,13 @@ if ( class_exists( 'DOMDocument' ) && class_exists( 'DOMXPath' ) ) {
     verify( abs( (float) $sizes['9.000']['price'] - 32.90 ) < 0.001, 'Weight and exact box price must match.' );
 }
 echo "Tropitop connector and shipping smoke checks passed.\n";
+
+$expected = array( 3 => 2.95, 4 => 2.95, 6 => 5.95, 8 => 5.95, 9 => 5.95,
+    12 => 7.95, 18 => 10.95, 20 => 10.95, 24 => 12.95,
+    27 => 15.95, 36 => 20.95 );
+foreach ( $expected as $kg => $price ) {
+    verify( MDO_Tropitop_Shipping::cost_for_weight( (float) $kg ) === $price,
+        'Source cart shipping mismatch for ' . $kg . 'kg.' );
+}
+verify( null === MDO_Tropitop_Shipping::cost_for_weight( 33.0 ),
+    'Unverified weight bracket must not be guessed.' );

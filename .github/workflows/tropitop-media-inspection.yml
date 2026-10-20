@@ -1,0 +1,16 @@
+name: Inspect Tropitop catalog media and cart (read-only)
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/tropitop-media-inspection.py'
+      - '.github/workflows/tropitop-media-inspection.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install beautifulsoup4 requests -q
+      - run: python .github/scripts/tropitop-media-inspection.py
