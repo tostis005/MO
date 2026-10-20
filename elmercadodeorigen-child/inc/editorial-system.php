@@ -195,7 +195,7 @@ add_filter(
 		}
 
 		if ( 'productores' === $slug ) {
-			return '<section class="emo-about-intro emo-producers-intro"><div class="emo-producers-intro__heading"><span class="emo-kicker">El origen del mercado</span><h2>Conoce a quienes están detrás de cada producto.</h2></div><p>Proyectos con identidad propia, formas de trabajar distintas y una misma voluntad: que el producto llegue con todo su valor hasta quien lo elige.</p></section>' . $content;
+			return '<section class="emo-contact-aside emo-producers-intro"><span class="emo-kicker emo-kicker--light">El origen del mercado</span><h2>Conoce a quienes están detrás de cada producto.</h2><p>Proyectos con identidad propia, formas de trabajar distintas y una misma voluntad: que el producto llegue con todo su valor hasta quien lo elige.</p></section>' . $content;
 		}
 
 		if ( 'affiliates' === $slug && str_contains( $content, '[couponaffiliates]' ) ) {
