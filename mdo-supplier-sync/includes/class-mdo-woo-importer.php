@@ -371,10 +371,10 @@ final class MDO_Woo_Importer {
 			'Con este kit le proponemos' => 'Este kit ofrece',
 			'-como la nuestra-' => '',
 			'Con nuestra Tarjeta-Regalo acertar es muy fácil.' => 'Tarjeta regalo personalizable para disfrutar o regalar chocolate artesano.',
-			'le enviaremos a usted una copia por e-mail' => 'el productor indica que puede enviar una copia por correo electrónico',
-			'le enviaremos a usted una copia por email' => 'el productor indica que puede enviar una copia por correo electrónico',
+			'le enviaremos a usted una copia por e-mail' => 'La posibilidad de recibir una copia por correo electrónico requiere confirmación previa.',
+			'le enviaremos a usted una copia por email' => 'La posibilidad de recibir una copia por correo electrónico requiere confirmación previa.',
 			'indíquenos el correo electrónico y el mensaje para el destinatario y nosotras se la haremos llegar de su parte' => 'consulte con el productor las opciones de envío directo y dedicatoria antes de la compra',
-			'Chocolates Artesanos Isabel planta un árbol por usted a través de la ONG Plant For The Planet.' => 'el fabricante anuncia la plantación de un árbol mediante la ONG Plant For The Planet.',
+			'Chocolates Artesanos Isabel planta un árbol por usted a través de la ONG Plant For The Planet.' => '',
 			'Tiene más información aquí.' => 'Consulte las características y el contenido del producto en esta ficha.',
 		);
 		$html = str_ireplace( array_keys( $replacements ), array_values( $replacements ), $html );
@@ -386,12 +386,29 @@ final class MDO_Woo_Importer {
 		// An outbound maker-store link is inappropriate inside EMDO's checkout
 		// copy. Retain the visible label; never touch third-party certifications.
 		$html = preg_replace( '~<a\b[^>]*href\s*=\s*["\']https?://(?:www\.)?chocolatesartesanosisabel\.com[^"\']*["\'][^>]*>(.*?)</a>~isu', '$1', $html );
-		return wp_kses_post( (string) $html );
+		return self::remove_source_attribution( wp_kses_post( (string) $html ) );
+	}
+
+	/**
+	 * Keep verifiable product facts and eliminate third-person editorial
+	 * references to supplier webpages. This also runs during night imports.
+	 */
+	public static function remove_source_attribution( string $html ): string {
+		$patterns = array(
+			'~\bseg[uú]n\s+(?:se\s+(?:indica|informa)\s+en\s+)?(?:la\s+)?(?:web|p[aá]gina|ficha(?:\s+t[eé]cnica)?|informaci[oó]n|cat[aá]logo)\s+(?:de(?:l|\s+la)\s+)?(?:productor|fabricante|proveedor|Latitudes)\b,?\s*~iu' => '',
+			'~\bseg[uú]n\s+la\s+lista\s+de\s+ingredientes\s+publicada\s+por\s+(?:el\s+)?(?:productor|fabricante|proveedor)\b,?\s*~iu' => '',
+			'~\b(?:La\s+)?(?:ficha|web|p[aá]gina)\s+del\s+(?:productor|fabricante|proveedor)\s+(?:indica|se[nñ]ala|explica|especifica)\s+que\s+~iu' => '',
+			'~\b(?:El\s+)?(?:productor|fabricante|proveedor)\s+(?:indica|informa|se[nñ]ala|explica|especifica)\s+que\s+~iu' => '',
+			'~\bLa\s+ficha\s+del\s+(?:productor|fabricante|proveedor)\s+describe\s+~iu' => 'Presenta ',
+			'~\bLa\s+ficha\s+del\s+(?:productor|fabricante|proveedor)\s+destaca\s+~iu' => 'Destaca ',
+		);
+		$clean = preg_replace( array_keys( $patterns ), array_values( $patterns ), $html );
+		return wp_kses_post( is_string( $clean ) ? $clean : $html );
 	}
 
 	private static function apply_common_fields( WC_Product $product, array $payload ): void {
 		$product->set_name( MDO_Text::normalize_title( (string) $payload['title'] ) );
-		$product->set_description( isset( $payload['description'] ) ? wp_kses_post( (string) $payload['description'] ) : '' );
+		$product->set_description( isset( $payload['description'] ) ? self::remove_source_attribution( (string) $payload['description'] ) : '' );
 		$product->set_status( 'publish' );
 		$product->set_catalog_visibility( 'visible' );
 		$product->set_stock_status( 'outofstock' === (string) ( $payload['stock_status'] ?? '' ) ? 'outofstock' : 'instock' );
