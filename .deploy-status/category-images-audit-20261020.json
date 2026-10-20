@@ -1,5 +1,5 @@
 {
-    "date_utc": "2026-10-20T16:02:45+00:00",
+    "date_utc": "2026-10-20T18:23:28+00:00",
     "siteurl": "https://www.elmercadodeorigen.com",
     "categories": [
         {
@@ -19,12 +19,24 @@
             "slug": "chocolates-artesanos",
             "name": "Chocolates artesanos",
             "count": 86,
-            "thumbnail_id": 0,
-            "has_working_image": false,
-            "image_url": "",
-            "image_width": 0,
-            "image_height": 0,
-            "image_file": ""
+            "thumbnail_id": 19009,
+            "has_working_image": true,
+            "image_url": "https://www.elmercadodeorigen.com/wp-content/uploads/2026/10/categoria-chocolates-artesanos-20261020.webp",
+            "image_width": 256,
+            "image_height": 384,
+            "image_file": "2026/10/categoria-chocolates-artesanos-20261020.webp"
+        },
+        {
+            "id": 409,
+            "slug": "packs-y-lotes",
+            "name": "Packs y lotes",
+            "count": 56,
+            "thumbnail_id": 12655,
+            "has_working_image": true,
+            "image_url": "https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Packs-lotes.jpg",
+            "image_width": 1024,
+            "image_height": 1536,
+            "image_file": "2026/08/Packs-lotes.jpg"
         },
         {
             "id": 495,
@@ -37,18 +49,6 @@
             "image_width": 768,
             "image_height": 1152,
             "image_file": "2026/10/category-foie-pates-untables.webp"
-        },
-        {
-            "id": 409,
-            "slug": "packs-y-lotes",
-            "name": "Packs y lotes",
-            "count": 37,
-            "thumbnail_id": 12655,
-            "has_working_image": true,
-            "image_url": "https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Packs-lotes.jpg",
-            "image_width": 1024,
-            "image_height": 1536,
-            "image_file": "2026/08/Packs-lotes.jpg"
         },
         {
             "id": 149,
@@ -87,6 +87,30 @@
             "image_file": "2026/08/Embutidos-curados.jpg"
         },
         {
+            "id": 514,
+            "slug": "frutas",
+            "name": "Frutas",
+            "count": 17,
+            "thumbnail_id": 0,
+            "has_working_image": false,
+            "image_url": "",
+            "image_width": 0,
+            "image_height": 0,
+            "image_file": ""
+        },
+        {
+            "id": 517,
+            "slug": "verduras",
+            "name": "Verduras",
+            "count": 13,
+            "thumbnail_id": 0,
+            "has_working_image": false,
+            "image_url": "",
+            "image_width": 0,
+            "image_height": 0,
+            "image_file": ""
+        },
+        {
             "id": 434,
             "slug": "hortalizas-verduras",
             "name": "Hortalizas/Verduras",
@@ -103,12 +127,12 @@
             "slug": "cafe-de-especialidad",
             "name": "Café de especialidad",
             "count": 6,
-            "thumbnail_id": 0,
-            "has_working_image": false,
-            "image_url": "",
-            "image_width": 0,
-            "image_height": 0,
-            "image_file": ""
+            "thumbnail_id": 19010,
+            "has_working_image": true,
+            "image_url": "https://www.elmercadodeorigen.com/wp-content/uploads/2026/10/categoria-cafe-de-especialidad-20261020.webp",
+            "image_width": 256,
+            "image_height": 384,
+            "image_file": "2026/10/categoria-cafe-de-especialidad-20261020.webp"
         },
         {
             "id": 436,
@@ -147,9 +171,9 @@
             "image_file": "2026/08/Aceites.jpg"
         },
         {
-            "id": 503,
-            "slug": "huevos",
-            "name": "Huevos",
+            "id": 519,
+            "slug": "gourmet",
+            "name": "Gourmet",
             "count": 1,
             "thumbnail_id": 0,
             "has_working_image": false,
@@ -157,6 +181,47 @@
             "image_width": 0,
             "image_height": 0,
             "image_file": ""
+        },
+        {
+            "id": 503,
+            "slug": "huevos",
+            "name": "Huevos",
+            "count": 1,
+            "thumbnail_id": 19011,
+            "has_working_image": true,
+            "image_url": "https://www.elmercadodeorigen.com/wp-content/uploads/2026/10/categoria-huevos-20261020.webp",
+            "image_width": 256,
+            "image_height": 384,
+            "image_file": "2026/10/categoria-huevos-20261020.webp"
+        }
+    ],
+    "fruit_candidates": [
+        {
+            "id": 515,
+            "slug": "aguacates",
+            "name": "Aguacates",
+            "parent": 514,
+            "native_count": 6,
+            "thumbnail_id": 0,
+            "image_url": false
+        },
+        {
+            "id": 514,
+            "slug": "frutas",
+            "name": "Frutas",
+            "parent": 0,
+            "native_count": 17,
+            "thumbnail_id": 0,
+            "image_url": false
+        },
+        {
+            "id": 516,
+            "slug": "frutas-tropicales",
+            "name": "Frutas tropicales",
+            "parent": 514,
+            "native_count": 6,
+            "thumbnail_id": 0,
+            "image_url": false
         }
     ]
 }
