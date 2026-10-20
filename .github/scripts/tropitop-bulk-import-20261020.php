@@ -277,6 +277,28 @@ if ( 'activate' === $phase ) {
 $limit = max( 1, min( 5, (int) ( getenv( 'TROPITOP_BULK_BATCH' ) ?: 2 ) ) );
 $start = (int) $state['cursor'];
 $retrying = false;
+// A corrected, explicit producer category mapping merits ONE additional
+// bounded recovery cycle for affected failures after the main pass completes.
+// Never reset the catalog cursor, the approved products, or unrelated
+// exhausted failures; leave unverifiable prices/variants in hidden drafts.
+if ( $start >= $total && empty( $state['category_alias_retry_20261020'] ) ) {
+    $reset = 0;
+    $fixed_slugs = array( 'disponible', 'cestas-de-fruta', 'bio',
+        'mangos', 'citricos', 'apadrina-un-arbol' );
+    foreach ( (array) ( $state['failed'] ?? array() ) as $failed_pid => $failure ) {
+        if ( ! str_contains( (string) ( $failure['reason'] ?? '' ),
+            'configurar una URL de categoría' ) ) { continue; }
+        $path = (string) wp_parse_url( (string) ( $failure['url'] ?? '' ), PHP_URL_PATH );
+        $segments = explode( '/', trim( $path, '/' ) );
+        if ( ! in_array( (string) ( $segments[1] ?? '' ), $fixed_slugs, true ) ) { continue; }
+        $state['retry_attempts'][$failed_pid] = 0;
+        $reset++;
+    }
+    $state['category_alias_retry_20261020'] = 1;
+    if ( $reset ) { unset( $state['finished_at'] ); }
+    update_option( $key, $state, false );
+    echo 'TROPITOP_CATEGORY_RETRY_UNLOCKED=' . $reset . "\n";
+}
 // The saved cursor is authoritative for first-pass progress. After reaching
 // the end, retry only failed source URLs (at most twice), never regenerate the
 // entire catalog merely because a previous upload was interrupted.

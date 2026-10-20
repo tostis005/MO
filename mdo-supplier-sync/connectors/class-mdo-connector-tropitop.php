@@ -331,7 +331,12 @@ final class MDO_Connector_Tropitop {
             'frutas-tropicales' => '63-frutas-tropicales', 'frutas-del-mundo' => '106-frutas-del-mundo',
             'gourmet' => '79-gourmet', 'packs' => '87-packs',
             'cajas-de-temporada' => '89-cajas-de-temporada',
-            'home-verduras' => '80-verduras', 'productos' => '62-frutas' );
+            'home-verduras' => '80-verduras', 'productos' => '62-frutas',
+            // Public producer category roots discovered by the full inventory.
+            // Never guess an unlisted category or fall back to unrelated cards.
+            'disponible' => '84-disponible', 'cestas-de-fruta' => '52-cestas-de-fruta',
+            'bio' => '109-bio', 'mangos' => '10-mangos',
+            'citricos' => '62-citricos', 'apadrina-un-arbol' => '77-apadrina-un-arbol' );
         $category = $known[ $slug ] ?? '';
         if ( ! $category ) {
             throw new RuntimeException( 'Tropitop: configurar una URL de categoría para extraer las variantes.' );
