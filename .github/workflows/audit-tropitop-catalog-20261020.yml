@@ -1,0 +1,18 @@
+name: Audit full Tropitop available catalog
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/audit-tropitop-catalog-20261020.py'
+      - '.github/workflows/audit-tropitop-catalog-20261020.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install beautifulsoup4 requests -q
+      - name: Read-only source inventory
+        run: python .github/scripts/audit-tropitop-catalog-20261020.py
