@@ -7,7 +7,15 @@ foreach (array('home','siteurl') as $key) {
 if (!class_exists('WC_Product_Variable') || !get_role('wcfm_vendor')) throw new RuntimeException('WooCommerce/WCFM required');
 global $wpdb;
 $tax_class=$wpdb->get_var("SELECT tax_rate_class FROM {$wpdb->prefix}woocommerce_tax_rates WHERE tax_rate_country='ES' AND ABS(tax_rate-10)<0.0001 ORDER BY tax_rate_order LIMIT 1");
-if($tax_class===null) throw new RuntimeException('Existing ES 10% tax class required');
+if($tax_class===null) {
+ $tax_class='iva-cafe-10';
+ if(!in_array($tax_class,WC_Tax::get_tax_class_slugs(),true)) {
+  $created=WC_Tax::create_tax_class('IVA café 10',$tax_class);
+  if(is_wp_error($created))throw new RuntimeException($created->get_error_message());
+ }
+ $exists=$wpdb->get_var($wpdb->prepare("SELECT tax_rate_id FROM {$wpdb->prefix}woocommerce_tax_rates WHERE tax_rate_class=%s AND tax_rate_country='ES' AND ABS(tax_rate-10)<0.0001",$tax_class));
+ if(!$exists) WC_Tax::_insert_tax_rate(array('tax_rate_country'=>'ES','tax_rate_state'=>'','tax_rate'=>'10.0000','tax_rate_name'=>'IVA 10%','tax_rate_priority'=>1,'tax_rate_compound'=>0,'tax_rate_shipping'=>1,'tax_rate_order'=>0,'tax_rate_class'=>$tax_class));
+}
 require_once ABSPATH.'wp-admin/includes/media.php';
 require_once ABSPATH.'wp-admin/includes/file.php';
 require_once ABSPATH.'wp-admin/includes/image.php';
