@@ -106,12 +106,30 @@ $hot_cache_paths = array(
 	'/tienda/'                                               => 'es-shop-root',
 );
 
+/**
+ * Five-minute early cache for canonical producer storefront HTML, including
+ * each real /page/N/ URL fetched by the progressive infinite-scroll loader.
+ * Query strings are excluded above: product sorting, faceted filters and
+ * destination/session state must never share an anonymous HTML cache entry.
+ * The file name is keyed by the full normalized path so two pages or two
+ * vendors cannot share markup. Keep existing English hot keys untouched.
+ */
+$is_vendor_store_hot_path = 1 === preg_match(
+	'#^/(?:tienda|en/store)/[a-z0-9][a-z0-9-]{0,119}/(?:page/[1-9][0-9]{0,3}/)?$#i',
+	$path
+);
+$is_new_vendor_store_hot_path = $is_vendor_store_hot_path && ! isset( $hot_cache_paths[ $path ] );
+if ( $is_new_vendor_store_hot_path ) {
+	$hot_cache_paths[ $path ] = 'vendor-page-' . hash( 'sha256', $path );
+}
+
 if ( isset( $hot_cache_paths[ $path ] ) ) {
 	$hot_cache_dir  = __DIR__ . '/uploads/elmercado-hot-static-v1';
 	$hot_cache_file = $hot_cache_dir . '/' . $hot_cache_paths[ $path ] . '.html';
 	$hot_lock_file  = $hot_cache_file . '.lock';
 	$hot_ttl        = 300;
-	$hot_stale_ttl  = 3600;
+	// Allow a brief stale response while exactly one request refreshes the page.
+	$hot_stale_ttl  = $is_new_vendor_store_hot_path ? 900 : 3600;
 	$hot_age        = null;
 	$hot_valid      = false;
 
@@ -126,13 +144,16 @@ if ( isset( $hot_cache_paths[ $path ] ) ) {
 		}
 	}
 
-	$serve_hot_cache = static function ( $status ) use ( $hot_cache_file ) {
+	$serve_hot_cache = static function ( $status ) use ( $hot_cache_file, $is_new_vendor_store_hot_path ) {
 		if ( ! headers_sent() ) {
 			header( 'Content-Type: text/html; charset=UTF-8' );
 			header( 'Cache-Control: private, no-store, max-age=0' );
 			header( 'Vary: Cookie', false );
 			header( 'X-El-Mercado-Hot-Early-Cache: ' . $status );
-			setcookie( 'total_page', '1', time() + 7200, '/' );
+			// A cached paginated store page must not reset the scroll state.
+			if ( ! $is_new_vendor_store_hot_path ) {
+				setcookie( 'total_page', '1', time() + 7200, '/' );
+			}
 		}
 		readfile( $hot_cache_file );
 		exit;
@@ -163,14 +184,25 @@ if ( isset( $hot_cache_paths[ $path ] ) ) {
 	}
 
 	ob_start(
-		static function ( $html ) use ( $hot_cache_dir, $hot_cache_file, $hot_lock_handle, $hot_have_lock, $path ) {
+		static function ( $html ) use ( $hot_cache_dir, $hot_cache_file, $hot_lock_handle, $hot_have_lock, $path, $is_new_vendor_store_hot_path ) {
+			$status = http_response_code();
+			$status = false === $status ? 200 : (int) $status;
 			$can_store =
 				$hot_have_lock &&
+				200 === $status &&
 				is_string( $html ) &&
 				strlen( $html ) >= 50000 &&
 				false !== stripos( $html, '</html>' ) &&
 				false === stripos( $html, 'WordPress database error' ) &&
 				false === stripos( $html, 'There has been a critical error' );
+
+			// A 404, redirect, blocked or partial producer page must never become
+			// a cache hit. Both the store container and continuous catalogue script
+			// must be present, otherwise the request runs uncached for safety.
+			if ( $can_store && $is_new_vendor_store_hot_path ) {
+				$can_store = (bool) preg_match( '/id=["\\\']wcfmmp-store["\\\']/i', $html )
+					&& false !== strpos( $html, 'emo-continuous-catalog' );
+			}
 
 			// Cache only the complete anonymous canonical shop, never partial markup.
 			if ( $can_store && '/tienda/' === $path ) {
