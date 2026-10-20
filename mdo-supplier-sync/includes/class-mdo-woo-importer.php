@@ -199,6 +199,17 @@ final class MDO_Woo_Importer {
 			throw new RuntimeException( 'WooCommerce no pudo guardar el producto.' );
 		}
 
+		// A network timeout during image upload must never create a second Woo
+		// product on retry. Save the source-to-Woo ID immediately, before any
+		// remote image request. The source stays "importing" until completion.
+		$wpdb->update(
+			$table,
+			array( 'wc_product_id' => $product_id ),
+			array( 'id' => $source_product_id ),
+			array( '%d' ),
+			array( '%d' )
+		);
+
         if ($latitudes_inferred_weight && 'verified_manual' !== (string)get_post_meta($product_id,'_mdo_latitudes_weight_basis',true)) {
             update_post_meta($product_id,'_mdo_latitudes_weight_basis',(string)$latitudes_inferred_weight['basis']);
         }
@@ -637,41 +648,61 @@ final class MDO_Woo_Importer {
 	}
 
 	private static function sync_images( WC_Product $product, array $payload ): void {
-		$urls = isset( $payload['images'] ) && is_array( $payload['images'] ) ? array_values( array_unique( array_filter( array_map( 'esc_url_raw', $payload['images'] ) ) ) ) : array();
-		if ( ! $urls ) {
-			return;
-		}
-		// Tropitop's authorized PrestaShop gallery can contain more than 12
-		// photos. Preserve every verified image (bounded to 20), without changing
-		// the image budget of any other marketplace supplier.
+		$urls = isset( $payload['images'] ) && is_array( $payload['images'] )
+			? array_values( array_unique( array_filter( array_map( 'esc_url_raw', $payload['images'] ) ) ) )
+			: array();
+		if ( ! $urls ) { return; }
 		$max_images = 'tropitop.com' === strtolower( (string) wp_parse_url( (string) ( $payload['source_url'] ?? '' ), PHP_URL_HOST ) ) ? 20 : 12;
 		$urls = array_slice( $urls, 0, $max_images );
-		$map  = json_decode( (string) get_post_meta( $product->get_id(), '_emdo_image_map', true ), true );
-		$map  = is_array( $map ) ? $map : array();
-		$ids  = array();
-
+		$map = json_decode( (string) get_post_meta( $product->get_id(), '_emdo_image_map', true ), true );
+		$map = is_array( $map ) ? $map : array();
+		$ids = array();
 		require_once ABSPATH . 'wp-admin/includes/media.php';
 		require_once ABSPATH . 'wp-admin/includes/file.php';
 		require_once ABSPATH . 'wp-admin/includes/image.php';
 
 		foreach ( $urls as $url ) {
-			$attachment_id = isset( $map[ $url ] ) ? absint( $map[ $url ] ) : 0;
-			if ( ! $attachment_id || 'attachment' !== get_post_type( $attachment_id ) ) {
-				$attachment_id = media_sideload_image( $url, $product->get_id(), $product->get_name(), 'id' );
-				if ( is_wp_error( $attachment_id ) ) {
+			$aid = isset( $map[ $url ] ) ? absint( $map[ $url ] ) : 0;
+			if ( $aid && 'attachment' !== get_post_type( $aid ) ) { $aid = 0; }
+			if ( ! $aid ) {
+				// download_url() supports a short per-image timeout. The default
+				// 300-second sideload can block an entire importer batch.
+				$tmp = download_url( $url, 12 );
+				if ( is_wp_error( $tmp ) ) { continue; }
+				$bytes = (int) filesize( $tmp );
+				$info = @getimagesize( $tmp );
+				if ( $bytes <= 0 || $bytes > 14000000 || ! $info ||
+					! in_array( (string) ( $info['mime'] ?? '' ), array( 'image/jpeg', 'image/png', 'image/webp' ), true ) ) {
+					@unlink( $tmp );
 					continue;
 				}
-				$map[ $url ] = (int) $attachment_id;
+				$path = (string) wp_parse_url( $url, PHP_URL_PATH );
+				$file = array( 'name' => sanitize_file_name( basename( $path ) ), 'tmp_name' => $tmp, 'size' => $bytes, 'error' => 0 );
+				$result = media_handle_sideload( $file, $product->get_id(), $product->get_name() );
+				if ( is_wp_error( $result ) ) { @unlink( $tmp ); continue; }
+				$aid = absint( $result );
+				update_post_meta( $aid, '_source_url', esc_url_raw( $url ) );
+				$map[ $url ] = $aid;
+				// Persist the checkpoint after EVERY valid image; a timeout
+				// never invalidates finished uploads or triggers duplicate work.
+				update_post_meta( $product->get_id(), '_emdo_image_map', wp_json_encode( $map, JSON_UNESCAPED_SLASHES ) );
 			}
-			$ids[] = (int) $attachment_id;
+			$ids[] = $aid;
 		}
-
-		if ( $ids ) {
-			$product->set_image_id( array_shift( $ids ) );
-			$product->set_gallery_image_ids( array_values( array_unique( $ids ) ) );
-			$product->save();
-			update_post_meta( $product->get_id(), '_emdo_image_map', wp_json_encode( $map, JSON_UNESCAPED_SLASHES ) );
+		if ( ! $ids ) { return; }
+		$cover = (int) $product->get_image_id();
+		if ( ! $cover ) {
+			$cover = (int) array_shift( $ids );
+			$product->set_image_id( $cover );
 		}
+		// Existing galleries may already contain additional correct photos:
+		// never erase them simply because today's source request was partial.
+		$gallery = array_map( 'intval', $product->get_gallery_image_ids() );
+		foreach ( $ids as $aid ) {
+			if ( $aid !== $cover && ! in_array( $aid, $gallery, true ) ) { $gallery[] = $aid; }
+		}
+		$product->set_gallery_image_ids( array_values( array_unique( $gallery ) ) );
+		$product->save();
 	}
 
 	private static function usable_variations( array $payload ): array {
