@@ -171,11 +171,11 @@ add_action(
 				flex: 1 1 auto !important;
 				flex-direction: column !important;
 				align-items: stretch !important;
-				justify-content: flex-start !important;
-				gap: 20px !important;
+				justify-content: center !important;
+				gap: 0 !important;
 				width: 100% !important;
 				height: auto !important;
-				min-height: 146px !important;
+				min-height: 102px !important;
 				margin: 0 !important;
 				padding: clamp(21px, 2vw, 27px) clamp(22px, 2.4vw, 32px) !important;
 				border: 0 !important;
@@ -221,55 +221,51 @@ add_action(
 			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap .wcfmmp-single-store :is(.store-avatar,.bd_rating,.store-enquiry,.wcfm_catalog_enquiry) {
 				display: none !important;
 			}
-			/* El CTA es una invitación editorial discreta, no una barra verde enorme. */
+			/* El único enlace semántico de la ficha es el nombre del productor.
+			 * Su pseudo-elemento amplía el área interactiva a toda la tarjeta.
+			 * No se anidan enlaces ni se necesita JavaScript para navegar. */
+			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap .wcfmmp-single-store .store-wrapper {
+				cursor: pointer !important;
+			}
 			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap .wcfmmp-single-store a.wcfmmp-visit-store {
+				display: none !important;
+			}
+			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap .wcfmmp-single-store .store-data h2 a::after {
+				content: "" !important;
+				position: absolute !important;
+				inset: 0 !important;
+				z-index: 4 !important;
+				cursor: pointer !important;
+			}
+			/* Pequeña flecha de interfaz fuera de la fotografía.
+			 * Informa de que la ficha abre al productor, sin añadir otro botón. */
+			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap .wcfmmp-single-store .store-footer {
 				position: relative !important;
-				display: inline-flex !important;
-				box-sizing: border-box !important;
-				flex: 0 0 auto !important;
-				align-items: center !important;
-				justify-content: flex-start !important;
-				gap: 12px !important;
-				align-self: flex-start !important;
-				float: none !important;
-				width: auto !important;
-				min-width: 0 !important;
-				max-width: none !important;
-				height: auto !important;
-				min-height: 28px !important;
-				margin: auto 0 0 !important;
-				padding: 0 !important;
-				border: 0 !important;
-				border-radius: 0 !important;
-				background: transparent !important;
-				box-shadow: none !important;
-				color: #23563d !important;
-				font-size: .86rem !important;
-				font-weight: 750 !important;
-				letter-spacing: .01em !important;
-				line-height: 1.5 !important;
-				text-align: left !important;
-				text-decoration: none !important;
-				white-space: normal !important;
-				}
-			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap .wcfmmp-single-store a.wcfmmp-visit-store::after {
-				content: "→";
-				display: inline-block;
-				flex: 0 0 auto;
-				font-size: 1.15rem;
+			}
+			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap .wcfmmp-single-store .store-data h2 {
+				padding-right: 38px !important;
+			}
+			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap .wcfmmp-single-store .store-footer::after {
+				content: "↗";
+				position: absolute;
+				right: clamp(22px, 2.4vw, 32px);
+				top: 50%;
+				transform: translateY(-50%);
+				font-size: 1.45rem;
 				line-height: 1;
-				transition: transform .2s ease;
+				color: #557260;
+				pointer-events: none;
 			}
-			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap .wcfmmp-single-store a.wcfmmp-visit-store:hover,
-			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap .wcfmmp-single-store a.wcfmmp-visit-store:focus-visible {
-				background: transparent !important;
-				color: #173f32 !important;
-				text-decoration: underline !important;
-				text-underline-offset: 5px !important;
+			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap .wcfmmp-single-store .store-wrapper:hover .store-data h2 a {
+				color: #315f49 !important;
+			}
+			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap .wcfmmp-single-store .store-wrapper:has(.store-data h2 a:focus-visible) {
+				outline: 3px solid #558367 !important;
+				outline-offset: 3px !important;
+				border-color: #315f49 !important;
+			}
+			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap .wcfmmp-single-store .store-data h2 a:focus-visible {
 				outline-offset: 5px !important;
-			}
-			@media (hover: hover) and (prefers-reduced-motion: no-preference) {
-				html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap .wcfmmp-single-store a.wcfmmp-visit-store:hover::after { transform: translateX(4px); }
 			}
 			@media (max-width: 760px) {
 				html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap ul.wcfmmp-store-wrap {
@@ -280,7 +276,7 @@ add_action(
 					aspect-ratio: 2.25 / 1 !important;
 				}
 				html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap .wcfmmp-single-store .store-footer {
-					min-height: 128px !important;
+					min-height: 94px !important;
 					padding: 19px 22px !important;
 				}
 				html body:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .emo-producers-intro {
