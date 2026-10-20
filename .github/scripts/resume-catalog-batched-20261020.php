@@ -194,4 +194,4 @@ if ( 'copy' === $task ) {
 	}
 }
 echo 'EMDO_RESUME_BATCH='.wp_json_encode($report,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
-if($report['checked']===0){throw new RuntimeException('Lote vacío, revisar el desplazamiento.');}
+if($report['checked']===0 && 'gallery'===$task){throw new RuntimeException('Lote de galería vacío, revisar el desplazamiento.');}
