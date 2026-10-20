@@ -11,7 +11,14 @@ if(get_option('woocommerce_weight_unit')!=='kg')throw new RuntimeException('Expe
 global $wpdb;
 $sup=$wpdb->prefix.'mdo_suppliers';$src=$wpdb->prefix.'mdo_source_products';
 $r=$wpdb->get_row($wpdb->prepare("SELECT * FROM $sup WHERE code=%s",'tropitop'),ARRAY_A);
-if(!$r || (int)$r['active']!==0)throw new RuntimeException('Expected existing inactive Tropitop supplier');
+if(!$r)throw new RuntimeException('Missing Tropitop supplier');
+if((int)$r['active']===1) {
+ if((int)$r['vendor_user_id']!==4971 || !get_user_meta(4971,'_disable_vendor',true) ||
+    MDO_Tropitop_Shipping::is_ready())throw new RuntimeException('Unexpected active seller or checkout state');
+ echo 'TROPITOP_DRAFT_PREP_SKIP_ALREADY_SYNCING_IN_BACKGROUND'."\\n";
+ return;
+}
+if((int)$r['active']!==0)throw new RuntimeException('Invalid Tropitop registry status');
 $vendor=get_user_by('login','tropitop');
 if($vendor && !in_array('wcfm_vendor',(array)$vendor->roles,true))throw new RuntimeException('Tropitop login conflict');
 if($vendor && (int)($r['vendor_user_id']??0) && (int)$r['vendor_user_id']!==(int)$vendor->ID)throw new RuntimeException('Supplier vendor collision');

@@ -95,7 +95,13 @@ final class MDO_Scheduler {
 				foreach ( (array) ( $source_discovery['products'] ?? array() ) as $url ) {
 					$url = esc_url_raw( (string) $url );
 					if ( $url ) {
-						$products_by_url[ $url ] = $url;
+						$key = $url;
+						if ( 'tropitop' === (string) $supplier['code'] &&
+							preg_match( '~/([0-9]+)(?:-[0-9]+)?-[a-z0-9-]+\\.html$~i',
+								(string) wp_parse_url( $url, PHP_URL_PATH ), $m ) ) {
+							$key = 'tropitop:' . $m[1];
+						}
+						if ( ! isset( $products_by_url[ $key ] ) ) { $products_by_url[ $key ] = $url; }
 					}
 				}
 				foreach ( (array) ( $source_discovery['excluded'] ?? array() ) as $url ) {
@@ -130,8 +136,20 @@ final class MDO_Scheduler {
 				return;
 			}
 
-			foreach ( $products as $url ) {
-				self::enqueue_action( self::PRODUCT_HOOK, array( $supplier_id, $run_id, $url, $trigger_type ) );
+			foreach ( $products as $index => $url ) {
+				$args = array( $supplier_id, $run_id, $url, $trigger_type );
+				if ( 'tropitop' === (string) $supplier['code'] ) {
+					// Steady pacing protects the storefront and source while its
+					// 150+ product pages are checked; other vendors are unchanged.
+					$when = time() + 15 + 90 * $index;
+					if ( function_exists( 'as_schedule_single_action' ) ) {
+						as_schedule_single_action( $when, self::PRODUCT_HOOK, $args, 'mdo-supplier-sync' );
+					} else {
+						wp_schedule_single_event( $when, self::PRODUCT_HOOK, $args );
+					}
+				} else {
+					self::enqueue_action( self::PRODUCT_HOOK, $args );
+				}
 			}
 		} catch ( Throwable $error ) {
 			self::log_event( $run_id, $supplier_id, 'catalog_error', 'error', $error->getMessage() );
@@ -170,16 +188,37 @@ final class MDO_Scheduler {
 				MDO_Isabel_Quality::sync_review_stock( $supplier_id, (string) $product['source_url'] );
 			}
 
+			// Recover a product deliberately held offline after an unknown
+			// Tropitop stock response, even if its source hash is unchanged.
+			$forced_recheck = false;
+			if ( 'tropitop' === (string) $supplier['code'] ) {
+				global $wpdb;
+				$source_table = MDO_Database::table( 'source_products' );
+				$woo_id = (int) $wpdb->get_var( $wpdb->prepare(
+					"SELECT wc_product_id FROM {$source_table} WHERE supplier_id=%d AND source_url=%s LIMIT 1",
+					$supplier_id, (string) $product['source_url']
+				) );
+				$forced_recheck = $woo_id && '1' === (string) get_post_meta( $woo_id, '_mdo_tropitop_sync_uncertain', true );
+			}
 			$restored = MDO_Woo_Importer::restore_if_unavailable( $supplier_id, (string) $product['source_url'] );
 			if ( $restored && 'unchanged' === $result ) {
 				$result = 'updated';
 			}
+			if ( $forced_recheck && 'unchanged' === $result ) { $result = 'updated'; }
 			self::increment_run( $run_id, $result );
-
+			if ( $restored && $forced_recheck && ! empty( $woo_id ) ) {
+				delete_post_meta( $woo_id, '_mdo_tropitop_sync_uncertain' );
+			}
 			if ( 'updated' === $result && ! $restored ) {
 				try {
 					MDO_Woo_Importer::sync_if_active( $supplier_id, (string) $product['source_url'] );
+					if ( $forced_recheck && ! empty( $woo_id ) ) {
+						delete_post_meta( $woo_id, '_mdo_tropitop_sync_uncertain' );
+					}
 				} catch ( Throwable $sync_error ) {
+					if ( 'tropitop' === (string) $supplier['code'] ) {
+						self::quarantine_tropitop_unknown_stock( $supplier_id, $url );
+					}
 					self::increment_run( $run_id, 'error' );
 					self::log_event( $run_id, $supplier_id, 'woocommerce_sync_error', 'error', $sync_error->getMessage(), array( 'url' => $url ) );
 				}
@@ -200,6 +239,9 @@ final class MDO_Scheduler {
 				)
 			);
 		} catch ( Throwable $error ) {
+			if ( 'tropitop' === (string) $supplier['code'] ) {
+				self::quarantine_tropitop_unknown_stock( $supplier_id, $url );
+			}
 			self::increment_run( $run_id, 'error' );
 			if ( preg_match( '/\bHTTP\s+(404|410)\b/i', $error->getMessage() ) && MDO_Woo_Importer::mark_source_url_unavailable( $supplier_id, $url ) ) {
 				self::log_event( $run_id, $supplier_id, 'product_unavailable', 'warning', 'Retirado de la venta: la ficha de origen devuelve ' . $error->getMessage(), array( 'url' => $url ) );
@@ -207,6 +249,39 @@ final class MDO_Scheduler {
 			self::log_event( $run_id, $supplier_id, 'product_error', 'error', $error->getMessage(), array( 'url' => $url ) );
 		}
 		self::finish_if_complete( $run_id, $supplier, $trigger_type );
+	}
+
+	/**
+	 * Never keep selling a Tropitop item on stale stock after a failed refresh.
+	 * An explicit next successful scrape restores the original variation stock.
+	 */
+	private static function quarantine_tropitop_unknown_stock( int $supplier_id, string $url ): void {
+		if ( ! function_exists( 'wc_get_product' ) ) { return; }
+		if ( ! preg_match( '~/([0-9]+)(?:-[0-9]+)?-[a-z0-9-]+\\.html$~i',
+			(string) wp_parse_url( $url, PHP_URL_PATH ), $m ) ) { return; }
+		global $wpdb;
+		$table = MDO_Database::table( 'source_products' );
+		$woo_id = (int) $wpdb->get_var( $wpdb->prepare(
+			"SELECT wc_product_id FROM {$table} WHERE supplier_id=%d AND source_product_id=%s AND wc_product_id IS NOT NULL LIMIT 1",
+			$supplier_id, (string) $m[1]
+		) );
+		if ( ! $woo_id ) { return; }
+		$product = wc_get_product( $woo_id );
+		if ( ! $product ) { return; }
+		$product->set_status( 'draft' );
+		$product->set_catalog_visibility( 'hidden' );
+		$product->set_stock_status( 'outofstock' );
+		$product->save();
+		if ( $product->is_type( 'variable' ) ) {
+			foreach ( $product->get_children() as $variation_id ) {
+				$variation = wc_get_product( $variation_id );
+				if ( $variation ) {
+					$variation->set_stock_status( 'outofstock' );
+					$variation->save();
+				}
+			}
+		}
+		update_post_meta( $woo_id, '_mdo_tropitop_sync_uncertain', '1' );
 	}
 
 	/**

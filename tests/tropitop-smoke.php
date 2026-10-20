@@ -48,7 +48,14 @@ if ( class_exists( 'DOMDocument' ) && class_exists( 'DOMXPath' ) ) {
     $xp = new DOMXPath( $doc );
     $sizes = reflected( 'sizes', $xp );
     verify( count( $sizes ) === 3, 'Three official weights, no related products.' );
-    verify( abs( (float) $sizes['9.000']['price'] - 32.90 ) < 0.001, 'Weight and exact box price must match.' );
+    verify( abs( (float) $sizes['kg:9.000']['price'] - 32.90 ) < 0.001, 'Weight and exact box price must match.' );
+}
+if ( class_exists( 'DOMDocument' ) ) {
+    $u = new DOMDocument();
+    @$u->loadHTML( '<?xml encoding="UTF-8" ?><div class="product-variants"><ul><li><a>5.00 unid 32,90 €</a></li></ul></div>' );
+    $unit_sizes = reflected( 'sizes', new DOMXPath( $u ) );
+    verify( count( $unit_sizes ) === 1 && ( $unit_sizes['unid:5.000']['unit'] ?? '' ) === 'unid',
+        'Unit presentations must not be mislabelled as kilograms.' );
 }
 echo "Tropitop connector and shipping smoke checks passed.\n";
 
@@ -61,3 +68,24 @@ foreach ( $expected as $kg => $price ) {
 }
 verify( null === MDO_Tropitop_Shipping::cost_for_weight( 33.0 ),
     'Unverified weight bracket must not be guessed.' );
+
+
+// The source storefront sometimes leaves the buy button clickable while
+// simultaneously displaying "no disponible temporalmente". Never import
+// that as purchasable stock; only a verified positive availability qualifies.
+$status_method = new ReflectionMethod( MDO_Connector_Tropitop::class, 'stock' );
+$fixture = new DOMDocument();
+$fixture->loadHTML( '<html><body><div id="product-availability">no disponible temporalmente</div>'
+    . '<button data-button-action="add-to-cart">Comprar</button></body></html>' );
+verify( $status_method->invoke( null, new DOMXPath( $fixture ) ) === 'outofstock',
+    'Negative Prestashop stock label must override an enabled buy button.' );
+$fixture2 = new DOMDocument();
+$fixture2->loadHTML( '<html><body><div id="product-availability"></div>'
+    . '<button data-button-action="add-to-cart">Comprar</button></body></html>' );
+verify( $status_method->invoke( null, new DOMXPath( $fixture2 ) ) === 'instock',
+    'Enabled buy button without stock warning is in stock.' );
+$fixture3 = new DOMDocument();
+$fixture3->loadHTML( '<html><body><div id="product-availability"></div>'
+    . '<button data-button-action="add-to-cart" disabled="disabled">Agotado</button></body></html>' );
+verify( $status_method->invoke( null, new DOMXPath( $fixture3 ) ) === 'outofstock',
+    'Disabled and sold-out Prestashop buy button is out of stock.' );

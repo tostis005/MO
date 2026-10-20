@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 final class MDO_Connector_Tropitop {
     private const HOST = 'tropitop.com';
-    private const MAX_PAGES = 12;
+    private const MAX_PAGES = 24;
 
     public static function discover( array $supplier ): array {
         $source = self::canonical( (string) ( $supplier['source_url'] ?? '' ) );
@@ -29,12 +29,22 @@ final class MDO_Connector_Tropitop {
             $html = self::fetch( $url );
             $xp = self::xpath( $html );
             $found = 0;
-            foreach ( $xp->query( '//a[@href]' ) ?: array() as $node ) {
-                $candidate = self::absolute( (string) $node->getAttribute( 'href' ) );
-                if ( ! $candidate || ! self::is_product( $candidate ) ) { continue; }
-                $canonical = self::canonical( $candidate );
-                if ( ! isset( $products[ $canonical ] ) ) { ++$found; }
-                $products[ $canonical ] = $canonical;
+            // Never crawl global menu, recommendation carousels or banner links:
+            // only the 24 true product cards belonging to this listing page.
+            $cards = $xp->query(
+                '//article[contains(concat(" ",normalize-space(@class)," ")," product-miniature ")]'
+                . ' | //div[contains(concat(" ",normalize-space(@class)," ")," product-miniature ") and @data-id-product]'
+            );
+            foreach ( $cards ?: array() as $card ) {
+                foreach ( $xp->query( './/a[@href]', $card ) ?: array() as $node ) {
+                    $candidate = self::absolute( (string) $node->getAttribute( 'href' ) );
+                    if ( ! $candidate || ! self::is_product( $candidate ) ) { continue; }
+                    $canonical = self::canonical( $candidate );
+                    $id = self::product_id( $canonical );
+                    if ( ! isset( $products[ $id ] ) ) { ++$found; }
+                    $products[ $id ] = $canonical;
+                    break;
+                }
             }
             if ( ! $found && $page === 1 ) {
                 throw new RuntimeException( 'Tropitop: la categoría no muestra productos; se evita un catálogo vacío.' );
@@ -88,22 +98,30 @@ final class MDO_Connector_Tropitop {
             }
         }
         $has_selector = (bool) $xp->query( '//*[contains(@class,"product-variants")]|//select[starts-with(@name,"group")]|//*[@data-product-attribute]' )->length;
-        if ( $has_selector && ( count( $sizes ) < 2 || self::missing_prices( $sizes ) ) ) {
+        if ( $has_selector && ( ! $sizes || self::missing_prices( $sizes ) ) ) {
             throw new RuntimeException( 'Tropitop: matriz de pesos/precios incompleta; no se importa como simple.' );
         }
         if ( self::missing_prices( $sizes ) ) {
             throw new RuntimeException( 'Tropitop: precio de una presentación no verificado.' );
         }
         $variations = array();
-        foreach ( $sizes as $kg => $row ) {
-            $variations[] = array(
-                'variation_id' => $id . '-kg-' . str_replace( '.', '_', (string) $kg ),
-                'attributes' => array( 'Peso' => self::format_kg( (float) $kg ) ),
+        foreach ( $sizes as $key => $row ) {
+            $amount = (float) $row['amount'];
+            $unit = (string) $row['unit'];
+            $v = array(
+                'variation_id' => $id . '-' . $unit . '-' . str_replace( '.', '_', number_format( $amount, 3, '.', '' ) ),
+                'attributes' => 'kg' === $unit
+                    ? array( 'Peso' => self::format_kg( $amount ) )
+                    : array( 'Unidades' => rtrim( rtrim( number_format( $amount, 2, '.', '' ), '0' ), '.' ) . ' unidades' ),
                 'display_price' => (float) $row['price'],
                 'display_regular_price' => (float) $row['price'],
                 'is_in_stock' => 'instock' === $stock && ! $row['unavailable'],
-                'weight_kg' => (float) $kg,
             );
+            // Never pretend that 5 fruit pieces weigh 5kg. Unit-only packs
+            // are staged as drafts, with shipping blocked until actual
+            // packed weights are verified by the supplier.
+            if ( 'kg' === $unit ) { $v['weight_kg'] = $amount; }
+            $variations[] = $v;
         }
         if ( ! $variations ) {
             throw new RuntimeException( 'Tropitop: solo se permite importar productos con precio y peso verificables.' );
@@ -111,8 +129,12 @@ final class MDO_Connector_Tropitop {
         $min = min( array_column( $variations, 'display_price' ) );
         // Write original neutral text; the source's descriptions and photography
         // must not be reproduced until usage rights have been confirmed.
-        $description = '<p>' . esc_html( $name ) . '. Presentación en caja, seleccionada por peso. Consulta la variedad y el origen indicados en el etiquetado del producto.</p>';
-        $short_description = 'Caja de fruta fresca. Elige el peso antes de comprar.';
+        $description = self::product_description( $xp );
+        if ( '33' !== $id && '' === trim( wp_strip_all_tags( $description ) ) ) {
+            throw new RuntimeException( 'Tropitop: descripción comercial de origen insuficiente.' );
+        }
+        $name = self::product_title( $name );
+        $short_description = self::product_short_description( $xp, $name );
         // The original editorial copy for this known SKU is factual and is not a
         // reproduction of the supplier's product text. Keep claims of organic
         // certification outside this copy pending current documentary QA.
@@ -143,6 +165,7 @@ final class MDO_Connector_Tropitop {
         $payload = array(
             'source_url' => $url,
             'source_product_id' => $id,
+            'source_category' => (string) ( explode( '/', trim( (string) wp_parse_url( $url, PHP_URL_PATH ), '/' ) )[1] ?? '' ),
             'title' => sanitize_text_field( $name ),
             'description' => $description,
             'short_description' => $short_description,
@@ -164,6 +187,55 @@ final class MDO_Connector_Tropitop {
         return MDO_Connector_Huerta_Ana_Mary::upsert_product( $supplier_id, $product );
     }
 
+    /** Product-specific copy only: strip outbound shop links and seller-first-person voice. */
+    private static function product_description( DOMXPath $xp ): string {
+        $nodes = $xp->query(
+            '//*[@id="main-product-wrapper"]//*[contains(concat(" ",normalize-space(@class)," ")," product-description ")]'
+            . ' | //*[@id="col-product-info"]//*[contains(concat(" ",normalize-space(@class)," ")," rte-content ")]'
+            . ' | //*[@id="description"]'
+        );
+        $candidate = '';
+        foreach ( $nodes ?: array() as $node ) {
+            if ( ! $node instanceof DOMElement ) { continue; }
+            $plain = trim( (string) $node->textContent );
+            if ( mb_strlen( $plain ) < 65 ) { continue; }
+            $html = '';
+            foreach ( $node->childNodes as $child ) { $html .= $node->ownerDocument->saveHTML( $child ); }
+            if ( mb_strlen( wp_strip_all_tags( $html ) ) > mb_strlen( wp_strip_all_tags( $candidate ) ) ) {
+                $candidate = $html;
+            }
+        }
+        $candidate = preg_replace( '~<a\b[^>]*>(.*?)</a>~isu', '$1', $candidate );
+        $candidate = wp_kses( $candidate, array(
+            'p' => array(), 'h2' => array(), 'h3' => array(), 'h4' => array(),
+            'ul' => array(), 'ol' => array(), 'li' => array(),
+            'strong' => array(), 'b' => array(), 'em' => array(),
+            'br' => array(), 'span' => array(),
+        ) );
+        $candidate = preg_replace( '/\bEn Tropitop (?:cultivamos|seleccionamos|ofrecemos|preparamos)\b/iu', 'Tropitop ofrece', (string) $candidate );
+        $candidate = preg_replace( '/\b(?:nuestros|nuestras)\s+(?:frutas|verduras|productos)\b/iu', 'estos productos', (string) $candidate );
+        if ( class_exists( 'MDO_Woo_Importer' ) ) {
+            $candidate = MDO_Woo_Importer::remove_source_attribution( (string) $candidate );
+        }
+        return trim( (string) $candidate );
+    }
+
+    private static function product_title( string $name ): string {
+        $name = trim( (string) preg_replace( '/^(?:COMPRAR|Comprar)\s+/u', '', $name ) );
+        $name = preg_replace( '/\s+ONLINE(?:\s+DIRECTOS?\s+DEL\s+AGRICULTOR)?\s*$/iu', '', (string) $name );
+        return sanitize_text_field( trim( (string) $name ) );
+    }
+
+    private static function product_short_description( DOMXPath $xp, string $name ): string {
+        $short = self::text( $xp, '//*[@id="product-description-short"]' );
+        $short = trim( (string) preg_replace( '/\s+/u', ' ', $short ) );
+        if ( mb_strlen( $short ) > 45 && mb_strlen( $short ) <= 500 ) {
+            $short = preg_replace( '/\bEn Tropitop\b/iu', 'Tropitop', $short );
+            return sanitize_text_field( (string) $short );
+        }
+        return sanitize_text_field( $name . '. Selecciona el formato y el peso disponible.' );
+    }
+
     private static function sizes( DOMXPath $xp, ?DOMNode $context = null ): array {
         // On a product detail page inspect only the product's variant selector,
         // not related-product cards or the global menu (which may display other
@@ -183,22 +255,23 @@ final class MDO_Connector_Tropitop {
             $text = trim( preg_replace( '/\s+/u', ' ', html_entity_decode( (string) $node->textContent, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) ) );
             // Only explicit size + EUR price pairs can become a variation.
             // Do not treat €/kg unit prices as a box price.
-            if ( ! preg_match( '/\b(\d+(?:[.,]\d+)?)\s*kg\b/iu', $text, $weight_match ) ) { continue; }
+            if ( ! preg_match( '/\b(\d+(?:[.,]\d+)?)\s*(kg|kilos?|unid(?:ades)?|uds?)\b/iu', $text, $weight_match ) ) { continue; }
             if ( ! preg_match( '/(\d{1,5}(?:[.,]\d{2}))\s*€/u', $text, $price_match ) ) { continue; }
             if ( preg_match( '/€\s*\/\s*kg|€\s*por\s*kg/iu', $text ) ) { continue; }
-            $kg = (float) str_replace( ',', '.', $weight_match[1] );
+            $amount = (float) str_replace( ',', '.', $weight_match[1] );
+            $unit = preg_match( '/^kg|^kilo/iu', $weight_match[2] ) ? 'kg' : 'unid';
             $price = (float) str_replace( ',', '.', $price_match[1] );
-            if ( $kg <= 0 || $kg > 60 || $price <= 0 || $price > 10000 ) { continue; }
-            $key = number_format( $kg, 3, '.', '' );
-            // Ignore ancestor nodes containing multiple choices to avoid
-            // associating the wrong peso with another combination's price.
-            if ( preg_match_all( '/\b\d+(?:[.,]\d+)?\s*kg\b/iu', $text ) !== 1 ) { continue; }
+            if ( $amount <= 0 || $amount > 60 || $price <= 0 || $price > 10000 ) { continue; }
+            $key = $unit . ':' . number_format( $amount, 3, '.', '' );
+            // Ignore ancestor nodes containing multiple options.
+            if ( preg_match_all( '/\b\d+(?:[.,]\d+)?\s*(?:kg|kilos?|unid(?:ades)?|uds?)\b/iu', $text ) !== 1 ) { continue; }
             $output[ $key ] = array(
+                'amount' => $amount, 'unit' => $unit,
                 'price' => $price,
                 'unavailable' => (bool) preg_match( '/agotad[oa]|sin\s*stock|out\s*of\s*stock/iu', $text ),
             );
         }
-        ksort( $output, SORT_NUMERIC );
+        ksort( $output, SORT_NATURAL );
         return $output;
     }
 
@@ -208,10 +281,17 @@ final class MDO_Connector_Tropitop {
     }
 
     private static function stock( DOMXPath $xp ): string {
-        $p = strtolower( self::text( $xp, '//*[@id="product-availability"] | //div[contains(@class,"product-availability")] | //div[contains(@class,"product-add-to-cart")]' ) );
-        if ( preg_match( '/no\s+disponible|agotad|sin\s+stock|out\s+of\s+stock/u', $p ) ) { return 'outofstock'; }
-        // Only verified, buyable checkout widgets signal available stock.
-        if ( $xp->query( '//button[@data-button-action="add-to-cart" and not(@disabled)]' )->length ) { return 'instock'; }
+        // The source can expose an enabled buy button at the same time as
+        // "no disponible temporalmente": the explicit stock warning wins.
+        $availability = mb_strtolower( self::text( $xp,
+            '//*[@id="product-availability"] | //*[contains(concat(" ",normalize-space(@class)," ")," product-availability ")]'
+        ), 'UTF-8' );
+        $button = mb_strtolower( self::text( $xp, '//button[@data-button-action="add-to-cart"]' ), 'UTF-8' );
+        if ( preg_match( '/no\s+disponible|agotad|sin\s+stock|out\s+of\s+stock|temporalmente\s+no\s+disponible/u',
+            $availability . ' ' . $button ) ) { return 'outofstock'; }
+        if ( $xp->query( '//button[@data-button-action="add-to-cart" and not(@disabled)]' )->length ) {
+            return 'instock';
+        }
         return 'unknown';
     }
 
@@ -247,7 +327,11 @@ final class MDO_Connector_Tropitop {
             throw new RuntimeException( 'Tropitop: categoría desconocida.' );
         }
         // Category slug "aguacates" needs its PrestaShop category ID.
-        $known = array( 'aguacates' => '12-aguacates', 'frutas' => '57-frutas', 'verduras' => '72-verduras' );
+        $known = array( 'aguacates' => '12-aguacates', 'frutas' => '62-frutas', 'verduras' => '80-verduras',
+            'frutas-tropicales' => '63-frutas-tropicales', 'frutas-del-mundo' => '106-frutas-del-mundo',
+            'gourmet' => '79-gourmet', 'packs' => '87-packs',
+            'cajas-de-temporada' => '89-cajas-de-temporada',
+            'home-verduras' => '80-verduras', 'productos' => '62-frutas' );
         $category = $known[ $slug ] ?? '';
         if ( ! $category ) {
             throw new RuntimeException( 'Tropitop: configurar una URL de categoría para extraer las variantes.' );
