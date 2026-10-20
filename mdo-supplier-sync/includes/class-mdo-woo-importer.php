@@ -67,6 +67,9 @@ final class MDO_Woo_Importer {
 		}
 
 		self::apply_common_fields( $product, $payload );
+		if ( 'tropitop' === (string) $supplier['code'] ) {
+			$product->set_short_description( wp_kses_post( (string) ( $payload['short_description'] ?? '' ) ) );
+		}
 		// Product copy may be authored for the supplier's own checkout.
 		// Neutralize ONLY verified supplier-first-person/promotional wording,
 		// leaving ingredients, trace warnings, nutritional data and specs intact.
