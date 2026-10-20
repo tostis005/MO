@@ -112,6 +112,17 @@ final class MDO_Connector_Tropitop {
         // Write original neutral text; the source's descriptions and photography
         // must not be reproduced until usage rights have been confirmed.
         $description = '<p>' . esc_html( $name ) . '. Presentación en caja, seleccionada por peso. Consulta la variedad y el origen indicados en el etiquetado del producto.</p>';
+        $short_description = 'Caja de fruta fresca. Elige el peso antes de comprar.';
+        // The original editorial copy for this known SKU is factual and is not a
+        // reproduction of the supplier's product text. Keep claims of organic
+        // certification outside this copy pending current documentary QA.
+        if ( '33' === $id ) {
+            $name = 'Aguacate Bacon de piel lisa — Tropitop';
+            $description = '<p>El aguacate Bacon se distingue por su piel verde y lisa, su forma ovalada y una pulpa cremosa de sabor suave, con matices que recuerdan a los frutos secos. Es una variedad adecuada para ensaladas, tostadas, guacamole o para servir al natural.</p>'
+                . '<p>Procede del cultivo de Tropitop en la zona de Artana (Castellón), en el entorno de la Sierra de Espadán. Las piezas pueden variar en tamaño y forma: el peso seleccionado corresponde al contenido total aproximado de la caja, no a un calibre uniforme.</p>'
+                . '<p>Se presenta en cajas de 3, 4 o 9 kg. Se trata de una fruta que continúa madurando después de la recolección; si llega firme, conviene dejarla a temperatura ambiente y refrigerarla una vez madura. La disponibilidad puede variar según la campaña.</p>';
+            $short_description = 'Aguacate Bacon de piel lisa cultivado en Castellón. Selecciona tu caja de 3, 4 o 9 kg. Pulpa cremosa y textura suave; puede llegar firme para completar la maduración en casa.';
+        }
         $images = array();
         if ( (bool) apply_filters( 'mdo_tropitop_media_authorized', false ) ) {
             $image = self::meta( $xp, 'og:image' );
@@ -122,7 +133,7 @@ final class MDO_Connector_Tropitop {
             'source_product_id' => $id,
             'title' => sanitize_text_field( $name ),
             'description' => $description,
-            'short_description' => 'Caja de fruta fresca. Elige el peso antes de comprar.',
+            'short_description' => $short_description,
             'price' => $min,
             'sku' => 'TROPITOP-' . $id,
             'stock_status' => $stock,
