@@ -1,0 +1,183 @@
+name: Resume bounded catalog copy and Latitudes galleries
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/resume-catalog-batched-20261020.yml'
+      - '.github/scripts/resume-catalog-batched-20261020.php'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: emdo-catalog-repair-resume-production
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    environment: production
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate repair script and deployed supplier connector
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/resume-catalog-batched-20261020.php
+          php -l mdo-supplier-sync/connectors/class-mdo-connector-tolecarnes.php
+          : "${HOST:?Missing SSH host}" "${USER:?Missing SSH user}" "${SSHPASS:?Missing SSH credentials}"
+
+      - name: Preflight and resume production in individually committed batches
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${PORT:-22}"
+          [[ "$PORT" =~ ^[0-9]{1,5}$ ]]
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ServerAliveInterval=25 -o ServerAliveCountMax=12 -p "$PORT")
+          SCP=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P "$PORT")
+          SERVER="$USER@$HOST"
+
+          PROD="$(sshpass -e ssh "${SSH[@]}" "$SERVER" 'sh -s' <<'REMOTE'
+          set -eu
+          wp="$(command -v wp || true)"
+          php="$(command -v php || true)"
+          [ -n "$php" ] || php="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1 || true)"
+          [ -n "$wp" ] && [ -x "$php" ]
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            root="$(dirname "$cfg")"
+            siteurl="$("$php" "$wp" option get siteurl --path="$root" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+            home="$("$php" "$wp" option get home --path="$root" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+            case "$siteurl" in
+              https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com)
+                case "$home" in
+                  https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com)
+                    printf '%s' "$root"; exit 0 ;;
+                esac ;;
+            esac
+          done
+          echo 'Refusing to run outside production WordPress.' >&2
+          exit 11
+          REMOTE
+          )"
+          : "${PROD:?Cannot locate production WordPress}"
+          echo 'Production WordPress confirmed.'
+          WANT_SHA="$(sha256sum mdo-supplier-sync/connectors/class-mdo-connector-tolecarnes.php | awk '{print $1}')"
+          sshpass -e ssh "${SSH[@]}" "$SERVER" "sh -s -- '$PROD' '$WANT_SHA'" <<'REMOTE'
+          set -eu
+          file="$1/wp-content/plugins/mdo-supplier-sync/connectors/class-mdo-connector-tolecarnes.php"
+          test "$(sha256sum "$file" | awk '{print $1}')" = "$2" || {
+            echo 'Current source extractor has not deployed to production. Refusing modifications.' >&2
+            exit 12
+          }
+          echo 'Production supplier extractor checksum verified.'
+          REMOTE
+          WORK="/tmp/emdo-resume-gallery-${GITHUB_RUN_ID}"
+          sshpass -e ssh "${SSH[@]}" "$SERVER" "mkdir -p '$WORK'"
+          sshpass -e scp "${SCP[@]}" .github/scripts/resume-catalog-batched-20261020.php "$SERVER:$WORK/repair.php"
+          : > /tmp/emdo-catalog-repair-batches.log
+
+          run_batch() {
+            task="$1"; mode="$2"; offset="$3"; size="$4"
+            echo "RUNNING $task $mode batch offset=$offset size=$size"
+            sshpass -e ssh "${SSH[@]}" "$SERVER" "sh -s -- '$PROD' '$WORK' '$task' '$mode' '$offset' '$size'" <<'REMOTE'
+          set -eu
+          wp_path="$1"; work="$2"; task="$3"; mode="$4"; offset="$5"; size="$6"
+          php="$(command -v php || true)"
+          [ -n "$php" ] || php="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp="$(command -v wp)"
+          timeout --kill-after=20s 700s env EMDO_RESUME_TASK="$task" EMDO_RESUME_MODE="$mode" EMDO_RESUME_OFFSET="$offset" EMDO_RESUME_SIZE="$size" \
+            "$php" -d memory_limit=1536M -d max_execution_time=0 "$wp" eval-file "$work/repair.php" --path="$wp_path" --allow-root
+          REMOTE
+          }
+
+          # Preflight is read-only and limited to a single supplier batch.
+          run_batch copy audit 0 100 > /tmp/emdo-copy-preflight.log
+          run_batch gallery audit 0 6 > /tmp/emdo-gallery-preflight.log
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          for path in ['/tmp/emdo-copy-preflight.log','/tmp/emdo-gallery-preflight.log']:
+              lines=[s.split('=',1)[1] for s in Path(path).read_text().splitlines() if s.startswith('EMDO_RESUME_BATCH=')]
+              assert lines, f'No preflight report: {path}'
+              d=json.loads(lines[-1])
+              assert d['checked']>0 and d['mode']=='audit'
+              if d['task']=='gallery':
+                  assert 125<=d['total']<=165, 'Unexpected Latitudes inventory'
+                  assert d['checked']>=5
+                  Path('/tmp/emdo-supplier-total').write_text(str(d['total']))
+              print('PREFLIGHT_PASS',d['task'],d['checked'],len(d['errors']))
+          PY
+
+          # Copies: batches of 100, including all published and draft products.
+          for OFFSET in 0 100 200 300 400 500 600 700 800; do
+            if ! run_batch copy apply "$OFFSET" 100 | tee -a /tmp/emdo-catalog-repair-batches.log; then
+              echo "Copy batch failed at $OFFSET; previous batches remain saved." >&2
+              exit 21
+            fi
+            THIS_CHECKED="$(python3 -c 'import json; s=[a.split("=",1)[1] for a in open("/tmp/emdo-catalog-repair-batches.log") if a.startswith("EMDO_RESUME_BATCH=")]; print(json.loads(s[-1])["checked"])')"
+            [ "$THIS_CHECKED" != 0 ] || break
+          done
+
+          # Gallery: batches of 6. Each individual product persists its own
+          # image IDs and URL map, so a retry does not download saved photos.
+          TOTAL="$(cat /tmp/emdo-supplier-total)"
+          for (( OFFSET=0; OFFSET<TOTAL; OFFSET+=6 )); do
+            if ! run_batch gallery apply "$OFFSET" 6 | tee -a /tmp/emdo-catalog-repair-batches.log; then
+              echo "Gallery batch failed at $OFFSET; review logs before re-running." >&2
+              exit 22
+            fi
+          done
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          rows=[json.loads(s.split('=',1)[1]) for s in Path('/tmp/emdo-catalog-repair-batches.log').read_text().splitlines() if s.startswith('EMDO_RESUME_BATCH=')]
+          copy=[r for r in rows if r['task']=='copy']
+          gallery=[r for r in rows if r['task']=='gallery']
+          assert copy and gallery, 'No applied batches'
+          total=int(Path('/tmp/emdo-supplier-total').read_text())
+          assert sum(r['checked'] for r in gallery)==total, 'Gallery coverage is incomplete'
+          summary={
+              'completed_at':gallery[-1]['at'],
+              'copy_products_checked':sum(r['checked'] for r in copy),
+              'copy_products_updated':sum(r['changed'] for r in copy),
+              'gallery_source_products':total,
+              'gallery_products_checked':sum(r['checked'] for r in gallery),
+              'gallery_products_updated':sum(r['changed'] for r in gallery),
+              'photos_imported':sum(r['added'] for r in gallery),
+              'errors':[{**e,'batch_offset':r['offset']} for r in rows for e in r['errors']],
+              'batches':rows,
+          }
+          Path('.deploy-status').mkdir(exist_ok=True)
+          out=Path('.deploy-status/catalog-copy-gallery-resume-20261020.json')
+          out.write_text(json.dumps(summary,ensure_ascii=False,indent=2)+'\n')
+          print('COPY_CHECKED',summary['copy_products_checked'])
+          print('COPY_UPDATED',summary['copy_products_updated'])
+          print('GALLERIES_CHECKED',summary['gallery_products_checked'])
+          print('GALLERIES_UPDATED',summary['gallery_products_updated'])
+          print('PHOTOS_IMPORTED',summary['photos_imported'])
+          print('ERRORS',len(summary['errors']))
+          PY
+          sshpass -e ssh "${SSH[@]}" "$SERVER" "rm -rf '$WORK'"
+      - name: Persist verified batch report in MO
+        run: |
+          set -euo pipefail
+          test -s .deploy-status/catalog-copy-gallery-resume-20261020.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/catalog-copy-gallery-resume-20261020.json
+          git commit -m 'Record catalog copy and supplier photo reconciliation [skip ci]'
+          git pull --rebase origin main
+          git push origin HEAD:main
