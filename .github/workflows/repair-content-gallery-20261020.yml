@@ -1,0 +1,156 @@
+name: Repair live product text and Latitudes galleries
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/repair-content-gallery-20261020.yml'
+      - '.github/scripts/repair-content-gallery-20261020.php'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: emdo-product-gallery-repair-production
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    environment: production
+    env:
+      HOST: ${ secrets.STAGING_HOST }}
+      PORT: ${ secrets.STAGING_PORT }}
+      USER: ${ secrets.STAGING_USER }}
+      SSHPASS: ${ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate PHP
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/repair-content-gallery-20261020.php
+          php -l mdo-supplier-sync/connectors/class-mdo-connector-tolecarnes.php
+          php -l mdo-supplier-sync/includes/class-mdo-woo-importer.php
+          php -l elmercadodeorigen-child/inc/product-gallery-controls-010318.php
+          php -l elmercadodeorigen-child/functions.php
+      - name: Apply source-verified catalog repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          : "${HOST:?}" "${USER:?}" "${SSHPASS:?}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=30 -p "$PORT")
+          SCP=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P "$PORT")
+          SERVER="$USER@$HOST"
+          PROD="$(sshpass -e ssh "${SSH[@]}" "$SERVER" 'sh -s' <<'REMOTE'
+          set -eu
+          wp="$(command -v wp || true)"
+          php="$(command -v php || true)"
+          [ -n "$php" ] || php="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1 || true)"
+          [ -n "$wp" ] && [ -x "$php" ]
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p="$(dirname "$cfg")"
+            a="$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+            b="$("$php" "$wp" option get home --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+            case "$a" in
+              https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com)
+                case "$b" in
+                  https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com)
+                    printf '%s' "$p"; exit 0 ;;
+                esac ;;
+            esac
+          done
+          echo 'Production WordPress not found; refusing staging.' >&2
+          exit 13
+          REMOTE
+          )"
+          : "${PROD:?}"
+          REMOTE_DIR="/tmp/emdo-content-gallery-${GITHUB_RUN_ID}"
+          sshpass -e ssh "${SSH[@]}" "$SERVER" "mkdir -p '$REMOTE_DIR'"
+          sshpass -e scp "${SCP[@]}" .github/scripts/repair-content-gallery-20261020.php "$SERVER:$REMOTE_DIR/repair.php"
+          sshpass -e scp "${SCP[@]}" elmercadodeorigen-child/inc/product-gallery-controls-010318.php "$SERVER:$REMOTE_DIR/gallery.php"
+          sshpass -e scp "${SCP[@]}" elmercadodeorigen-child/assets/css/product-gallery-controls-010318.css "$SERVER:$REMOTE_DIR/gallery.css"
+          WANT_CONNECTOR="$(sha256sum mdo-supplier-sync/connectors/class-mdo-connector-tolecarnes.php | cut -d' ' -f1)"
+          WANT_IMPORTER="$(sha256sum mdo-supplier-sync/includes/class-mdo-woo-importer.php | cut -d' ' -f1)"
+          sshpass -e ssh "${SSH[@]}" "$SERVER" "sh -s -- '$PROD' '$REMOTE_DIR' '$WANT_CONNECTOR' '$WANT_IMPORTER'" <<'REMOTE'
+          set -eu
+          wp_path="$1"; work="$2"; csha="$3"; isha="$4"
+          php="$(command -v php || true)"
+          [ -n "$php" ] || php="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          plugin="$wp_path/wp-content/plugins/mdo-supplier-sync"
+          ready=0
+          for i in $(seq 1 120); do
+            c="$(sha256sum "$plugin/connectors/class-mdo-connector-tolecarnes.php" 2>/dev/null | cut -d' ' -f1 || true)"
+            v="$(sha256sum "$plugin/includes/class-mdo-woo-importer.php" 2>/dev/null | cut -d' ' -f1 || true)"
+            if [ "$c" = "$csha" ] && [ "$v" = "$isha" ]; then ready=1; break; fi
+            sleep 10
+          done
+          [ "$ready" -eq 1 ] || { echo 'Supplier connector not deployed. No product updates.' >&2; exit 15; }
+          echo 'SUPPLIER_PLUGIN_DEPLOYED'
+          theme="$wp_path/wp-content/themes/elmercadodeorigen-child"
+          [ -f "$theme/functions.php" ]
+          backup="$HOME/.elmercado-rollbacks/elmercadodeorigen.com/product-gallery-20261020"
+          mkdir -p "$backup"
+          cp -p "$theme/functions.php" "$backup/functions.php"
+          mkdir -p "$theme/inc" "$theme/assets/css"
+          install -m 0644 "$work/gallery.php" "$theme/inc/product-gallery-controls-010318.php"
+          install -m 0644 "$work/gallery.css" "$theme/assets/css/product-gallery-controls-010318.css"
+          if ! grep -Fq 'inc/product-gallery-controls-010318.php' "$theme/functions.php"; then
+            "$php" -r '
+              $f=$argv[1];$s=file_get_contents($f);
+              $anchor=");".PHP_EOL.PHP_EOL."foreach ( \$elmercado_modules as \$elmercado_module )";
+              if(strpos($s,$anchor)===false){fwrite(STDERR,"Missing theme loader\n");exit(1);}
+              $s=str_replace($anchor,"\t'\''inc/product-gallery-controls-010318.php'\'',".PHP_EOL.$anchor,$s);
+              file_put_contents($f,$s);
+            ' "$theme/functions.php"
+          fi
+          "$php" -l "$theme/functions.php"
+          "$php" -l "$theme/inc/product-gallery-controls-010318.php"
+          echo 'LIVE_PHOTO_VIEWER_UPDATED'
+          REMOTE
+          # Probe all 138 supplier pages without writing, including the Wagyu example.
+          sshpass -e ssh "${SSH[@]}" "$SERVER" "sh -s -- '$PROD' '$REMOTE_DIR'" <<'REMOTE' | tee /tmp/emdo-gallery-preflight.log
+          set -eu
+          php="$(command -v php || true)"
+          [ -n "$php" ] || php="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp="$(command -v wp)"
+          EMDO_REPAIR_MODE=audit "$php" -d memory_limit=1536M "$wp" eval-file "$2/repair.php" --path="$1" --allow-root
+          REMOTE
+          grep -q '^EMDO_CONTENT_GALLERY_REPAIR=' /tmp/emdo-gallery-preflight.log
+          sshpass -e ssh "${SSH[@]}" "$SERVER" "sh -s -- '$PROD' '$REMOTE_DIR'" <<'REMOTE' | tee /tmp/emdo-gallery-apply.log
+          set -eu
+          php="$(command -v php || true)"
+          [ -n "$php" ] || php="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp="$(command -v wp)"
+          EMDO_REPAIR_MODE=apply "$php" -d memory_limit=1536M "$wp" eval-file "$2/repair.php" --path="$1" --allow-root
+          "$php" "$wp" cache flush --path="$1" --allow-root >/dev/null 2>&1 || true
+          REMOTE
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          v=[s.split('=',1)[1] for s in Path('/tmp/emdo-gallery-apply.log').read_text().splitlines() if s.startswith('EMDO_CONTENT_GALLERY_REPAIR=')]
+          assert v, 'Missing production report'
+          d=json.loads(v[-1])
+          assert d['mode']=='apply' and d['gallery']['checked']>=100 and d['copy']['scanned']>=150
+          p=Path('.deploy-status/product-copy-galleries-20261020.json')
+          p.parent.mkdir(exist_ok=True)
+          p.write_text(json.dumps(d,indent=2,ensure_ascii=False)+'\n')
+          print('COPY_UPDATED:',d['copy']['updated'])
+          print('GALLERY_UPDATED:',d['gallery']['updated_products'])
+          print('IMAGES_IMPORTED:',d['gallery']['added_photos'])
+          print('ERRORS:',len(d['gallery']['errors']))
+          PY
+          sshpass -e ssh "${SSH[@]}" "$SERVER" "rm -rf -- '$REMOTE_DIR'"
+      - name: Save report in MO
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/product-copy-galleries-20261020.json
+          git commit -m 'Record live product galleries and copy repair [skip ci]'
+          git pull --rebase origin main
+          git push origin HEAD:main
