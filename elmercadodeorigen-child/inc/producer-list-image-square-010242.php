@@ -240,7 +240,7 @@ add_action(
 			/* Pequeña flecha de interfaz fuera de la fotografía.
 			 * Informa de que la ficha abre al productor, sin añadir otro botón. */
 			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap .wcfmmp-single-store .store-footer {
-				position: relative !important;
+				position: static !important; /* El área expandida del enlace usa .store-wrapper. */
 			}
 			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) #wcfmmp-stores-wrap .wcfmmp-single-store .store-data h2 {
 				padding-right: 38px !important;
@@ -249,8 +249,9 @@ add_action(
 				content: "↗";
 				position: absolute;
 				right: clamp(22px, 2.4vw, 32px);
-				top: 50%;
-				transform: translateY(-50%);
+				bottom: 34px;
+				top: auto;
+				transform: none;
 				font-size: 1.45rem;
 				line-height: 1;
 				color: #557260;
