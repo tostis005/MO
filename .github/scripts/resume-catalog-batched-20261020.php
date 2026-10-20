@@ -123,16 +123,25 @@ if ( 'copy' === $task ) {
 			$map=is_array($map)?$map:array();
 			$gallery=array_map('intval',$product->get_gallery_image_ids());
 			$cover=(int)$product->get_image_id();
+			// Indexed post_parent lookup avoids scanning the entire postmeta table
+			// for every picture (the bottleneck in the interrupted run).
+			$existing_files=$wpdb->get_results($wpdb->prepare(
+				"SELECT p.ID,pm.meta_value FROM {$wpdb->posts} p
+				 INNER JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_source_url'
+				 WHERE p.post_type='attachment' AND p.post_parent=%d", $id
+			),ARRAY_A);
+			$source_to_attachment=array();
+			foreach((array)$existing_files as $file){
+				$source_to_attachment[(string)$file['meta_value']]=(int)$file['ID'];
+			}
 			$new_ids=$gallery;
 			$added=0;
 			foreach ($urls as $index=>$img) {
 				$aid=(int)($map[$img]??0);
 				if($aid && get_post_type($aid)!=='attachment'){$aid=0;}
-				if(!$aid) {
-					$attachment=$wpdb->get_var($wpdb->prepare(
-						"SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key='_source_url' AND meta_value=%s LIMIT 1",$img
-					));
-					$aid=(int)$attachment;
+				if(!$aid && isset($source_to_attachment[$img])){
+					$aid=(int)$source_to_attachment[$img];
+					if(get_post_type($aid)!=='attachment'){$aid=0;}
 				}
 				// When the primary image has no source metadata, assume image 0 is
 				// the existing cover; never replace it or import it as a duplicate.
