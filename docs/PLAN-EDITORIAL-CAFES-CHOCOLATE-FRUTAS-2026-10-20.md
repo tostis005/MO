@@ -1,6 +1,6 @@
 # Plan editorial aprobado — Nuevos productores (20-10-2026)
 
-Estado: **24 temas aprobados; 9 publicados y verificados en español e inglés; 15 pendientes**. Este archivo es la fuente persistente de control del trabajo en el repositorio MO (no sustituirlo por la memoria de una conversación).
+Estado: **24 temas aprobados; 15 publicados y verificados en español e inglés; 9 pendientes**. Este archivo es la fuente persistente de control del trabajo en el repositorio MO (no sustituirlo por la memoria de una conversación).
 
 ## Reglas editoriales acordadas
 - Publicar siempre versión española e inglesa con redacción natural, no traducción mecánica.
@@ -19,8 +19,8 @@ Estado: **24 temas aprobados; 9 publicados y verificados en español e inglés; 
 | 1 | Café | Cómo elegir el mejor café en grano para casa | **Publicado · ES/EN verificado** |
 | 2 | Café | Café en grano o molido: diferencias y cuál comprar | **Publicado · ES/EN verificado** |
 | 3 | Café | Café de especialidad: qué es y por qué merece la pena | **Publicado · ES/EN verificado** |
-| 4 | Café | Qué café comprar para una cafetera italiana | Pendiente |
-| 5 | Café | Qué café elegir para una cafetera superautomática | Pendiente |
+| 4 | Café | Qué café comprar para una cafetera italiana | **Publicado · ES/EN verificado** |
+| 5 | Café | Qué café elegir para una cafetera superautomática | **Publicado · ES/EN verificado** |
 | 6 | Café | Café arábica o robusta: diferencias y cuál es mejor | Pendiente |
 | 7 | Café | Café natural, torrefacto o mezcla: diferencias y cuál elegir | Pendiente |
 | 8 | Café | Qué café elegir para preparar un buen espresso en casa | Pendiente |
@@ -28,11 +28,11 @@ Estado: **24 temas aprobados; 9 publicados y verificados en español e inglés; 
 | 10 | Chocolate | Cremas de cacao: diferencias, ingredientes y cómo elegir una buena | **Publicado · ES/EN verificado** |
 | 11 | Aguacates | Tipos de aguacate: Hass, Bacon, Fuerte y sus diferencias | **Publicado · ES/EN verificado** |
 | 12 | Aguacates | Cómo saber si un aguacate está maduro y cómo madurarlo | **Publicado · ES/EN verificado** |
-| 13 | Aguacates | Cuándo es temporada de aguacates en España | Pendiente |
-| 14 | Aguacates | Cómo conservar aguacates para que duren más | Pendiente |
+| 13 | Aguacates | Cuándo es temporada de aguacates en España | **Publicado · ES/EN verificado** |
+| 14 | Aguacates | Cómo conservar aguacates para que duren más | **Publicado · ES/EN verificado** |
 | 15 | Mangos | Tipos de mango: variedades, diferencias y cuál elegir | **Publicado · ES/EN verificado** |
-| 16 | Mangos | Cómo saber si un mango está maduro y cómo elegir uno bueno | Pendiente |
-| 17 | Mangos | Cuándo es temporada de mango en España | Pendiente |
+| 16 | Mangos | Cómo saber si un mango está maduro y cómo elegir uno bueno | **Publicado · ES/EN verificado** |
+| 17 | Mangos | Cuándo es temporada de mango en España | **Publicado · ES/EN verificado** |
 | 18 | Cítricos | Naranjas de mesa y de zumo: diferencias y cuáles comprar | **Publicado · ES/EN verificado** |
 | 19 | Cítricos | Tipos de naranjas: variedades, sabor y cuál elegir | Pendiente |
 | 20 | Cítricos | Temporada de naranjas y mandarinas en España: calendario y variedades | Pendiente |
@@ -60,7 +60,16 @@ Estado: **24 temas aprobados; 9 publicados y verificados en español e inglés; 
 - Nº 15: https://www.elmercadodeorigen.com/tipos-de-mango-variedades-diferencias-cual-elegir/ · EN: https://www.elmercadodeorigen.com/en/types-of-mango-varieties-differences-which-to-choose/
 - Nº 22: https://www.elmercadodeorigen.com/comprar-fruta-online-como-elegir-fresca-calidad/ · EN: https://www.elmercadodeorigen.com/en/buying-fresh-fruit-online-how-to-choose/
 - **Imágenes/enlaces de la tercera tanda:** nº 22 utiliza una imagen de producto en stock y enlaza la categoría de frutas; nº 3 y nº 15 utilizan imagen editorial genérica y no presentan un enlace comercial forzado: no se encontró la categoría específica de café o de mangos con productos disponibles durante la publicación. Revisar la fotografía y enlaces cuando se consolide el catálogo.
-- **Próxima prioridad editorial:** nº 4 (café para cafetera italiana), nº 13 (temporada del aguacate) y nº 16 (cómo saber si el mango está maduro); comprobar contenido y existencia/solapamientos en producción antes de crear cada artículo.
+- **Cuarta tanda publicada y verificada en producción:** nº 4, 5, 13, 14, 16 y 17; 6 artículos/12 páginas.
+- Resultado verificado GitHub Actions: https://github.com/tostis005/MO/actions/runs/39493312265
+- Nº 4: https://www.elmercadodeorigen.com/que-cafe-comprar-para-cafetera-italiana/ · EN: https://www.elmercadodeorigen.com/en/best-coffee-for-moka-pot-buying-guide/
+- Nº 5: https://www.elmercadodeorigen.com/que-cafe-elegir-cafetera-superautomatica/ · EN: https://www.elmercadodeorigen.com/en/how-to-choose-coffee-for-bean-to-cup-machine/
+- Nº 13: https://www.elmercadodeorigen.com/temporada-aguacates-espana-variedades-cuando-comprar/ · EN: https://www.elmercadodeorigen.com/en/spanish-avocado-season-when-to-buy-by-variety/
+- Nº 14: https://www.elmercadodeorigen.com/como-conservar-aguacates-enteros-abiertos/ · EN: https://www.elmercadodeorigen.com/en/how-to-store-whole-and-cut-avocados/
+- Nº 16: https://www.elmercadodeorigen.com/como-saber-mango-maduro-elegir-bueno/ · EN: https://www.elmercadodeorigen.com/en/how-to-tell-if-a-mango-is-ripe-and-choose-one/
+- Nº 17: https://www.elmercadodeorigen.com/cuando-temporada-mango-espana-cosecha/ · EN: https://www.elmercadodeorigen.com/en/mango-season-in-spain-harvest-calendar/
+- **Galería comercial:** aguacates nº 13 y 14 tienen imagen y categoría disponibles; café nº 4 y 5 y mango nº 16 y 17 siguen con imagen editorial genérica hasta disponer de fotografías de catálogo y categoría en stock.
+- **Siguiente tanda prevista:** nº 6, 7, 8 y 9 (café); nº 19 y 20 (cítricos). Restan además nº 21, 23 y 24 (frutas).
 - Los restantes temas se producirán de forma progresiva, respetando este orden editorial o modificándolo con documentación del motivo.
 
 ## Comprobaciones previas
