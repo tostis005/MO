@@ -29,12 +29,22 @@ final class MDO_Connector_Tropitop {
             $html = self::fetch( $url );
             $xp = self::xpath( $html );
             $found = 0;
-            foreach ( $xp->query( '//a[@href]' ) ?: array() as $node ) {
-                $candidate = self::absolute( (string) $node->getAttribute( 'href' ) );
-                if ( ! $candidate || ! self::is_product( $candidate ) ) { continue; }
-                $canonical = self::canonical( $candidate );
-                if ( ! isset( $products[ $canonical ] ) ) { ++$found; }
-                $products[ $canonical ] = $canonical;
+            // Never crawl global menu, recommendation carousels or banner links:
+            // only the 24 true product cards belonging to this listing page.
+            $cards = $xp->query(
+                '//article[contains(concat(" ",normalize-space(@class)," ")," product-miniature ")]'
+                . ' | //div[contains(concat(" ",normalize-space(@class)," ")," product-miniature ") and @data-id-product]'
+            );
+            foreach ( $cards ?: array() as $card ) {
+                foreach ( $xp->query( './/a[@href]', $card ) ?: array() as $node ) {
+                    $candidate = self::absolute( (string) $node->getAttribute( 'href' ) );
+                    if ( ! $candidate || ! self::is_product( $candidate ) ) { continue; }
+                    $canonical = self::canonical( $candidate );
+                    $id = self::product_id( $canonical );
+                    if ( ! isset( $products[ $id ] ) ) { ++$found; }
+                    $products[ $id ] = $canonical;
+                    break;
+                }
             }
             if ( ! $found && $page === 1 ) {
                 throw new RuntimeException( 'Tropitop: la categoría no muestra productos; se evita un catálogo vacío.' );
