@@ -148,7 +148,12 @@ jobs:
                   const list=document.querySelector('#wcfmmp-stores-wrap ul.wcfmmp-store-wrap');
                   const cards=[...document.querySelectorAll('#wcfmmp-stores-wrap li.wcfmmp-single-store')];
                   const rectangle=el=>{const r=el.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height}};
+                  const intro=document.querySelector('.emo-producers-intro');
+                  const introStyle=intro?getComputedStyle(intro):null;
                   return {
+                    intro:{found:!!intro,bg:introStyle?.backgroundColor||null,image:introStyle?.backgroundImage||null,
+                      radius:introStyle?.borderTopLeftRadius||null,
+                      width:intro?.getBoundingClientRect().width||0},
                     hasHeadStyle:!!document.querySelector('#elmercado-producer-directory-editorial-20261020'),
                     hasOldNormalizer:!!document.querySelector('#elmercado-producer-layout-normalizer'),
                     columns:getComputedStyle(list).gridTemplateColumns.split(' ').length,
@@ -171,6 +176,7 @@ jobs:
                   };
                 });
                 console.log('PRODUCERS_LAYOUT',width,JSON.stringify(data));
+                if(!data.intro.found||data.intro.bg==='rgba(0, 0, 0, 0)'||data.intro.bg==='transparent'||data.intro.image==='none'||data.intro.width<250) throw new Error('Producer header background is missing or transparent '+width+' '+JSON.stringify(data.intro));
                 if (!data.hasHeadStyle||data.hasOldNormalizer||data.cards<3) throw new Error('Missing or replaced directory at '+width);
                 const expected=width>760?2:1;
                 if(data.columns!==expected) throw new Error('Wrong column count '+width+': '+data.columns);
