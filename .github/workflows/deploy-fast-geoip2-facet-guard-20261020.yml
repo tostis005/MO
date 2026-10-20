@@ -56,7 +56,7 @@ jobs:
             exit "$status"
           }
           trap rollback EXIT
-          echo 'load_module modules/ngx_http_geoip2_module.so;' > "$module"
+          echo 'load_module /usr/share/nginx/modules/ngx_http_geoip2_module.so;' > "$module"
           chmod 0644 "$module"
           cat > "$rules" <<'CONF'
           # EMDO 2026-10-20: inexpensive, in-memory GeoIP2 protection for
