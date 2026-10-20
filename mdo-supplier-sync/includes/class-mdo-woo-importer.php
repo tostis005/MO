@@ -138,13 +138,34 @@ final class MDO_Woo_Importer {
 			$product->set_status( 'draft' );
 			$product->set_catalog_visibility( 'hidden' );
 		}
-		// Never auto-publish an unreviewed new SKU merely because this vendor
-		// becomes active later. Human-validated existing products retain their
-		// approved publication state during regular nightly stock updates.
-		if ( 'tropitop' === (string) $supplier['code'] &&
-			( ! $existing_id || '1' !== (string) get_post_meta( $existing_id, '_mdo_tropitop_prelaunch_validated', true ) ) ) {
-			$product->set_status( 'draft' );
-			$product->set_catalog_visibility( 'hidden' );
+		// An enabled, confirmed Tropitop supplier is allowed to publish newly
+		// imported products directly, *only* when checkout and every option are
+		// fully shippable. Never require a manual flag for each new reference.
+		// Unsupported unit-only packs, unknown prices or invalid shipping remain
+		// drafts, rather than selling without a valid delivery quote.
+		if ( 'tropitop' === (string) $supplier['code'] ) {
+			$ready_to_sell = ! empty( $supplier['active'] )
+				&& ! get_user_meta( $vendor_id, '_disable_vendor', true )
+				&& MDO_Tropitop_Shipping::is_ready()
+				&& count( $variations ) > 0
+				&& count( $variations ) === $declared_variations
+				&& ! empty( $payload['images'] )
+				&& ! empty( $payload['description'] );
+			foreach ( $variations as $source_variation ) {
+				$kg = isset( $source_variation['weight_kg'] ) && is_numeric( $source_variation['weight_kg'] )
+					? (float) $source_variation['weight_kg'] : 0.0;
+				if ( $kg <= 0 || null === MDO_Tropitop_Shipping::cost_for_weight( $kg ) ||
+					! isset( $source_variation['display_price'] ) ||
+					! is_numeric( $source_variation['display_price'] ) ||
+					(float) $source_variation['display_price'] <= 0 ) {
+					$ready_to_sell = false;
+					break;
+				}
+			}
+			if ( ! $ready_to_sell ) {
+				$product->set_status( 'draft' );
+				$product->set_catalog_visibility( 'hidden' );
+			}
 		}
 		$category_result = class_exists( 'MDO_Auto_Categorizer' )
 			? MDO_Auto_Categorizer::maybe_assign( $product, $payload, $row )
