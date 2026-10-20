@@ -204,9 +204,11 @@ final class MDO_Scheduler {
 			if ( $restored && 'unchanged' === $result ) {
 				$result = 'updated';
 			}
-			self::increment_run( $run_id, $result );
-
 			if ( $forced_recheck && 'unchanged' === $result ) { $result = 'updated'; }
+			self::increment_run( $run_id, $result );
+			if ( $restored && $forced_recheck && ! empty( $woo_id ) ) {
+				delete_post_meta( $woo_id, '_mdo_tropitop_sync_uncertain' );
+			}
 			if ( 'updated' === $result && ! $restored ) {
 				try {
 					MDO_Woo_Importer::sync_if_active( $supplier_id, (string) $product['source_url'] );
@@ -214,6 +216,9 @@ final class MDO_Scheduler {
 						delete_post_meta( $woo_id, '_mdo_tropitop_sync_uncertain' );
 					}
 				} catch ( Throwable $sync_error ) {
+					if ( 'tropitop' === (string) $supplier['code'] ) {
+						self::quarantine_tropitop_unknown_stock( $supplier_id, $url );
+					}
 					self::increment_run( $run_id, 'error' );
 					self::log_event( $run_id, $supplier_id, 'woocommerce_sync_error', 'error', $sync_error->getMessage(), array( 'url' => $url ) );
 				}
