@@ -1,0 +1,56 @@
+name: Read-only geo/edge mitigation inspection 20261020
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/inspect-geo-and-bot-guard-20261020.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Read-only webserver modules, GeoIP and active bot rules
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          chmod 600 ~/.ssh/known_hosts
+          sshpass -e ssh -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ConnectTimeout=15 -p "$PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          root=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+          vhost=/var/www/vhosts/system/elmercadodeorigen.com/conf
+          echo '=== SYSTEM / MODULES ==='
+          nginx -V 2>&1 | sed -E 's#--prefix=[^ ]+#--prefix=REDACTED#g' | grep -Eo '(with-http_geoip_module|with-http_realip_module|modules-path=[^ ]+|add-dynamic-module=[^ ]+|with-http_geoip2_module)' | head -n 20 || true
+          find /etc/nginx/modules-enabled /usr/lib/nginx/modules /etc/nginx/modules -maxdepth 2 -type f -printf '%f\n' 2>/dev/null | grep -Ei 'geoip|realip' || true
+          apachectl -M 2>/dev/null | grep -Ei 'geoip|rewrite|remoteip|headers' || true
+          command -v geoiplookup || true
+          command -v mmdblookup || true
+          command -v geoipupdate || true
+          echo '=== LOCAL GEOIP DB INVENTORY ==='
+          for p in /usr/share/GeoIP/GeoIP.dat "$root/wp-content/plugins/wordfence/lib/geoip.mmdb" "$root/wp-content/wflogs/GeoLite2-Country.mmdb"; do if [ -f "$p" ]; then stat -c '%s bytes; modified %y; %n' "$p"; fi; done
+          find "$root/wp-content/uploads/woocommerce_uploads" -maxdepth 2 -name '*GeoLite2*' -printf '%s bytes %TY-%Tm-%Td %f\n' 2>/dev/null | head -n 10
+          echo '=== ACTIVE HTACCESS RULES (MARKERS / NO IP) ==='
+          grep -nEi 'EMDO FACET|RewriteCond.*QUERY_STRING|RewriteRule.*429|geoip|country' "$root/.htaccess" | head -n 65 || true
+          echo '=== DOMAIN NGINX / APACHE CONFIGURATION MARKERS ==='
+          for p in "$vhost/vhost_nginx.conf" "$vhost/vhost.conf"; do
+            if [ -f "$p" ]; then echo "--- present $p"; grep -nEi 'geoip|country|map|rewrite|return 429|location|limit_req|if |filter_|http_cookie' "$p" | head -n 80 || true; else echo "absent $p"; fi
+          done
+          echo '=== GEO DIRECT SCRIPT RESPONSE / TIMING ==='
+          for i in 1 2 3; do
+            curl -sS -o /dev/null --max-time 10 -w 'http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total}\n' 'https://www.elmercadodeorigen.com/wp-content/themes/elmercadodeorigen-child/assets/ad-geo-fast.php' || true
+          done
+          echo '=== STORE CACHE SOURCE SIZE ==='
+          sha256sum "$root/wp-content/advanced-cache.php" || true
+          echo '=== REST OF WORLD SHIPPING ==='
+          echo 'shipping destination determined via WordPress vendor and WooCommerce configuration; no WP calls made'
+          REMOTE
