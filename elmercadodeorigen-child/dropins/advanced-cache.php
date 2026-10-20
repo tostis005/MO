@@ -200,7 +200,7 @@ if ( isset( $hot_cache_paths[ $path ] ) ) {
 			// a cache hit. Both the store container and continuous catalogue script
 			// must be present, otherwise the request runs uncached for safety.
 			if ( $can_store && $is_new_vendor_store_hot_path ) {
-				$can_store = (bool) preg_match( '/id=["\\\']wcfmmp-store["\\\']/i', $html )
+				$can_store = false !== strpos( $html, 'id="wcfmmp-store"' )
 					&& false !== strpos( $html, 'emo-continuous-catalog' );
 			}
 
