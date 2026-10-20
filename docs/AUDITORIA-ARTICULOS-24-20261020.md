@@ -1,0 +1,24 @@
+# Auditoría editorial: 24 artículos bilingües (20-10-2026)
+
+## Alcance
+Se han revisado los 24 manuscritos ES/EN (48 versiones), la comparación de títulos frente al inventario de 595 artículos anterior y las 48 URLs de producción mediante la ejecución de solo lectura https://github.com/tostis005/MO/actions/runs/39497975770 . La auditoría no ha alterado las entradas publicadas.
+
+## Resultado
+- Textos: español 834–1403 palabras (media 1021), inglés 787–1306 (media 952); entre cuatro y siete H2. Sin encabezados idénticos ni introducciones prácticamente iguales detectadas. Sin duplicación literal de título con el catálogo anterior.
+- Comprobación web: 38/48 URLs devolvieron 200; diez (números 1–5 en ambos idiomas) agotaron el tiempo de lectura del auditor de 45 segundos. Sus verificaciones originales de publicación sí habían pasado; repetir sin concurrencia antes de declarar fallos.
+- De las 38 que respondieron, las 38 muestran canonical propio correcto, metadescripción y JSON-LD, sin meta robots noindex.
+- Incidencia prioritaria: las 19 URLs inglesas que respondieron generan hreflang hacia el español bajo la ruta /en/slug-espanol/ en vez de /slug-espanol/. Igual problema en x-default. Revisar el generador global de hreflang y comprobar reciprocidad ES/EN.
+- Las 38 páginas accesibles presentan dos elementos H1 y no tienen etiqueta og:image. Determinar el origen del segundo H1 en la plantilla y comprobar configuración de imagen social; evitar inferir penalización automática.
+- Imagen de reserva 13442 y sin enlace comercial automático en 15 artículos: café 1–9, mango 15–17, naranjas 18–20. Otros 9 usan imagen de producto y categoría que tenía stock al publicarse. Revisar productos reales, taxonomías, stock y fotos específicas.
+- Once artículos no incluyen citas externas dentro del texto y cinco no contienen ningún enlace de origen: 1, 5, 10, 11 y 22. Las citas externas no son requisito automático, pero reforzar documentación donde aparezcan datos técnicos y enlaces internos donde ayuden a comprar.
+- En las muestras revisadas la metadescripción HTML procede del excerpt, no necesariamente del campo seo_description redactado expresamente. Comprobar qué sistema de metas ES/EN prevalece en producción.
+
+## Prioridad de actuación
+1. Reparar hreflang/x-default en inglés para todo el sitio.
+2. Medir respuesta/TTFB de las 10 URLs con timeout, sin múltiples solicitudes simultáneas.
+3. Sustituir imágenes genéricas y enlazar categorías o productos verificablemente disponibles.
+4. Revisar H1 y og:image a nivel de plantilla, y unificar los metadatos SEO por idioma.
+5. Mejorar enlazado y atribución en guías seleccionadas, manteniendo estilo editorial propio.
+6. Medir consultas e impresiones antes de decidir si existe canibalización SEO entre artículos próximos.
+
+Veredicto: los contenidos y traducciones forman una base útil, pero el trabajo no está completamente optimizado. La auditoría es de solo lectura y no demuestra resultados de tráfico ni ventas.
