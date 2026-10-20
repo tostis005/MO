@@ -161,8 +161,8 @@ jobs:
                   return {
                     intro:{found:!!intro,bg:introStyle?.backgroundColor||null,image:introStyle?.backgroundImage||null,
                       columns:introStyle?.gridTemplateColumns||null,display:introStyle?.display||null,
-                      sharedClass:intro?.classList.contains('emo-about-intro')||false,
-                      sharedMarkup:!!intro?.querySelector('.emo-producers-intro__heading > .emo-kicker'),
+                      sharedClass:intro?.classList.contains('emo-contact-aside')||false,
+                      sharedMarkup:!!intro?.querySelector(':scope > .emo-kicker.emo-kicker--light'),
                       kickerFont:intro?.querySelector('.emo-kicker')?getComputedStyle(intro.querySelector('.emo-kicker')).fontSize:null,
                       kickerColor:intro?.querySelector('.emo-kicker')?getComputedStyle(intro.querySelector('.emo-kicker')).color:null,
                       headingColor:intro?.querySelector('h2')?getComputedStyle(intro.querySelector('h2')).color:null,
