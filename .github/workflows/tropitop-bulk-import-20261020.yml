@@ -1,5 +1,10 @@
 name: Tropitop incremental catalog import and verified direct publication
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tropitop-bulk-import-20261020.yml'
+      - '.github/scripts/tropitop-bulk-import-20261020.php'
   pull_request:
     paths:
       - '.github/scripts/tropitop-bulk-import-20261020.php'
@@ -26,7 +31,7 @@ jobs:
           php -l mdo-supplier-sync/includes/class-mdo-scheduler.php
   import:
     needs: lint
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-24.04
     timeout-minutes: 350
     env:
