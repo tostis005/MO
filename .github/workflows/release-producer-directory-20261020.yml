@@ -181,7 +181,7 @@ jobs:
                 }
                 // El pseudo-elemento del enlace debe ocupar de verdad fotografía,
                 // esquina y zona vacía del pie (no sólo el título).
-                const clickTest=await page.evaluate(()=>{
+                await page.evaluate(()=>{
                   const card=document.querySelector('#wcfmmp-stores-wrap li.wcfmmp-single-store');
                   card.scrollIntoView({block:'center',behavior:'instant'});
                   return true;
@@ -204,7 +204,8 @@ jobs:
                   page.waitForNavigation({waitUntil:'domcontentloaded',timeout:30000}),
                   page.click('#wcfmmp-stores-wrap li.wcfmmp-single-store .store-content')
                 ]);
-                if(page.url().replace(/\\/$/,'')!==hit.destination.replace(/\\/$/,'')) throw new Error('Card image click landed on wrong page: '+page.url());
+                const canonicalPath=u=>new URL(u).pathname.split('/').filter(Boolean).join('/');
+                if(canonicalPath(page.url())!==canonicalPath(hit.destination)) throw new Error('Card image click landed on wrong page: '+page.url());
                 // Teclado: el enlace natural debe recibir foco y abrir con Enter.
                 if(width===390){
                   await page.goto('https://www.elmercadodeorigen.com/productores/?keyboard='+process.env.GITHUB_RUN_ID,{waitUntil:'domcontentloaded',timeout:60000});
@@ -217,7 +218,7 @@ jobs:
                     page.waitForNavigation({waitUntil:'domcontentloaded',timeout:30000}),
                     page.keyboard.press('Enter')
                   ]);
-                  if(page.url().replace(/\\/$/,'')!==keyboardUrl.replace(/\\/$/,'')) throw new Error('Keyboard Enter did not open producer');
+                  if(canonicalPath(page.url())!==canonicalPath(keyboardUrl)) throw new Error('Keyboard Enter did not open producer');
                   console.log('PRODUCERS_KEYBOARD_ENTER_OK');
                 }
               }
