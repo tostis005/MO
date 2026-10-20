@@ -24,7 +24,7 @@ jobs:
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Validar los cinco medios originales y el componente
+      - name: Descargar cinco medios aprobados por Gmail y verificar SHA-256
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -32,24 +32,28 @@ jobs:
           : "${STAGING_USER:?SSH user absent}"
           : "${SSHPASS:?SSH password absent}"
           php -l elmercadodeorigen-child/inc/producer-list-image-square-010242.php
-          python3 - <<'PY'
-          from pathlib import Path
-          import hashlib
-          target=Path('elmercadodeorigen-child/assets/images/producer-banners')
-          expected={
-              'selectos-de-castilla':('c2d2b2c49f934a542e1542422463421a9f3d0a6b9a796253bcf1620278418617',272102),
-              'la-huerta-de-ana-mary':('6aa6be0ae178a2f8fe4422695edaf69e82fd70fdd27fa84d68b384d84138ec4c',355876),
-              'chocolates-artesanos-isabel':('bd5d3c9db997048894e400da50af3f6de6431f6825f24917a6af496ce9e2582f',305110),
-              'ikore-kofi':('bd52db8973b1a87c0a1c5291a2d209f8bb01d5e0fdd3249ecfc215fd0c68ecd4',332004),
-              'tropitop':('318e7a67a3a71ab119b1aeff621d071177de6d2933b8a43ab3a4f9f775dcd44c',300076)}
-          for slug,(sha,byte_count) in expected.items():
-              p=target/(slug+'.webp')
-              b=p.read_bytes()
-              assert b[:4]==b'RIFF' and b[8:12]==b'WEBP'
-              assert len(b)==byte_count
-              assert hashlib.sha256(b).hexdigest()==sha
-              print('VALIDATED_APPROVED_IMAGE',slug,len(b))
-          PY
+          mkdir -p /tmp/emdo-approved-banners/banners
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 12 --max-time 65 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-7c78-820e-a635-e6021619d98b/raw?se=2026-10-20T18%3A11%3A07Z&sp=r&sv=2026-02-06&sr=b&scid=f18e189c-2f98-5c07-a4ef-e96ec2773784&skoid=bdd24bd8-9af5-4138-bfb1-19fba97a8611&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-20T12%3A11%3A17Z&ske=2026-10-21T12%3A11%3A17Z&sks=b&skv=2026-02-06&sig=Xlg5sTEtNAjh%2BnODQoEFoHQt3tyA6trlFq0YJlc4tIY%3D' -o /tmp/emdo-approved-banners/banners/selectos-de-castilla.webp
+          echo 'c2d2b2c49f934a542e1542422463421a9f3d0a6b9a796253bcf1620278418617  /tmp/emdo-approved-banners/banners/selectos-de-castilla.webp' | sha256sum --check --status
+          test "$(wc -c < /tmp/emdo-approved-banners/banners/selectos-de-castilla.webp)" -eq 272102
+          echo 'APPROVED_BANNER_DOWNLOADED_AND_HASH_VERIFIED selectos-de-castilla'
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 12 --max-time 65 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-c72c-820e-bb73-a1c75873cc40/raw?se=2026-10-20T18%3A11%3A07Z&sp=r&sv=2026-02-06&sr=b&scid=ce34bef4-b198-5b0f-ac25-3add3b39d5d7&skoid=bdd24bd8-9af5-4138-bfb1-19fba97a8611&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-20T13%3A04%3A53Z&ske=2026-10-21T13%3A04%3A53Z&sks=b&skv=2026-02-06&sig=IT%2BKI/Sr08X6FYltTWErr89xq%2BAe4m/MYqzGBads6cU%3D' -o /tmp/emdo-approved-banners/banners/la-huerta-de-ana-mary.webp
+          echo '6aa6be0ae178a2f8fe4422695edaf69e82fd70fdd27fa84d68b384d84138ec4c  /tmp/emdo-approved-banners/banners/la-huerta-de-ana-mary.webp' | sha256sum --check --status
+          test "$(wc -c < /tmp/emdo-approved-banners/banners/la-huerta-de-ana-mary.webp)" -eq 355876
+          echo 'APPROVED_BANNER_DOWNLOADED_AND_HASH_VERIFIED la-huerta-de-ana-mary'
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 12 --max-time 65 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-3940-820e-a159-ce8de76f58c3/raw?se=2026-10-20T18%3A11%3A06Z&sp=r&sv=2026-02-06&sr=b&scid=8dc1f08c-e0d9-5798-88ec-5a75fb97667b&skoid=bdd24bd8-9af5-4138-bfb1-19fba97a8611&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-20T09%3A57%3A25Z&ske=2026-10-21T09%3A57%3A25Z&sks=b&skv=2026-02-06&sig=JqCxSH2%2BK2bYbm0lp1JjPEObfY15OLL1Gj7%2BXD3r61U%3D' -o /tmp/emdo-approved-banners/banners/chocolates-artesanos-isabel.webp
+          echo 'bd5d3c9db997048894e400da50af3f6de6431f6825f24917a6af496ce9e2582f  /tmp/emdo-approved-banners/banners/chocolates-artesanos-isabel.webp' | sha256sum --check --status
+          test "$(wc -c < /tmp/emdo-approved-banners/banners/chocolates-artesanos-isabel.webp)" -eq 305110
+          echo 'APPROVED_BANNER_DOWNLOADED_AND_HASH_VERIFIED chocolates-artesanos-isabel'
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 12 --max-time 65 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-b534-820e-b1ac-25d30044257b/raw?se=2026-10-20T18%3A11%3A07Z&sp=r&sv=2026-02-06&sr=b&scid=a8ef240d-a03b-5cec-aea9-ed31429d2cfe&skoid=bdd24bd8-9af5-4138-bfb1-19fba97a8611&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-20T11%3A13%3A30Z&ske=2026-10-21T11%3A13%3A30Z&sks=b&skv=2026-02-06&sig=C4rhLyS6ojtDttad53y/vXBNj%2BIx%2BOFJBtlBqxGJAbI%3D' -o /tmp/emdo-approved-banners/banners/ikore-kofi.webp
+          echo 'bd52db8973b1a87c0a1c5291a2d209f8bb01d5e0fdd3249ecfc215fd0c68ecd4  /tmp/emdo-approved-banners/banners/ikore-kofi.webp' | sha256sum --check --status
+          test "$(wc -c < /tmp/emdo-approved-banners/banners/ikore-kofi.webp)" -eq 332004
+          echo 'APPROVED_BANNER_DOWNLOADED_AND_HASH_VERIFIED ikore-kofi'
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 12 --max-time 65 'https://sdmntprbrazilsouth.oaiusercontent.com/files/00000000-807c-820e-a0bc-69a2c2c830af/raw?se=2026-10-20T18%3A11%3A07Z&sp=r&sv=2026-02-06&sr=b&scid=94fee1a1-c480-5947-854f-1175e55f82dc&skoid=bdd24bd8-9af5-4138-bfb1-19fba97a8611&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-20T17%3A47%3A31Z&ske=2026-10-21T17%3A47%3A31Z&sks=b&skv=2026-02-06&sig=Eqw4moZ/r2EXjXGtQ5VRA3L4xVs/ezLxaiyu2Le0mJk%3D' -o /tmp/emdo-approved-banners/banners/tropitop.webp
+          echo '318e7a67a3a71ab119b1aeff621d071177de6d2933b8a43ab3a4f9f775dcd44c  /tmp/emdo-approved-banners/banners/tropitop.webp' | sha256sum --check --status
+          test "$(wc -c < /tmp/emdo-approved-banners/banners/tropitop.webp)" -eq 300076
+          echo 'APPROVED_BANNER_DOWNLOADED_AND_HASH_VERIFIED tropitop'
+          echo 'ALL_APPROVED_BANNERS_VERIFIED'
       - name: Instalar SSH y navegador para control real
         run: |
           set -Eeuo pipefail
