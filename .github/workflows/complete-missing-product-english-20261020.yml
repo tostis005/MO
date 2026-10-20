@@ -31,11 +31,13 @@ jobs:
         run: |
           set -euo pipefail
           php -l .github/scripts/apply-missing-product-english-20261020.php
-          php -l .github/scripts/export-product-english-repair-20260820.php
+          php -l .github/scripts/export-missing-product-english-20261020.php
+          python3 -m py_compile .github/scripts/translate-missing-product-english-offline-20261020.py
           python3 -m py_compile .github/scripts/mdo-final-en-translate-v73.py
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
-          python3 -m pip install --quiet --disable-pip-version-check --break-system-packages deep-translator==1.11.4
+          python3 -m pip install --quiet --disable-pip-version-check --break-system-packages torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+          python3 -m pip install --quiet --disable-pip-version-check --break-system-packages transformers==4.46.3 sentencepiece==0.2.0 sacremoses==0.1.1
           mkdir -p /tmp/emdo-translate .deploy-status ~/.ssh
           chmod 700 ~/.ssh
           PORT="${STAGING_PORT:-22}"
@@ -63,7 +65,7 @@ jobs:
         run: |
           set -euo pipefail
           REMOTE="/tmp/mdo-en-export-${GITHUB_RUN_ID}.php"
-          sshpass -e scp -o StrictHostKeyChecking=yes -P "$SSH_PORT" .github/scripts/export-product-english-repair-20260820.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e scp -o StrictHostKeyChecking=yes -P "$SSH_PORT" .github/scripts/export-missing-product-english-20261020.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
           sshpass -e ssh -o StrictHostKeyChecking=yes -p "$SSH_PORT" "$STAGING_USER@$STAGING_HOST" "
             wp_bin=\$(command -v wp)
             php_bin=\$(command -v php || true)
@@ -77,55 +79,18 @@ jobs:
           python3 - <<'PY'
           import json,pathlib
           src=json.load(open('/tmp/emdo-translate/export.json',encoding='utf-8'))
-          eligible=[p for p in src['products'] if p['status']=='publish' and ('missing:' in p['reason'] or 'exact_copy:' in p['reason'])]
+          eligible=src['products']
           pathlib.Path('/tmp/emdo-translate/eligible.json').write_text(json.dumps({'site':src['site'],'products':eligible},ensure_ascii=False))
           print('ELIGIBLE_PRODUCTS',len(eligible),'TOTAL_EXPORTED',src['count'])
           PY
-      - name: Translate missing fields in manageable batches
+      - name: Translate missing fields locally without rate-limited external APIs
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import json, pathlib, subprocess, tempfile, re, html, collections
-          folder=pathlib.Path('/tmp/emdo-translate')
-          source=json.loads((folder/'eligible.json').read_text())
-          products=source['products']
-          script='.github/scripts/mdo-final-en-translate-v73.py'
-          translated=[]; failed=[]; batch_size=8
-          def translate_rows(rows):
-              with tempfile.TemporaryDirectory(dir=folder) as tmp:
-                  inp=pathlib.Path(tmp)/'in.json';out=pathlib.Path(tmp)/'out.json'
-                  inp.write_text(json.dumps({'site':source['site'],'products':rows},ensure_ascii=False))
-                  res=subprocess.run(['python3',script,str(inp),str(out)],capture_output=True,text=True,timeout=600)
-                  if res.returncode!=0 or not out.exists():
-                      raise RuntimeError((res.stderr+' '+res.stdout)[-700:])
-                  ans=json.loads(out.read_text())['products']
-                  if len(ans)!=len(rows):raise RuntimeError('Translation count mismatch')
-                  return ans
-          for offset in range(0,len(products),batch_size):
-              batch=products[offset:offset+batch_size]
-              try:
-                  result=translate_rows(batch)
-                  translated.extend(result)
-              except Exception as e:
-                  print('BATCH_RETRY',offset, str(e)[-400:],flush=True)
-                  for row in batch:
-                      try: translated.extend(translate_rows([row]))
-                      except Exception as exc: failed.append({'id':row['id'],'error':str(exc)[-250:]})
-              print('TRANSLATION_PROGRESS',min(offset+batch_size,len(products)),len(products),'ok',len(translated),'failed',len(failed),flush=True)
-          by_id={p['id']:p for p in products}
-          ready=[]
-          for row in translated:
-              original=by_id[row['id']]
-              title=row['title']
-              if re.search(r'BIO\s*&\s*FT',original['title'],re.I):
-                  title=re.sub(r'BIO\s*&\s*FT','BIO&FT',title,flags=re.I)
-                  if 'BIO&FT' not in title:title='BIO&FT '+title
-              ready.append({**row,'title':title,'source_title':original['title'],'source_excerpt':original['excerpt'],'source_content':original['content']})
-          (folder/'payload.json').write_text(json.dumps({'products':ready},ensure_ascii=False),encoding='utf-8')
-          (folder/'translate-report.json').write_text(json.dumps({'source_count':len(products),'translated_count':len(ready),'translation_failed':failed},ensure_ascii=False,indent=2))
-          print('TRANSLATION_COMPLETE',len(ready),'FAILED',len(failed),flush=True)
-          PY
+          python3 .github/scripts/translate-missing-product-english-offline-20261020.py \
+            /tmp/emdo-translate/eligible.json \
+            /tmp/emdo-translate/payload.json \
+            /tmp/emdo-translate/translate-report.json
       - name: Apply vetted translations to existing Falang product metadata
         shell: bash
         run: |
