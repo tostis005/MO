@@ -10,6 +10,8 @@ function wp_parse_url($url,$part=-1){ return $part===-1?parse_url($url):parse_ur
 function esc_url_raw($v){return $v;}
 function esc_html($v){return htmlspecialchars($v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');}
 function sanitize_text_field($v){return trim(strip_tags((string)$v));}
+function wp_strip_all_tags($v){return strip_tags((string)$v);}
+function wp_kses($v,$tags){return strip_tags((string)$v,'<p><h2><h3><h4><ul><ol><li><strong><b><em><br><span>');}
 function wp_json_encode($data,$opts=0){return json_encode($data,$opts);}
 function apply_filters($filter,$default){return $default;}
 function is_wp_error($v){return false;}
