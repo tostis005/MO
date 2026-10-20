@@ -157,18 +157,18 @@ jobs:
                       const title=card.querySelector('.store-data h2');
                       const button=card.querySelector('a.wcfmmp-visit-store');
                       const image=card.querySelector('.store-content');
-                      return {title:title?.textContent?.trim(),titleBox:title?rectangle(title):null,buttonBox:button?rectangle(button):null,imageBox:image?rectangle(image):null,overflow:title?title.scrollWidth-title.clientWidth:99};
+                      return {title:title?.textContent?.trim(),titleBox:title?rectangle(title):null,buttonBox:button?rectangle(button):null,imageBox:image?rectangle(image):null,bannerFit:image?.querySelector('.store-info')?getComputedStyle(image.querySelector('.store-info')).backgroundSize:null,overflow:title?title.scrollWidth-title.clientWidth:99};
                     })
                   };
                 });
                 console.log('PRODUCERS_LAYOUT',width,JSON.stringify(data));
                 if (!data.hasHeadStyle||data.hasOldNormalizer||data.cards<3) throw new Error('Missing or replaced directory at '+width);
-                const expected=width>1120?3:width>680?2:1;
+                const expected=width>760?2:1;
                 if(data.columns!==expected) throw new Error('Wrong column count '+width+': '+data.columns);
                 for(const m of data.measurements){
-                  if(!m.titleBox||!m.buttonBox||!m.imageBox||m.overflow>3||m.buttonBox.top<m.titleBox.bottom-2||m.buttonBox.width<150) throw new Error('Card geometry issue '+width+' '+JSON.stringify(m));
+                  if(!m.titleBox||!m.buttonBox||!m.imageBox||m.bannerFit!=='cover'||m.overflow>3||m.buttonBox.top<m.titleBox.bottom-2||m.buttonBox.width<78) throw new Error('Card geometry issue '+width+' '+JSON.stringify(m));
                   const ratio=m.imageBox.width/m.imageBox.height;
-                  if(Math.abs(ratio-16/9)>.08) throw new Error('Wrong banner ratio '+width+' '+ratio);
+                  if(Math.abs(ratio-(width>760?2.6:2.25))>.09) throw new Error('Wrong banner ratio '+width+' '+ratio);
                 }
               }
               console.log('PRODUCERS_RESPONSIVE_QA_SUCCESS');
