@@ -1,6 +1,6 @@
 # Plan editorial aprobado — Nuevos productores (20-10-2026)
 
-Estado: **24 temas aprobados**. Este archivo es la fuente persistente de control del trabajo en el repositorio MO (no sustituirlo por la memoria de una conversación).
+Estado: **24 temas aprobados; 3 publicados y verificados en español e inglés; 21 pendientes**. Este archivo es la fuente persistente de control del trabajo en el repositorio MO (no sustituirlo por la memoria de una conversación).
 
 ## Reglas editoriales acordadas
 - Publicar siempre versión española e inglesa con redacción natural, no traducción mecánica.
@@ -16,7 +16,7 @@ Estado: **24 temas aprobados**. Este archivo es la fuente persistente de control
 
 | Nº | Línea | Título ES | Estado |
 |---:|---|---|---|
-| 1 | Café | Cómo elegir el mejor café en grano para casa | Pendiente |
+| 1 | Café | Cómo elegir el mejor café en grano para casa | **Publicado · ES/EN verificado** |
 | 2 | Café | Café en grano o molido: diferencias y cuál comprar | Pendiente |
 | 3 | Café | Café de especialidad: qué es y por qué merece la pena | Pendiente |
 | 4 | Café | Qué café comprar para una cafetera italiana | Pendiente |
@@ -25,8 +25,8 @@ Estado: **24 temas aprobados**. Este archivo es la fuente persistente de control
 | 7 | Café | Café natural, torrefacto o mezcla: diferencias y cuál elegir | Pendiente |
 | 8 | Café | Qué café elegir para preparar un buen espresso en casa | Pendiente |
 | 9 | Café | Tipos de tueste del café: claro, medio y oscuro | Pendiente |
-| 10 | Chocolate | Cremas de cacao: diferencias, ingredientes y cómo elegir una buena | Pendiente |
-| 11 | Aguacates | Tipos de aguacate: Hass, Bacon, Fuerte y sus diferencias | Pendiente |
+| 10 | Chocolate | Cremas de cacao: diferencias, ingredientes y cómo elegir una buena | **Publicado · ES/EN verificado** |
+| 11 | Aguacates | Tipos de aguacate: Hass, Bacon, Fuerte y sus diferencias | **Publicado · ES/EN verificado** |
 | 12 | Aguacates | Cómo saber si un aguacate está maduro y cómo madurarlo | Pendiente |
 | 13 | Aguacates | Cuándo es temporada de aguacates en España | Pendiente |
 | 14 | Aguacates | Cómo conservar aguacates para que duren más | Pendiente |
@@ -42,7 +42,12 @@ Estado: **24 temas aprobados**. Este archivo es la fuente persistente de control
 | 24 | Frutas | Cajas de fruta de temporada a domicilio: cómo elegir y qué cantidad comprar | Pendiente |
 
 ## Tandas
-- Primera tanda prevista: nº 1, nº 10 y nº 11; representan café, chocolate y frutas. Se actualizará el estado exclusivamente tras confirmar publicación.
+- **Primera tanda publicada y verificada en producción el 20/10/2026:** nº 1 (café), nº 10 (cremas de cacao), nº 11 (variedades de aguacate).
+- Informe de ejecución y QA de seis URLs: https://github.com/tostis005/MO/actions/runs/39485533109
+- Nº 1: https://www.elmercadodeorigen.com/como-elegir-mejor-cafe-en-grano-para-casa/ · EN: https://www.elmercadodeorigen.com/en/how-to-choose-the-best-whole-bean-coffee-for-home/
+- Nº 10: https://www.elmercadodeorigen.com/cremas-de-cacao-como-elegir-ingredientes-diferencias/ · EN: https://www.elmercadodeorigen.com/en/chocolate-spreads-how-to-choose-ingredients-and-differences/
+- Nº 11: https://www.elmercadodeorigen.com/tipos-de-aguacate-hass-bacon-fuerte-diferencias/ · EN: https://www.elmercadodeorigen.com/en/avocado-varieties-hass-bacon-fuerte-differences/
+- **Imágenes:** nº 10 y nº 11 usan fotografías de productos publicados; nº 1 ha utilizado imagen editorial genérica por falta de coincidencia segura con café comercializable. Revisar la fotografía del artículo de café en la siguiente tanda.
 - Los restantes temas se producirán de forma progresiva, respetando este orden editorial o modificándolo con documentación del motivo.
 
 ## Comprobaciones previas
