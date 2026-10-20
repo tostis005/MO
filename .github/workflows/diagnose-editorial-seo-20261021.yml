@@ -62,9 +62,9 @@ jobs:
               try:
                   request=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 Editorial quality check'})
                   with urllib.request.urlopen(request,timeout=45) as res: page=res.read(3000000).decode('utf-8','replace')
-                  h=re.findall(r'<h1\\b[^>]*>[\\s\\S]*?</h1>',page,re.I)
+                  h=re.findall(r'<h1\b[^>]*>[\s\S]*?</h1>',page,re.I)
                   print('HEADINGS_URL',url,'H1_COUNT',len(h))
-                  for value in h:print('H1_FRAGMENT',re.sub(r'\\s+',' ',value)[:700])
+                  for value in h:print('H1_FRAGMENT',re.sub(r'\s+',' ',value)[:700])
                   for value in re.findall(r'<meta[^>]+(?:og:image|twitter:image)[^>]*>',page,re.I)[:8]:print('IMAGE_META',value[:500])
                   for value in re.findall(r'<link[^>]*hreflang[^>]*>',page,re.I)[:5]:print('HREFLANG',value[:550])
               except Exception as e:print('SEO_FETCH_ERROR',url,repr(e))
