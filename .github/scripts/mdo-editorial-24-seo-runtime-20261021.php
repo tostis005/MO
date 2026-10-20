@@ -54,9 +54,9 @@ $emdo_seo_24_routes = [
 $emdo_seo_24_route = trim((string)wp_parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH), '/');
 if (!isset($emdo_seo_24_routes[$emdo_seo_24_route])) return;
 
-// Install outermost buffer BEFORE other regular-plugin buffers. Outside the 48 routes no extra buffer.
-add_action('muplugins_loaded', static function (): void {
-    ob_start(static function (string $html): string {
+// Start immediately while MU plugins are loaded (before the global English SEO routes plugin).
+// Its final callback now runs AFTER the global URL rewrites; no buffering on unrelated routes.
+ob_start(static function (string $html): string {
         if (!is_singular('post')) return $html;
         $id = (int)get_queried_object_id();
         $plan_id = (int)get_post_meta($id, '_emdo_newprod_plan_id', true);
@@ -123,5 +123,4 @@ add_action('muplugins_loaded', static function (): void {
             }
         }
         return $html;
-    });
-}, -PHP_INT_MAX);
+});
