@@ -155,9 +155,18 @@ jobs:
                     cards:cards.length,
                     measurements:cards.map(card=>{
                       const title=card.querySelector('.store-data h2');
-                      const button=card.querySelector('a.wcfmmp-visit-store');
+                      const link=title?.querySelector('a');
+                      const oldButton=card.querySelector('a.wcfmmp-visit-store');
                       const image=card.querySelector('.store-content');
-                      return {title:title?.textContent?.trim(),titleBox:title?rectangle(title):null,buttonBox:button?rectangle(button):null,imageBox:image?rectangle(image):null,bannerFit:image?.querySelector('.store-info')?getComputedStyle(image.querySelector('.store-info')).backgroundSize:null,overflow:title?title.scrollWidth-title.clientWidth:99};
+                      const wrapper=card.querySelector('.store-wrapper');
+                      return {title:title?.textContent?.trim(),titleBox:title?rectangle(title):null,
+                        link:link?.href, linkTabIndex:link?.tabIndex,
+                        oldButtonHidden:!!oldButton&&getComputedStyle(oldButton).display==='none',
+                        linkOverlay:link?getComputedStyle(link,'::after').position:null,
+                        wrapperPointer:wrapper?getComputedStyle(wrapper).cursor:null,
+                        imageBox:image?rectangle(image):null,
+                        bannerFit:image?.querySelector('.store-info')?getComputedStyle(image.querySelector('.store-info')).backgroundSize:null,
+                        overflow:title?title.scrollWidth-title.clientWidth:99};
                     })
                   };
                 });
@@ -166,9 +175,50 @@ jobs:
                 const expected=width>760?2:1;
                 if(data.columns!==expected) throw new Error('Wrong column count '+width+': '+data.columns);
                 for(const m of data.measurements){
-                  if(!m.titleBox||!m.buttonBox||!m.imageBox||m.bannerFit!=='cover'||m.overflow>3||m.buttonBox.top<m.titleBox.bottom-2||m.buttonBox.width<78) throw new Error('Card geometry issue '+width+' '+JSON.stringify(m));
+                  if(!m.titleBox||!m.link||m.linkTabIndex!==0||!m.oldButtonHidden||m.linkOverlay!=='absolute'||m.wrapperPointer!=='pointer'||!m.imageBox||m.bannerFit!=='cover'||m.overflow>3) throw new Error('Card links or geometry issue '+width+' '+JSON.stringify(m));
                   const ratio=m.imageBox.width/m.imageBox.height;
                   if(Math.abs(ratio-(width>760?2.6:2.25))>.09) throw new Error('Wrong banner ratio '+width+' '+ratio);
+                }
+                // El pseudo-elemento del enlace debe ocupar de verdad fotografía,
+                // esquina y zona vacía del pie (no sólo el título).
+                const clickTest=await page.evaluate(()=>{
+                  const card=document.querySelector('#wcfmmp-stores-wrap li.wcfmmp-single-store');
+                  card.scrollIntoView({block:'center',behavior:'instant'});
+                  return true;
+                });
+                const hit=await page.evaluate(()=>{
+                  const card=document.querySelector('#wcfmmp-stores-wrap li.wcfmmp-single-store');
+                  const link=card.querySelector('.store-data h2 a');
+                  const media=card.querySelector('.store-content').getBoundingClientRect();
+                  const footer=card.querySelector('.store-footer').getBoundingClientRect();
+                  const wrapper=card.querySelector('.store-wrapper').getBoundingClientRect();
+                  const owns=(x,y)=>document.elementFromPoint(x,y)?.closest('a')===link;
+                  return {image:owns(media.left+media.width/2,media.top+media.height/2),
+                    footer:owns(footer.left+footer.width/2,footer.bottom-14),
+                    corner:owns(wrapper.left+18,wrapper.top+18),
+                    destination:link.href};
+                });
+                console.log('PRODUCERS_FULL_CARD_HIT',width,JSON.stringify(hit));
+                if(!hit.image||!hit.footer||!hit.corner) throw new Error('The full producer card is not clickable at '+width);
+                await Promise.all([
+                  page.waitForNavigation({waitUntil:'domcontentloaded',timeout:30000}),
+                  page.click('#wcfmmp-stores-wrap li.wcfmmp-single-store .store-content')
+                ]);
+                if(page.url().replace(/\\/$/,'')!==hit.destination.replace(/\\/$/,'')) throw new Error('Card image click landed on wrong page: '+page.url());
+                // Teclado: el enlace natural debe recibir foco y abrir con Enter.
+                if(width===390){
+                  await page.goto('https://www.elmercadodeorigen.com/productores/?keyboard='+process.env.GITHUB_RUN_ID,{waitUntil:'domcontentloaded',timeout:60000});
+                  await page.waitForSelector('#wcfmmp-stores-wrap li.wcfmmp-single-store .store-data h2 a',{timeout:25000});
+                  const keyboardUrl=await page.evaluate(()=>{
+                    const a=document.querySelector('#wcfmmp-stores-wrap li.wcfmmp-single-store .store-data h2 a');
+                    a.focus(); return a.href;
+                  });
+                  await Promise.all([
+                    page.waitForNavigation({waitUntil:'domcontentloaded',timeout:30000}),
+                    page.keyboard.press('Enter')
+                  ]);
+                  if(page.url().replace(/\\/$/,'')!==keyboardUrl.replace(/\\/$/,'')) throw new Error('Keyboard Enter did not open producer');
+                  console.log('PRODUCERS_KEYBOARD_ENTER_OK');
                 }
               }
               console.log('PRODUCERS_RESPONSIVE_QA_SUCCESS');
