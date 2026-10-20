@@ -1,0 +1,58 @@
+name: Seed disabled Tropitop supplier after EMDO deployment
+on:
+  workflow_run:
+    workflows: ['Deploy MDO Supplier Sync to production']
+    types: [completed]
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency:
+  group: emdo-tropitop-prelaunch-seed
+  cancel-in-progress: false
+jobs:
+  seed:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Verify deployed EMDO and register inactive producer
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "${STAGING_HOST:-}" && test -n "${STAGING_USER:-}" && test -n "${SSHPASS:-}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH'" <<'REMOTE'
+          set -Eeuo pipefail
+          P="$1"
+          WP_BIN=$(command -v wp)
+          PHP_BIN=$(command -v php || true)
+          [ -n "$PHP_BIN" ] || PHP_BIN=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          test -n "$PHP_BIN" && test -n "$WP_BIN"
+          VERSION=$("$PHP_BIN" "$WP_BIN" plugin get mdo-supplier-sync --field=version --path="$P" --allow-root)
+          test "$VERSION" = '1.0.67'
+          "$PHP_BIN" -d memory_limit=512M "$WP_BIN" eval-file "$P/wp-content/plugins/mdo-supplier-sync/scripts/onboard-tropitop.php" --path="$P" --allow-root
+          "$PHP_BIN" "$WP_BIN" option get mdo_tropitop_shipping_rates_verified --path="$P" --allow-root 2>/dev/null | grep -qx '1' && { echo 'ERROR: Tropitop shipping unexpectedly enabled'; exit 1; } || true
+          echo 'TROPITOP_INACTIVE_SUPPLIER_SEED_DONE'
+          REMOTE
