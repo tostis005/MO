@@ -382,8 +382,15 @@ for ( $i = $start; $i < $end; $i++ ) {
     } catch ( Throwable $e ) {
         $state['failed'][$pid] = array( 'url' => $url, 'reason' => substr( $e->getMessage(), 0, 250 ) );
         // The seller can now be active: quarantine a SKU failing final QA.
-        // Never leave an incomplete gallery/variation unexpectedly buyable.
-        if ( $woo_id ) {
+        // A PHP error can occur before import_source_product returns its ID.
+        // Recover only the unique supplier-specific SKU and verified WCFM author.
+        if ( ! $woo_id ) {
+            $candidate=wc_get_product_id_by_sku('TROPITOP-'.$pid);
+            if ( $candidate && (int)get_post_field('post_author',$candidate)===4971 ) {
+                $woo_id=(int)$candidate;
+            }
+        }
+        if ( $woo_id && (int)get_post_field('post_author',$woo_id)===4971 ) {
             $unsafe = wc_get_product( (int) $woo_id );
             if ( $unsafe ) {
                 $unsafe->set_status( 'draft' );
