@@ -67,6 +67,20 @@ add_action(
 				font-size: clamp(.98rem, 1.22vw, 1.1rem) !important;
 				line-height: 1.66 !important;
 			}
+			/* Los encabezados del tema llevan reglas de color de gran especificidad.
+			 * Este bloque garantiza contraste sobre el papel crema, sin tocar otras páginas. */
+			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-content .site-main section.emo-producers-intro h2 {
+				color: #173f32 !important;
+				-webkit-text-fill-color: #173f32 !important;
+			}
+			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-content .site-main section.emo-producers-intro p {
+				color: #536158 !important;
+				-webkit-text-fill-color: #536158 !important;
+			}
+			html body.elmercado-child-theme:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .site-content .site-main section.emo-producers-intro .emo-kicker {
+				color: #557258 !important;
+				-webkit-text-fill-color: #557258 !important;
+			}
 			/* Adaptar las tres piezas de la entradilla al mismo encabezado editorial en dos columnas. */
 			html body:is(.elmercado-producers-page,.wcfmmp-store-list-page,.wcfm-store-list-page) .emo-producers-intro .emo-kicker {
 				grid-column: 1 !important;
