@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 add_action(
 	'wp_head',
 	static function (): void {
-		if ( is_admin() || ! ( is_page( 'productores' ) || ( function_exists( 'wcfmmp_is_store_list_page' ) && wcfmmp_is_store_list_page() ) ) ) {
+		if ( is_admin() || ! ( is_page( array( 'productores', 'producers' ) ) || ( function_exists( 'wcfmmp_is_store_list_page' ) && wcfmmp_is_store_list_page() ) ) ) {
 			return;
 		}
 		?>
