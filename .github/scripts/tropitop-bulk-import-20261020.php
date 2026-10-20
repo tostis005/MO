@@ -277,6 +277,22 @@ if ( 'activate' === $phase ) {
 $limit = max( 1, min( 5, (int) ( getenv( 'TROPITOP_BULK_BATCH' ) ?: 2 ) ) );
 $start = (int) $state['cursor'];
 $retrying = false;
+// Product breadcrumbs now supply a trusted numeric category ID for slugs
+// absent from the static mapping. Retry those exact failures once.
+if ( $start >= $total && empty( $state['breadcrumb_retry_20261021'] ) ) {
+    $unlocked = 0;
+    foreach ( (array) ( $state['failed'] ?? array() ) as $pid => $failure ) {
+        if ( str_contains( (string) ( $failure['reason'] ?? '' ),
+            'configurar una URL de categoría para extraer las variantes' ) ) {
+            $state['retry_attempts'][$pid] = 0;
+            ++$unlocked;
+        }
+    }
+    $state['breadcrumb_retry_20261021'] = 1;
+    if ( $unlocked ) { unset( $state['finished_at'] ); }
+    update_option( $key, $state, false );
+    echo 'TROPITOP_BREADCRUMB_RETRY_UNLOCKED=' . $unlocked . "\n";
+}
 // One bounded recovery cycle specifically for price-matrix errors now fixed
 // by parsing genuine producer variant boxes and named unit presentations.
 // Never touch verified imported products or reset the 187-item catalog.
