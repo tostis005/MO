@@ -194,6 +194,14 @@ final class MDO_Woo_Importer {
                 $product->set_weight((string)$latitudes_inferred_weight['kg']);
             }
         }
+        // New Tropitop products become public immediately after the full
+        // photo and variation commit, not midway through a slow image request.
+        $publish_after_verified_import = 'tropitop' === (string) $supplier['code']
+            && ! $existing_id && 'publish' === $product->get_status();
+        if ( $publish_after_verified_import ) {
+            $product->set_status( 'draft' );
+            $product->set_catalog_visibility( 'hidden' );
+        }
         $product_id = $product->save();
 		if ( ! $product_id ) {
 			throw new RuntimeException( 'WooCommerce no pudo guardar el producto.' );
@@ -232,6 +240,15 @@ final class MDO_Woo_Importer {
 		}
 		if ( class_exists( 'MDO_YITH_Extras' ) ) {
 			MDO_YITH_Extras::sync_product( $product_id, $payload );
+		}
+		if ( $publish_after_verified_import ) {
+			$fresh = wc_get_product( $product_id );
+			if ( $fresh && $fresh->get_image_id() &&
+				( ! $is_variable || count( $fresh->get_children() ) === count( $variations ) ) ) {
+				$fresh->set_status( 'publish' );
+				$fresh->set_catalog_visibility( 'visible' );
+				$fresh->save();
+			}
 		}
 
 		update_post_meta( $product_id, '_emdo_source_product_id', $source_product_id );
