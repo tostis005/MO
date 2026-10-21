@@ -23,6 +23,8 @@ jobs:
           php -l .github/scripts/catalog-taxonomy-reconcile-20261021.php
           php -l mdo-supplier-sync/includes/class-mdo-woo-importer.php
           php tests/tropitop-smoke.php
+          php -l tests/catalog-taxonomy-smoke.php
+          php tests/catalog-taxonomy-smoke.php
           test -n "${STAGING_HOST:-}" && test -n "${STAGING_USER:-}" && test -n "${SSHPASS:-}"
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
