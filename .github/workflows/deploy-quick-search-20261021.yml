@@ -153,9 +153,11 @@ jobs:
             }
             echo "QUICK_SEARCH_API_OK suggestions=" . count($data["products"]) . PHP_EOL;
           ' /tmp/emdo-qs-response-$runid.json
-          curl -fsSL --retry 2 --max-time 30 "$site/wp-content/themes/elmercadodeorigen-child/assets/js/quick-search-20261021.js?release=$runid" | grep -q 'emoQuickSearchBound'
-          curl -fsSL --retry 2 --max-time 30 "$site/?quick_search_release=$runid" | grep -q 'quick-search-20261021.js'
-          rm -f /tmp/emdo-qs-response-$runid.json
+          curl -fsSL --retry 2 --max-time 30 "$site/wp-content/themes/elmercadodeorigen-child/assets/js/quick-search-20261021.js?release=$runid" -o /tmp/emdo-qs-script-$runid.js
+          grep -q 'emoQuickSearchBound' /tmp/emdo-qs-script-$runid.js
+          curl -fsSL --retry 2 --max-time 30 "$site/?quick_search_release=$runid" -o /tmp/emdo-qs-home-$runid.html
+          grep -q 'quick-search-20261021.js' /tmp/emdo-qs-home-$runid.html
+          rm -f /tmp/emdo-qs-response-$runid.json /tmp/emdo-qs-script-$runid.js /tmp/emdo-qs-home-$runid.html
           echo "PRODUCTION_QUICK_SEARCH_OK run=$runid backup=$backup"
           changed=0
           trap - EXIT
