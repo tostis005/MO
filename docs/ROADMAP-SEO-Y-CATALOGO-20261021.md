@@ -33,6 +33,8 @@ Regla: solo correcciones acotadas a artículos/productos nuevos y, excepcionalme
 - Kits: https://github.com/tostis005/MO/actions/runs/39569646917 (éxito).
 - Depuración visual de descripciones de categorías: https://github.com/tostis005/MO/actions/runs/39569430266 (instalación y QA pública correctas; el trabajo falló solo al registrar el informe en GitHub).
 - Los registros excluidos en supplier-sync conservan su estado en actualizaciones futuras. El importador limita productos marcados como pendiente de personalización. El antiguo script publicador masivo de Isabel incorpora un tope de seguridad para no ejecutar otra vez sobre el catálogo ya existente.
+- Despliegue del importador: https://github.com/tostis005/MO/actions/runs/39570522722 (éxito).
+- Verificación del publicador posterior: https://github.com/tostis005/MO/actions/runs/39570641272 (éxito, `ISABEL_ONE_TIME_PUBLISHER_SKIPPED_LIVE_CATALOG=95`), confirmando que no se republicaron los ocho artículos ocultados.
 
 ## Próximo lote lógico
 1. Verificar despliegue de protección contra republicación de Isabel.
