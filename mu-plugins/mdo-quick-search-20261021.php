@@ -75,6 +75,71 @@ function elmercado_quick_search_price_20261021( $product ): string {
 }
 
 /**
+ * Orden de relevancia del autocomplete: título exacto, comienzo del título,
+ * coincidencia en título y, por último, descripción corta (post_excerpt).
+ *
+ * La consulta normal con Enter conserva su relevancia original.
+ *
+ * @param string   $orderby Cláusula original de WordPress.
+ * @param WP_Query $query Consulta actual.
+ * @return string
+ */
+function elmercado_quick_search_orderby_20261021( string $orderby, WP_Query $query ): string {
+	if ( ! $query->get( 'emo_quick_search_20261021' ) ) {
+		return $orderby;
+	}
+
+	$term = trim( (string) $query->get( 's' ) );
+	if ( '' === $term ) {
+		return $orderby;
+	}
+
+	global $wpdb;
+	$like = $wpdb->esc_like( $term );
+
+	// Solo se aplica a la consulta acotada del autocomplete, nunca a búsquedas generales.
+	return $wpdb->prepare(
+		"CASE
+			WHEN {$wpdb->posts}.post_title = %s THEN 0
+			WHEN {$wpdb->posts}.post_title LIKE %s THEN 1
+			WHEN {$wpdb->posts}.post_title LIKE %s THEN 2
+			WHEN {$wpdb->posts}.post_excerpt LIKE %s THEN 3
+			ELSE 4
+		END ASC, {$wpdb->posts}.post_title ASC",
+		$term,
+		$like . '%',
+		'%' . $like . '%',
+		'%' . $like . '%'
+	);
+}
+add_filter( 'posts_orderby', 'elmercado_quick_search_orderby_20261021', 1000, 2 );
+
+/**
+ * Limita la búsqueda incremental al nombre y descripción corta de WooCommerce.
+ * La descripción larga (post_content) nunca debe originar una sugerencia.
+ *
+ * @param string                $term Búsqueda.
+ * @param array<string, mixed>  $tax_query Restricciones de visibilidad.
+ * @return array<string, mixed>
+ */
+function elmercado_quick_search_query_args_20261021( string $term, array $tax_query ): array {
+	return array(
+		'post_type'                  => 'product',
+		'post_status'                => 'publish',
+		's'                          => $term,
+		'search_columns'             => array( 'post_title', 'post_excerpt' ),
+		'emo_quick_search_20261021'  => true,
+		'posts_per_page'             => 12,
+		'no_found_rows'              => true,
+		'ignore_sticky_posts'        => true,
+		'suppress_filters'           => false,
+		'fields'                     => 'ids',
+		'orderby'                    => 'relevance',
+		'tax_query'                  => $tax_query,
+	);
+}
+
+/**
  * Responde exclusivamente con productos visibles, publicados y con existencias.
  * Cachea únicamente IDs para no congelar precios ni disponibilidad.
  *
@@ -100,7 +165,7 @@ function elmercado_quick_search_20261021( WP_REST_Request $request ): WP_REST_Re
 	$lang = in_array( $lang, array( 'es', 'en' ), true ) ? $lang : 'es';
 	$normalized = function_exists( 'mb_strtolower' ) ? mb_strtolower( $term, 'UTF-8' ) : strtolower( $term );
 	$role = current_user_can( 'manage_options' ) ? 'admin' : 'visitor';
-	$cache_key = 'emo_quick_search_' . md5( $lang . ':' . $role . ':' . $normalized );
+	$cache_key = 'emo_quick_search_v2_' . md5( $lang . ':' . $role . ':' . $normalized );
 
 	$ids = get_transient( $cache_key );
 	if ( ! is_array( $ids ) ) {
@@ -127,21 +192,8 @@ function elmercado_quick_search_20261021( WP_REST_Request $request ): WP_REST_Re
 			}
 		}
 
-		// WP_Query respeta también los filtros del catálogo/WCFM del sitio.
-		$query = new WP_Query(
-			array(
-				'post_type'           => 'product',
-				'post_status'         => 'publish',
-				's'                   => $term,
-				'posts_per_page'      => 12,
-				'no_found_rows'       => true,
-				'ignore_sticky_posts' => true,
-				'suppress_filters'    => false,
-				'fields'              => 'ids',
-				'orderby'             => 'relevance',
-				'tax_query'           => $tax_query,
-			)
-		);
+		// WP_Query sigue aplicando los filtros de visibilidad del marketplace.
+		$query = new WP_Query( elmercado_quick_search_query_args_20261021( $term, $tax_query ) );
 
 		$ids = array_values( array_filter( array_map( 'absint', (array) $query->posts ) ) );
 		set_transient( $cache_key, $ids, MINUTE_IN_SECONDS );
