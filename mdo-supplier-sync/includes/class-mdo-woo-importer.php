@@ -515,6 +515,7 @@ final class MDO_Woo_Importer {
             'bio' => array( 'Productos BIO', 'productos-bio', '' ),
             'apadrina-un-arbol' => array( 'Apadrina un árbol', 'apadrina-un-arbol', '' ),
             'cosmetica' => array( 'Cosmética', 'cosmetica', 'gourmet' ),
+            'cosmetica-natural' => array( 'Cosmética natural', 'cosmetica-natural', 'gourmet' ),
             'zumos-y-tes' => array( 'Zumos e infusiones', 'zumos-y-tes', 'gourmet' ),
         );
         if ( ! isset( $map[ $key ] ) ) {

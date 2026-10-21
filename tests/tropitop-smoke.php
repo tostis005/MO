@@ -113,6 +113,33 @@ if ( class_exists( 'DOMDocument' ) ) {
         'Single correctly priced 4-unit product must be parsable.' );
 }
 
+// PrestaShop quantity-by-volume variants: neither 1L nor 200ml is 1kg.
+$doc = new DOMDocument();
+@$doc->loadHTML( '<?xml encoding="UTF-8" ?><div class="product-variants">'
+    . '<div class="variant-box">3 x 1L 13,90 €</div>'
+    . '<div class="variant-box">5 x 1L 19,90 €</div>'
+    . '</div><aside><div class="variant-box">8kg 2,90 €</div></aside>' );
+$volume = reflected( 'sizes', new DOMXPath( $doc ) );
+verify( count( $volume ) === 2, '3x1L and 5x1L must remain separate.' );
+verify( abs( (float) ( $volume['unid:3.000:1 l cada unidad']['price'] ?? 0 ) - 13.90 ) < 0.001,
+    'Three bottles retain verified producer price.' );
+verify( ! isset( $volume['unid:3.000:1 l cada unidad']['weight_kg'] ),
+    'Volume alone is not verified shipping weight.' );
+$doc = new DOMDocument();
+@$doc->loadHTML( '<?xml encoding="UTF-8" ?><div class="product-variants">'
+    . '<div class="variant-box">12 x 200ml 15,90 €</div>'
+    . '<div class="variant-box">6 x 250ml 18,90 €</div></div>' );
+verify( count( reflected( 'sizes', new DOMXPath( $doc ) ) ) === 2,
+    '200ml and 250ml multipacks must parse.' );
+$doc = new DOMDocument();
+@$doc->loadHTML( '<?xml encoding="UTF-8" ?><div class="product-variants">'
+    . '<div class="variant-box">5.00 unid 32,90 € El kilo te sale a:5,48 € / kg</div>'
+    . '</div>' );
+$basket = reflected( 'sizes', new DOMXPath( $doc ) );
+verify( count( $basket ) === 1, 'Unit price must not block a real price.' );
+verify( abs( (float) ( $basket['unid:5.000']['weight_kg'] ?? 0 ) - 6.0 ) < 0.001,
+    'Direct source EUR/kg quote yields this basket 6kg weight.' );
+
 echo "Tropitop connector and shipping smoke checks passed.\n";
 
 $expected = array( 3 => 2.95, 4 => 2.95, 6 => 5.95, 8 => 5.95, 9 => 5.95,

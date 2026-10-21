@@ -336,6 +336,21 @@ if ( $start >= $total && empty( $state['category_alias_retry_20261020'] ) ) {
     update_option( $key, $state, false );
     echo 'TROPITOP_CATEGORY_RETRY_UNLOCKED=' . $reset . "\n";
 }
+// One targeted recovery after introducing multipack parsing and a verified
+// taxonomy alias. Preserve the completed 187-item cursor and successful SKUs.
+if ( $start >= $total && empty( $state['format_parser_retry_20261021'] ) ) {
+    $reopened = 0;
+    foreach ( (array) ( $state['failed'] ?? array() ) as $pid => $failure ) {
+        if ( ! in_array( (string) ( $failure['url'] ?? '' ), (array) $state['urls'], true ) ) { continue; }
+        // Exactly one fresh attempt per failed product after the parser change.
+        $state['retry_attempts'][$pid] = 1;
+        ++$reopened;
+    }
+    $state['format_parser_retry_20261021'] = 1;
+    if ( $reopened ) { unset( $state['finished_at'] ); }
+    update_option( $key, $state, false );
+    echo 'TROPITOP_FORMAT_RECOVERY_UNLOCKED=' . $reopened . "\n";
+}
 // The saved cursor is authoritative for first-pass progress. After reaching
 // the end, retry only failed source URLs (at most twice), never regenerate the
 // entire catalog merely because a previous upload was interrupted.

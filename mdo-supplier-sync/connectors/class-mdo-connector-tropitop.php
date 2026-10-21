@@ -135,6 +135,7 @@ final class MDO_Connector_Tropitop {
             // are staged as drafts, with shipping blocked until actual
             // packed weights are verified by the supplier.
             if ( 'kg' === $unit ) { $v['weight_kg'] = $amount; }
+            elseif ( isset( $row['weight_kg'] ) ) { $v['weight_kg'] = (float) $row['weight_kg']; }
             $variations[] = $v;
         }
         if ( ! $variations ) {
@@ -267,31 +268,69 @@ final class MDO_Connector_Tropitop {
             $root
         );
         foreach ( $nodes ?: array() as $node ) {
-            $text = trim( preg_replace( '/\s+/u', ' ', html_entity_decode( (string) $node->textContent, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) ) );
-            // Only explicit size + EUR price pairs can become a variation.
-            // Do not treat €/kg unit prices as a box price.
-            if ( ! preg_match( '/\b(\d+(?:[.,]\d+)?)\s*(kg|kilos?|unid(?:ades)?|uds?|u)\b/iu',
-                $text, $weight_match, PREG_OFFSET_CAPTURE ) ) { continue; }
-            if ( ! preg_match( '/(\d{1,5}(?:[.,]\d{2}))\s*€/u', $text, $price_match ) ) { continue; }
-            if ( preg_match( '/€\s*\/\s*kg|€\s*por\s*kg/iu', $text ) ) { continue; }
-            $amount = (float) str_replace( ',', '.', $weight_match[1][0] );
-            $unit = preg_match( '/^(?:kg|kilo)/iu', $weight_match[2][0] ) ? 'kg' : 'unid';
+            $text = trim( preg_replace( '/\s+/u', ' ', html_entity_decode(
+                (string) $node->textContent, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) ) );
+            // A size option is one node. Ignore ancestors with several options.
+            $pattern = '/\b\d+(?:[.,]\d+)?\s*(?:[x×]\s*\d+(?:[.,]\d+)?\s*)?(?:kg|kilos?|unid(?:ades)?|uds?|u|litros?|l|ml|cl|gr(?:amos?)?|g)\b/iu';
+            if ( preg_match_all( $pattern, $text ) !== 1 ) { continue; }
+            // A quoted €/kg is unit-price metadata, NOT an extra option.
+            $clean = preg_replace( '/(?:el\s+kilo\s+te\s+sale\s+a\s*:?\s*)?\d+(?:[.,]\d{2})\s*€\s*\/\s*kg\b/iu', '', $text );
+            if ( ! preg_match( '/(\d{1,5}(?:[.,]\d{2}))\s*€/u', $clean, $price_match ) ) { continue; }
+            $amount = 0.0; $unit = 'unid'; $suffix = ''; $offset = 0;
+            // Producer format "3 x 1L" = 3 pieces of 1L, not 3kg.
+            if ( preg_match( '/\b(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(kg|kilos?|litros?|l|ml|cl|gr(?:amos?)?|g)\b/iu',
+                $clean, $bundle, PREG_OFFSET_CAPTURE ) ) {
+                $amount = (float) str_replace( ',', '.', $bundle[1][0] );
+                $content = (float) str_replace( ',', '.', $bundle[2][0] );
+                $raw_unit = mb_strtolower( $bundle[3][0] );
+                $unit_name = preg_match( '/^(?:l|litro)/u', $raw_unit ) ? 'L'
+                    : ( preg_match( '/^(?:kg|kilo)/u', $raw_unit ) ? 'kg'
+                    : ( preg_match( '/^(?:g|gr)/u', $raw_unit ) ? 'g' : $raw_unit ) );
+                $suffix = rtrim( rtrim( number_format( $content, 3, '.', '' ), '0' ), '.' )
+                    . ' ' . $unit_name . ' cada unidad';
+                $offset = $bundle[0][1];
+            } elseif ( preg_match( '/\b(\d+(?:[.,]\d+)?)\s*(kg|kilos?|unid(?:ades)?|uds?|u|litros?|l|ml|cl|gr(?:amos?)?|g)\b/iu',
+                $clean, $single, PREG_OFFSET_CAPTURE ) ) {
+                $amount = (float) str_replace( ',', '.', $single[1][0] );
+                $raw_unit = mb_strtolower( $single[2][0] );
+                $offset = $single[0][1];
+                if ( preg_match( '/^(?:kg|kilo)/u', $raw_unit ) ) {
+                    $unit = 'kg';
+                } elseif ( preg_match( '/^(?:g|gr)/u', $raw_unit ) ) {
+                    $unit = 'kg'; $amount /= 1000;
+                } elseif ( preg_match( '/^(?:l|litro|ml|cl)/u', $raw_unit ) ) {
+                    $suffix = rtrim( rtrim( number_format( $amount, 3, '.', '' ), '0' ), '.' )
+                        . ' ' . ( preg_match( '/^(?:l|litro)/u', $raw_unit ) ? 'L' : $raw_unit );
+                    $amount = 1.0;
+                }
+            } else { continue; }
             $label = trim( (string) preg_replace( '/[\s\-–—:]+$/u', '',
-                substr( $text, 0, $weight_match[0][1] ) ) );
-            // Source labels such as "Tradicional - 4 u." and "Sin azúcar - 4 u."
-            // are distinct variations, even when both boxes contain four jars.
-            // Never merge different prices under the same quantity.
+                substr( $clean, 0, $offset ) ) );
             $label = mb_substr( sanitize_text_field( $label ), 0, 70 );
+            if ( $suffix !== '' ) { $label = trim( $label . ( $label !== '' ? ' — ' : '' ) . $suffix ); }
             $price = (float) str_replace( ',', '.', $price_match[1] );
             if ( $amount <= 0 || $amount > 60 || $price <= 0 || $price > 10000 ) { continue; }
-            $key = $unit . ':' . number_format( $amount, 3, '.', '' ) . ( $label !== '' ? ':' . mb_strtolower( $label ) : '' );
-            // Ignore ancestor nodes containing multiple options.
-            if ( preg_match_all( '/\b\d+(?:[.,]\d+)?\s*(?:kg|kilos?|unid(?:ades)?|uds?|u)\b/iu', $text ) !== 1 ) { continue; }
-            $output[ $key ] = array(
+            $key = $unit . ':' . number_format( $amount, 3, '.', '' )
+                . ( $label !== '' ? ':' . mb_strtolower( $label ) : '' );
+            $entry = array(
                 'amount' => $amount, 'unit' => $unit,
                 'label' => $label, 'price' => $price,
                 'unavailable' => (bool) preg_match( '/agotad[oa]|sin\s*stock|out\s*of\s*stock/iu', $text ),
             );
+            // When this SAME option explicitly displays EUR/kg, derive its
+            // stated kilograms from two source prices (32,90 / 5,48 = 6kg).
+            // Never invent weight from liquid volume or a count of jars.
+            if ( 'unid' === $unit && preg_match(
+                '/(?:el\s+kilo\s+te\s+sale\s+a\s*:?\s*)?(\d+(?:[.,]\d{2}))\s*€\s*\/\s*kg\b/iu',
+                $text, $per_kg ) ) {
+                $rate = (float) str_replace( ',', '.', $per_kg[1] );
+                $weight = $rate > 0 ? $price / $rate : 0.0;
+                $rounded = round( $weight * 4 ) / 4;
+                if ( $rounded > 0 && $rounded <= 36 && abs( $weight - $rounded ) < 0.02 ) {
+                    $entry['weight_kg'] = $rounded;
+                }
+            }
+            $output[ $key ] = $entry;
         }
         ksort( $output, SORT_NATURAL );
         return $output;
