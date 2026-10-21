@@ -3,12 +3,17 @@ on:
   workflow_run:
     workflows: ["Hand-authored first 18 Tropitop English product fiches"]
     types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/verify-tropitop-first18-handenglish-public-20261021.py'
+      - '.github/workflows/verify-tropitop-first18-handenglish-public-20261021.yml'
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   verify:
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
