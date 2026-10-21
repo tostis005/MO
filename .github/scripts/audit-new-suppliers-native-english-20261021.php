@@ -64,7 +64,19 @@ foreach($codes as $code){
 // Ikore Kofi is deliberately a manual WooCommerce producer, not a supplier-sync record.
 $ikore=get_user_by('login','ikore-kofi');
 if($ikore){
-    $ids=get_posts(['post_type'=>'product','author'=>(int)$ikore->ID,'post_status'=>'publish','posts_per_page'=>100,'fields'=>'ids','suppress_filters'=>true]);
+    // Six audited, manually provisioned SKUs: do not use a broad vendor
+    // author query; unrelated catalog products can share a user account.
+    $official_skus=['46002/V0112','46002/V0116','46002/V0122','46002/V0123','46002/V0127','46002/V0124'];
+    $ids=[];
+    foreach($official_skus as $sku){
+        $id=(int)wc_get_product_id_by_sku($sku);
+        if(!$id)continue;
+        $candidate=wc_get_product($id);
+        if(!$candidate||$candidate->get_status()!=='publish'||
+          (int)get_post_field('post_author',$id)!==(int)$ikore->ID||
+          (string)get_post_meta($id,'_mdo_ikore_manual',true)!=='1')continue;
+        $ids[]=$id;
+    }
     $counts=['published'=>count($ids),'published_buyable'=>0,'missing_english_native'=>0,'missing_english_title'=>0,'missing_english_excerpt'=>0,'missing_english_content'=>0,'english_not_published'=>0];
     $issues=[];
     foreach($ids as $id){
@@ -86,6 +98,6 @@ if($ikore){
             $issues[]=['id'=>(int)$id,'title'=>$p->get_name(),'missing'=>$missing,'url'=>get_permalink($id)];
         }
     }
-    $result['suppliers']['ikore-kofi']=['mode'=>'manual_woocommerce','counts'=>$counts,'issues'=>$issues];
+    $result['suppliers']['ikore-kofi']=['mode'=>'six_verified_manual_skus','expected_skus'=>count($official_skus),'counts'=>$counts,'issues'=>$issues];
 }
 echo 'EMDO_NEW_SUPPLIER_ENGLISH_QA='.wp_json_encode($result,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE).PHP_EOL;
