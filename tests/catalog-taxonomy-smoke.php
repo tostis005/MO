@@ -5,7 +5,7 @@ class WP_Term{ public int $term_id;function __construct(int $id){$this->term_id=
 function wp_parse_url($url,$part=-1){return parse_url($url,$part);}
 function sanitize_title($s){return strtolower(trim(preg_replace('/[^a-z0-9-]+/i','-',(string)$s),'-'));}
 function get_term_by($field,$slug,$taxonomy) {
-  static $slugs=['conservas'=>435,'mermeladas-y-confituras'=>601,'bebidas'=>602,
+  static $slugs=['aceites'=>16,'conservas'=>435,'mermeladas-y-confituras'=>601,'bebidas'=>602,
     'zumos-nectares-y-limonadas'=>603,'tes-e-infusiones'=>604,'mieles'=>605,
     'frutos-secos'=>606,'frutas'=>514,'frutas-del-mundo'=>520,'packs-y-lotes'=>409,
     'hortalizas-verduras'=>434,'foie-pates-untables'=>495,'cosmetica-natural'=>524];
@@ -31,6 +31,14 @@ assert_cats('gourmet','Pack de avellanas y almendras',[606,409]);
 assert_cats('gourmet','Dátiles medjoul de marruecos',[514,520]);
 assert_cats('gourmet','Pack de patés de aceituna artesanales',[495,409]);
 assert_cats('gourmet','Tomates raf y aceite de oliva',[434,409]);
+assert_cats('gourmet','Mermelada de melocotón',[435,601]);
+assert_cats('gourmet','Pack de mermeladas',[435,601,409]);
+assert_cats('gourmet','Aceite de oliva',[16]);
+assert_cats('gourmet','Nueces',[606]);
+assert_cats('gourmet','Pack de zumos bio',[602,603,409]);
+assert_cats('gourmet','Pack infusiones bio',[602,604,409]);
+assert_cats('gourmet','Cesta regalo desayuno natural y bienestar premium',[409]);
+assert_cats('gourmet','Pack mediterráneo: aguacates, tomates raf y aceite oliva',[514,434,409]);
 assert_cats('cosmetica-natural','Pack cosmética con miel online',[524,409]);
 assert_cats('frutas-del-mundo','Jengibre',[434]);
 $blocked=false;
