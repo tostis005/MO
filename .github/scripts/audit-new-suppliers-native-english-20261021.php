@@ -102,4 +102,19 @@ if($ikore){
     }
     $result['suppliers']['ikore-kofi']=['mode'=>'six_verified_manual_skus','expected_skus'=>count($official_skus),'counts'=>$counts,'issues'=>$issues];
 }
+// Emit bounded targeted review rows separately: whole audit JSON may be
+// clipped by job logs. Never publish the WordPress vendor user details.
+foreach(['chocolates-artesanos-isabel','latitudes'] as $review_code){
+    $issues=$result['suppliers'][$review_code]['issues']??[];
+    foreach($issues as $issue){
+        if(($issue['type']??'')!=='native_english_missing')continue;
+        echo 'EMDO_EN_NATIVE_TARGET='.wp_json_encode([
+            'supplier'=>$review_code,
+            'product_id'=>(int)$issue['id'],
+            'title'=>$issue['title'],
+            'missing'=>$issue['missing'],
+            'url'=>$issue['url'],
+        ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
+    }
+}
 echo 'EMDO_NEW_SUPPLIER_ENGLISH_QA='.wp_json_encode($result,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE).PHP_EOL;
