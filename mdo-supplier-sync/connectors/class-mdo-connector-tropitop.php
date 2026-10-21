@@ -116,6 +116,7 @@ final class MDO_Connector_Tropitop {
         if ( self::missing_prices( $sizes ) ) {
             throw new RuntimeException( 'Tropitop: precio de una presentación no verificado.' );
         }
+        $description = self::product_description( $xp );
         $variations = array();
         foreach ( $sizes as $key => $row ) {
             $amount = (float) $row['amount'];
@@ -136,6 +137,22 @@ final class MDO_Connector_Tropitop {
             // packed weights are verified by the supplier.
             if ( 'kg' === $unit ) { $v['weight_kg'] = $amount; }
             elseif ( isset( $row['weight_kg'] ) ) { $v['weight_kg'] = (float) $row['weight_kg']; }
+            else {
+                $estimated = null; $basis = '';
+                if ( isset( $row['net_volume_l'] ) && isset( $row['container_count'] ) ) {
+                    $estimated = self::estimated_chargeable_weight(
+                        (float) $row['net_volume_l'], (int) $row['container_count'] );
+                    $basis = 'liquid_volume_with_packaging';
+                } elseif ( preg_match( '/mermelada/iu', $name ) ) {
+                    $estimated = self::estimated_jar_weight( $row, $description );
+                    $basis = 'jar_net_weight_with_packaging';
+                }
+                if ( null !== $estimated ) {
+                    $v['weight_kg'] = $estimated;
+                    $v['shipping_weight_estimated'] = true;
+                    $v['shipping_weight_basis'] = $basis;
+                }
+            }
             $variations[] = $v;
         }
         if ( ! $variations ) {
@@ -144,7 +161,6 @@ final class MDO_Connector_Tropitop {
         $min = min( array_column( $variations, 'display_price' ) );
         // Write original neutral text; the source's descriptions and photography
         // must not be reproduced until usage rights have been confirmed.
-        $description = self::product_description( $xp );
         if ( '33' !== $id && '' === trim( wp_strip_all_tags( $description ) ) ) {
             throw new RuntimeException( 'Tropitop: descripción comercial de origen insuficiente.' );
         }
@@ -317,6 +333,28 @@ final class MDO_Connector_Tropitop {
                 'label' => $label, 'price' => $price,
                 'unavailable' => (bool) preg_match( '/agotad[oa]|sin\s*stock|out\s*of\s*stock/iu', $text ),
             );
+            // Read net volume from this exact PrestaShop presentation, not
+            // a similar item in the global menu or related-products block.
+            // Shipping weight itself is estimated with a packaging buffer.
+            if ( 'unid' === $unit && preg_match(
+                '/\b(\d{1,2})\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(litros?|l|ml|cl)\b/iu',
+                $text, $multi ) ) {
+                $units = (int) $multi[1];
+                $volume_l = self::volume_in_liters(
+                    (float) str_replace( ',', '.', $multi[2] ), $multi[3] );
+                if ( $units === (int) $amount && null !== $volume_l ) {
+                    $entry['net_volume_l'] = $units * $volume_l;
+                    $entry['container_count'] = $units;
+                }
+            } elseif ( 'unid' === $unit && preg_match(
+                '/\b(\d+(?:[.,]\d+)?)\s*(litros?|l|ml|cl)\b/iu', $text, $single_volume ) ) {
+                $volume_l = self::volume_in_liters(
+                    (float) str_replace( ',', '.', $single_volume[1] ), $single_volume[2] );
+                if ( null !== $volume_l && 1.0 === $amount ) {
+                    $entry['net_volume_l'] = $volume_l;
+                    $entry['container_count'] = 1;
+                }
+            }
             // When this SAME option explicitly displays EUR/kg, derive its
             // stated kilograms from two source prices (32,90 / 5,48 = 6kg).
             // Never invent weight from liquid volume or a count of jars.
@@ -334,6 +372,42 @@ final class MDO_Connector_Tropitop {
         }
         ksort( $output, SORT_NATURAL );
         return $output;
+    }
+
+    /** Read liquid net content only. Units of fruit have no volume. */
+    private static function volume_in_liters( float $amount, string $unit ): ?float {
+        $u = mb_strtolower( trim( $unit ), 'UTF-8' );
+        if ( $amount <= 0 ) { return null; }
+        if ( preg_match( '/^(?:l|litros?)$/u', $u ) ) { return $amount; }
+        if ( 'ml' === $u ) { return $amount / 1000.0; }
+        if ( 'cl' === $u ) { return $amount / 100.0; }
+        return null;
+    }
+
+    /**
+     * Merchant-authorized CHARGEABLE weight (not producer-certified net mass):
+     * 1.10 kg per litre/kg net + 0.35 kg per container + 0.75 kg parcel.
+     * Round UP to half a kg and stay within validated shipping bands.
+     */
+    private static function estimated_chargeable_weight( float $net, int $containers ): ?float {
+        if ( $net <= 0 || $net > 24 || $containers < 1 || $containers > 24 ) { return null; }
+        $kg = ceil( ( $net * 1.10 + $containers * 0.35 + 0.75 ) * 2 ) / 2;
+        return $kg <= 30 ? $kg : null;
+    }
+
+    /** Source copy must explicitly say "4 botes de 200g" for a 4-jar pack. */
+    private static function estimated_jar_weight( array $row, string $description ): ?float {
+        if ( (string) ( $row['unit'] ?? '' ) !== 'unid' ) { return null; }
+        $count = (float) ( $row['amount'] ?? 0 );
+        if ( $count < 1 || $count > 24 || $count !== floor( $count ) ) { return null; }
+        if ( ! preg_match(
+            '/\b(\d{1,2})\s*botes?\s+de\s+(\d{2,4}(?:[.,]\d+)?)\s*(?:g|gr|gramos?)\b/iu',
+            wp_strip_all_tags( $description ), $matches
+        ) ) { return null; }
+        $jars = (int) $matches[1];
+        $grams = (float) str_replace( ',', '.', $matches[2] );
+        if ( $jars !== (int) $count || $grams < 50 || $grams > 1000 ) { return null; }
+        return self::estimated_chargeable_weight( $jars * $grams / 1000, $jars );
     }
 
     private static function missing_prices( array $sizes ): bool {

@@ -676,6 +676,16 @@ final class MDO_Woo_Importer {
 			$variation->set_stock_status( ! empty( $source_variation['is_in_stock'] ) ? 'instock' : 'outofstock' );
 			$variation_id = $variation->save();
 			update_post_meta( $variation_id, '_emdo_source_variation_id', $source_id );
+			// Keep an internal audit trail for merchant-authorized approximate
+			// shipping weights; customer-facing units/prices stay source-exact.
+			if ( ! empty( $source_variation['shipping_weight_estimated'] ) ) {
+				update_post_meta( $variation_id, '_mdo_tropitop_weight_estimated', '1' );
+				update_post_meta( $variation_id, '_mdo_tropitop_weight_basis',
+					sanitize_text_field( (string) ( $source_variation['shipping_weight_basis'] ?? '' ) ) );
+			} else {
+				delete_post_meta( $variation_id, '_mdo_tropitop_weight_estimated' );
+				delete_post_meta( $variation_id, '_mdo_tropitop_weight_basis' );
+			}
 			$seen[ $source_id ] = true;
 		}
 

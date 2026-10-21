@@ -351,6 +351,25 @@ if ( $start >= $total && empty( $state['format_parser_retry_20261021'] ) ) {
     update_option( $key, $state, false );
     echo 'TROPITOP_FORMAT_RECOVERY_UNLOCKED=' . $reopened . "\n";
 }
+// A merchant-approved weight estimate now allows liters and explicit jam
+// jars to use the existing global WCFM weight bands. Do not touch 127+
+// approved SKUs; reopen only former weight/price blockers one further time.
+if ( $start >= $total && empty( $state['approx_weight_retry_20261021'] ) ) {
+    $reopened = 0;
+    foreach ( (array) ( $state['failed'] ?? array() ) as $pid => $failure ) {
+        $reason = (string) ( $failure['reason'] ?? '' );
+        if ( ! str_contains( $reason, 'falta el peso embalado' ) &&
+            ! str_contains( $reason, 'matriz de pesos/precios incompleta' ) &&
+            ! str_contains( $reason, 'precio de una presentación no verificado' ) ) { continue; }
+        if ( ! in_array( (string) ( $failure['url'] ?? '' ), (array) $state['urls'], true ) ) { continue; }
+        $state['retry_attempts'][$pid] = 1;
+        ++$reopened;
+    }
+    $state['approx_weight_retry_20261021'] = 1;
+    if ( $reopened ) { unset( $state['finished_at'] ); }
+    update_option( $key, $state, false );
+    echo 'TROPITOP_APPROX_WEIGHT_RETRY_UNLOCKED=' . $reopened . "\n";
+}
 // The saved cursor is authoritative for first-pass progress. After reaching
 // the end, retry only failed source URLs (at most twice), never regenerate the
 // entire catalog merely because a previous upload was interrupted.
