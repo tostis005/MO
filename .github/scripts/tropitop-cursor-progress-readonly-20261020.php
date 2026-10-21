@@ -121,3 +121,41 @@ foreach($failed as $id=>$entry){$product=isset($entry['woo_id'])?wc_get_product(
 // Source-backed unit-pack weight recovery audit 2026-10-21.
 
 // Final post-curated-weight audit for source publication and remaining 10 defects, 2026-10-21.
+
+
+// Read-only first-party selector probe for the four outstanding matrix cases.
+foreach (array(
+    '2365'=>'https://tropitop.com/es/packs/2365-comprar-sandia-y-melon-piel-de-sapo.html',
+    '2525'=>'https://tropitop.com/es/gourmet/2525-comprar-miel-azahar-artesanal-2kg.html',
+    '2526'=>'https://tropitop.com/es/gourmet/2526-comprar-miel-montana-artesanal-4x500g.html',
+    '2685'=>'https://tropitop.com/es/packs/2685-pack-sabor-verano-sandia-melones.html',
+) as $product_id=>$product_url){
+    $resp=wp_remote_get($product_url,array('timeout'=>18,'redirection'=>2,
+        'headers'=>array('Accept-Language'=>'es-ES,es;q=0.9'),
+        'user-agent'=>'EMDO/'.MDO_SUPPLIER_SYNC_VERSION));
+    if(is_wp_error($resp)){
+        echo 'TROPITOP_SELECTOR_PROBE='.wp_json_encode(array(
+            'id'=>$product_id,'error'=>$resp->get_error_message())).PHP_EOL;
+        continue;
+    }
+    $body=(string)wp_remote_retrieve_body($resp);
+    $dom=new DOMDocument();
+    @$dom->loadHTML('<?xml encoding="UTF-8" ?>'.$body,LIBXML_NONET|LIBXML_NOERROR|LIBXML_NOWARNING);
+    $xp=new DOMXPath($dom);
+    $values=array();
+    foreach($xp->query('//*[contains(concat(" ",normalize-space(@class)," ")," product-variants ")]//*[self::label or self::button or self::option or self::div[contains(concat(" ",normalize-space(@class)," ")," variant-box ")]]')?:array() as $n){
+        $label=trim(preg_replace('/\s+/u',' ',html_entity_decode((string)$n->textContent,ENT_QUOTES|ENT_HTML5,'UTF-8')));
+        if($label!=='' && mb_strlen($label)<220){$values[]=$label;}
+        if(count($values)>20){break;}
+    }
+    $values=array_values(array_unique($values));
+    $title=$xp->query('//h1[1]');
+    $sale=$xp->query('//*[contains(@class,"product-availability") or @id="product-availability"]');
+    echo 'TROPITOP_SELECTOR_PROBE='.wp_json_encode(array(
+        'id'=>$product_id,'http'=>(int)wp_remote_retrieve_response_code($resp),
+        'bytes'=>strlen($body),
+        'h1'=>$title&&$title->length?trim((string)$title->item(0)->textContent):'',
+        'variant_labels'=>$values,
+        'availability'=>$sale&&$sale->length?trim((string)$sale->item(0)->textContent):'',
+    ),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
+}
