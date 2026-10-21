@@ -101,6 +101,8 @@ foreach ( $rows as $row ) {
         $payload['source_url'] = (string) ( $payload['source_url'] ?? $row['source_url'] ?? '' );
         $payload['title'] = (string) ( $payload['title'] ?? $row['title'] ?? $product->get_name() );
 
+        $corrected_title = MDO_Tropitop_Editorial::title( (string) $product->get_name() );
+        $title_changed = $corrected_title !== (string) $product->get_name();
         $before_description = (string) $product->get_description('edit');
         $before_short = (string) $product->get_short_description('edit');
         $after_description = MDO_Tropitop_Editorial::description(
@@ -120,12 +122,12 @@ foreach ( $rows as $row ) {
         // The importer owns the authoritative, bounded source taxonomy.
         $new_cats = MDO_Woo_Importer::tropitop_category_ids( $payload, $mode === 'apply' );
         sort($new_cats);
-        $text_changed = $before_description !== $after_description || $before_short !== $after_short;
+        $text_changed = $before_description !== $after_description || $before_short !== $after_short || $title_changed;
         $categories_changed = $current_cats !== $new_cats;
         $details = array(
             'id' => $id, 'sku' => (string) $product->get_sku(),
             'title' => (string) $product->get_name(),
-            'copy_changed' => $text_changed, 'category_changed' => $categories_changed,
+            'copy_changed' => $text_changed, 'title_changed' => $title_changed, 'category_changed' => $categories_changed,
             'categories_before' => $current_cats, 'categories_after' => $new_cats,
             'remaining' => $flags,
             'description_empty' => '' === trim(wp_strip_all_tags($after_description)),
@@ -134,6 +136,7 @@ foreach ( $rows as $row ) {
         if ( $categories_changed ) { ++$counts['changed_categories']; }
         if ( $mode === 'apply' && ( $text_changed || $categories_changed ) ) {
             // No price, image, slug, stock, variant, weight or visibility changes.
+            if ( $title_changed ) { $product->set_name( $corrected_title ); }
             if ( $text_changed ) {
                 $product->set_description( $after_description );
                 $product->set_short_description( $after_short );
