@@ -23,7 +23,7 @@ check(str_contains($clean,'piel fina'),'Factual sensory details must survive');
 check(!str_contains($clean,'colesterol'),'Generic source health claims removed');
 check(!str_contains($clean,'nuestra'),'Supplier first-person removed');
 check(!str_contains($clean,'tropitop.com'),'Outbound producer checkout removed');
-check(MDO_Tropitop_Editorial::residual_markers($clean)===array(),'No residual flags');
+check(MDO_Tropitop_Editorial::residual_markers($clean)===array(),'No residual flags: '.json_encode(MDO_Tropitop_Editorial::residual_markers($clean)).' CLEAN='.substr(strip_tags($clean),0,500));
 $short=MDO_Tropitop_Editorial::short_description('<p>Nuestras berenjenas llegan a tu casa.</p><p>Formato 3 kg.</p>');
 check(!str_contains($short,'Nuestras'),'Short supplier pitch removed');
 check(str_contains($short,'3 kg'),'Neutral short facts preserved');
