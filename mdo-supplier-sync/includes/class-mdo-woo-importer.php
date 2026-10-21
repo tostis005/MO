@@ -615,7 +615,7 @@ final class MDO_Woo_Importer {
         $ids = array( (int) $term->term_id );
         // Keep broad category navigation consistent with other producers.
         // Child terms Aguacates and Mangos remain more precise filters.
-        if ( $parent_id > 0 && in_array( $key, array( 'aguacates', 'mangos' ), true ) ) {
+        if ( $parent_id > 0 && in_array( $key, array( 'aguacates', 'mangos', 'mermeladas-y-confituras', 'zumos-nectares-y-limonadas', 'tes-e-infusiones', 'frutas-del-mundo' ), true ) ) {
             $ids[] = $parent_id;
         }
         if ( $is_pack && 'packs' !== $key && 'cajas-de-temporada' !== $key ) {
