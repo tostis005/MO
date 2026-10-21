@@ -148,16 +148,16 @@ verify( abs( (float) reflected( 'volume_in_liters', 200.0, 'ml' ) - .2 ) < .001,
     '200ml is 0.2L.' );
 verify( null === reflected( 'volume_in_liters', 4.0, 'unid' ),
     'Unit count must not be interpreted as liquid.' );
-verify( abs( (float) reflected( 'estimated_chargeable_weight', 3.0, 3 ) - 5.5 ) < .001,
-    '3x1L estimates 5.5kg including robust packaging margin.' );
-verify( abs( (float) reflected( 'estimated_chargeable_weight', 5.0, 5 ) - 8.0 ) < .001,
-    '5x1L estimates 8kg including packaging.' );
-verify( abs( (float) reflected( 'estimated_chargeable_weight', 2.4, 12 ) - 8.0 ) < .001,
-    '12x200ml estimates 8kg including 12 small containers.' );
+verify( abs( (float) reflected( 'estimated_chargeable_weight', 3.0, 3 ) - 4.5 ) < .001,
+    '3x1L estimates 4.5kg with parcel buffer.' );
+verify( abs( (float) reflected( 'estimated_chargeable_weight', 5.0, 5 ) - 7.0 ) < .001,
+    '5x1L estimates 7kg including packaging.' );
+verify( abs( (float) reflected( 'estimated_chargeable_weight', 2.4, 12 ) - 6.0 ) < .001,
+    '12x200ml estimates 6kg including 12 small containers.' );
 verify( abs( (float) reflected( 'estimated_jar_weight',
     array( 'unit' => 'unid', 'amount' => 4.0 ),
-    '<p>1 caja contiene 4 botes de 200g de mermelada.</p>' ) - 3.5 ) < .001,
-    'Four jam jars 200g each estimate 3.5kg packaged.' );
+    '<p>1 caja contiene 4 botes de 200g de mermelada.</p>' ) - 3.0 ) < .001,
+    'Four jam jars 200g each estimate 3kg packaged.' );
 verify( null === reflected( 'estimated_jar_weight',
     array( 'unit' => 'unid', 'amount' => 5.0 ), '<p>Cinco frutas.</p>' ),
     'Piece-based fruit stays unestimated.' );

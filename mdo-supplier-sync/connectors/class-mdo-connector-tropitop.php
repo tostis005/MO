@@ -386,12 +386,13 @@ final class MDO_Connector_Tropitop {
 
     /**
      * Merchant-authorized CHARGEABLE weight (not producer-certified net mass):
-     * 1.10 kg per litre/kg net + 0.35 kg per container + 0.75 kg parcel.
+     * 1.10 kg per litre/kg net + 0.20 kg per bottle + 0.50 kg parcel.
      * Round UP to half a kg and stay within validated shipping bands.
      */
-    private static function estimated_chargeable_weight( float $net, int $containers ): ?float {
+    private static function estimated_chargeable_weight( float $net, int $containers, float $container_kg = 0.20 ): ?float {
         if ( $net <= 0 || $net > 24 || $containers < 1 || $containers > 24 ) { return null; }
-        $kg = ceil( ( $net * 1.10 + $containers * 0.35 + 0.75 ) * 2 ) / 2;
+        if ( $container_kg < 0.20 || $container_kg > 0.50 ) { return null; }
+        $kg = ceil( ( $net * 1.10 + $containers * $container_kg + 0.50 ) * 2 ) / 2;
         return $kg <= 30 ? $kg : null;
     }
 
@@ -407,7 +408,7 @@ final class MDO_Connector_Tropitop {
         $jars = (int) $matches[1];
         $grams = (float) str_replace( ',', '.', $matches[2] );
         if ( $jars !== (int) $count || $grams < 50 || $grams > 1000 ) { return null; }
-        return self::estimated_chargeable_weight( $jars * $grams / 1000, $jars );
+        return self::estimated_chargeable_weight( $jars * $grams / 1000, $jars, 0.40 );
     }
 
     private static function missing_prices( array $sizes ): bool {
