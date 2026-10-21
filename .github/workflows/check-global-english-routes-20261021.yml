@@ -1,0 +1,20 @@
+name: Verify repaired global English archive and product routes
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/check-global-english-routes-20261021.py'
+      - '.github/workflows/check-global-english-routes-20261021.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-route-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check script syntax
+        run: python3 -m py_compile .github/scripts/check-global-english-routes-20261021.py
+      - name: Test public translated archive, catalog route parity and XML
+        run: python3 -u .github/scripts/check-global-english-routes-20261021.py
