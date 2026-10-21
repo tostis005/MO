@@ -73,7 +73,7 @@ function emdo_gourmet_targets($title){
 }
 function emdo_uncategorized_targets($title){
  $t=mb_strtolower(trim($title));
- if(preg_match('/^(?:mermelada|confitura)\b/u',$t))return ['conservas','mermeladas-y-confituras'];
+ if(preg_match('/^(?:mermelada|confitura|jalea)\b/u',$t))return ['conservas','mermeladas-y-confituras'];
  if(preg_match('/^miel(?:\s|$)/u',$t))return ['mieles'];
  if(preg_match('/^alubia|^garbanzo|^lenteja/u',$t))return ['legumbres'];
  if(preg_match('/^aceite\s+de\s+oliva/u',$t))return ['aceites'];
@@ -160,6 +160,12 @@ do{
 $legacy=get_term_by('slug','gourmet','product_cat');
 $remaining=$legacy instanceof WP_Term?get_objects_in_term((int)$legacy->term_id,'product_cat'):[];
 $summary['legacy_gourmet_remaining']=is_wp_error($remaining)?-1:count((array)$remaining);
+if($mode==='audit' && !is_wp_error($remaining) && $remaining) {
+ foreach(array_slice((array)$remaining,0,75) as $legacyId) {
+   $related=get_post((int)$legacyId);
+   echo 'CATEGORY_LEGACY_OBJECT='.wp_json_encode(['id'=>(int)$legacyId,'type'=>$related?$related->post_type:'not_post','status'=>$related?$related->post_status:'missing','title'=>$related?$related->post_title:'missing'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
+ }
+}
 $children=$legacy instanceof WP_Term?get_terms(['taxonomy'=>'product_cat','parent'=>(int)$legacy->term_id,'hide_empty'=>false]):[];
 $summary['legacy_gourmet_children']=is_wp_error($children)?-1:count((array)$children);
 $summary['gourmet_deleted']=false;
