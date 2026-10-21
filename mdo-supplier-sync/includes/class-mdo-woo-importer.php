@@ -315,6 +315,28 @@ final class MDO_Woo_Importer {
 			array( 'id' => $source_product_id )
 		);
 
+
+        // Tropitop's categories are derived from its validated source path.
+        // A generic save-time categorizer has sometimes attached the unrelated
+        // "Jamones y paletas" term to a melon pack. Reassert the exact bounded
+        // fruit/vegetable category set after all normal WooCommerce save hooks.
+        // No other vendor or SEO metadata is touched.
+        if ( 'tropitop' === (string) $supplier['code'] ) {
+            $expected = self::tropitop_category_ids( $payload, false );
+            $current = wp_get_post_terms( $product_id, 'product_cat', array( 'fields' => 'ids' ) );
+            if ( is_wp_error( $current ) ) {
+                throw new RuntimeException( 'No se pudieron verificar categorías de Tropitop.' );
+            }
+            $current = array_map( 'intval', (array) $current );
+            $cmp_expected = $expected; sort( $cmp_expected ); sort( $current );
+            if ( $cmp_expected !== $current ) {
+                $set = wp_set_object_terms( $product_id, $expected, 'product_cat', false );
+                if ( is_wp_error( $set ) ) {
+                    throw new RuntimeException( 'No se pudieron corregir categorías de Tropitop.' );
+                }
+                clean_post_cache( $product_id );
+            }
+        }
 		return $product_id;
 	}
 
