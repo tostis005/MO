@@ -4,6 +4,7 @@ define( 'ABSPATH', __DIR__ . '/' );
 function wp_parse_url( $url, $part = -1 ) { return $part === -1 ? parse_url( $url ) : parse_url( $url, $part ); }
 function esc_url_raw( $url ) { return $url; }
 function sanitize_text_field( $text ) { return trim( strip_tags( (string) $text ) ); }
+function wp_strip_all_tags( $text ) { return strip_tags( (string) $text ); }
 require_once dirname( __DIR__ ) . '/mdo-supplier-sync/connectors/class-mdo-connector-tropitop.php';
 require_once dirname( __DIR__ ) . '/mdo-supplier-sync/includes/class-mdo-tropitop-shipping.php';
 
