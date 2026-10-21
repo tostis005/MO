@@ -10,6 +10,24 @@
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 final class MDO_Tropitop_Editorial {
+    public static function init(): void {
+        add_action( 'template_redirect', array( __CLASS__, 'redirect_legacy_vegetable_category' ), 1 );
+    }
+
+    public static function redirect_legacy_vegetable_category(): void {
+        $path = (string) wp_parse_url( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), PHP_URL_PATH );
+        if ( ! preg_match( '~^/categoria-producto/verduras/?$~i', $path ) ) {
+            return;
+        }
+        $term = get_term_by( 'slug', 'hortalizas-verduras', 'product_cat' );
+        if ( ! $term instanceof WP_Term ) { return; }
+        $url = get_term_link( $term, 'product_cat' );
+        if ( ! is_wp_error( $url ) ) {
+            wp_safe_redirect( $url, 301, 'El Mercado de Origen' );
+            exit;
+        }
+    }
+
     private const SOURCE_LINK = '~https?://(?:www\.)?tropitop\.com(?:/[^"<> ]*)?~iu';
 
     public static function description( string $html, string $title = '', string $short = '' ): string {
