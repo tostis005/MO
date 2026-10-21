@@ -1,0 +1,34 @@
+name: Validate WCFM product breadcrumb 20261021
+
+on:
+  pull_request:
+    paths:
+      - 'mu-plugins/mdo-product-vendor-breadcrumb-20261021.php'
+      - 'tests/product-vendor-breadcrumb-20261021.php'
+      - '.github/workflows/product-vendor-breadcrumb-ci-20261021.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP lint and isolated breadcrumb scenarios
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l mu-plugins/mdo-product-vendor-breadcrumb-20261021.php
+          php -l tests/product-vendor-breadcrumb-20261021.php
+          php tests/product-vendor-breadcrumb-20261021.php
+      - name: Ensure native page header stays disabled and markup is scoped
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          grep -q 'woocommerce_before_single_product' mu-plugins/mdo-product-vendor-breadcrumb-20261021.php
+          grep -q 'wcfmmp_get_store_url' mu-plugins/mdo-product-vendor-breadcrumb-20261021.php
+          grep -q 'aria-current="page"' mu-plugins/mdo-product-vendor-breadcrumb-20261021.php
+          grep -q 'emo-product-breadcrumb-20261021' mu-plugins/mdo-product-vendor-breadcrumb-20261021.php
+          ! grep -q 'remove_action' mu-plugins/mdo-product-vendor-breadcrumb-20261021.php
