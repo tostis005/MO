@@ -140,7 +140,7 @@ jobs:
             if (strpos($items[0][1], "href=") === false) { exit(5); }
             if (strpos($items[0][2], "aria-current=\"page\"") === false || strpos($items[0][2], "href=") !== false) { exit(6); }
             if (strpos($html, "max-width: 1280px;") === false || strpos($html, "padding: 18px 24px;") === false) { exit(7); }
-            if (strpos($html, "padding-top: clamp(22px, 2.4vw, 30px);") === false || strpos($html, "background-color: #fff;") === false) { exit(8); }
+            if (strpos($html, "padding-top: clamp(22px, 2.4vw, 30px) !important;") === false || strpos($html, "background-color: #fff;") === false) { exit(8); }
             echo "PRODUCT_BREADCRUMB_LIVE_OK shop-vendor-product links=2 responsive-spacing=ok\n";
           ' "/tmp/emdo-breadcrumb-product-$runid.html"
           echo "PRODUCTION_PRODUCT_BREADCRUMB_OK run=$runid backup=$backup"
