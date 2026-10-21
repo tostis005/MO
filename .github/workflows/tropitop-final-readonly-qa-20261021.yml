@@ -54,6 +54,21 @@ jobs:
           "$PHP_BIN" -d memory_limit=256M "$WP_BIN" plugin get mdo-supplier-sync --field=version --path="$P" --allow-root
           echo "TROPITOP_ACTIVE_CACHE_PLUGINS"
           "$PHP_BIN" -d memory_limit=256M "$WP_BIN" option get active_plugins --format=json --path="$P" --allow-root --skip-plugins --skip-themes | grep -Eo '"[^"]*(cache|rocket|litespeed|autoptimize|perfmatters)[^"]*"' || true
+          echo "TROPITOP_HTML_CONTEXT"
+          "$PHP_BIN" -d memory_limit=1024M "$WP_BIN" eval '
+            foreach ( ["TROPITOP-2601","TROPITOP-2569","TROPITOP-2573","TROPITOP-2717","TROPITOP-2332"] as $sku ) {
+                $id=wc_get_product_id_by_sku($sku);
+                $p=$id?wc_get_product($id):false;
+                if(!$p)continue;
+                $desc=$p->get_description("edit");
+                $found=[];
+                foreach (["Tropitop","trabajamos","nuestra tienda","Agricultor:"] as $needle) {
+                    $idx=mb_stripos($desc,$needle);
+                    if($idx!==false){$found[$needle]=mb_substr($desc,max(0,$idx-170),430);}
+                }
+                echo "TROPITOP_RAW_HTML=".wp_json_encode(["sku"=>$sku,"len"=>strlen($desc),"samples"=>$found],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
+            }
+          ' --path="$P" --allow-root --skip-plugins=woostify-sites-library
           echo "TROPITOP_READONLY_AUDIT_BEGIN"
           timeout --kill-after=20s 500s env TROPITOP_EDITORIAL_MODE=audit \
             "$PHP_BIN" -d memory_limit=1024M "$WP_BIN" eval-file "$SCRIPT" \
