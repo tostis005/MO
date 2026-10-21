@@ -58,8 +58,8 @@ if ( $mode === 'verify' ) {
         $mobile_url = $mobile ? wp_get_attachment_url( $mobile ) : '';
         $mobile_size = $mobile_path && is_readable( $mobile_path ) ? @getimagesize( $mobile_path ) : false;
         if ( ! $banner || ! $mobile || $list !== $mobile ||
-             ( $settings['banner_type'] ?? '' ) !== 'image' ||
-             ( $settings['list_banner_type'] ?? '' ) !== 'image' ||
+             ( $settings['banner_type'] ?? '' ) !== 'single_img' ||
+             ( $settings['list_banner_type'] ?? '' ) !== 'single_img' ||
              ! $url || ! str_contains( $url, 'emdo-producer-' . $slug . '-banner-20261020.webp' ) ||
              ! $filepath || ! is_readable( $filepath ) ||
              hash_file( 'sha256', $filepath ) !== hash_file( 'sha256', $base . $slug . '.webp' ) ||
@@ -224,8 +224,8 @@ foreach ( $state as $slug => $v ) {
         update_post_meta( $mobile_id, '_emdo_banner_variant_width', '960' );
     }
     $settings = $v['settings'];
-    $settings['banner_type'] = 'image';
-    $settings['list_banner_type'] = 'image';
+    $settings['banner_type'] = 'single_img';
+    $settings['list_banner_type'] = 'single_img';
     $settings['banner'] = (string) $attachment_id;
     $settings['mobile_banner'] = (string) $mobile_id;
     $settings['list_banner'] = (string) $mobile_id;
@@ -235,8 +235,8 @@ foreach ( $state as $slug => $v ) {
        (string) ( $test['banner'] ?? '' ) !== (string) $attachment_id ||
        (string) ( $test['mobile_banner'] ?? '' ) !== (string) $mobile_id ||
        (string) ( $test['list_banner'] ?? '' ) !== (string) $mobile_id ||
-       (string) ( $test['banner_type'] ?? '' ) !== 'image' ||
-       (string) ( $test['list_banner_type'] ?? '' ) !== 'image' ) {
+       (string) ( $test['banner_type'] ?? '' ) !== 'single_img' ||
+       (string) ( $test['list_banner_type'] ?? '' ) !== 'single_img' ) {
         throw new RuntimeException( 'Banner settings verification failed: ' . $slug );
     }
     echo 'WCFM_DESKTOP_MOBILE_LIST_UPDATED ' . $slug . ' desktop=' . $attachment_id .
