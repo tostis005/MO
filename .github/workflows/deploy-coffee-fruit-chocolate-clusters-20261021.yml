@@ -1,0 +1,112 @@
+name: Deploy coffee mango avocado chocolate SEO clusters 20261021
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/emdo-coffee-fruit-editorial-clusters-20261021.php'
+      - '.github/scripts/apply-coffee-fruit-editorial-cluster-taxonomy-20261021.php'
+      - '.github/workflows/deploy-coffee-fruit-chocolate-clusters-20261021.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint SEO cluster and taxonomy scripts
+        run: |
+          php -l mu-plugins/emdo-coffee-fruit-editorial-clusters-20261021.php
+          php -l .github/scripts/apply-coffee-fruit-editorial-cluster-taxonomy-20261021.php
+      - name: Preflight and deploy focused cluster modules to WordPress production
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-P $PORT -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] && [ -n "$php" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s|%s|%s" "$p" "$php" "$wp"; break;;
+              esac
+            done
+          ')"
+          [ -n "$INFO" ] || exit 3
+          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
+          REMOTE="/tmp/emdo-four-clusters-$GITHUB_RUN_ID"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE'"
+          sshpass -e scp $SCP mu-plugins/emdo-coffee-fruit-editorial-clusters-20261021.php .github/scripts/apply-coffee-fruit-editorial-cluster-taxonomy-20261021.php "$STAGING_USER@$STAGING_HOST:$REMOTE/"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf $REMOTE" >/dev/null 2>&1 || true' EXIT
+          SCRIPT="$REMOTE/apply-coffee-fruit-editorial-cluster-taxonomy-20261021.php"
+          MODULE="$REMOTE/emdo-coffee-fruit-editorial-clusters-20261021.php"
+          MUP="$PROD/wp-content/mu-plugins/emdo-coffee-fruit-editorial-clusters-20261021.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_CLUSTER_PREFLIGHT=1 '$PHP' -d memory_limit=768M '$WP' eval-file '$SCRIPT' --path='$PROD' --allow-root" | tee /tmp/emdo-cluster-preflight.log
+          sed -n 's/^EMDO_CLUSTER_PREFLIGHT //p' /tmp/emdo-cluster-preflight.log | tail -n1 | jq -e '.ok==true and .articles==24' >/dev/null
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; [ ! -f '$MUP' ] || cp -a '$MUP' '$MUP.bak-$GITHUB_RUN_ID'; cp '$MODULE' '$MUP.tmp-$GITHUB_RUN_ID'; '$PHP' -l '$MUP.tmp-$GITHUB_RUN_ID'; mv -f '$MUP.tmp-$GITHUB_RUN_ID' '$MUP'"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$SCRIPT' --path='$PROD' --allow-root" | tee /tmp/emdo-cluster-applied.log
+          sed -n 's/^EMDO_CLUSTER_APPLIED //p' /tmp/emdo-cluster-applied.log | tail -n1 | jq -e '.ok==true and (.created_categories|length)<=4 and (.post_categories|length)<=11' >/dev/null
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+          echo EMDO_FOUR_CLUSTERS_DEPLOYED=YES
+      - name: Verify cross-links live on products, archives and Spanish English articles
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import re,time,urllib.request
+          base='https://www.elmercadodeorigen.com'
+          pages=[
+            ('/como-elegir-mejor-cafe-en-grano-para-casa/','data-emdo-editorial-cluster="1"'),
+            ('/en/how-to-choose-the-best-whole-bean-coffee-for-home/','data-emdo-editorial-cluster="1"'),
+            ('/tipos-de-aguacate-hass-bacon-fuerte-diferencias/','data-emdo-editorial-cluster="1"'),
+            ('/en/avocado-varieties-hass-bacon-fuerte-differences/','data-emdo-editorial-cluster="1"'),
+            ('/tipos-de-mango-variedades-diferencias-cual-elegir/','data-emdo-editorial-cluster="1"'),
+            ('/en/types-of-mango-varieties-differences-which-to-choose/','data-emdo-editorial-cluster="1"'),
+            ('/tipos-naranjas-variedades-sabor-cual-elegir/','data-emdo-editorial-cluster="1"'),
+            ('/cremas-de-cacao-como-elegir-ingredientes-diferencias/','data-emdo-editorial-cluster="1"'),
+            ('/categoria-producto/cafe-de-especialidad/','data-emdo-editorial-category-guides="1"'),
+            ('/categoria-producto/frutas/aguacates/','data-emdo-editorial-category-guides="1"'),
+            ('/categoria-producto/frutas/frutas-tropicales/','data-emdo-editorial-category-guides="1"'),
+            ('/categoria-producto/chocolates-artesanos/cremas-de-cacao/','data-emdo-editorial-category-guides="1"')
+          ]
+          errors=[]
+          for path,needle in pages:
+            result=None
+            for attempt in range(2):
+              try:
+                request=urllib.request.Request(base+path+'?emdo_four_clusters=20261021',headers={'User-Agent':'Mozilla/5.0 EMDO Topic Cluster QA'})
+                with urllib.request.urlopen(request,timeout=55) as response:
+                  status=response.status
+                  page=response.read(5000000).decode('utf-8','replace')
+                if status==200 and needle in page:result='OK'
+                else:result=f'HTTP={status} marker={needle in page}'
+                break
+              except Exception as e:
+                result='Fetch '+repr(e)
+                if attempt==0:time.sleep(2)
+            print('EMDO_CLUSTER_LIVE',result,path,flush=True)
+            if result!='OK':errors.append((path,result))
+          for path in ('/','/blog/','/tienda/'):
+            try:
+              with urllib.request.urlopen(base+path,timeout=55) as response:status=response.status
+              print('EMDO_SITE_CORE',path,status,flush=True)
+              if status!=200:errors.append((path,status))
+            except Exception as e:errors.append((path,str(e)))
+          if errors:raise SystemExit('Cluster live QA problems: '+repr(errors))
+          print('EMDO_FOUR_CLUSTER_LIVE_QA=PASS',flush=True)
+          PY
