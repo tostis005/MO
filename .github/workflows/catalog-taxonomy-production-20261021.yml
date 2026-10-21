@@ -57,7 +57,7 @@ jobs:
           ')"
           test -n "$PROD_PATH"
           SCRIPT="/tmp/catalog-taxonomy-$GITHUB_RUN_ID.php"
-          sshpass -e scp $SCP .github/scripts/catalog-taxonomy-taxonomy-20261021.php "$STAGING_USER@$STAGING_HOST:$SCRIPT"
+          sshpass -e scp $SCP .github/scripts/catalog-taxonomy-reconcile-20261021.php "$STAGING_USER@$STAGING_HOST:$SCRIPT"
           remote_phase() {
             phase="$1"
             sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH' '$SCRIPT' '$phase'" <<'REMOTE'
