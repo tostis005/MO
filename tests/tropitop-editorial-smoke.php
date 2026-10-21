@@ -55,4 +55,13 @@ $farmer = MDO_Tropitop_Editorial::description('<ul><li>Agricultor: Hermán, agri
 check( str_contains($farmer,'Agricultor: Hermán'), 'Retain farmer identity' );
 check( str_contains($farmer,'El contenido se ajusta'), 'Preserve objective pack explanation' );
 check( ! str_contains($farmer,'de confianza de Tropitop'), 'No source-store attributions' );
+$retailer='<h2>Comprar cerezas online en Tropitop</h2>'
+    .'<p>En Tropitop trabajamos con agricultores y aseguramos la mejor compra.</p>'
+    .'<p>Cerezas cultivadas en la provincia de Castellón; conservar en frío.</p>';
+$retailer_clean=MDO_Tropitop_Editorial::description($retailer,'Cerezas de Castellón','Cerezas frescas.');
+check(!str_contains($retailer_clean,'en Tropitop'),'External store reference removed');
+check(!str_contains($retailer_clean,'trabajamos'),'First-person store pitch removed');
+check(str_contains($retailer_clean,'Castellón'),'Factual origin preserved');
+check(str_contains($retailer_clean,'conservar'),'Factual storage preserved');
+check(MDO_Tropitop_Editorial::residual_markers($retailer_clean)===array(),'No external retailer residuals');
 echo "TROPITOP_EDITORIAL_SMOKE_OK\n";
