@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/translate-tropitop-first-batch-20261021.yml'
       - '.github/scripts/apply-tropitop-first-english-batch-20261021.php'
+      - '.github/scripts/export-tropitop-first-english-batch-20261021.php'
+      - '.github/scripts/translate-tropitop-first-batch-offline-20261021.py'
   workflow_dispatch:
 permissions:
   contents: read
