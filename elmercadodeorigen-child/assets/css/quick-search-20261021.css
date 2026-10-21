@@ -1,0 +1,187 @@
+/* Sugerencias del buscador nativo de Woostify · 2026-10-21 */
+body.elmercado-child-theme .site-dialog-search .dialog-search-content .search-form,
+body.elmercado-child-theme .site-dialog-search .dialog-search-content .woocommerce-product-search {
+  padding-bottom: 16px !important;
+}
+body.elmercado-child-theme .site-dialog-search .emo-quick-search-20261021[hidden] {
+  display: none !important;
+}
+body.elmercado-child-theme .site-dialog-search .emo-quick-search-20261021 {
+  display: block;
+  margin: 0;
+  padding: 18px 36px 28px;
+  border-top: 1px solid rgba(23,63,50,.10);
+  color: #18221e;
+  background: rgba(255,253,248,.7);
+}
+.site-dialog-search .emo-quick-search__heading {
+  margin: 0 0 10px;
+  color: #64736a;
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+.site-dialog-search .emo-quick-search__list {
+  display: grid;
+  gap: 1px;
+  max-height: min(46vh, 438px);
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  overscroll-behavior: contain;
+}
+.site-dialog-search .emo-quick-search__item {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.site-dialog-search .emo-quick-search__link {
+  display: grid;
+  grid-template-columns: 56px minmax(0,1fr) auto 18px;
+  align-items: center;
+  gap: 13px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: #173f32 !important;
+  text-decoration: none !important;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+.site-dialog-search .emo-quick-search__link:hover,
+.site-dialog-search .emo-quick-search__link:focus-visible,
+.site-dialog-search .emo-quick-search__link.is-active {
+  background: #eaf3ed;
+  border-color: rgba(47,125,93,.15);
+  outline: none;
+}
+.site-dialog-search .emo-quick-search__image {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  overflow: hidden;
+  border: 1px solid #e9e9e1;
+  border-radius: 10px;
+  background: #fff;
+}
+.site-dialog-search .emo-quick-search__image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.site-dialog-search .emo-quick-search__image.is-placeholder {
+  color: #7a9684;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .05em;
+}
+.site-dialog-search .emo-quick-search__detail {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.site-dialog-search .emo-quick-search__name {
+  overflow-wrap: anywhere;
+  color: #173f32;
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.32;
+}
+.site-dialog-search .emo-quick-search__category {
+  color: #718076;
+  font-size: 12px;
+  line-height: 1.3;
+}
+.site-dialog-search .emo-quick-search__price {
+  color: #173f32;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.site-dialog-search .emo-quick-search__arrow {
+  color: #2f7d5d;
+  font-size: 18px;
+  font-weight: 500;
+  text-align: center;
+}
+.site-dialog-search .emo-quick-search__empty {
+  margin: 0;
+  padding: 18px 12px;
+  color: #68776d;
+  font-size: 14px;
+}
+.site-dialog-search .emo-quick-search__all {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 10px;
+  padding: 13px 14px;
+  border-radius: 12px;
+  background: #edf4ee;
+  color: #173f32 !important;
+  font-size: 13px;
+  font-weight: 750;
+  text-decoration: none !important;
+}
+.site-dialog-search .emo-quick-search__all:hover,
+.site-dialog-search .emo-quick-search__all:focus-visible {
+  background: #dcece0;
+  outline: 2px solid #2f7d5d;
+  outline-offset: 2px;
+}
+.site-dialog-search .emo-quick-search__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  body.elmercado-child-theme .site-dialog-search .emo-quick-search-20261021 {
+    padding: 12px 18px 20px;
+  }
+  body.elmercado-child-theme .site-dialog-search .dialog-search-content .search-form,
+  body.elmercado-child-theme .site-dialog-search .dialog-search-content .woocommerce-product-search {
+    padding-bottom: 12px !important;
+  }
+  .site-dialog-search .emo-quick-search__list {
+    max-height: 46vh;
+  }
+  .site-dialog-search .emo-quick-search__link {
+    grid-template-columns: 52px minmax(0,1fr) 16px;
+    column-gap: 10px;
+    row-gap: 3px;
+    padding: 8px;
+  }
+  .site-dialog-search .emo-quick-search__image {
+    grid-row: 1 / 3;
+    width: 52px;
+    height: 52px;
+  }
+  .site-dialog-search .emo-quick-search__detail {
+    grid-row: 1;
+    grid-column: 2;
+  }
+  .site-dialog-search .emo-quick-search__price {
+    grid-row: 2;
+    grid-column: 2;
+    text-align: left;
+    font-size: 12px;
+  }
+  .site-dialog-search .emo-quick-search__arrow {
+    grid-row: 1 / 3;
+    grid-column: 3;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .site-dialog-search .emo-quick-search__link {
+    transition: none;
+  }
+}
