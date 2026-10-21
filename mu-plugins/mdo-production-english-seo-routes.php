@@ -57,7 +57,7 @@ function mdoer_term_row( string $taxonomy, string $slug, bool $english = true ):
              JOIN {$wpdb->term_taxonomy} tt ON tt.term_id=t.term_id
              JOIN {$wpdb->termmeta} tm ON tm.term_id=t.term_id AND tm.meta_key='_en_US_slug'
              JOIN {$wpdb->termmeta} pub ON pub.term_id=t.term_id AND pub.meta_key='_en_US_published' AND pub.meta_value='1'
-             WHERE tt.taxonomy=%s AND tm.meta_value=%s LIMIT 1",
+             WHERE tt.taxonomy=%s AND tm.meta_value=%s ORDER BY tt.count DESC, t.term_id ASC LIMIT 1",
             $taxonomy, $slug
         );
     } else {
@@ -141,6 +141,13 @@ function mdoer_bootstrap_internal_route(): void {
     } elseif ( preg_match( '#^en/product-tag/([^/]+)(?:/page/(\d+))?$#i', $path, $m ) ) {
         $row = mdoer_term_row( 'product_tag', rawurldecode( $m[1] ), true );
         if ( $row ) { $internal = '/en/etiqueta-producto/' . $row['slug'] . '/' . ( ! empty( $m[2] ) ? 'page/' . (int) $m[2] . '/' : '' ); }
+    } elseif ( preg_match( '#^en/category/([^/]+)(?:/page/(\\d+))?$#i', $path, $m ) ) {
+        // WordPress blog category translations use their native category base.
+        $row = mdoer_term_row( 'category', rawurldecode( $m[1] ), true );
+        if ( $row ) { $internal = '/en/category/' . $row['slug'] . '/' . ( ! empty( $m[2] ) ? 'page/' . (int) $m[2] . '/' : '' ); }
+    } elseif ( preg_match( '#^en/tag/([^/]+)(?:/page/(\\d+))?$#i', $path, $m ) ) {
+        $row = mdoer_term_row( 'post_tag', rawurldecode( $m[1] ), true );
+        if ( $row ) { $internal = '/en/tag/' . $row['slug'] . '/' . ( ! empty( $m[2] ) ? 'page/' . (int) $m[2] . '/' : '' ); }
     } elseif ( preg_match( '#^en/([^/]+)$#i', $path, $m ) ) {
         $row = mdoer_post_row_by_en_slug( rawurldecode( $m[1] ), array( 'page', 'post' ) );
         if ( $row ) { $internal = '/en/' . $row['post_name'] . '/'; }
