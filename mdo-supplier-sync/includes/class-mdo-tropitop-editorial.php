@@ -35,7 +35,7 @@ final class MDO_Tropitop_Editorial {
     public static function residual_markers( string $html ): array {
         $plain = html_entity_decode( wp_strip_all_tags( $html ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
         $flags = array();
-        if ( preg_match( '/\b(?:nuestro(?:s|a|as)?|nosotro(?:s|as)|con nosotros|te ofrecemos|te enviamos|trabajamos con|colaboramos con|apostamos por|cultivamos|recolectamos|cont[aá]ctanos|escr[ií]benos|visita nuestra|en nuestra tienda|nuestra web)\b/iu', $plain ) ) {
+        if ( preg_match( '/\b(?:nuestr(?:o|os|a|as)|nosotro(?:s|as)|con nosotros|te ofrecemos|te enviamos|trabajamos con|colaboramos con|apostamos por|cultivamos|recolectamos|enviamos|ofrecemos|seleccionamos|garantizamos|cosechamos|preparamos|cont[aá]ctanos|escr[ií]benos|visita nuestra|en nuestra tienda|nuestra web)\b/iu', $plain ) ) {
             $flags[] = 'supplier_first_person';
         }
         if ( preg_match( self::SOURCE_LINK, $html ) ||
@@ -84,7 +84,7 @@ final class MDO_Tropitop_Editorial {
             '~<(p|li|h[2-6])\b([^>]*)>(.*?)</\1>~isu',
             static function ( array $m ): string {
                 $plain = html_entity_decode( wp_strip_all_tags( $m[3] ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
-                if ( preg_match( '/\b(?:nuestro(?:s|a|as)?|nosotro(?:s|as)|te\s+(?:ofrecemos|enviamos|recomendamos)|trabajamos\s+con|colaboramos\s+con|apostamos\s+por|cultivamos|recolectamos|disponemos\s+de|cont[aá]ctanos|escr[ií]benos|nuestra\s+(?:web|tienda)|en\s+tropitop\s+puedes\s+comprar|compra\s+directamente\s+en\s+tropitop)\b/iu', $plain ) ||
+                if ( preg_match( '/\b(?:nuestr(?:o|os|a|as)|nosotro(?:s|as)|te\s+(?:ofrecemos|enviamos|recomendamos)|trabajamos\s+con|colaboramos\s+con|apostamos\s+por|cultivamos|recolectamos|enviamos|ofrecemos|seleccionamos|garantizamos|cosechamos|preparamos|disponemos\s+de|cont[aá]ctanos|escr[ií]benos|nuestra\s+(?:web|tienda)|en\s+tropitop\s+puedes\s+comprar|compra\s+directamente\s+en\s+tropitop)\b/iu', $plain ) ||
                     preg_match( '/\b(?:haz\s+tu\s+pedido|visita\s+(?:nuestra|la)\s+(?:web|tienda)|ll[aá]manos|consulta\s+(?:nuestro|el)\s+cat[aá]logo)\b/iu', $plain ) ) {
                     return '';
                 }
