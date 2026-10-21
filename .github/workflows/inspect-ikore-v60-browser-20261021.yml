@@ -1,0 +1,65 @@
+name: Inspect Ikore V60 rendering in browser
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-ikore-v60-browser-20261021.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect image bytes and transparency
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --break-system-packages Pillow
+          curl -fsSL --retry 2 --max-time 40 "https://www.elmercadodeorigen.com/wp-content/mu-plugins/ikore-molienda-assets/filtro-v60-ilustracion.webp?v=inspect-${GITHUB_RUN_ID}" -o /tmp/v60-live.webp
+          curl -fsSL --retry 2 --max-time 40 "https://www.elmercadodeorigen.com/wp-content/mu-plugins/ikore-molienda-assets/filtro-v60.webp?v=inspect-${GITHUB_RUN_ID}" -o /tmp/v60-original.webp
+          python3 - <<'PY'
+          from PIL import Image
+          import hashlib
+          for path in ['mu-plugins/ikore-molienda-assets/filtro-v60.webp','mu-plugins/ikore-molienda-assets/filtro-v60-ilustracion.webp','/tmp/v60-live.webp','/tmp/v60-original.webp']:
+              try:
+                  im=Image.open(path).convert('RGBA'); im.load()
+                  print('IMAGE',path,'size',im.size,'bbox',im.getbbox(),'center',im.getpixel((im.width//2,im.height//2)),'bytes',len(open(path,'rb').read()),'sha256',hashlib.sha256(open(path,'rb').read()).hexdigest())
+              except Exception as e:print('IMAGE_ERROR',path,repr(e))
+          PY
+      - name: Test actual rendering in Chrome
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ikore-browser
+          cd /tmp/ikore-browser
+          npm install --silent playwright-core@1.56.1
+          cat >check.cjs <<'JS'
+          const { chromium } = require('playwright-core');
+          (async () => {
+            const executablePath = ['/usr/bin/google-chrome','/usr/bin/google-chrome-stable','/usr/bin/chromium'].find(p => require('fs').existsSync(p));
+            if(!executablePath) throw Error('No chrome available');
+            const browser = await chromium.launch({headless:true, executablePath, args:['--no-sandbox']});
+            for(const width of [390,1366]) {
+              const page = await browser.newPage({viewport:{width,height:900}, deviceScaleFactor:1});
+              page.on('console', msg => {if(msg.type()==='error') console.log('CONSOLE_ERROR',msg.text().slice(0,200))});
+              page.on('pageerror', e => console.log('PAGE_ERROR',e.message.slice(0,220)));
+              await page.goto('https://www.elmercadodeorigen.com/producto/cafe-ikore-kofi-typica-mejorado/?auditv60='+Date.now(),{waitUntil:'domcontentloaded',timeout:45000});
+              await page.waitForTimeout(5000);
+              const report = await page.evaluate(() => {
+                const buttons = [...document.querySelectorAll('button.emdo-ikore-card')];
+                return {title:document.title,count:buttons.length,css:[...document.querySelectorAll('link[rel=stylesheet]')].filter(l=>l.href.includes('ikore')).map(l=>l.href),javascript:[...document.querySelectorAll('script[src]')].filter(s=>s.src.includes('ikore')).map(s=>s.src),options:buttons.map(b=>{const img=b.querySelector('img');const r=img?.getBoundingClientRect();const style=img?getComputedStyle(img):null;return {text:b.textContent.trim(),src:img?.currentSrc||img?.src,complete:img?.complete,natural:[img?.naturalWidth,img?.naturalHeight],rect:r?{width:r.width,height:r.height}:null,display:style?.display,visibility:style?.visibility,opacity:style?.opacity}})};
+              });
+              console.log('BROWSER_REPORT',width,JSON.stringify(report));
+              await page.screenshot({path:'/tmp/ikore-'+width+'.png',fullPage:true});
+              await page.close();
+            }
+            await browser.close();
+          })().catch(err => {console.error('BROWSER_FAILED',err.stack);process.exit(1)});
+          JS
+          node check.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ikore-v60-browser-screenshots
+          path: /tmp/ikore-*.png
