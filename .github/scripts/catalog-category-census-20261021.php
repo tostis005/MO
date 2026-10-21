@@ -12,9 +12,10 @@ if(is_wp_error($terms))throw new RuntimeException('Failed categories');
 $tax=[];$bycat=[];$byvendor=[];
 foreach($terms as $t){$tax[(int)$t->term_id]=['id'=>(int)$t->term_id,'name'=>$t->name,'slug'=>$t->slug,'parent'=>(int)$t->parent,'count'=>(int)$t->count];}
 foreach($tax as $t){echo 'CATALOG_CATEGORY='.wp_json_encode($t,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;}
+global $wpdb;
 $offset=0;$limit=350;$total=0;$statuses=[];
 do {
- $posts=get_posts(['post_type'=>'product','post_status'=>['publish','draft','private','pending','future'],'fields'=>'ids','posts_per_page'=>$limit,'offset'=>$offset,'orderby'=>'ID','order'=>'ASC']);
+ $posts=$wpdb->get_col($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type=%s AND post_status IN ('publish','draft','private','pending','future') ORDER BY ID ASC LIMIT %d OFFSET %d",'product',$limit,$offset));
  foreach($posts as $id){
   $product=wc_get_product($id);if(!$product)continue;
   $cids=array_map('intval',$product->get_category_ids());
