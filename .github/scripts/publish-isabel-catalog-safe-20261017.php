@@ -13,6 +13,16 @@ global $wpdb;
 $sup=MDO_Database::table('suppliers');$src=MDO_Database::table('source_products');
 $v=(int)$wpdb->get_var($wpdb->prepare("SELECT vendor_user_id FROM {$sup} WHERE code=%s LIMIT 1",'chocolates-artesanos-isabel'));
 if($v!==4964||!get_user_by('id',$v)||get_user_meta($v,'_disable_vendor',true))throw new RuntimeException('La tienda Isabel no está activada');
+// This onboarding publisher is deliberately one-shot. The live catalog is now
+// managed by supplier synchronization and targeted editorial policy. Re-running
+// the original 103-item release would re-publish excluded gift vouchers and
+// protected, non-purchasable customised goods.
+$already_published=(int)$wpdb->get_var($wpdb->prepare(
+ "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_author=%d AND post_type='product' AND post_status='publish'",$v));
+if($already_published>0){
+ echo 'ISABEL_ONE_TIME_PUBLISHER_SKIPPED_LIVE_CATALOG=' . $already_published . PHP_EOL;
+ exit(0);
+}
 $ship=get_user_meta($v,'_wcfmmp_shipping',true);
 if(!is_array($ship)||($ship['_wcfmmp_user_shipping_type']??'')!=='by_zone'||($ship['_wcfmmp_user_shipping_enable']??'')!=='yes')
  throw new RuntimeException('No se permiten publicaciones sin envíos Isabel');
