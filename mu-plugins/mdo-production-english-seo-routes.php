@@ -80,18 +80,28 @@ function mdoer_native_page_path( int $id ): string {
     }
     return '/' . implode( '/', $parts ) . '/';
 }
+/**
+ * Produce an unfiltered source-language URL. TranslatePress modifies home_url()
+ * on /en/ requests and would otherwise prepend /en/ to Spanish hreflang targets.
+ * Do not modify the English URL builder: it must keep the translated route.
+ */
+function mdoer_native_home_url( string $path = '/' ): string {
+    $origin = untrailingslashit( (string) get_option( 'home' ) );
+    $origin = (string) preg_replace( '#/en/?$#i', '', $origin );
+    return $origin . '/' . ltrim( $path, '/' );
+}
 function mdoer_native_post_url( WP_Post $post ): string {
     $front = (int) get_option( 'page_on_front' );
     $shop = (int) get_option( 'woocommerce_shop_page_id' );
-    if ( $post->ID === $front ) { return home_url( '/' ); }
-    if ( $post->ID === $shop ) { return home_url( '/' . $post->post_name . '/' ); }
+    if ( $post->ID === $front ) { return mdoer_native_home_url( '/' ); }
+    if ( $post->ID === $shop ) { return mdoer_native_home_url( '/' . $post->post_name . '/' ); }
     if ( 'product' === $post->post_type ) {
         $perms = (array) get_option( 'woocommerce_permalinks', array() );
         $base = trim( (string) ( $perms['product_base'] ?? '/producto' ), '/' );
-        return home_url( '/' . ( $base ?: 'producto' ) . '/' . $post->post_name . '/' );
+        return mdoer_native_home_url( '/' . ( $base ?: 'producto' ) . '/' . $post->post_name . '/' );
     }
-    if ( 'page' === $post->post_type ) { return home_url( mdoer_native_page_path( $post->ID ) ); }
-    return home_url( '/' . $post->post_name . '/' );
+    if ( 'page' === $post->post_type ) { return mdoer_native_home_url( mdoer_native_page_path( $post->ID ) ); }
+    return mdoer_native_home_url( '/' . $post->post_name . '/' );
 }
 function mdoer_en_url( WP_Post $post ): string {
     $front = (int) get_option( 'page_on_front' );
@@ -112,7 +122,7 @@ function mdoer_term_en_url( WP_Term $term ): string {
 function mdoer_native_term_url( WP_Term $term ): string {
     $bases = array( 'product_cat' => 'categoria-producto', 'product_tag' => 'etiqueta-producto', 'category' => 'category', 'post_tag' => 'tag' );
     $base = $bases[ $term->taxonomy ] ?? '';
-    return $base ? home_url( '/' . $base . '/' . $term->slug . '/' ) : '';
+    return $base ? mdoer_native_home_url( '/' . $base . '/' . $term->slug . '/' ) : '';
 }
 
 /* Resolve public SEO slugs to the already-working native route before TranslatePress loads. */
@@ -155,7 +165,7 @@ add_filter( 'term_link', static function( $url, $term ) {
 }, PHP_INT_MAX, 2 );
 
 function mdoer_preferred(): array {
-    if ( is_front_page() ) { return array( 'es' => home_url( '/' ), 'en' => home_url( '/en/' ) ); }
+    if ( is_front_page() ) { return array( 'es' => mdoer_native_home_url( '/' ), 'en' => home_url( '/en/' ) ); }
     if ( function_exists( 'is_shop' ) && is_shop() ) {
         $post = get_post( (int) get_option( 'woocommerce_shop_page_id' ) );
         return $post instanceof WP_Post ? array( 'es' => mdoer_native_post_url( $post ), 'en' => home_url( '/en/shop/' ) ) : array( 'es' => '', 'en' => '' );
