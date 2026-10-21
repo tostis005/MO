@@ -55,12 +55,21 @@
       button.dataset.value = option.value;
       button.setAttribute('aria-pressed', 'false');
       var img = document.createElement('img');
-      img.src = config.assetBase + type + '.webp';
+      // Unique URL for V60 avoids stale CDN/browser image caches.
+      var filename = type === 'filtro-v60' ? 'filtro-v60-ilustracion.webp' : type + '.webp';
+      img.src = config.assetBase + filename;
+      if (type === 'filtro-v60') {
+        img.onerror = function () {
+          img.onerror = null;
+          img.src = config.assetBase + 'filtro-v60.webp?v=20261021.3';
+        };
+      }
       img.alt = '';
       img.width = 144;
       img.height = 144;
       img.decoding = 'async';
-      img.loading = 'lazy';
+      // Icons for actively available choices must load immediately.
+      img.loading = 'eager';
       var label = document.createElement('span');
       label.className = 'emdo-ikore-card-label';
       label.textContent = config.labels[type] || option.textContent.trim();
