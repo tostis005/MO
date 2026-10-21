@@ -78,3 +78,14 @@ foreach(['mdo-chocolates-seo-cluster-20261017.php','mdo-global-seo-cluster-archi
 echo 'EMDO_CLUSTER_AUDIT '.wp_json_encode([
 'articles'=>$articles,'chocolate_count'=>count($choco_rows),'chocolate_posts'=>$choco_rows,'categories'=>$cat_info,
 'products'=>$selected_products,'modules'=>$modules,'seen'=>['approved'=>count($articles),'chocolate'=>count($choco)]],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
+
+$termcheck=[];
+foreach(['frutas','aguacates','mangos','citricos','frutas-tropicales','cafe','chocolates-y-cacao'] as $slug){
+ $term=get_term_by('slug',$slug,'category');
+ $termcheck[$slug]=$term instanceof WP_Term?['id'=>$term->term_id,'parent'=>$term->parent,'count'=>$term->count,'url'=>get_term_link($term)]:null;
+}
+$translation=[];
+foreach([18073,18065,20541,20567,19048,18636,18491,19066,17803,17875] as $id){
+ $translation[]=['id'=>$id,'pub'=>(string)get_post_meta($id,'_en_US_published',true),'en_slug'=>(string)get_post_meta($id,'_en_US_post_name',true)];
+}
+echo 'EMDO_CLUSTER_EXTRA '.wp_json_encode(['category_terms'=>$termcheck,'translations'=>$translation],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
