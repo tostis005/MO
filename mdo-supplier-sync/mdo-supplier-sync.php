@@ -29,6 +29,7 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-tolecarnes
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-latitudes.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-chocolates-isabel.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-tropitop.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-tropitop-editorial.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-isabel-quality.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-iberico-family.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-huerta-ana-mary-v4.php';
@@ -151,6 +152,7 @@ add_action(
 		MDO_Minimum_Order::init();
 		MDO_Shipping_Destinations::init();
 		MDO_Tropitop_Shipping::init();
+		MDO_Tropitop_Editorial::init();
 		MDO_Latitudes_Logistics::init();
 		MDO_Tolecarnes_Weight_Info::init();
 		MDO_Specials::init();
