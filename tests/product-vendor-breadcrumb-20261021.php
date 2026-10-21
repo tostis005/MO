@@ -72,7 +72,7 @@ assert_breadcrumb( str_contains( $source, 'max-width: 1280px;' ), 'desktop centr
 assert_breadcrumb( str_contains( $source, 'margin: 0 auto;' ), 'centrado sin margen inferior que falsee el fondo' );
 assert_breadcrumb( str_contains( $source, 'padding: clamp(19px, 2vw, 24px) clamp(24px, 2.8vw, 42px);' ), 'mismo espacio arriba y abajo en escritorio' );
 assert_breadcrumb( str_contains( $source, 'padding: 18px 24px;' ), 'móvil: 18px simétricos verticales y 24px laterales' );
-assert_breadcrumb( str_contains( $source, 'padding-top: clamp(22px, 2.4vw, 30px);' ), 'separación blanca independiente antes de la galería' );
+assert_breadcrumb( str_contains( $source, 'padding-top: clamp(22px, 2.4vw, 30px) !important;' ), 'separación blanca independiente antes de la galería' );
 assert_breadcrumb( str_contains( $source, 'background-color: #fff;' ), 'el hueco antes de la galería es blanco' );
 assert_breadcrumb( str_contains( $source, '.emo-product-breadcrumb-20261021 ~ div.product' ), 'espacio aplicado solo a la ficha después de las migas' );
 
