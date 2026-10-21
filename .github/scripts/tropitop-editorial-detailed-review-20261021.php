@@ -29,7 +29,12 @@ foreach($rows as $row){
  if($flags)++$summary['classifier_residual'];
  if($ctx||$flags){
   ++$summary['suspected'];
-  echo 'EDITORIAL_RAW_ITEM='.wp_json_encode(['id'=>$id,'sku'=>$p->get_sku(),'title'=>$p->get_name(),'status'=>$p->get_status(),'flags'=>$flags,'excerpt'=>$ctx],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
+  $html_samples=[];
+  foreach(['Trabajamos','Tropitop ofrece','compra','No trabajamos','de confianza de Tropitop'] as $needle){
+    $j=mb_stripos($description,$needle);
+    if($j!==false){$html_samples[$needle]=mb_substr($description,max(0,$j-170),430);}
+  }
+  echo 'EDITORIAL_RAW_ITEM='.wp_json_encode(['id'=>$id,'sku'=>$p->get_sku(),'title'=>$p->get_name(),'status'=>$p->get_status(),'flags'=>$flags,'excerpt'=>$ctx,'html'=>$html_samples],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
  }
  ++$summary['reviewed'];
 }
