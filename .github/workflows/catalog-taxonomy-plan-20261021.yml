@@ -4,6 +4,8 @@ on:
     paths:
       - '.github/workflows/catalog-taxonomy-plan-20261021.yml'
       - '.github/scripts/catalog-taxonomy-reconcile-20261021.php'
+      - 'tests/catalog-taxonomy-smoke.php'
+      - 'mdo-supplier-sync/includes/class-mdo-woo-importer.php'
 permissions: {contents: read}
 jobs:
   gourmet:
