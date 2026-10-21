@@ -49,4 +49,4 @@ foreach($rows as $r){
  ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
 }
 echo 'EMDO_TROPITOP_EN_EXPORT_SUMMARY='.wp_json_encode(['batch_limit'=>$cap,'exported'=>count($products),'supplier'=>'tropitop']).PHP_EOL;
-echo 'EMDO_TROPITOP_EN_EXPORT='.wp_json_encode(['site'=>get_option('siteurl'),'products'=>$products],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE).PHP_EOL;
+echo 'EMDO_TROPITOP_EN_EXPORT='.wp_json_encode(['site'=>get_option('siteurl'),'count'=>count($products),'products'=>$products],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE).PHP_EOL;
