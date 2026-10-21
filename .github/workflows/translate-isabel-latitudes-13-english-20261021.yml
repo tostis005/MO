@@ -52,9 +52,9 @@ jobs:
           REMOTE="/tmp/emdo-thirteen-en-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP .github/scripts/translate-isabel-latitudes-13-english-20261021.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
           trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $REMOTE" >/dev/null 2>&1 || true' EXIT
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_13_EN_MODE=audit '$PHP' -d memory_limit=512M '$WP' eval-file '$REMOTE' --path='$PROD' --allow-root" | tee /tmp/emdo-ikore-six-preflight.log
-          sed -n 's/^EMDO_13_NATIVE_EN=//p' /tmp/emdo-ikore-six-preflight.log | tail -n1 | jq -e '.complete==true and .matched==13 and (.skipped|length)==0' >/dev/null
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=512M '$WP' eval-file '$REMOTE' --path='$PROD' --allow-root" | tee /tmp/emdo-thirteen-en.log
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_13_EN_MODE=audit '$PHP' -d memory_limit=512M '$WP' eval-file '$REMOTE' --path='$PROD' --allow-root" | tee /tmp/emdo-thirteen-preflight.log
+          sed -n 's/^EMDO_13_NATIVE_EN=//p' /tmp/emdo-thirteen-preflight.log | tail -n1 | jq -e '.complete==true and .matched==13 and (.skipped|length)==0' >/dev/null
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_13_EN_MODE=apply '$PHP' -d memory_limit=512M '$WP' eval-file '$REMOTE' --path='$PROD' --allow-root" | tee /tmp/emdo-thirteen-en.log
           sed -n 's/^EMDO_13_NATIVE_EN=//p' /tmp/emdo-thirteen-en.log | tail -n1 | jq -e '.complete==true and .defined==13 and (.published+.already_complete)==13' >/dev/null
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true"
           echo 'EMDO_THIRTEEN_ENGLISH_READY=VERIFIED'
