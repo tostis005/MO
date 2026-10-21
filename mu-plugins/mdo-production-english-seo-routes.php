@@ -142,9 +142,18 @@ function mdoer_bootstrap_internal_route(): void {
         $row = mdoer_term_row( 'product_tag', rawurldecode( $m[1] ), true );
         if ( $row ) { $internal = '/en/etiqueta-producto/' . $row['slug'] . '/' . ( ! empty( $m[2] ) ? 'page/' . (int) $m[2] . '/' : '' ); }
     } elseif ( preg_match( '#^en/category/([^/]+)(?:/page/(\\d+))?$#i', $path, $m ) ) {
-        // WordPress blog category translations use their native category base.
-        $row = mdoer_term_row( 'category', rawurldecode( $m[1] ), true );
-        if ( $row ) { $internal = '/en/category/' . $row['slug'] . '/' . ( ! empty( $m[2] ) ? 'page/' . (int) $m[2] . '/' : '' ); }
+        // These three native English blog archives were stuck in 301 loops:
+        // rewriting their public path into /en/category/<Spanish-slug>/
+        // makes the English alias router redirect back to the original URL.
+        // Let the existing parse_request alias router handle these exact
+        // English slugs without altering Spanish or other archive routes.
+        $native_alias_handles = in_array( strtolower(rawurldecode($m[1])), array(
+            'meat', 'preserves', 'hams-and-shoulders'
+        ), true );
+        if ( ! $native_alias_handles ) {
+            $row = mdoer_term_row( 'category', rawurldecode( $m[1] ), true );
+            if ( $row ) { $internal = '/en/category/' . $row['slug'] . '/' . ( ! empty( $m[2] ) ? 'page/' . (int) $m[2] . '/' : '' ); }
+        }
     } elseif ( preg_match( '#^en/tag/([^/]+)(?:/page/(\\d+))?$#i', $path, $m ) ) {
         $row = mdoer_term_row( 'post_tag', rawurldecode( $m[1] ), true );
         if ( $row ) { $internal = '/en/tag/' . $row['slug'] . '/' . ( ! empty( $m[2] ) ? 'page/' . (int) $m[2] . '/' : '' ); }
