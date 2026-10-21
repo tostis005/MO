@@ -109,6 +109,70 @@ body.elmercado-child-theme .site-dialog-search .emo-quick-search-20261021 {
   font-weight: 500;
   text-align: center;
 }
+/* Estado de búsqueda activo desde la primera pulsación válida. */
+.site-dialog-search .emo-quick-search__loading {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 12px 14px;
+  color: #2f7d5d;
+  font-size: 13px;
+  font-weight: 700;
+}
+.site-dialog-search .emo-quick-search__spinner {
+  box-sizing: border-box;
+  display: inline-block;
+  flex: 0 0 19px;
+  width: 19px;
+  height: 19px;
+  border: 2px solid rgba(47,125,93,.19);
+  border-top-color: #2f7d5d;
+  border-radius: 50%;
+  animation: emo-quick-search-spin .72s linear infinite;
+}
+@keyframes emo-quick-search-spin {
+  to { transform: rotate(360deg); }
+}
+.site-dialog-search .emo-quick-search__skeletons {
+  display: grid;
+  gap: 9px;
+  padding: 0 10px 3px;
+}
+.site-dialog-search .emo-quick-search__skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 54px;
+}
+.site-dialog-search .emo-quick-search__skeleton-image {
+  flex: 0 0 50px;
+  width: 50px;
+  height: 50px;
+  border-radius: 10px;
+  background: #e9f0e9;
+}
+.site-dialog-search .emo-quick-search__skeleton-lines {
+  display: grid;
+  flex: 1;
+  gap: 9px;
+}
+.site-dialog-search .emo-quick-search__skeleton-line {
+  width: min(70%, 260px);
+  height: 10px;
+  border-radius: 999px;
+  background: #e9f0e9;
+}
+.site-dialog-search .emo-quick-search__skeleton-line.is-short {
+  width: min(38%, 136px);
+  height: 8px;
+}
+.site-dialog-search .emo-quick-search__skeleton-image,
+.site-dialog-search .emo-quick-search__skeleton-line {
+  animation: emo-quick-search-pulse 1.1s ease-in-out infinite alternate;
+}
+@keyframes emo-quick-search-pulse {
+  to { background-color: #dce9df; }
+}
 .site-dialog-search .emo-quick-search__empty {
   margin: 0;
   padding: 18px 12px;
@@ -183,5 +247,10 @@ body.elmercado-child-theme .site-dialog-search .emo-quick-search-20261021 {
 @media (prefers-reduced-motion: reduce) {
   .site-dialog-search .emo-quick-search__link {
     transition: none;
+  }
+  .site-dialog-search .emo-quick-search__spinner,
+  .site-dialog-search .emo-quick-search__skeleton-image,
+  .site-dialog-search .emo-quick-search__skeleton-line {
+    animation: none;
   }
 }
