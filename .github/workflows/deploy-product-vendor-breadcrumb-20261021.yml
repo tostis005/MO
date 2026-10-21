@@ -1,0 +1,147 @@
+name: Deploy product vendor breadcrumb 20261021
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-product-vendor-breadcrumb-20261021.yml'
+permissions:
+  contents: read
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate exact release and breadcrumb assertions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l mu-plugins/mdo-product-vendor-breadcrumb-20261021.php
+          php tests/product-vendor-breadcrumb-20261021.php
+          : "${STAGING_HOST:?missing host}"
+          : "${STAGING_USER:?missing SSH user}"
+          : "${STAGING_PASSWORD:?missing SSH password}"
+          : "${STAGING_REMOTE_PATH:?missing WordPress path}"
+          [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
+
+      - name: Install SSH transfer tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Upload only the new MU-plugin
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          test -s ~/.ssh/known_hosts && chmod 600 ~/.ssh/known_hosts
+          SSHOPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          TMP="/tmp/emdo-product-breadcrumb-${GITHUB_RUN_ID}.php"
+          echo "TMP=$TMP" >> "$GITHUB_ENV"
+          SSHPASS="$SSHPASS" sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P "$PORT" \
+            mu-plugins/mdo-product-vendor-breadcrumb-20261021.php "$STAGING_USER@$STAGING_HOST:$TMP"
+
+      - name: Deploy with backup and verify actual WooCommerce product HTML
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSHOPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSHOPTS "$STAGING_USER@$STAGING_HOST" \
+            "bash -s -- '$STAGING_REMOTE_PATH' '$TMP' '$GITHUB_RUN_ID'" <<'REMOTE'
+          set -Eeuo pipefail
+          raw="${1%/}"
+          incoming="$2"
+          runid="$3"
+          case "$raw" in
+            */wp-content/*) dev="${raw%%/wp-content/*}" ;;
+            *) echo 'Invalid staging root path' >&2; exit 1 ;;
+          esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || { echo 'Development WordPress path not found' >&2; exit 1; }
+            dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] || { echo 'Production WordPress not verified' >&2; exit 1; }
+          dest="$prod/wp-content/mu-plugins/mdo-product-vendor-breadcrumb-20261021.php"
+          [ -d "$(dirname "$dest")" ] || { echo 'MU-plugins directory not found' >&2; exit 1; }
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          [ -x "$php_bin" ] && [ -n "$wp_bin" ] || { echo 'PHP or WP-CLI missing' >&2; exit 1; }
+          siteurl="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --skip-plugins --skip-themes --allow-root)"
+          case "$siteurl" in
+            https://www.elmercadodeorigen.com*|https://elmercadodeorigen.com*|http://www.elmercadodeorigen.com*|http://elmercadodeorigen.com*) ;;
+            *) echo 'Invalid production site URL' >&2; exit 1 ;;
+          esac
+          active="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root)"
+          [ "$active" = "elmercadodeorigen-child" ] || { echo 'Unexpected active theme' >&2; exit 1; }
+          "$php_bin" -l "$incoming" >/dev/null
+          backup="$HOME/.elmercado-rollbacks/product-breadcrumb-$runid"
+          mkdir -p "$backup"
+          existed=0
+          if [ -f "$dest" ]; then
+            cp -p "$dest" "$backup/previous.php"
+            existed=1
+          fi
+          changed=0
+          rollback() {
+            status=$?
+            trap - EXIT
+            if [ "$status" -ne 0 ] && [ "$changed" -eq 1 ]; then
+              echo 'Breadcrumb verification failed, restoring previous state'
+              if [ "$existed" -eq 1 ]; then
+                cp -p "$backup/previous.php" "$dest"
+              else
+                rm -f "$dest"
+              fi
+              "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
+            fi
+            rm -f "$incoming" "/tmp/emdo-breadcrumb-product-$runid.html"
+            exit "$status"
+          }
+          trap rollback EXIT
+
+          install -m 0644 "$incoming" "$dest"
+          changed=1
+          cmp -s "$incoming" "$dest"
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
+
+          product_url="https://www.elmercadodeorigen.com/producto/paleta-de-bellota-100-iberico/?emdo_breadcrumb_release=$runid"
+          curl -fsSL --retry 2 --max-time 45 "$product_url" -o "/tmp/emdo-breadcrumb-product-$runid.html"
+          "$php_bin" -r '
+            $html = file_get_contents($argv[1]);
+            if (!preg_match("~<nav[^>]+class=\"emo-product-breadcrumb-20261021\"[^>]*>(.*?)</nav>~s", $html, $found)) { exit(1); }
+            preg_match_all("~<li>.*?</li>~s", $found[1], $items);
+            if (count($items[0]) !== 3) { exit(2); }
+            if (strpos($items[0][0], ">Tienda</a>") === false) { exit(3); }
+            if (strpos($items[0][1], "Hidalgo de la Jara</a>") === false) { exit(4); }
+            if (strpos($items[0][1], "href=") === false) { exit(5); }
+            if (strpos($items[0][2], "aria-current=\"page\"") === false || strpos($items[0][2], "href=") !== false) { exit(6); }
+            echo "PRODUCT_BREADCRUMB_LIVE_OK shop-vendor-product links=2\n";
+          ' "/tmp/emdo-breadcrumb-product-$runid.html"
+          echo "PRODUCTION_PRODUCT_BREADCRUMB_OK run=$runid backup=$backup"
+          changed=0
+          trap - EXIT
+          rm -f "$incoming" "/tmp/emdo-breadcrumb-product-$runid.html"
+          REMOTE
