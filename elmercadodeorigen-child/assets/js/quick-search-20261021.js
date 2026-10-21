@@ -63,6 +63,7 @@
 
     const reset = () => {
       region.hidden = true;
+      region.setAttribute('aria-busy', 'false');
       region.replaceChildren();
       options = [];
       active = -1;
@@ -104,6 +105,7 @@
     };
 
     const render = (term, products, message) => {
+      region.setAttribute('aria-busy', 'false');
       region.replaceChildren();
       options = [];
       active = -1;
@@ -167,6 +169,46 @@
       live.textContent = message || copy.count(options.length);
     };
 
+    const showLoading = (term) => {
+      region.replaceChildren();
+      options = [];
+      active = -1;
+      input.removeAttribute('aria-activedescendant');
+      region.setAttribute('aria-busy', 'true');
+
+      const heading = create('div', 'emo-quick-search__heading', copy.heading);
+      region.appendChild(heading);
+
+      const loading = create('div', 'emo-quick-search__loading');
+      loading.setAttribute('role', 'status');
+      const spinner = create('span', 'emo-quick-search__spinner');
+      spinner.setAttribute('aria-hidden', 'true');
+      loading.append(spinner, create('span', 'emo-quick-search__loading-text', copy.loading));
+      region.appendChild(loading);
+
+      const skeleton = create('div', 'emo-quick-search__skeletons');
+      skeleton.setAttribute('aria-hidden', 'true');
+      for (let i = 0; i < 3; i += 1) {
+        const row = create('div', 'emo-quick-search__skeleton-row');
+        const picture = create('span', 'emo-quick-search__skeleton-image');
+        const lines = create('span', 'emo-quick-search__skeleton-lines');
+        lines.append(create('span', 'emo-quick-search__skeleton-line'), create('span', 'emo-quick-search__skeleton-line is-short'));
+        row.append(picture, lines);
+        skeleton.appendChild(row);
+      }
+      region.appendChild(skeleton);
+
+      const all = create('a', 'emo-quick-search__all');
+      all.href = fullSearchUrl(term);
+      all.appendChild(create('span', '', copy.all + ' «' + term + '»'));
+      all.appendChild(create('span', '', '→'));
+      region.appendChild(all);
+
+      region.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+      live.textContent = copy.loading;
+    };
+
     const search = async (term, requestId) => {
       const key = lang + ':' + term.toLocaleLowerCase();
       const hit = cached.get(key);
@@ -189,7 +231,7 @@
         });
         if (!response.ok) throw new Error('Search unavailable');
         const result = await response.json();
-        if (requestId !== sequence || input.value.trim() !== term) return;
+        if (requestId !== sequence || input.value.trim().replace(/\\s+/g, ' ') !== term) return;
         const products = Array.isArray(result.products) ? result.products.slice(0, 6) : [];
         cached.set(key, { products, time: Date.now() });
         if (cached.size > LIMIT) cached.delete(cached.keys().next().value);
@@ -209,6 +251,14 @@
       const term = input.value.trim().replace(/\s+/g, ' ');
       if (Array.from(term).length < 2 || Array.from(term).length > 50) return;
       const current = sequence;
+      const key = lang + ':' + term.toLocaleLowerCase();
+      const hit = cached.get(key);
+      if (hit && Date.now() - hit.time < CACHE_MS) {
+        render(term, hit.products);
+        return;
+      }
+      // Indicador inmediato durante debounce y consulta HTTP.
+      showLoading(term);
       timer = setTimeout(() => search(term, current), 280);
     };
 
