@@ -141,12 +141,24 @@ add_action(
 				display: block;
 				width: 100%;
 				max-width: 1280px;
-				margin: 0 auto clamp(14px, 1.8vw, 22px);
-				padding: clamp(16px, 1.6vw, 22px) clamp(24px, 2.8vw, 42px);
+				/* Sin margen exterior: así el fondo termina a igual distancia del texto. */
+				margin: 0 auto;
+				padding: clamp(19px, 2vw, 24px) clamp(24px, 2.8vw, 42px);
 				color: #68786d;
 				font-size: 13px;
 				line-height: 1.55;
 				font-weight: 550;
+			}
+			/*
+			 * La separación de la galería se genera DENTRO de la zona blanca
+			 * del producto, no como margen bajo la franja beige. El combinador
+			 * general permite conservar las notificaciones de WooCommerce que
+			 * pueden aparecer entre la navegación y la ficha.
+			 */
+			body.elmercado-child-theme.single-product .site-main > .emo-product-breadcrumb-20261021 ~ div.product {
+				box-sizing: border-box;
+				padding-top: clamp(22px, 2.4vw, 30px) !important;
+				background-color: #fff;
 			}
 			body.elmercado-child-theme .emo-product-breadcrumb__items {
 				display: flex;
@@ -188,9 +200,10 @@ add_action(
 			}
 			@media (max-width: 600px) {
 				body.elmercado-child-theme .emo-product-breadcrumb-20261021 {
-					padding: 15px 24px 16px;
+					/* Igual espacio interior por encima y por debajo, también a dos líneas. */
+					padding: 18px 24px;
 					font-size: 12px;
-					margin-bottom: 16px;
+					margin-bottom: 0;
 				}
 				body.elmercado-child-theme .emo-product-breadcrumb__items,
 				body.elmercado-child-theme .emo-product-breadcrumb__items li {

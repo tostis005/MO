@@ -69,8 +69,11 @@ assert_breadcrumb( emdo_product_breadcrumb_data_20261021( 1 ) === array(), 'no s
 
 $source = file_get_contents( dirname( __DIR__ ) . '/mu-plugins/mdo-product-vendor-breadcrumb-20261021.php' );
 assert_breadcrumb( str_contains( $source, 'max-width: 1280px;' ), 'desktop centrado y contenido acotado' );
-assert_breadcrumb( str_contains( $source, 'margin: 0 auto clamp(14px, 1.8vw, 22px);' ), 'márgenes laterales automáticos en escritorio' );
-assert_breadcrumb( str_contains( $source, 'padding: clamp(16px, 1.6vw, 22px) clamp(24px, 2.8vw, 42px);' ), 'espacios interiores escritorio vertical y horizontal' );
-assert_breadcrumb( str_contains( $source, 'padding: 15px 24px 16px;' ), 'móvil: al menos 24px a cada lado y espacio arriba' );
+assert_breadcrumb( str_contains( $source, 'margin: 0 auto;' ), 'centrado sin margen inferior que falsee el fondo' );
+assert_breadcrumb( str_contains( $source, 'padding: clamp(19px, 2vw, 24px) clamp(24px, 2.8vw, 42px);' ), 'mismo espacio arriba y abajo en escritorio' );
+assert_breadcrumb( str_contains( $source, 'padding: 18px 24px;' ), 'móvil: 18px simétricos verticales y 24px laterales' );
+assert_breadcrumb( str_contains( $source, 'padding-top: clamp(22px, 2.4vw, 30px) !important;' ), 'separación blanca independiente antes de la galería' );
+assert_breadcrumb( str_contains( $source, 'background-color: #fff;' ), 'el hueco antes de la galería es blanco' );
+assert_breadcrumb( str_contains( $source, '.emo-product-breadcrumb-20261021 ~ div.product' ), 'espacio aplicado solo a la ficha después de las migas' );
 
-echo "PRODUCT_VENDOR_BREADCRUMB_OK 15 assertions\n";
+echo "PRODUCT_VENDOR_BREADCRUMB_OK 18 assertions\n";
