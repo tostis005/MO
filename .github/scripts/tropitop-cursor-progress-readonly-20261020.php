@@ -209,3 +209,5 @@ foreach(array(
         'source_markup'=>$sel, 'json_ld'=>$ld,
     ),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
 }
+
+// Final named-pack, honey, stock and rounded-basket audit - 2026-10-21.
