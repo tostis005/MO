@@ -113,3 +113,5 @@ foreach ($failed as $pid=>$entry) { echo 'REMAINING_TROPITOP='.wp_json_encode(ar
 
 // Read existing listing titles for reconciliation.
 foreach($failed as $id=>$entry){$product=isset($entry['woo_id'])?wc_get_product((int)$entry['woo_id']):false; echo 'TROPITOP_WOO_TITLE='.wp_json_encode(array('id'=>(string)$id,'title'=>$product?$product->get_name():'','state'=>$product?$product->get_status():'missing'),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;}
+
+// Read-only inventory follow-up after description/title/stock recovery 2026-10-21.
