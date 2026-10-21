@@ -128,6 +128,8 @@ function emdo_cluster21_product_list(string $group,int $seed,bool $english): str
 }
 // A post-to-post pathway is meaningful even when no stock is available.
 // Product recommendations are stock-checked and EN recommendations require a real EN listing.
+// Register after the English island's PHP_INT_MAX content replacement: otherwise it discards our cluster footer.
+add_action('wp_loaded',static function():void {
 add_filter('the_content',static function(string $body):string {
     if(is_admin()||is_feed()||!is_singular('post')||!in_the_loop()||!is_main_query())return $body;
     $n=(int)get_post_meta(get_the_ID(),'_emdo_newprod_plan_id',true);
@@ -157,7 +159,8 @@ add_filter('the_content',static function(string $body):string {
     if($links)$html.='<div class="emdo-editorial-cluster__reading"><h2>'.esc_html($en?'Keep exploring the subject':'Para profundizar en el tema').'</h2>'.$links.'</div>';
     if($items)$html.='<div class="emdo-editorial-cluster__products"><h2>'.esc_html($en?'Available products':'Productos disponibles').'</h2>'.$items.'</div>';
     return $body."\n".$html.'</aside>';
-},45);
+},PHP_INT_MAX);
+},90);
 
 // Product-to-editorial. Cocoa already has a 30-guide product widget: only add the missing cream guide.
 add_action('woocommerce_after_single_product_summary',static function():void {
