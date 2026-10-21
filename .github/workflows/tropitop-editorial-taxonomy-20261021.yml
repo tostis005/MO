@@ -85,6 +85,7 @@ jobs:
           echo "TROPITOP_EDITORIAL_VERIFY"
           remote_phase audit > /tmp/tropitop-editorial-after.log
           grep -E '^TROPITOP_EDITORIAL_(SUMMARY|ERROR|PRODUCT)=' /tmp/tropitop-editorial-after.log
+          sed -n 's/^TROPITOP_EDITORIAL_SUMMARY=//p' /tmp/tropitop-editorial-after.log | tail -n1 | jq -e '.changed_copy==0 and .changed_categories==0 and .residual_flags==0 and .errors==0 and .no_description_after_cleanup==0' >/dev/null
           if grep -Eq '"changed_copy":[1-9]|"changed_categories":[1-9]|"changed_categories":true' /tmp/tropitop-editorial-after.log; then
             echo "::error::Tropitop catalog is not idempotent after migration."
             exit 1
