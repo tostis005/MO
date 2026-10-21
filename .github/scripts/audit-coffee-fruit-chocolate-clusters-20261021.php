@@ -89,3 +89,37 @@ foreach([18073,18065,20541,20567,19048,18636,18491,19066,17803,17875] as $id){
  $translation[]=['id'=>$id,'pub'=>(string)get_post_meta($id,'_en_US_published',true),'en_slug'=>(string)get_post_meta($id,'_en_US_post_name',true)];
 }
 echo 'EMDO_CLUSTER_EXTRA '.wp_json_encode(['category_terms'=>$termcheck,'translations'=>$translation],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
+
+$productsByGroup=['cafe'=>[],'aguacate'=>[],'mango'=>[],'citricos'=>[],'chocolate'=>[]];
+$all=get_posts(['post_type'=>'product','post_status'=>'publish','posts_per_page'=>650,'fields'=>'ids','suppress_filters'=>true]);
+foreach($all as $pid){
+ $p=wc_get_product((int)$pid);if(!$p||!$p->is_visible()||!$p->is_purchasable()||!$p->is_in_stock())continue;
+ $terms=wp_get_post_terms($pid,'product_cat',['fields'=>'slugs']);if(is_wp_error($terms))continue;
+ $title=remove_accents(mb_strtolower($p->get_name()));$group='';
+ if(in_array('cafe-de-especialidad',$terms,true))$group='cafe';
+ elseif(in_array('aguacates',$terms,true))$group='aguacate';
+ elseif(in_array('chocolates-artesanos',$terms,true) || array_intersect($terms,['tabletas-de-chocolate','bombones-y-chocolatinas','cremas-de-cacao','cacao-para-beber-y-cocinar']))$group='chocolate';
+ elseif(array_intersect($terms,['packs-y-lotes','frutas','frutas-tropicales','frutas-del-mundo']) && preg_match('/(?<![a-z])mangos?(?![a-z])/u',$title))$group='mango';
+ elseif(array_intersect($terms,['packs-y-lotes','frutas','frutas-tropicales']) && preg_match('/(?<![a-z])(naranjas?|mandarinas?|pomelos?)(?![a-z])/u',$title))$group='citricos';
+ if($group==='')continue;
+ $long=(string)$p->get_description();$short=(string)$p->get_short_description();
+ $wc=static fn($str)=>count(preg_split('/\s+/u',trim(wp_strip_all_tags(strip_shortcodes($str)))))-($str===''?1:0);
+ $image_id=(int)$p->get_image_id();
+ $alt=$image_id?(string)get_post_meta($image_id,'_wp_attachment_image_alt',true):'';
+ $productsByGroup[$group][]=['name'=>$p->get_name(),'id'=>$pid,'words'=>$wc($long),'short'=>$wc($short),
+   'image'=>$image_id,'alt_ok'=>trim($alt)!=='','lang_en'=>(string)get_post_meta($pid,'_en_US_published',true)==='1',
+   'en_text'=>strlen(trim((string)get_post_meta($pid,'_en_US_post_content',true)))>0,
+   'type'=>$p->get_type(),'cat'=>$terms];
+}
+foreach($productsByGroup as $name=>$items){
+ $n=count($items);
+ $stats=['group'=>$name,'count'=>$n,
+   'empty_long'=>count(array_filter($items,static fn($p)=>$p['words']<15)),
+   'short_long'=>count(array_filter($items,static fn($p)=>$p['words']<90)),
+   'no_image'=>count(array_filter($items,static fn($p)=>$p['image']<1)),
+   'no_alt'=>count(array_filter($items,static fn($p)=>!$p['alt_ok'])),
+   'no_native_english'=>count(array_filter($items,static fn($p)=>!$p['lang_en'])),
+   'without_english_content'=>count(array_filter($items,static fn($p)=>!$p['en_text'])),
+   'examples_short'=>array_slice(array_values(array_filter($items,static fn($p)=>$p['words']<90)),0,5)];
+ echo 'EMDO_PRODUCT_QUALITY '.wp_json_encode($stats,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
+}
