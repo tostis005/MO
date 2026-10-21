@@ -105,3 +105,5 @@ echo 'TROPITOP_CURSOR_STATUS='.wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_U
 // Read-only recovery progress check 2026-10-21 followup. No product writes.
 
 // Tropitop read-only live count check during 1:1 weight recovery, 2026-10-21.
+
+// Post-import read-only audit for the 1:1 litre-kilogram rule (2026-10-21).
