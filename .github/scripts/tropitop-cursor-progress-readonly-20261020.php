@@ -215,3 +215,5 @@ foreach(array(
 // Read-only Tropitop final import verification after named prices and stock 20261021 v2.
 
 // Read-only final review of the last Tropitop 187 products on 2026-10-21.
+
+// Current end-of-run Tropitop progress audit, 2026-10-21 final retry.
