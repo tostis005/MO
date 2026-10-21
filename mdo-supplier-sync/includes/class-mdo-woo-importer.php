@@ -542,7 +542,7 @@ final class MDO_Woo_Importer {
         // Tropitop's "Gourmet" is a source merchandising bucket, not an
         // actual WooCommerce product family. Map by verified source title.
         if ( in_array( $key, array( 'gourmet', 'zumos-y-tes' ), true ) ) {
-            if ( preg_match( '/\\b(?:mermelada|confitura)\\b/u', $title ) ) { $key = 'mermeladas-y-confituras'; }
+            if ( preg_match( '/\\b(?:mermeladas?|confituras?)\\b/u', $title ) ) { $key = 'mermeladas-y-confituras'; }
             elseif ( preg_match( '/\\b(?:zumos?|n[eé]ctar|limonada)\\b/u', $title ) ) { $key = 'zumos-nectares-y-limonadas'; }
             elseif ( preg_match( '/\\b(?:infusi[oó](?:n|nes)|t[eé]\\s+verde|t[eé]\\s+negro)\\b/u', $title ) ) { $key = 'tes-e-infusiones'; }
             elseif ( preg_match( '/\\b(?:miel|mieles)\\b/u', $title ) ) { $key = 'mieles'; }
