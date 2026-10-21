@@ -1,6 +1,6 @@
 <?php
 /** Read-only new-supplier SEO and English completeness inventory, EMDO production.
- * Re-audit after six Ikore Kofi and thirteen Isabel/Latitudes English releases; no writes.
+ * Re-audit after six Ikore Kofi, thirteen Isabel/Latitudes and eighteen hand-edited Tropitop English releases; no writes.
  */
 if (!defined('ABSPATH') || !defined('WP_CLI') || !WP_CLI || !class_exists('WooCommerce') || !class_exists('MDO_Database')) {
     throw new RuntimeException('WordPress + supplier sync required');
