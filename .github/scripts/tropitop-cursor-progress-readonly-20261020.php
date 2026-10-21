@@ -101,3 +101,5 @@ $out=array(
 echo 'TROPITOP_CURSOR_STATUS='.wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
 
 // Read-only Tropitop recovery audit 2026-10-21. No product changes.
+
+// Read-only recovery progress check 2026-10-21 followup. No product writes.
