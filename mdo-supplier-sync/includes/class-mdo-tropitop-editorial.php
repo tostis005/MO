@@ -16,6 +16,17 @@ final class MDO_Tropitop_Editorial {
 
     public static function redirect_legacy_vegetable_category(): void {
         $path = (string) wp_parse_url( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), PHP_URL_PATH );
+        // The former mixed Gourmet shelf has been replaced with verified
+        // product families. Keep its indexed URL valid by redirecting to the
+        // main catalog, rather than serving an empty archive or a 404.
+        if ( preg_match( '~^/categoria-producto/gourmet/?$~i', $path ) &&
+            function_exists( 'wc_get_page_permalink' ) ) {
+            $shop = wc_get_page_permalink( 'shop' );
+            if ( $shop && ! is_wp_error( $shop ) ) {
+                wp_safe_redirect( $shop, 301, 'El Mercado de Origen' );
+                exit;
+            }
+        }
         if ( ! preg_match( '~^/categoria-producto/verduras/?$~i', $path ) ) {
             return;
         }
