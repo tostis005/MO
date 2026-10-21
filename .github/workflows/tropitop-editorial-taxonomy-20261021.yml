@@ -1,21 +1,14 @@
 name: Tropitop editorial and canonical category reconciliation
+# Explicitly postponed: do not touch 35 editorial fiches during category work.
 on:
-  workflow_run:
-    workflows: ['Deploy MDO Supplier Sync to production']
-    types: [completed]
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/tropitop-editorial-taxonomy-20261021.php'
-      - '.github/workflows/tropitop-editorial-taxonomy-20261021.yml'
 permissions: {contents: read}
 concurrency:
   group: tropitop-editorial-taxonomy-production
   cancel-in-progress: false
 jobs:
   reconcile:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
