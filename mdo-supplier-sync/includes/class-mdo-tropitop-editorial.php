@@ -208,6 +208,20 @@ final class MDO_Tropitop_Editorial {
         $html = preg_replace( '~<(p|div|ul|ol|h[2-6])\b[^>]*>\s*</\1>~iu', '', $html );
         $html = preg_replace( '~(?:<br\s*/?>\s*){3,}~iu', '<br>', $html );
 
+        // Product descriptions imported from PrestaShop may contain loose
+        // unwrapped prose (not <p> tags). Remove only sentences presenting
+        // Tropitop as the checkout retailer and retain the independent factual
+        // descriptions, ingredients, formats and storage information.
+        $html = preg_replace(
+            '/\\bEn\\s+Tropitop\\s+(?:trabajamos|colaboramos|seleccionamos|promovemos|ofrecemos|cultivamos|valoramos|recolectamos|garantizamos|cuidamos)\\b[^.!?]{0,400}[.!?]/iu',
+            '', $html
+        );
+        $html = preg_replace(
+            '/\\b(?:en\\s+(?:la\\s+)?tienda\\s+de\\s+Tropitop|en\\s+Tropitop|que\\s+vende\\s+Tropitop)\\b/iu',
+            '', $html
+        );
+        $html = preg_replace( '~<(p|div|h[1-6])\\b[^>]*>\\s*</\\1>~iu', '', $html );
+
         // Do not silently publish residual first-person or webshop copy:
         // caller's production audit will report every remaining occurrence.
         return trim( wp_kses_post( (string) $html ) );
