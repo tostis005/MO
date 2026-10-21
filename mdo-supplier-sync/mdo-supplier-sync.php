@@ -152,6 +152,7 @@ add_action(
 		MDO_Minimum_Order::init();
 		MDO_Shipping_Destinations::init();
 		MDO_Tropitop_Shipping::init();
+		MDO_Tropitop_Editorial::init();
 		MDO_Latitudes_Logistics::init();
 		MDO_Tolecarnes_Weight_Info::init();
 		MDO_Specials::init();
