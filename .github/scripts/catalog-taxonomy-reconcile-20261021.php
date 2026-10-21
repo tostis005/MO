@@ -61,7 +61,7 @@ function emdo_category_slugs($id) {
 }
 function emdo_gourmet_targets($title){
  $t=mb_strtolower($title);
- if(preg_match('/\b(?:mermelada|confitura)\b/u',$t))return ['conservas','mermeladas-y-confituras'];
+ if(preg_match('/\b(?:mermeladas?|confituras?)\b/u',$t))return ['conservas','mermeladas-y-confituras'];
  if(preg_match('/\b(?:zumos?|n[eé]ctar|limonada)\b/u',$t))return ['bebidas','zumos-nectares-y-limonadas'];
  if(preg_match('/\b(?:infusi[oó](?:n|nes)|t[eé]\s+(?:verde|negro))\b/u',$t))return ['bebidas','tes-e-infusiones'];
  if(preg_match('/\b(?:miel|mieles)\b/u',$t))return ['mieles'];
