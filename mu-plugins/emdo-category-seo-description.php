@@ -49,6 +49,12 @@ function emdo_category_seo_is_long_description( string $html ): bool {
 }
 
 function emdo_category_seo_render_description( string $position ): void {
+    // The WooCommerce archive template already prints these two short ES descriptions.
+    // Avoid a second identical paragraph from our extra SEO hook. Do not touch
+    // other categories or the EN fallback description.
+    if ( ! emdo_category_seo_is_english() && is_product_category( array( 'cafe-de-especialidad', 'cremas-de-cacao' ) ) ) {
+        return;
+    }
     $html = emdo_category_seo_current_description();
     if ( $html === '' ) return;
     $long = emdo_category_seo_is_long_description( $html );
