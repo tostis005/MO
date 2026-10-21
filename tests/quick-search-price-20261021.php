@@ -18,9 +18,9 @@ function wc_get_price_to_display( WC_Product $product, array $args ): float {
 class WC_Product {
 	public function __construct(
 		private string $type,
-		private $low = '',
-		private $high = '',
-		private $price = '',
+		private mixed $low = '',
+		private mixed $high = '',
+		private mixed $price = '',
 		private string $html = ''
 	) {}
 	public function is_type( string $type ): bool { return $type === $this->type; }
