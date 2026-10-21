@@ -213,3 +213,5 @@ foreach(array(
 // Final named-pack, honey, stock and rounded-basket audit - 2026-10-21.
 
 // Read-only Tropitop final import verification after named prices and stock 20261021 v2.
+
+// Read-only final review of the last Tropitop 187 products on 2026-10-21.
