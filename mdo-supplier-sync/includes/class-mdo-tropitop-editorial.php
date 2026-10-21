@@ -95,6 +95,12 @@ final class MDO_Tropitop_Editorial {
         // Remove offsite-sales persuasion from retained specification lists;
         // a measurement or origin in the same bullet is preserved.
         $html = preg_replace( '/\bIdeal\s+para\s+comprar\s+[^.]{0,140}\bonline\.?/iu', '', $html );
+        // A small number of supplier pack bullets start with SEO labels like
+        // "Comprar sandía online:" followed by useful variant information.
+        // Delete the label alone, preserving the choice/format sentence.
+        $html = preg_replace( '/\bComprar\s+[^:<]{2,100}\s+online\s*:\s*/iu', '', $html );
+        $html = preg_replace( '~<strong\b[^>]*>\s*</strong>~iu', '', $html );
+
         return trim( (string) preg_replace( '~<(p|div|h[1-6])\b[^>]*>\s*</\1>~iu', '', $html ) );
     }
 
