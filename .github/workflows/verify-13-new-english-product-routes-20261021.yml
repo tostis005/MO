@@ -1,0 +1,20 @@
+name: Verify 13 newly published English product URLs
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/verify-13-new-english-product-routes-20261021.py'
+      - '.github/workflows/verify-13-new-english-product-routes-20261021.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m py_compile .github/scripts/verify-13-new-english-product-routes-20261021.py
+      - name: Check rendered 13 English product pages and canonicals
+        run: python3 -u .github/scripts/verify-13-new-english-product-routes-20261021.py
