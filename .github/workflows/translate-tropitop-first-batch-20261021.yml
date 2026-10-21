@@ -1,4 +1,4 @@
-name: Tropitop bounded English batch 18 with offline review
+name: Tropitop first English batch — translation preview only
 # Run initiated after the read-only live catalog audit
 on:
   push:
@@ -125,6 +125,7 @@ jobs:
               print('EN_TRANSLATION_SAMPLE',json.dumps({'id':p['id'],'title':p['title'],'excerpt':plain(p['excerpt'])[:240],'content_start':plain(p['content'])[:280]},ensure_ascii=False))
           PY
       - name: Apply vetted translations to existing Falang product metadata
+        if: ${{ false }} # Editorial QA rejected the machine output; never auto-publish.
         shell: bash
         run: |
           set -euo pipefail
