@@ -80,7 +80,7 @@ final class MDO_Connector_Tropitop {
         $html = self::fetch( $url );
         $xp = self::xpath( $html );
         $id = self::product_id( $url );
-        $name = self::text( $xp, '(//h1)[1]' );
+        $name = self::product_name( $xp );
         if ( '' === $name ) { throw new RuntimeException( 'Tropitop: título ausente.' ); }
 
         $stock = self::stock( $xp );
@@ -142,9 +142,9 @@ final class MDO_Connector_Tropitop {
                 if ( isset( $row['net_volume_l'] ) && isset( $row['container_count'] ) ) {
                     $estimated = self::estimated_chargeable_weight( (float) $row['net_volume_l'] );
                     $basis = 'liquid_volume_1_liter_1_kg';
-                } elseif ( preg_match( '/mermelada/iu', $name ) ) {
-                    $estimated = self::estimated_jar_weight( $row, $description );
-                    $basis = 'jar_net_grams_1_to_1';
+                } else {
+                    $estimated = self::estimated_description_weight( $row, $description );
+                    $basis = 'explicit_contents_grams_or_liters_1_to_1';
                 }
                 if ( null !== $estimated ) {
                     $v['weight_kg'] = $estimated;
@@ -215,6 +215,37 @@ final class MDO_Connector_Tropitop {
         // Existing EMDO repository behavior: stable URL key, hash diffs and
         // review-only new products. Avoid introducing a second persistence path.
         return MDO_Connector_Huerta_Ana_Mary::upsert_product( $supplier_id, $product );
+    }
+
+    /**
+     * Prefer a heading belonging to this very product, not the nav menu or a
+     * "related products" carousel. When PrestaShop suppresses H1 (out of
+     * stock / legacy templates), its product-specific OG metadata is valid.
+     */
+    private static function product_name( DOMXPath $xp ): string {
+        $paths = array(
+            '//*[@id="main-product-wrapper"]//h1[normalize-space()]',
+            '//*[@id="col-product-info"]//h1[normalize-space()]',
+            '//main//h1[normalize-space()]',
+            '//h1[normalize-space()]',
+        );
+        foreach ( $paths as $path ) {
+            $text = self::text( $xp, '(' . $path . ')[1]' );
+            if ( $text !== '' && mb_strlen( $text ) < 220 ) { return $text; }
+        }
+        foreach ( array( 'og:title', 'twitter:title' ) as $meta ) {
+            $text = self::meta( $xp, $meta );
+            $text = preg_replace( '/\s*(?:\||[-–])\s*Tropitop.*$/iu', '', $text );
+            if ( mb_strlen( trim( $text ) ) >= 5 && mb_strlen( $text ) <= 220 ) {
+                return trim( $text );
+            }
+        }
+        // One last source-specific heading, never a generic document H2.
+        $text = self::text( $xp,
+            '(//*[@id="main-product-wrapper"]//h2[normalize-space()]'
+            . ' | //*[@id="col-product-info"]//h2[normalize-space()]'
+            . ' | //*[@id="description"]//h2[normalize-space()])[1]' );
+        return mb_strlen( $text ) >= 5 && mb_strlen( $text ) <= 180 ? $text : '';
     }
 
     /** Product-specific copy only: strip outbound shop links and seller-first-person voice. */
@@ -334,7 +365,7 @@ final class MDO_Connector_Tropitop {
             );
             // Read net volume from this exact PrestaShop presentation, not
             // a similar item in the global menu or related-products block.
-            // Shipping weight itself is estimated with a packaging buffer.
+            // Chargeable kg uses the merchant-approved net content 1:1, no packaging.
             if ( 'unid' === $unit && preg_match(
                 '/\b(\d{1,2})\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(litros?|l|ml|cl)\b/iu',
                 $text, $multi ) ) {
@@ -394,19 +425,74 @@ final class MDO_Connector_Tropitop {
         return $net > 0 && $net <= 30 ? round( $net, 3 ) : null;
     }
 
-    /** Source copy must explicitly say "4 botes de 200g" for a 4-jar pack. */
-    private static function estimated_jar_weight( array $row, string $description ): ?float {
+    /**
+     * Shipping weight from the exact presentation's content in producer copy.
+     * Examples:
+     *   4 botes de 200g, 4 botes ... (200g cada uno)
+     *   4 botellas de AOVE de 250 ml
+     *   5 separate "1 bote de XXX (200 g)" assortment lines.
+     * Do not use counts of loose fruit or infer a weight from piece number.
+     */
+    private static function estimated_description_weight( array $row, string $description ): ?float {
         if ( (string) ( $row['unit'] ?? '' ) !== 'unid' ) { return null; }
         $count = (float) ( $row['amount'] ?? 0 );
         if ( $count < 1 || $count > 24 || $count !== floor( $count ) ) { return null; }
-        if ( ! preg_match(
-            '/\b(\d{1,2})\s*botes?\s+de\s+(\d{2,4}(?:[.,]\d+)?)\s*(?:g|gr|gramos?)\b/iu',
-            wp_strip_all_tags( $description ), $matches
-        ) ) { return null; }
-        $jars = (int) $matches[1];
-        $grams = (float) str_replace( ',', '.', $matches[2] );
-        if ( $jars !== (int) $count || $grams < 50 || $grams > 1000 ) { return null; }
-        return self::estimated_chargeable_weight( $jars * $grams / 1000 );
+        $plain = preg_replace( '/\s+/u', ' ', wp_strip_all_tags( $description ) );
+        if ( $plain === '' ) { return null; }
+        // A named container is essential. "4 unidades" alone says nothing
+        // about mass, and generic gram mentions can refer to ingredients.
+        $pieces = '(?:botes?|tarros?|frascos?|botellas?|latas?|envases?)';
+        $size = '(\d+(?:[.,]\d+)?)\s*(kg|kilos?|gramos?|gr|g|litros?|l|ml|cl)\b';
+        $pattern = '/\b(\d{1,2})\s+' . $pieces
+            . '\s+(?:(?:(?!\b\d{1,2}\s+' . $pieces . '\b)[^.\\n]){0,90}?)'
+            . '(?:de\s+|\(\s*)' . $size . '/iu';
+        if ( preg_match_all( $pattern, $plain, $matches, PREG_SET_ORDER ) ) {
+            $possibles = array();
+            foreach ( $matches as $m ) {
+                if ( (int) $m[1] !== (int) $count ) { continue; }
+                $unit_kg = self::net_quantity_kg( (float) str_replace( ',', '.', $m[2] ), $m[3] );
+                if ( null !== $unit_kg ) { $possibles[] = $unit_kg * (int) $count; }
+            }
+            $possibles = array_values( array_unique( array_map(
+                static fn($v) => number_format( $v, 3, '.', '' ), $possibles ) ) );
+            if ( count( $possibles ) === 1 ) {
+                return self::estimated_chargeable_weight( (float) $possibles[0] );
+            }
+        }
+        // Single-container product component lists: exactly N separately
+        // enumerated jars/bottles; all must carry an explicit size and unit.
+        $single_pattern = '/\b1\s+' . $pieces
+            . '\s+(?:(?:(?!\b\d{1,2}\s+' . $pieces . '\b)[^.\\n]){0,75}?)'
+            . '\(?\s*' . $size . '/iu';
+        if ( preg_match_all( $single_pattern, $plain, $singles, PREG_SET_ORDER ) ) {
+            // Descriptions sometimes repeat the complete pack contents in
+            // separate marketing sections. Prefer no inference to ambiguity.
+            if ( count( $singles ) !== (int) $count ) { return null; }
+            $total = 0.0;
+            foreach ( $singles as $m ) {
+                $kg = self::net_quantity_kg( (float) str_replace( ',', '.', $m[1] ), $m[2] );
+                if ( null === $kg ) { return null; }
+                $total += $kg;
+            }
+            return self::estimated_chargeable_weight( $total );
+        }
+        // Some options themselves spell out the unit pack content: "4 x 500g".
+        $label = (string) ( $row['label'] ?? '' );
+        if ( preg_match( '/\b(\d{1,2})\s*[x×]\s*' . $size . '/iu', $label, $m ) &&
+            (int) $m[1] === (int) $count ) {
+            $kg = self::net_quantity_kg( (float) str_replace( ',', '.', $m[2] ), $m[3] );
+            return null === $kg ? null : self::estimated_chargeable_weight( $kg * $count );
+        }
+        return null;
+    }
+
+    private static function net_quantity_kg( float $value, string $unit ): ?float {
+        if ( $value <= 0 || $value > 30 ) { return null; }
+        $u = mb_strtolower( $unit, 'UTF-8' );
+        if ( preg_match( '/^(?:kg|kilos?|l|litros?)$/u', $u ) ) { return $value; }
+        if ( preg_match( '/^(?:g|gr|gramos?|ml)$/u', $u ) ) { return $value / 1000; }
+        if ( 'cl' === $u ) { return $value / 100; }
+        return null;
     }
 
     private static function missing_prices( array $sizes ): bool {
@@ -420,9 +506,17 @@ final class MDO_Connector_Tropitop {
         $availability = mb_strtolower( self::text( $xp,
             '//*[@id="product-availability"] | //*[contains(concat(" ",normalize-space(@class)," ")," product-availability ")]'
         ), 'UTF-8' );
+        $main_status = mb_strtolower( self::text( $xp,
+            '(//*[@id="main-product-wrapper"]//*[contains(@class,"product-unavailable") or contains(@class,"out-of-stock")]'
+            . ' | //*[@id="col-product-info"]//*[contains(@class,"product-unavailable") or contains(@class,"out-of-stock")])[1]'
+        ), 'UTF-8' );
         $button = mb_strtolower( self::text( $xp, '//button[@data-button-action="add-to-cart"]' ), 'UTF-8' );
         if ( preg_match( '/no\s+disponible|agotad|sin\s+stock|out\s+of\s+stock|temporalmente\s+no\s+disponible/u',
-            $availability . ' ' . $button ) ) { return 'outofstock'; }
+            $availability . ' ' . $main_status . ' ' . $button ) ) { return 'outofstock'; }
+        if ( $xp->query( '//button[@data-button-action="add-to-cart" and @disabled]' )->length ||
+            preg_match( '/\bagotad[oa]\b|no\s+disponible|sin\s+stock/iu', $button ) ) {
+            return 'outofstock';
+        }
         if ( $xp->query( '//button[@data-button-action="add-to-cart" and not(@disabled)]' )->length ) {
             return 'instock';
         }

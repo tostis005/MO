@@ -166,6 +166,29 @@ verify( abs( (float) reflected( 'estimated_chargeable_weight', 29.0 ) - 29.0 ) <
 verify( null === reflected( 'estimated_chargeable_weight', 30.5 ),
     'Do not invent shipping rates for unverified high weight bands.' );
 
+
+// Recovery: nested title and OG title are valid when a Prestashop template
+// doesn't render H1. Titles of recommendation products must not be borrowed.
+$title_doc = new DOMDocument();
+@$title_doc->loadHTML( '<html><head><meta property="og:title" content="Cesta Desayuno Gourmet - Tropitop"></head>'
+    . '<body><div class="related"><h2>Otro producto</h2></div></body></html>' );
+verify( reflected( 'product_name', new DOMXPath( $title_doc ) ) === 'Cesta Desayuno Gourmet',
+    'Product-specific OG title recovers the title without H1.' );
+
+$weight_row = array( 'unit' => 'unid', 'amount' => 4.0 );
+verify( abs( reflected( 'estimated_description_weight', $weight_row,
+    '1 caja contiene 4 botes de 200g de mermelada de guayaba natural.' ) - 0.8 ) < 0.001,
+    'Description net weight 4 x 200g is 0.8kg without packaging.' );
+verify( abs( reflected( 'estimated_description_weight', $weight_row,
+    'Una caja contiene 4 botellas de aceite de oliva virgen extra de 250 ml.' ) - 1.0 ) < 0.001,
+    'Description net volume 4 x 250ml is 1kg.' );
+verify( null === reflected( 'estimated_description_weight',
+    array( 'unit' => 'unid', 'amount' => 5.0 ),
+    'Cinco melones dulces de temporada.' ), 'Count of fruits must not determine mass.' );
+verify( null === reflected( 'estimated_description_weight',
+    array( 'unit' => 'unid', 'amount' => 4.0 ),
+    'Lleva 4 botes de 200g y 4 botellas de 250ml.' ),
+    'Different possible pack weights must not be guessed.' );
 echo "Tropitop connector and shipping smoke checks passed.\n";
 
 $expected = array( 3 => 2.95, 4 => 2.95, 6 => 5.95, 8 => 5.95, 9 => 5.95,

@@ -421,6 +421,26 @@ if ( $start >= $total && empty( $state['net_weight_one_to_one_retry_20261021'] )
         'reopened' => $reopened, 'previously_linked_reweight' => $reweighted
     ) ) . "\n";
 }
+// One focused recovery after source-scoped title and availability fixes,
+// plus reading explicit contents of bottle/jar packs from their description.
+// Unverified fruit-by-piece weight and incomplete price matrices stay hidden.
+if ( $start >= $total && empty( $state['description_title_stock_retry_20261021'] ) ) {
+    $reopened = 0;
+    foreach ( (array) ( $state['failed'] ?? array() ) as $pid => $failure ) {
+        if ( ! in_array( (string) ( $failure['url'] ?? '' ), (array) $state['urls'], true ) ) { continue; }
+        $reason = (string) ( $failure['reason'] ?? '' );
+        if ( ! str_contains( $reason, 'falta el peso embalado' ) &&
+            ! str_contains( $reason, 'título ausente' ) &&
+            ! str_contains( $reason, 'Stock sin verificación' ) &&
+            ! str_contains( $reason, 'matriz de pesos/precios incompleta' ) ) { continue; }
+        $state['retry_attempts'][$pid] = 1;
+        ++$reopened;
+    }
+    $state['description_title_stock_retry_20261021'] = 1;
+    if ( $reopened ) { unset( $state['finished_at'] ); }
+    update_option( $key, $state, false );
+    echo 'TROPITOP_DESCRIPTION_RECOVERY_UNLOCKED=' . $reopened . "\n";
+}
 // The saved cursor is authoritative for first-pass progress. After reaching
 // the end, retry only failed source URLs (at most twice), never regenerate the
 // entire catalog merely because a previous upload was interrupted.
