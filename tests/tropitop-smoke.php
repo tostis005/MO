@@ -199,8 +199,8 @@ $approved = array(
     2452 => array(2=>3.6,3=>5.4), 2453 => array(4=>7.6),
     2535 => array(4=>2), 2536 => array(6=>.72),
     2538 => array(5=>.75), 2539 => array(3=>.20),
-    2610 => array(7=>5.52), 2608 => array(10=>6.90),
-    2612 => array(10=>5.57),
+    2610 => array(7=>6), 2608 => array(10=>7),
+    2612 => array(10=>6),
     2579 => array(2=>1.16), 2580 => array(2=>1.16),
     2581 => array(2=>1.16), 2677 => array(2=>14,3=>21),
     2693 => array(4=>17.8), 2695 => array(3=>6.8),
@@ -229,6 +229,51 @@ verify( reflected( 'curated_unit_tariff_weight','2538',
     array('unit'=>'unid','amount'=>5.0))['basis'] === 'merchant_approximation_reviewable',
     'Unknown lip balm content must be labelled as merchant estimate.' );
 
+
+// Named product variants do NOT contain "kg" or "unid" in their labels.
+// Both choices and each exact producer price must be present, otherwise fail.
+foreach ( array(
+    '2365' => array('Sandía rayada + 2 melones 20,90 €',
+        'Sandía negra + 2 melones 23,90 €',11.6,12.6),
+    '2685' => array('Sandía rayada + Melón sapo + Melón galia 17,90 €',
+        'Sandía negra + Melón sapo + Melón galia 21,90 €',10.8,11.8),
+) as $id => $fixture ) {
+    $dom = new DOMDocument();
+    @$dom->loadHTML( '<?xml encoding="UTF-8" ?><div class="product-variants">'
+        . '<div class="variant-box">'.$fixture[0].'</div>'
+        . '<div class="variant-box">'.$fixture[1].'</div>'
+        . '</div><aside class="related"><div class="variant-box">Sandía negra + 2 melones 1,00 €</div></aside>' );
+    $named = reflected( 'named_pack_sizes', $id === '2365' ? new DOMXPath($dom) : new DOMXPath($dom), $id );
+    verify( count($named) === 2, 'Named pack must expose both verified choices '.$id );
+    $by_name = array_column( array_values($named), null, 'label' );
+    verify( abs($named[array_key_first($named)]['weight_kg'] - $fixture[2]) < .01,
+        'Source-weighted striped combination '.$id );
+    verify( abs($named[array_key_last($named)]['weight_kg'] - $fixture[3]) < .01,
+        'Source-weighted black combination '.$id );
+    verify( abs($named[array_key_first($named)]['price'] -
+        ($id==='2365' ? 20.9 : 17.9)) < .001, 'Producer price, not related card '.$id );
+    verify( null !== MDO_Tropitop_Shipping::cost_for_weight($named[array_key_first($named)]['weight_kg']),
+        'Named pack shipping tariff verified '.$id );
+}
+$dom = new DOMDocument();
+@$dom->loadHTML( '<?xml encoding="UTF-8" ?><div class="product-variants">'
+    . '<div class="variant-box">Sandía rayada + 2 melones 20,90 €</div>'
+    . '</div>' );
+verify( reflected( 'named_pack_sizes',new DOMXPath($dom),'2365') === array(),
+    'A missing price for one named combination must block publication.' );
+
+$dom = new DOMDocument();
+@$dom->loadHTML( '<?xml encoding="UTF-8" ?><div id="main-product-wrapper">'
+    . '<p>El producto no está disponible temporalmente.</p>'
+    . '</div>' );
+verify( reflected( 'stock',new DOMXPath($dom)) === 'outofstock',
+    'Explicit product-level negative availability applies without a button.' );
+$dom = new DOMDocument();
+@$dom->loadHTML( '<?xml encoding="UTF-8" ?><script>'
+    . 'var message = "El producto no está disponible temporalmente.";</script>'
+    . '<button data-button-action="add-to-cart">Comprar</button>' );
+verify( reflected( 'stock',new DOMXPath($dom)) === 'instock',
+    'JavaScript template stock warnings are not product availability.' );
 echo "Tropitop connector and shipping smoke checks passed.\n";
 
 $expected = array( 3 => 2.95, 4 => 2.95, 6 => 5.95, 8 => 5.95, 9 => 5.95,

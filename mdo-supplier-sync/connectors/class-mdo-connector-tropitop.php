@@ -85,6 +85,11 @@ final class MDO_Connector_Tropitop {
 
         $stock = self::stock( $xp );
         $sizes = self::sizes( $xp );
+        // Two named fruit packs use descriptive combinations instead of kg
+        // or units inside their PrestaShop options; never invent prices.
+        if ( in_array( $id, array( '2365', '2685' ), true ) ) {
+            $sizes = self::named_pack_sizes( $xp, $id );
+        }
         // Product detail sometimes omits prices of unselected combinations.
         // The product card in its exact Spanish category can supply that matrix.
         // A single fully priced presentation is valid. Older releases fetched
@@ -103,11 +108,16 @@ final class MDO_Connector_Tropitop {
             $category = self::category_url( $url, $xp );
             $listing = self::xpath( self::fetch( $category ) );
             foreach ( $listing->query( '//*[@data-id-product="' . $id . '"]' ) ?: array() as $card ) {
-                $listed = self::sizes( $listing, $card );
+                $listed = in_array( $id, array( '2365', '2685' ), true )
+                    ? self::named_pack_sizes( $listing, $id, $card )
+                    : self::sizes( $listing, $card );
                 if ( count( $listed ) >= count( $sizes ) && ! self::missing_prices( $listed ) ) {
                     $sizes = $listed; break;
                 }
             }
+        }
+        if ( in_array( $id, array( '2365', '2685' ), true ) && count( $sizes ) !== 2 ) {
+            throw new RuntimeException( 'Tropitop: ambas combinaciones de sandía carecen de precio verificable.' );
         }
         $has_selector = (bool) $xp->query( '//*[contains(@class,"product-variants")]|//select[starts-with(@name,"group")]|//*[@data-product-attribute]' )->length;
         if ( $has_selector && ( ! $sizes || self::missing_prices( $sizes ) ) ) {
@@ -141,7 +151,13 @@ final class MDO_Connector_Tropitop {
                 $v['shipping_weight_estimated'] = true;
                 $v['shipping_weight_basis'] = (string) $curated['basis'];
             }
-            elseif ( isset( $row['weight_kg'] ) ) { $v['weight_kg'] = (float) $row['weight_kg']; }
+            elseif ( isset( $row['weight_kg'] ) ) {
+                $v['weight_kg'] = (float) $row['weight_kg'];
+                if ( ! empty( $row['weight_estimated'] ) ) {
+                    $v['shipping_weight_estimated'] = true;
+                    $v['shipping_weight_basis'] = (string) ( $row['weight_basis'] ?? 'source_net_weight_estimate' );
+                }
+            }
             else {
                 $estimated = null; $basis = '';
                 if ( isset( $row['net_volume_l'] ) && isset( $row['container_count'] ) ) {
@@ -410,6 +426,66 @@ final class MDO_Connector_Tropitop {
     }
 
     /**
+     * Exact producer-labelled options for two summer packs. Their PrestaShop
+     * attribute name is "nombre", not "kg"/"unid"; only the real product
+     * selector or its own category-card node can supply prices. Never borrow
+     * a different product's price, and require BOTH choices on the page.
+     */
+    private static function named_pack_sizes( DOMXPath $xp, string $id, ?DOMNode $context = null ): array {
+        if ( ! in_array( $id, array( '2365', '2685' ), true ) ) { return array(); }
+        $root = $context;
+        if ( null === $root ) {
+            $match = $xp->query( '//*[contains(concat(" ",normalize-space(@class)," ")," product-variants ")]' );
+            $root = $match && $match->length ? $match->item(0) : null;
+        }
+        if ( ! $root ) { return array(); }
+        $nodes = $xp->query(
+            './/div[contains(concat(" ",normalize-space(@class)," ")," variant-box ")]'
+            . ' | .//option | .//li | .//a | .//button | .//label',
+            $root
+        );
+        $result = array();
+        foreach ( $nodes ?: array() as $node ) {
+            $text = trim( preg_replace( '/\s+/u', ' ', html_entity_decode(
+                (string) $node->textContent, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) ) );
+            $tail = '2365' === $id
+                ? '2\s+melones'
+                : 'mel[oó]n\s+sapo\s*\+\s*mel[oó]n\s+galia';
+            if ( ! preg_match( '/\b(sand[ií]a\s+(rayada|negra))\s*\+\s*'
+                . $tail . '\s*(?:[-–]\s*)?(\d{1,4}(?:[.,]\d{2}))\s*€/iu',
+                $text, $m ) ) { continue; }
+            $kind = mb_strtolower( $m[2], 'UTF-8' );
+            $price = (float) str_replace( ',', '.', $m[3] );
+            if ( $price <= 0 || $price > 1000 || isset( $result[ $kind ] ) ) {
+                // Duplicate DOM wrappers are acceptable only if they agree.
+                if ( isset( $result[ $kind ] ) && abs( $result[ $kind ]['price'] - $price ) > 0.001 ) {
+                    return array();
+                }
+                continue;
+            }
+            $name = 'Sandía ' . $kind . ( '2365' === $id
+                ? ' + 2 melones'
+                : ' + Melón sapo + Melón galia' );
+            // Exact first-party composition: 2365 = 6/7 + 2*2.8kg;
+            // 2685 = 6/7 + 2.8 + 2kg. Source calls these approximate.
+            $kg = ( 'negra' === $kind ? 7.0 : 6.0 )
+                + ( '2365' === $id ? 5.6 : 4.8 );
+            $result[ $kind ] = array(
+                'amount' => 3.0, 'unit' => 'unid', 'label' => $name,
+                'price' => $price, 'weight_kg' => round( $kg, 2 ),
+                'weight_estimated' => true,
+                'weight_basis' => 'tropitop_named_combo_source_net_20261021',
+                'unavailable' => (bool) preg_match( '/agotad[oa]|sin\s*stock/iu', $text ),
+            );
+        }
+        if ( ! isset( $result['rayada'], $result['negra'] ) ) { return array(); }
+        return array(
+            'unid:3.000:' . mb_strtolower( $result['rayada']['label'], 'UTF-8' ) => $result['rayada'],
+            'unid:3.000:' . mb_strtolower( $result['negra']['label'], 'UTF-8' ) => $result['negra'],
+        );
+    }
+
+    /**
      * Tropitop 2026-10-21 merchant-approved shipping tariff conventions.
      *
      * Each entry is keyed by one supplier PRODUCT ID and the EXACT printed
@@ -456,16 +532,17 @@ final class MDO_Connector_Tropitop {
             // Three breakfast baskets: exact product listing composition,
             // 1:1 merchant tariff for ml/g, NO glass, box or external
             // packaging. Jams 200g each: same Tropitop mango/guava jar.
+            // Rounded UP for chargeable shipping per merchant direction.
             // 2608: 2kg Hass + 2kg orange + 1kg RAF + 1kg banana +
             //       500g honey + 200g guava jam + 200g mango jam.
-            '2608' => array( 10 => 6.90 ),
+            '2608' => array( 10 => 7.00 ),
             // 2610: 2kg Hass + 2kg orange + 1kg RAF +
             //       320g four small honeys + 200g mango jam.
-            '2610' => array( 7 => 5.52 ),
+            '2610' => array( 7 => 6.00 ),
             // 2612: 2kg Hass + 2kg orange + 2x200g jams +
             //       320g honey + 250ml AOVE + 100ml cream +
             //       500ml body lotion (1ml = 1g merchant convention).
-            '2612' => array( 10 => 5.57 ),
+            '2612' => array( 10 => 6.00 ),
             // Nut jars 2 x 580g; mixed pack has one of each.
             '2579' => array( 2 => 1.16 ),
             '2580' => array( 2 => 1.16 ),
@@ -610,6 +687,18 @@ final class MDO_Connector_Tropitop {
         $button = mb_strtolower( self::text( $xp, '//button[@data-button-action="add-to-cart"]' ), 'UTF-8' );
         if ( preg_match( '/no\s+disponible|agotad|sin\s+stock|out\s+of\s+stock|temporalmente\s+no\s+disponible/u',
             $availability . ' ' . $main_status . ' ' . $button ) ) { return 'outofstock'; }
+        // Some PrestaShop templates render the explicit negative inventory
+        // text outside #product-availability and have NO buy button.
+        // Recognize only the product-specific full statement, not "agotado"
+        // from unrelated carousel cards or a script/template.
+        foreach ( $xp->query( '//text()[contains(., "producto no") or contains(., "Producto no") or contains(., "no está disponible temporalmente")]' ) ?: array() as $warning ) {
+            $parent = $warning->parentNode;
+            if ( ! $parent || in_array( strtolower( $parent->nodeName ), array( 'script', 'style', 'template' ), true ) ) { continue; }
+            $txt = trim( preg_replace( '/\\s+/u', ' ', (string) $warning->nodeValue ) );
+            if ( preg_match( '/\\bel\\s+producto\\s+no\\s+est[aá]\\s+disponible\\s+temporalmente\\b/iu', $txt ) ) {
+                return 'outofstock';
+            }
+        }
         if ( $xp->query( '//button[@data-button-action="add-to-cart" and @disabled]' )->length ||
             preg_match( '/\bagotad[oa]\b|no\s+disponible|sin\s+stock/iu', $button ) ) {
             return 'outofstock';

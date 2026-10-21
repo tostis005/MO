@@ -478,6 +478,40 @@ if ( $start >= $total && empty( $state['breakfast_basket_net_weight_retry_202610
     update_option( $key, $state, false );
     echo 'TROPITOP_BREAKFAST_WEIGHT_RETRY=' . $reopened . "\n";
 }
+// Round three already-published baskets to merchant-approved chargeable kg
+// and retry the exact seven outstanding items; no full catalogue re-import.
+if ( $start >= $total && empty( $state['named_matrix_stock_and_basket_rounding_retry_20261021'] ) ) {
+    $reopened=0;
+    foreach ( array('2608','2610','2612') as $id ) {
+        if ( ! isset( $state['imported'][$id] ) ) { continue; }
+        $matched_url='';
+        foreach ( (array)$state['urls'] as $candidate ) {
+            if ( preg_match( '~/' . preg_quote( $id, '~' ) . '-[a-z0-9-]+\.html$~i',
+                (string)wp_parse_url( $candidate, PHP_URL_PATH ) ) ) {
+                $matched_url=(string)$candidate; break;
+            }
+        }
+        if ( '' === $matched_url ) { continue; }
+        $state['failed'][$id]=array(
+            'url'=>$matched_url, 'woo_id'=>(int)$state['imported'][$id]['woo_id'],
+            'reason'=>'Recalcular peso redondeado de desayuno.',
+        );
+        unset( $state['imported'][$id] );
+        $state['retry_attempts'][$id]=1;
+        ++$reopened;
+    }
+    foreach ( array('2365','2525','2526','2602','2616','2670','2685') as $id ) {
+        if ( ! isset( $state['failed'][$id] ) ) { continue; }
+        if ( ! in_array( (string)($state['failed'][$id]['url']??''),
+            (array)$state['urls'], true ) ) { continue; }
+        $state['retry_attempts'][$id]=1;
+        ++$reopened;
+    }
+    $state['named_matrix_stock_and_basket_rounding_retry_20261021']=1;
+    if ( $reopened ) { unset( $state['finished_at'] ); }
+    update_option( $key, $state, false );
+    echo 'TROPITOP_FINAL_CORRECTION_REOPENED=' . $reopened . "\n";
+}
 // The saved cursor is authoritative for first-pass progress. After reaching
 // the end, retry only failed source URLs (at most twice), never regenerate the
 // entire catalog merely because a previous upload was interrupted.
