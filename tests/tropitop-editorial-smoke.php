@@ -23,7 +23,7 @@ check(str_contains($clean,'piel fina'),'Factual sensory details must survive');
 check(!str_contains($clean,'colesterol'),'Generic source health claims removed');
 check(!str_contains($clean,'nuestra'),'Supplier first-person removed');
 check(!str_contains($clean,'tropitop.com'),'Outbound producer checkout removed');
-check(MDO_Tropitop_Editorial::residual_markers($clean)===array(),'No residual flags');
+check(MDO_Tropitop_Editorial::residual_markers($clean)===array(),'No residual flags: '.json_encode(MDO_Tropitop_Editorial::residual_markers($clean)).' CLEAN='.substr(strip_tags($clean),0,500));
 $short=MDO_Tropitop_Editorial::short_description('<p>Nuestras berenjenas llegan a tu casa.</p><p>Formato 3 kg.</p>');
 check(!str_contains($short,'Nuestras'),'Short supplier pitch removed');
 check(str_contains($short,'3 kg'),'Neutral short facts preserved');
@@ -37,4 +37,22 @@ $heading_clean = MDO_Tropitop_Editorial::description($heading,'Berenjenas','Bere
 check(!str_contains($heading_clean,'vende Tropitop'),'External seller/producer heading should be removed');
 check(!str_contains($heading_clean,'promovemos'),'Remaining producer voice removed');
 check(str_contains($heading_clean,'Piel brillante'),'Following factual section preserved');
+$retailer = '<h4>¿Qué incluye la caja de tomates Raf en Tropitop?</h4>'
+    . '<ul><li>Contenido: 2 y 4 kg.</li></ul>'
+    . '<h4>¿Cuál es el origen de los tomates que puedes comprar en Tropitop?</h4>'
+    . '<p>Cultivados en Castellón.</p>'
+    . '<h4>Compra tomates directamente del productor</h4>'
+    . '<p>El cultivo tiene un carácter mediterráneo.</p>';
+$retailer_clean = MDO_Tropitop_Editorial::description( $retailer, 'Tomates Raf', 'Cajas de tomate.' );
+check( str_contains($retailer_clean,'Contenido de la caja'), 'Product pack heading neutralized' );
+check( ! str_contains($retailer_clean,'en Tropitop'), 'Producer must not be checkout retailer' );
+check( ! str_contains($retailer_clean,'Compra tomates'), 'Remove direct-to-producer commerce headline' );
+check( str_contains($retailer_clean,'2 y 4 kg'), 'Must preserve pack sizes' );
+check( str_contains($retailer_clean,'Castellón'), 'Must preserve origin facts' );
+check( MDO_Tropitop_Editorial::residual_markers($retailer_clean)===array(), 'No external retailer marker' );
+$farmer = MDO_Tropitop_Editorial::description('<ul><li>Agricultor: Hermán, agricultor de confianza de Tropitop.</li>'
+    . '<li>Número de piezas: aprox. 2 kg. Ajustamos siempre el contenido para alcanzar el peso total.</li></ul>');
+check( str_contains($farmer,'Agricultor: Hermán'), 'Retain farmer identity' );
+check( str_contains($farmer,'El contenido se ajusta'), 'Preserve objective pack explanation' );
+check( ! str_contains($farmer,'de confianza de Tropitop'), 'No source-store attributions' );
 echo "TROPITOP_EDITORIAL_SMOKE_OK\n";
