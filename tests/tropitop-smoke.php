@@ -199,6 +199,8 @@ $approved = array(
     2452 => array(2=>3.6,3=>5.4), 2453 => array(4=>7.6),
     2535 => array(4=>2), 2536 => array(6=>.72),
     2538 => array(5=>.75), 2539 => array(3=>.20),
+    2610 => array(7=>5.52), 2608 => array(10=>6.90),
+    2612 => array(10=>5.57),
     2579 => array(2=>1.16), 2580 => array(2=>1.16),
     2581 => array(2=>1.16), 2677 => array(2=>14,3=>21),
     2693 => array(4=>17.8), 2695 => array(3=>6.8),
@@ -206,7 +208,7 @@ $approved = array(
     2711 => array(2=>3.4,4=>6.8), 2712 => array(2=>4.6,3=>6.9),
     2717 => array(4=>7), 2732 => array(5=>6)
 );
-verify( count( $approved ) === 24, 'All 24 pending product-specific weights must be accounted for.' );
+verify( count( $approved ) === 27, 'All 24 unit packs plus 3 breakfast baskets must be accounted for.' );
 foreach ( $approved as $id => $options ) {
     foreach ( $options as $units => $weight ) {
         $v = reflected( 'curated_unit_tariff_weight', (string)$id,

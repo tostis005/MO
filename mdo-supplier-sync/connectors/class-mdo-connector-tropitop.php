@@ -453,6 +453,19 @@ final class MDO_Connector_Tropitop {
             '2538' => array( 5 => 0.75 ),
             // Honey cosmetics 75ml+100ml; 25g merchant estimate for lip balm.
             '2539' => array( 3 => 0.20 ),
+            // Three breakfast baskets: exact product listing composition,
+            // 1:1 merchant tariff for ml/g, NO glass, box or external
+            // packaging. Jams 200g each: same Tropitop mango/guava jar.
+            // 2608: 2kg Hass + 2kg orange + 1kg RAF + 1kg banana +
+            //       500g honey + 200g guava jam + 200g mango jam.
+            '2608' => array( 10 => 6.90 ),
+            // 2610: 2kg Hass + 2kg orange + 1kg RAF +
+            //       320g four small honeys + 200g mango jam.
+            '2610' => array( 7 => 5.52 ),
+            // 2612: 2kg Hass + 2kg orange + 2x200g jams +
+            //       320g honey + 250ml AOVE + 100ml cream +
+            //       500ml body lotion (1ml = 1g merchant convention).
+            '2612' => array( 10 => 5.57 ),
             // Nut jars 2 x 580g; mixed pack has one of each.
             '2579' => array( 2 => 1.16 ),
             '2580' => array( 2 => 1.16 ),

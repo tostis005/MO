@@ -458,6 +458,26 @@ if ( $start >= $total && empty( $state['curated_unit_weight_retry_20261021'] ) )
     update_option( $key, $state, false );
     echo 'TROPITOP_CURATED_WEIGHTS_RETRY=' . $reopened . "\n";
 }
+// Product-specific breakfast basket retry: contents are stated in the
+// supplier's own detail pages, with 200g jams and net ml:kg 1:1 convention.
+// Only reopen 2608/2610/2612; all other exhausted source failures untouched.
+// Product SKU remains stable and source-driven price/stock/images still sync.
+if ( $start >= $total && empty( $state['breakfast_basket_net_weight_retry_20261021'] ) ) {
+    $reopened = 0;
+    foreach ( array( '2608', '2610', '2612' ) as $id ) {
+        if ( ! isset( $state['failed'][$id] ) ) { continue; }
+        if ( ! str_contains( (string) ( $state['failed'][$id]['reason'] ?? '' ),
+            'falta el peso embalado' ) ) { continue; }
+        if ( ! in_array( (string) ( $state['failed'][$id]['url'] ?? '' ),
+            (array) $state['urls'], true ) ) { continue; }
+        $state['retry_attempts'][$id] = 1;
+        ++$reopened;
+    }
+    $state['breakfast_basket_net_weight_retry_20261021'] = 1;
+    if ( $reopened ) { unset( $state['finished_at'] ); }
+    update_option( $key, $state, false );
+    echo 'TROPITOP_BREAKFAST_WEIGHT_RETRY=' . $reopened . "\n";
+}
 // The saved cursor is authoritative for first-pass progress. After reaching
 // the end, retry only failed source URLs (at most twice), never regenerate the
 // entire catalog merely because a previous upload was interrupted.
