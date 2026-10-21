@@ -11,6 +11,9 @@ on:
       - 'mdo-supplier-sync/mdo-supplier-sync.php'
       - 'mdo-supplier-sync/scripts/onboard-tropitop.php'
       - 'tests/tropitop-smoke.php'
+      - 'tests/tropitop-editorial-smoke.php'
+      - 'mdo-supplier-sync/includes/class-mdo-tropitop-editorial.php'
+      - '.github/scripts/tropitop-editorial-taxonomy-20261021.php'
       - '.github/scripts/onboard-tropitop-20261020.php'
       - '.github/workflows/emdo-tropitop-checks.yml'
   workflow_dispatch:
@@ -36,6 +39,11 @@ jobs:
           php -l mdo-supplier-sync/mdo-supplier-sync.php
           php -l mdo-supplier-sync/scripts/onboard-tropitop.php
           php -l tests/tropitop-smoke.php
+          php -l tests/tropitop-editorial-smoke.php
+          php -l mdo-supplier-sync/includes/class-mdo-tropitop-editorial.php
+          php -l .github/scripts/tropitop-editorial-taxonomy-20261021.php
           php -l .github/scripts/onboard-tropitop-20261020.php
       - name: Unit smoke
-        run: php tests/tropitop-smoke.php
+        run: |
+          php tests/tropitop-smoke.php
+          php tests/tropitop-editorial-smoke.php
