@@ -119,3 +119,5 @@ foreach($failed as $id=>$entry){$product=isset($entry['woo_id'])?wc_get_product(
 // Live progress audit 2026-10-21 at 09:00 CEST.
 
 // Source-backed unit-pack weight recovery audit 2026-10-21.
+
+// Final post-curated-weight audit for source publication and remaining 10 defects, 2026-10-21.
