@@ -30,4 +30,11 @@ check(str_contains($short,'3 kg'),'Neutral short facts preserved');
 $fallback=MDO_Tropitop_Editorial::description('<p>¡Consulta nuestra tienda!</p>','Berenjenas','Berenjenas de 3 kg.');
 check(str_contains($fallback,'3 kg'),'Verifiable short fallback');
 check(MDO_Tropitop_Editorial::description('<p>Escríbenos</p>','X','')==='','No invented product facts on empty source');
+$heading = '<h4>¿De dónde proceden las berenjenas negras que vende Tropitop?</h4>'
+    . '<p>En nuestra tienda promovemos la agricultura local.</p>'
+    . '<h4>Características</h4><p>Piel brillante y pulpa tierna.</p>';
+$heading_clean = MDO_Tropitop_Editorial::description($heading,'Berenjenas','Berenjenas negras.');
+check(!str_contains($heading_clean,'vende Tropitop'),'External seller/producer heading should be removed');
+check(!str_contains($heading_clean,'promovemos'),'Remaining producer voice removed');
+check(str_contains($heading_clean,'Piel brillante'),'Following factual section preserved');
 echo "TROPITOP_EDITORIAL_SMOKE_OK\n";
