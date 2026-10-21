@@ -487,7 +487,7 @@ final class MDO_Connector_Tropitop {
     }
 
     private static function net_quantity_kg( float $value, string $unit ): ?float {
-        if ( $value <= 0 || $value > 30 ) { return null; }
+        if ( $value <= 0 || $value > 30000 ) { return null; }
         $u = mb_strtolower( $unit, 'UTF-8' );
         if ( preg_match( '/^(?:kg|kilos?|l|litros?)$/u', $u ) ) { return $value; }
         if ( preg_match( '/^(?:g|gr|gramos?|ml)$/u', $u ) ) { return $value / 1000; }
