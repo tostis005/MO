@@ -1,6 +1,11 @@
 <?php
 /** Tropitop-only apply of reviewed first-batch offline translations. No Spanish or commerce edits. */
 if (!defined('ABSPATH')) { exit(2); }
+if ((string)getenv('EMDO_TROPITOP_ENGLISH_EDITORIAL_APPROVED') !== 'yes') {
+    fwrite(STDERR,"Tropitop EN publication blocked: offline translation was rejected on editorial review.\n");
+    exit(21);
+}
+
 global $wpdb;
 $file = getenv('MDO_EN_PAYLOAD');
 if (!$file || !is_readable($file)) { fwrite(STDERR, "Missing English payload\n"); exit(3); }
