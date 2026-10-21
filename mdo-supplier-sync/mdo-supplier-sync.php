@@ -29,6 +29,7 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-tolecarnes
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-latitudes.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-chocolates-isabel.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-tropitop.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-tropitop-editorial.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-isabel-quality.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-iberico-family.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-huerta-ana-mary-v4.php';
