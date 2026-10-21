@@ -78,6 +78,10 @@ jobs:
           echo "TROPITOP_EDITORIAL_APPLY"
           remote_phase apply > /tmp/tropitop-editorial-applied.log
           grep -E '^TROPITOP_EDITORIAL_(SUMMARY|ERROR)=' /tmp/tropitop-editorial-applied.log
+          echo "TROPITOP_ONE_PRODUCT_TAXONOMY_FINALIZE"
+          remote_phase finalize_categories > /tmp/tropitop-finalize-category.log
+          grep -E '^EMDO_TROPITOP_FINALIZE=' /tmp/tropitop-finalize-category.log
+          grep '^EMDO_TROPITOP_FINALIZE=' /tmp/tropitop-finalize-category.log | sed 's/^EMDO_TROPITOP_FINALIZE=//' | jq -e '.verified==true and .product_id==20413' >/dev/null
           echo "TROPITOP_EDITORIAL_VERIFY"
           remote_phase audit > /tmp/tropitop-editorial-after.log
           grep -E '^TROPITOP_EDITORIAL_(SUMMARY|ERROR|PRODUCT)=' /tmp/tropitop-editorial-after.log
