@@ -213,3 +213,27 @@ add_action('wp_head',static function():void {
     if(!is_singular(['post','product'])&&!is_product_category())return;
     echo '<style id="emdo-editorial-cluster-style">.emdo-editorial-cluster,.emdo-editorial-product-guides,.emdo-editorial-category-guides{margin:28px 0;padding:18px 0;border-top:1px solid #e1e1e1}.emdo-editorial-cluster ul,.emdo-editorial-product-guides ul,.emdo-editorial-category-guides ul{margin:8px 0 0;padding-left:22px}.emdo-editorial-cluster li,.emdo-editorial-product-guides li,.emdo-editorial-category-guides li{margin:7px 0}.emdo-editorial-cluster h2,.emdo-editorial-product-guides h2,.emdo-editorial-category-guides h2{font-size:clamp(1.1rem,2vw,1.35rem);margin:8px 0}.emdo-editorial-cluster{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:20px}</style>';
 },90);
+
+
+// Blog hub -> correct commercial category. Never send visitors to empty orange archives.
+add_filter('get_the_archive_description',static function(string $description):string {
+    if(is_admin()||!is_category()||emdo_cluster21_is_en())return $description;
+    $term=get_queried_object();if(!$term instanceof WP_Term)return $description;
+    $map=[
+      'cafe'=>['cafe-de-especialidad','Explorar cafés de especialidad disponibles'],
+      'aguacates'=>['aguacates','Ver aguacates y combinaciones disponibles'],
+      'mangos'=>['frutas-tropicales','Ver frutas tropicales y combinaciones con mango'],
+      'citricos'=>['frutas','Ver frutas frescas y combinaciones de cítricos'],
+      'frutas-tropicales'=>['frutas-tropicales','Explorar frutas tropicales disponibles'],
+      'frutas'=>['frutas','Ver la selección actual de frutas frescas']
+    ];
+    if(!isset($map[$term->slug]))return $description;
+    [$shopSlug,$label]=$map[$term->slug];
+    $dest=get_term_by('slug',$shopSlug,'product_cat');
+    if(!$dest instanceof WP_Term)return $description;
+    $url=get_term_link($dest);
+    if(is_wp_error($url)||!$url)return $description;
+    // Only a legitimate live product category can become a commercial recommendation.
+    if(!emdo_cluster21_products($term->slug==='cafe'?'cafe':($term->slug==='aguacates'?'aguacate':($term->slug==='citricos'?'citricos':'frutas')),1,1))return $description;
+    return $description.'<p class="emdo-editorial-blog-hub-link"><a href="'.esc_url($url).'">'.esc_html($label).' &rarr;</a></p>';
+},22);
