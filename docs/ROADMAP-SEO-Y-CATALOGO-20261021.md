@@ -79,3 +79,24 @@ Regla: solo correcciones acotadas a artículos/productos nuevos y, excepcionalme
 | Tropitop inglés | 102 comprables auditados | 102 sin ficha nativa |
 | Latitudes inglés | 109 comprables auditados | 9 sin ficha nativa |
 | 24 artículos nuevos ES/EN | Publicados y reparaciones previas | Resultado completo de 48 páginas pendiente |
+
+## Cierre verificado de Tropitop y 48 artículos bilingües
+
+**Tropitop:** https://github.com/tostis005/MO/actions/runs/39577701015 completó auditoría, aplicación y segunda auditoría independiente: `linked_source_rows=187`, `changed_copy=0`, `changed_categories=0`, `residual_flags=0`, `no_description_after_cleanup=0`, `errors=0`, `skipped=0`. El pase aplicó previamente las 35 correcciones que quedaban y finalizó la clasificación «Pack melones premium» con solo Frutas/Packs y lotes. **SEO de redacción y categorías Tropitop cerrado en español**; siguen pendientes las traducciones inglesas.
+
+**48 rutas editoriales bilingües:** https://github.com/tostis005/MO/actions/runs/39576975427, job `all-48-editorial` finalizado con éxito; 24 pares ES/EN, `tested=48`, `confirmed_seo_failures=0`, `main_transport_failures=0`, `spanish_counterpart_transport_failures=0`. No modificar metadatos de estas 48 URLs sin nuevas evidencias.
+
+**Inglés fuera del nuevo bloque editorial:** mismo run, job `entire-english-island` mostró 30 rutas muestreadas, dos `noindex` de categorías vacías que deben conservarse (quesos y naranjas, ambas con 0 productos) y cinco incidencias de transporte. La prueba de WordPress https://github.com/tostis005/MO/actions/runs/39577962250 confirma que tres URL inglesas de producto con errores de acceso corresponden a artículos no visibles/no comprables y NO deben promocionarse como ofertas disponibles. Tres URLs de categorías del blog (/en/category/meat/, /en/category/preserves/, /en/category/hams-and-shoulders/) tenían bucles 301, que están en revisión focalizada en el enrutador EN y requieren comprobación pública.
+
+| Línea | Avance final verificado | Pendiente |
+|---|---|---|
+| Tropitop: texto español | 187/187 revisados, 0 alertas en pasada final | 0 |
+| Tropitop: taxonomía | 187/187 revisados, 0 diferencias | 0 |
+| 24 artículos (ES+EN) | 48/48 páginas SEO técnico conformes | 0 |
+| Ikore Kofi: inglés | 6/6 cafés traducidos y publicados | 0 |
+| Chocolates Isabel: inglés | 78 fichas comprables auditadas | 4 fichas |
+| Tropitop: inglés | 102 fichas comprables auditadas | 102 fichas |
+| Latitudes: inglés | 109 fichas comprables auditadas | 9 fichas |
+| Rutas inglesas antiguas | 3 redirecciones 301 bajo diagnóstico/corrección | Verificación pública final |
+
+**Control de alcance:** sin cambiar nombres/URL españolas, precios, stock, variantes, inventario ni SEO de productos antiguos españoles.
