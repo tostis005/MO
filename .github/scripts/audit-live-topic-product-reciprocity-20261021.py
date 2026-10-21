@@ -23,6 +23,10 @@ checks=[
  ("avocado_category","/categoria-producto/frutas/aguacates/",'data-emdo-editorial-category-guides="1"'),
  ("tropical_category","/categoria-producto/frutas/frutas-tropicales/",'data-emdo-editorial-category-guides="1"'),
  ("cream_category","/categoria-producto/chocolates-artesanos/cremas-de-cacao/",'data-emdo-editorial-category-guides="1"'),
+ ("coffee_blog_category","/category/cafe/",'emdo-editorial-blog-hub-link'),
+ ("mango_blog_category","/category/frutas/mangos/",'emdo-editorial-blog-hub-link'),
+ ("avocado_blog_category","/category/frutas/aguacates/",'emdo-editorial-blog-hub-link'),
+ ("empty_orange_category","/categoria-producto/naranjas/",'noindex'),
 ]
 class H(HTMLParser):
     def __init__(self):
