@@ -30,6 +30,51 @@ add_action(
 );
 
 /**
+ * Devuelve el precio comercial legible, sin texto oculto de WooCommerce.
+ * Un producto variable se muestra solo como "mínimo – máximo".
+ *
+ * @param WC_Product $product Producto WooCommerce.
+ * @return string
+ */
+function elmercado_quick_search_price_20261021( $product ): string {
+	if ( ! $product instanceof WC_Product ) {
+		return '';
+	}
+
+	$format = static function ( $amount ): string {
+		return html_entity_decode(
+			wp_strip_all_tags( wc_price( (float) $amount ) ),
+			ENT_QUOTES | ENT_HTML5,
+			'UTF-8'
+		);
+	};
+
+	if ( $product->is_type( 'variable' ) ) {
+		$min = $product->get_variation_price( 'min', true );
+		$max = $product->get_variation_price( 'max', true );
+
+		if ( '' === $min || '' === $max ) {
+			return '';
+		}
+
+		$low = $format( $min );
+		return (float) $min === (float) $max ? $low : $low . ' – ' . $format( $max );
+	}
+
+	// En productos simples mostramos el precio efectivo (incluidas rebajas).
+	$price = $product->get_price();
+	if ( '' !== $price ) {
+		return $format( wc_get_price_to_display( $product, array( 'price' => $price ) ) );
+	}
+
+	// Productos agrupados / packs sin precio simple: conservar el HTML visible,
+	// eliminando el texto screen-reader que duplica el rango en WooCommerce.
+	$html = (string) $product->get_price_html();
+	$html = preg_replace( '~<span\\b[^>]*class=["\\\'][^"\\\']*screen-reader-text[^"\\\']*["\\\'][^>]*>.*?</span>~is', '', $html );
+	return trim( html_entity_decode( wp_strip_all_tags( (string) $html ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+}
+
+/**
  * Responde exclusivamente con productos visibles, publicados y con existencias.
  * Cachea únicamente IDs para no congelar precios ni disponibilidad.
  *
@@ -135,7 +180,7 @@ function elmercado_quick_search_20261021( WP_REST_Request $request ): WP_REST_Re
 				'url'      => esc_url_raw( get_permalink( (int) $id ) ),
 				'image'    => (string) ( get_the_post_thumbnail_url( (int) $id, 'thumbnail' ) ?: '' ),
 				'category' => $category,
-				'price'    => html_entity_decode( wp_strip_all_tags( $product->get_price_html() ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ),
+				'price'    => elmercado_quick_search_price_20261021( $product ),
 			);
 		}
 	}
@@ -160,7 +205,7 @@ add_action(
 			'elmercado-quick-search-20261021',
 			$base . '/assets/css/quick-search-20261021.css',
 			array(),
-			'20261021'
+			'20261021.2'
 		);
 		wp_enqueue_script(
 			'elmercado-quick-search-20261021',
