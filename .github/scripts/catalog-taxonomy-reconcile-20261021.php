@@ -66,7 +66,7 @@ function emdo_gourmet_targets($title){
  if(preg_match('/\b(?:infusi[oó](?:n|nes)|t[eé]\s+(?:verde|negro))\b/u',$t))return ['bebidas','tes-e-infusiones'];
  if(preg_match('/\b(?:miel|mieles)\b/u',$t))return ['mieles'];
  if(preg_match('/\b(?:almendra|almendras|avellana|avellanas|casta[nñ]as?|nueces)\b/u',$t))return ['frutos-secos'];
- if(preg_match('/\baceite\s+de\s+oliva\b/u',$t) && !preg_match('/\b(?:pack|cesta|lote)\b/u',$t))return ['aceites'];
+ if(preg_match('/^aceite\s+de\s+oliva\b/u',$t) && !preg_match('/\b(?:pack|cesta|lote)\b/u',$t))return ['aceites'];
  if(preg_match('/\bd[aá]tiles?\b/u',$t))return ['frutas','frutas-del-mundo'];
  if(preg_match('/\bpat[eé]s?\s+de\s+aceituna\b/u',$t))return ['foie-pates-untables'];
  if(preg_match('/\bpack\s+mediterr[aá]neo\b/u',$t))return ['frutas','hortalizas-verduras','packs-y-lotes'];
