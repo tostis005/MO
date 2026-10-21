@@ -1,0 +1,132 @@
+name: Publish four category photos and refreshed category copy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-category-imagery-editorial-20261021.yml'
+      - '.github/scripts/publish-category-imagery-editorial-20261021.php'
+      - '.github/assets/category-images-20261021/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emdo-category-images-editorial-production-20261021
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate source and original photo files
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/publish-category-imagery-editorial-20261021.php
+          test -n "${STAGING_HOST:-}" && test -n "${STAGING_USER:-}" && test -n "${SSHPASS:-}"
+          for slug in bebidas mieles frutos-secos cosmetica-natural; do
+            img=".github/assets/category-images-20261021/categoria-${slug}-20261021.webp"
+            test -s "$img"
+            test "$(file -b --mime-type "$img")" = 'image/webp'
+            actual="$(stat -c%s "$img")"
+            test "$actual" -gt 18000 && test "$actual" -lt 90000
+            echo "$slug: $actual bytes (webp)"
+          done
+
+      - name: Install SSH tools and verify host
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Back up and publish media and category descriptions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ServerAliveInterval=15 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          TAR="/tmp/emdo-cat-images-${GITHUB_RUN_ID}.tar.gz"
+          tar -czf /tmp/emdo-cat-images-archive.tgz \
+            .github/scripts/publish-category-imagery-editorial-20261021.php \
+            .github/assets/category-images-20261021/*.webp
+          sshpass -e scp $SCP /tmp/emdo-cat-images-archive.tgz "$STAGING_USER@$STAGING_HOST:$TAR"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "bash -s -- '$GITHUB_RUN_ID'" <<'REMOTE'
+          set -Eeuo pipefail
+          RUN="$1"
+          TMP="/tmp/emdo-cat-images-${RUN}"
+          ARCHIVE="${TMP}.tar.gz"
+          cleanup() { rm -rf "$TMP" "$ARCHIVE"; }
+          trap cleanup EXIT
+          mkdir -p "$TMP"
+          tar -xzf "$ARCHIVE" -C "$TMP"
+          script="$TMP/.github/scripts/publish-category-imagery-editorial-20261021.php"
+          img_dir="$TMP/.github/assets/category-images-20261021"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp)"
+          [ -x "$php_bin" ] && [ -n "$wp_bin" ]
+          prod=''
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p="$(dirname "$cfg")"
+            site="$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+            case "$site" in
+              https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com)
+                prod="$p"; break ;;
+            esac
+          done
+          [ -n "$prod" ] || { echo 'Production WordPress not found'; exit 25; }
+          "$php_bin" -l "$script"
+          run_phase() {
+            EMDO_CATEGORY_DESIGN_MODE="$1" EMDO_CATEGORY_ASSET_DIR="$img_dir" \
+              timeout --kill-after=15s 280s "$php_bin" -d memory_limit=1024M "$wp_bin" \
+              eval-file "$script" --path="$prod" --allow-root --skip-plugins=woostify-sites-library
+          }
+          echo 'CATEGORY_EDITORIAL_PREFLIGHT'
+          run_phase audit > "$TMP/audit.log"
+          grep '^CATEGORY_DESIGN_RESULT=' "$TMP/audit.log"
+          echo 'CATEGORY_EDITORIAL_APPLY'
+          run_phase apply > "$TMP/apply.log"
+          grep '^CATEGORY_DESIGN_BACKUP=' "$TMP/apply.log"
+          grep '^CATEGORY_DESIGN_RESULT=' "$TMP/apply.log"
+          echo 'CATEGORY_EDITORIAL_VERIFY'
+          run_phase verify > "$TMP/verify.log"
+          grep '^CATEGORY_DESIGN_RESULT=' "$TMP/verify.log"
+          json="$(sed -n 's/^CATEGORY_DESIGN_RESULT=//p' "$TMP/verify.log" | tail -1)"
+          php -r '
+            $a=json_decode($argv[1], true);
+            if (!is_array($a) || count($a["images"]??[]) !== 4) exit(3);
+            foreach($a["images"] as $slug=>$item) {
+              if (empty($item["thumbnail_id"]) || empty($item["image_url"]) || empty($item["description"])) exit(4);
+              echo $slug." => ".$item["image_url"].PHP_EOL;
+            }
+          ' "$json"
+          printf 'CATEGORY_IMAGES_EDITORIAL_PRODUCTION_OK site=%s\n' "$site"
+          REMOTE
+
+      - name: Post-deployment public page check
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl -fLsS --retry 2 --max-time 45 \
+            "https://www.elmercadodeorigen.com/categorias/?category_media_release=${GITHUB_SHA}" \
+            -o /tmp/emdo-category-hub-check.html
+          grep -q 'data-emo-categories-hub="010259"' /tmp/emdo-category-hub-check.html
+          ! grep -Eqi 'Fatal error:|Uncaught Error:|There has been a critical error on this website' /tmp/emdo-category-hub-check.html
+          echo 'CATEGORY_HUB_PUBLIC_HTTP_OK'
