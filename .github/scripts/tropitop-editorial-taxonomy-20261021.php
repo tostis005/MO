@@ -99,6 +99,20 @@ foreach ( $rows as $row ) {
             }
             if ( $categories_changed ) { $product->set_category_ids( $new_cats ); }
             $product->save();
+            if ( $categories_changed ) {
+                // WooCommerce post-save hooks sometimes add unrelated categories
+                // (previously "Jamones y paletas" to a melon pack). Directly
+                // reassert only this supplier's verified category mapping.
+                $live = wp_get_post_terms($id,'product_cat',array('fields'=>'ids'));
+                if (is_wp_error($live))throw new RuntimeException('Category verification failed '.$id);
+                $live = array_map('intval',(array)$live);
+                sort($live);
+                if ($live !== $new_cats) {
+                    $applied = wp_set_object_terms($id,$new_cats,'product_cat',false);
+                    if (is_wp_error($applied))throw new RuntimeException('Post-save category correction failed '.$id);
+                    clean_post_cache($id);
+                }
+            }
         }
         if ( $flags ) {
             // Only public-facing copy. Bounded excerpts expose residual wording
