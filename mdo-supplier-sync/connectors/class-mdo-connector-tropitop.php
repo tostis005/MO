@@ -90,6 +90,9 @@ final class MDO_Connector_Tropitop {
         if ( in_array( $id, array( '2365', '2685' ), true ) ) {
             $sizes = self::named_pack_sizes( $xp, $id );
         }
+        if ( in_array( $id, array( '2525', '2526' ), true ) && ! $sizes ) {
+            $sizes = self::honey_single_size( $xp, $id, $url );
+        }
         // Product detail sometimes omits prices of unselected combinations.
         // The product card in its exact Spanish category can supply that matrix.
         // A single fully priced presentation is valid. Older releases fetched
@@ -483,6 +486,48 @@ final class MDO_Connector_Tropitop {
             'unid:3.000:' . mb_strtolower( $result['rayada']['label'], 'UTF-8' ) => $result['rayada'],
             'unid:3.000:' . mb_strtolower( $result['negra']['label'], 'UTF-8' ) => $result['negra'],
         );
+    }
+
+    /**
+     * Two legacy honey listings no longer render a format selector but do
+     * expose the CURRENT product price and the product:price:amount meta.
+     * Both must match. Do not mistake prices from the global menu.
+     * Only source URLs whose exact presentation proves 2 kg qualify.
+     * Never synthesize product prices or relax other products' matrix guard.
+     */
+    private static function honey_single_size( DOMXPath $xp, string $id, string $url ): array {
+        if ( ! in_array( $id, array( '2525', '2526' ), true ) ) { return array(); }
+        $path = (string) wp_parse_url( $url, PHP_URL_PATH );
+        if ( ( '2525' === $id &&
+                ! str_ends_with( $path, '/2525-comprar-miel-azahar-artesanal-2kg.html' ) ) ||
+            ( '2526' === $id &&
+                ! str_ends_with( $path, '/2526-comprar-miel-montana-artesanal-4x500g.html' ) ) ) {
+            return array();
+        }
+        $choices = $xp->query(
+            '//*[contains(concat(" ",normalize-space(@class)," ")," product-variants ")]'
+            . '//input[@data-product-attribute or @type="radio"]'
+            . ' | //select[starts-with(@name,"group")]/option[@value!=""]'
+        );
+        if ( $choices && $choices->length ) { return array(); }
+        $meta_nodes = $xp->query( '//meta[@property="product:price:amount"]/@content' );
+        $meta = $meta_nodes && $meta_nodes->length === 1
+            ? (string) $meta_nodes->item(0)->nodeValue : '';
+        if ( ! preg_match( '/^\d{1,4}(?:[.,]\d{1,2})?$/', $meta ) ) { return array(); }
+        $meta_price = (float) str_replace( ',', '.', $meta );
+        $visible = self::text( $xp,
+            '(//*[@id="main-product-wrapper"]//*[contains(@class,"current-price")]'
+            . ' | //*[@id="col-product-info"]//*[contains(@class,"current-price")])[1]' );
+        if ( ! preg_match( '/(\d{1,4}(?:[.,]\d{2}))\s*€/u', $visible, $m ) ) {
+            return array();
+        }
+        $shown = (float) str_replace( ',', '.', $m[1] );
+        if ( $meta_price <= 0 || abs( $shown - $meta_price ) > 0.001 ) { return array(); }
+        // 2525 URL says 2kg. 2526 explicitly says 4×500g = 2kg.
+        return array( 'kg:2.000' => array(
+            'amount'=>2.0, 'unit'=>'kg', 'label'=>'',
+            'price'=>$meta_price, 'unavailable'=>false,
+        ) );
     }
 
     /**
