@@ -142,6 +142,14 @@ final class MDO_Woo_Importer {
 			}
 		}
 
+		// A physical personalised Isabel item stays hidden until its local
+		// product options and checkout can actually accept an order.
+		if ( 'chocolates-artesanos-isabel' === (string) $supplier['code'] && $existing_id &&
+			'1' === (string) get_post_meta( $existing_id, '_emdo_isabel_customization_review_required', true ) ) {
+			$product->set_status( 'draft' );
+			$product->set_catalog_visibility( 'hidden' );
+		}
+
 		// Prelaunch products from Latitudes must never become public while its
 		// WCFM vendor is hard-disabled, including after nightly updates.
 		if ( in_array( (string) $supplier['code'], array( 'latitudes', 'chocolates-artesanos-isabel', 'tropitop' ), true ) && get_user_meta( $vendor_id, '_disable_vendor', true ) ) {
