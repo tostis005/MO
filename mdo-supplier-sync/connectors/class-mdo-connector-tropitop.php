@@ -655,3 +655,5 @@ final class MDO_Connector_Tropitop {
         return new DOMXPath( $doc );
     }
 }
+
+// Verified regression suite: new explicit net-content parser and legacy fixtures.
