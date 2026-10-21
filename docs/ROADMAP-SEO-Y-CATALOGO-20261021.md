@@ -59,3 +59,23 @@ Regla: solo correcciones acotadas a artículos/productos nuevos y, excepcionalme
 | Latitudes: EN | 109 comprables | 0 | 9 pendientes |
 
 **Disciplina de cambios:** los cambios de descripción y taxonomía no alteran precios, variantes, pesos, stock, URLs canónicas ni los títulos SEO de otros productores. Las descripciones inglesas de café se han añadido únicamente a sus seis productos, sin cambios a contenido español.
+
+## Estado actualizado tras QA extendido — 21/10/2026
+
+**Clasificación Tropitop cerrada en QA:** ejecución https://github.com/tostis005/MO/actions/runs/39576908527, 187 productos vinculados y `changed_categories: 0` en la nueva auditoría tras la reparación independiente de Pack melones premium (ID 20413), que elimina la categoría errónea «Jamones y paletas». La corrección se hizo sin cambios de precio, stock, URL ni variaciones.
+
+**Advertencia sobre SEO editorial:** la validación de redacción se amplió tras la corrección de las cuatro alertas iniciales y detectó **35 incidencias adicionales** (`residual_flags: 35`), principalmente menciones al productor como tienda externa y primera persona en fichas importadas recientemente. Se mantiene abierto el bloque de redacción Tropitop hasta volver a obtener `residual_flags: 0`. El trabajo de QA se ha endurecido para fallar también por alertas de texto, no solo por categorías.
+
+**Café de Ikore Kofi:** 6/6 fichas inglesas publicadas con validación de identificadores, 14 variantes por café, datos de origen, tueste, molienda y stock conservados: https://github.com/tostis005/MO/actions/runs/39576330863.
+
+**Auditoría de 48 versiones de artículos y rutas inglesas:** lanzada en solo lectura en https://github.com/tostis005/MO/actions/runs/39576975427. Resultado aún pendiente en el momento de este registro.
+
+| Tarea | Hecho verificado | Pendiente concreto |
+|---|---|---|
+| Tropitop taxonomía | 187 revisados; 0 diferencias tras QA | 0 |
+| Tropitop redacción | 4 alertas iniciales cerradas; detector ampliado a 187 | 35 avisos de proveedor/tienda externa |
+| Ikore Kofi inglés | 6/6 fichas inglesas publicadas | 0 |
+| Isabel inglés | 78 comprables auditados | 4 sin ficha nativa |
+| Tropitop inglés | 102 comprables auditados | 102 sin ficha nativa |
+| Latitudes inglés | 109 comprables auditados | 9 sin ficha nativa |
+| 24 artículos nuevos ES/EN | Publicados y reparaciones previas | Resultado completo de 48 páginas pendiente |
