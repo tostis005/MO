@@ -39,22 +39,36 @@ $clean_persisted_text = static function ( $value ): string {
 
 /* Spanish editorial source of truth for the category cards. */
 $category_summaries = array(
-	'jamones-paletas'     => 'Jamones y paletas de distintas calidades, alimentaciones, curaciones, formatos y presentaciones.',
-	'embutidos-y-curados' => 'Chorizos, salchichones, lomos, lomitos, morcones, sobrasadas y otros embutidos y curados.',
-	'aceites'             => 'Aceites de oliva de distintas variedades, procedencias, formatos y perfiles de sabor.',
-	'carnes'              => 'Carnes en distintos cortes y formatos, desde piezas y hamburguesas hasta preparaciones para cocinar.',
-	'packs-y-lotes'       => 'Packs y lotes que combinan distintos productos, tanto para regalar como para probar varias especialidades.',
-	'accesorios'          => 'Accesorios y complementos para cortar, servir, conservar o presentar los productos.',
-	'adobados'            => 'Carnes y otros productos adobados o marinados, con distintas preparaciones y formatos.',
-	'conservas'           => 'Conservas artesanas de pimientos, puerros, ajetes, tomate y otras elaboraciones vegetales.',
-	'hortalizas-verduras' => 'Hortalizas y verduras frescas de temporada, desde patatas, pimientos y calabacines hasta otras variedades de la huerta.',
-	'legumbres'           => 'Alubias, garbanzos y lentejas en distintas variedades, seleccionadas para guisos, potajes y otras recetas.',
-	'pescados-mariscos'   => 'Pescados, huevas y especialidades del mar en distintos formatos y elaboraciones.',
-	'foie-pates-untables' => 'Foie gras, patés, mousses, rillettes y otras especialidades untables de distintos productores.',
-	'naranjas'            => 'Naranjas frescas de distintas variedades, seleccionadas para mesa, zumo y otros usos.',
-	'quesos'              => 'Quesos de distintas procedencias, tipos de leche, curaciones y formatos.',
-	'pescados-mariscos'   => 'Pescados y mariscos en distintos formatos, desde ahumados y huevas hasta otras especialidades del mar.',
-	'foie-pates-untables' => 'Foie gras, patés, mousses, rillettes y otros untables para servir, compartir o acompañar.',
+	/* Descripciones consolidadas: conservar intacta la redacción ya aprobada. */
+	'jamones-paletas'      => 'Jamones y paletas de distintas calidades, alimentaciones, curaciones, formatos y presentaciones.',
+	'embutidos-y-curados'  => 'Chorizos, salchichones, lomos, lomitos, morcones, sobrasadas y otros embutidos y curados.',
+	'aceites'              => 'Aceites de oliva de distintas variedades, procedencias, formatos y perfiles de sabor.',
+	'carnes'               => 'Carnes en distintos cortes y formatos, desde piezas y hamburguesas hasta preparaciones para cocinar.',
+	'packs-y-lotes'        => 'Packs y lotes que combinan distintos productos, tanto para regalar como para probar varias especialidades.',
+	'accesorios'           => 'Accesorios y complementos para cortar, servir, conservar o presentar los productos.',
+	'adobados'             => 'Carnes y otros productos adobados o marinados, con distintas preparaciones y formatos.',
+	'conservas'            => 'Conservas artesanas de pimientos, puerros, ajetes, tomate y otras elaboraciones vegetales.',
+	'hortalizas-verduras'  => 'Hortalizas y verduras frescas de temporada, desde patatas, pimientos y calabacines hasta otras variedades de la huerta.',
+	'legumbres'            => 'Alubias, garbanzos y lentejas en distintas variedades, seleccionadas para guisos, potajes y otras recetas.',
+	'pescados-mariscos'    => 'Pescados y mariscos en distintos formatos, desde ahumados y huevas hasta otras especialidades del mar.',
+	'foie-pates-untables'  => 'Foie gras, patés, mousses, rillettes y otros untables para servir, compartir o acompañar.',
+	'naranjas'             => 'Naranjas frescas de distintas variedades, seleccionadas para mesa, zumo y otros usos.',
+	'quesos'               => 'Quesos de distintas procedencias, tipos de leche, curaciones y formatos.',
+	/* Nuevas familias: textos propios en lugar de una frase repetida. */
+	'frutas'               => 'Frutas de temporada y variedades tropicales para disfrutar al natural, en macedonias o en recetas.',
+	'verduras'             => 'Verduras de la huerta para ensaladas, guarniciones y platos de cada día, según la temporada.',
+	'chocolates-artesanos' => 'Chocolates de obradores especializados, con distintos porcentajes de cacao, sabores y formatos para degustar.',
+	'cafe-de-especialidad' => 'Cafés de distintos orígenes, tuestes y perfiles aromáticos, en grano o molidos según el método de preparación.',
+	'huevos'               => 'Huevos de productores identificados, con información sobre su procedencia y presentación.',
+	'bebidas'              => 'Zumos, néctares, tés, infusiones y otras bebidas para explorar diferentes sabores y elaboraciones.',
+	'frutos-secos'         => 'Almendras, avellanas, castañas y otros frutos secos, solos o combinados en surtidos.',
+	'mieles'               => 'Mieles de distintos orígenes florales y perfiles de sabor, desde variedades delicadas hasta otras más intensas.',
+	'cosmetica-natural'    => 'Jabones, cremas y otros cuidados personales elaborados con ingredientes de inspiración natural.',
+	'condimentos-y-especias' => 'Sales, especias y otros condimentos para dar matices nuevos a recetas dulces y saladas.',
+	'mermeladas-y-confituras' => 'Mermeladas y confituras artesanas de frutas y otras combinaciones, para desayunos, postres y maridajes.',
+	'zumos-nectares-y-limonadas' => 'Zumos, néctares y limonadas de frutas y otras materias primas, en diferentes mezclas y formatos.',
+	'tes-e-infusiones'     => 'Tés e infusiones con distintos ingredientes y perfiles aromáticos, para disfrutar fríos o calientes.',
+	'vinos-y-licores'      => 'Vinos y licores de distintas elaboraciones y procedencias, para ocasiones y gustos diversos.',
 );
 
 $visible_items = array();
@@ -95,10 +109,7 @@ foreach ( $items as $item ) {
 		}
 	} else {
 		$name            = trim( (string) ( $item['name'] ?? '' ) );
-		$item['summary'] = $category_summaries[ $slug ] ?? sprintf(
-			'%s agrupados en una misma categoría para consultar toda la selección de forma sencilla.',
-			$name
-		);
+		$item['summary'] = $category_summaries[ $slug ] ?? (string) ( $item['summary'] ?? '' );
 	}
 
 	$visible_items[] = $item;
