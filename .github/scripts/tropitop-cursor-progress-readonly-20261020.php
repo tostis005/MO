@@ -117,3 +117,5 @@ foreach($failed as $id=>$entry){$product=isset($entry['woo_id'])?wc_get_product(
 // Read-only inventory follow-up after description/title/stock recovery 2026-10-21.
 
 // Live progress audit 2026-10-21 at 09:00 CEST.
+
+// Source-backed unit-pack weight recovery audit 2026-10-21.
