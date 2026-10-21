@@ -80,7 +80,11 @@ jobs:
             */wp-content/*) dev="${raw%%/wp-content/*}" ;;
             *) echo 'Invalid configured staging WordPress path' >&2; exit 1 ;;
           esac
-          [ -f "$dev/wp-config.php" ] || { echo 'Staging WordPress path not verified' >&2; exit 1; }
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || { echo 'Cannot resolve development WordPress root' >&2; exit 1; }
+            dev="$(dirname "$cfg")"
+          fi
           prod="$(dirname "$dev")/httpdocs"
           [ -f "$prod/wp-config.php" ] || { echo 'Production WordPress path not verified' >&2; exit 1; }
           theme="$prod/wp-content/themes/elmercadodeorigen-child"
