@@ -1,0 +1,67 @@
+name: Ikore Kofi six English fiches - safe publication
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/complete-ikore-six-english-20261021.php'
+      - '.github/workflows/complete-ikore-six-english-20261021.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ikore-six-english-20261021
+  cancel-in-progress: false
+jobs:
+  six-english-products:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate strictly scoped repair
+        run: php -l .github/scripts/complete-ikore-six-english-20261021.php
+      - name: Preflight and publish six manually edited coffee translations
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-P $PORT -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] && [ -n "$php" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s|%s|%s" "$p" "$php" "$wp"; break;;
+              esac
+            done
+          ')"
+          [ -n "$INFO" ] || exit 3
+          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
+          REMOTE="/tmp/emdo-ikore-six-en-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/complete-ikore-six-english-20261021.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $REMOTE" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_IKORE_EN_PREFLIGHT=1 '$PHP' -d memory_limit=512M '$WP' eval-file '$REMOTE' --path='$PROD' --allow-root" | tee /tmp/emdo-ikore-six-preflight.log
+          sed -n 's/^EMDO_IKORE_ENGLISH=//p' /tmp/emdo-ikore-six-preflight.log | tail -n1 | jq -e '.ready==true and .matched==6 and (.skipped|length)==0' >/dev/null
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=512M '$WP' eval-file '$REMOTE' --path='$PROD' --allow-root" | tee /tmp/emdo-ikore-six-en.log
+          sed -n 's/^EMDO_IKORE_ENGLISH=//p' /tmp/emdo-ikore-six-en.log | tail -n1 | jq -e '.ready==true and .expected==6 and (.updated+.already_complete)==6' >/dev/null
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+          echo 'IKORE_SIX_ENGLISH_READY=VERIFIED'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ikore-six-english-result
+          path: /tmp/emdo-ikore-six-en.log
+          retention-days: 20
+          if-no-files-found: warn
