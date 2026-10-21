@@ -130,10 +130,19 @@ add_action(
 		}
 		?>
 		<style id="emo-product-breadcrumb-20261021">
+			/*
+			 * El rastro ocupa toda su franja, pero su texto se alinea con la
+			 * columna visual de la galería: 24px en móvil y ~150px en
+			 * escritorios de 1500px (contenedor centrado de 1280px).
+			 * Espacio vertical interno para que nunca quede pegado arriba.
+			 */
 			body.elmercado-child-theme .emo-product-breadcrumb-20261021 {
+				box-sizing: border-box;
 				display: block;
-				margin: 0 0 clamp(18px, 2.5vw, 28px);
-				padding: 0;
+				width: 100%;
+				max-width: 1280px;
+				margin: 0 auto clamp(14px, 1.8vw, 22px);
+				padding: clamp(16px, 1.6vw, 22px) clamp(24px, 2.8vw, 42px);
 				color: #68786d;
 				font-size: 13px;
 				line-height: 1.55;
@@ -179,8 +188,9 @@ add_action(
 			}
 			@media (max-width: 600px) {
 				body.elmercado-child-theme .emo-product-breadcrumb-20261021 {
+					padding: 15px 24px 16px;
 					font-size: 12px;
-					margin-bottom: 18px;
+					margin-bottom: 16px;
 				}
 				body.elmercado-child-theme .emo-product-breadcrumb__items,
 				body.elmercado-child-theme .emo-product-breadcrumb__items li {
