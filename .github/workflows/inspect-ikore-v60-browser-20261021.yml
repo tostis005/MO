@@ -51,6 +51,19 @@ jobs:
                 return {title:document.title,count:buttons.length,css:[...document.querySelectorAll('link[rel=stylesheet]')].filter(l=>l.href.includes('ikore')).map(l=>l.href),javascript:[...document.querySelectorAll('script[src]')].filter(s=>s.src.includes('ikore')).map(s=>s.src),options:buttons.map(b=>{const img=b.querySelector('img');const r=img?.getBoundingClientRect();const style=img?getComputedStyle(img):null;return {text:b.textContent.trim(),src:img?.currentSrc||img?.src,complete:img?.complete,natural:[img?.naturalWidth,img?.naturalHeight],rect:r?{width:r.width,height:r.height}:null,display:style?.display,visibility:style?.visibility,opacity:style?.opacity}})};
               });
               console.log('BROWSER_REPORT',width,JSON.stringify(report));
+              const v60=report.options.find(x=>/Filtro y V60/i.test(x.text));
+              if (!v60 || v60.natural[0] < 60 || v60.natural[1] < 60 || v60.rect.width < 20 || v60.visibility !== 'visible' || v60.opacity === '0') {
+                throw Error('V60_NOT_RENDERED viewport='+width+' '+JSON.stringify(v60));
+              }
+              if (report.options.length !== 7 || report.options.some(x => x.natural[0] < 60)) {
+                throw Error('OTHER_VARIANT_NOT_RENDERED viewport='+width+' '+JSON.stringify(report.options));
+              }
+              const v60Button=page.locator('button.emdo-ikore-card').filter({hasText:'Filtro y V60'});
+              await v60Button.click();
+              const pressed=await v60Button.getAttribute('aria-pressed');
+              const selection=await v60Button.evaluate(b=>({buttonColor:getComputedStyle(b).color,labelColor:getComputedStyle(b.querySelector('.emdo-ikore-card-label')).color,background:getComputedStyle(b).backgroundColor}));
+              if (pressed !== 'true') throw Error('V60_VARIATION_SELECTION_FAILED '+JSON.stringify(selection));
+              console.log('V60_BROWSER_OK', width, 'natural='+v60.natural.join('x'), 'pressed='+pressed, JSON.stringify(selection));
               await page.screenshot({path:'/tmp/ikore-'+width+'.png',fullPage:true});
               await page.close();
             }
