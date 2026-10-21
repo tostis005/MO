@@ -136,6 +136,11 @@ final class MDO_Connector_Tropitop {
             // are staged as drafts, with shipping blocked until actual
             // packed weights are verified by the supplier.
             if ( 'kg' === $unit ) { $v['weight_kg'] = $amount; }
+            elseif ( null !== ( $curated = self::curated_unit_tariff_weight( $id, $row ) ) ) {
+                $v['weight_kg'] = (float) $curated['kg'];
+                $v['shipping_weight_estimated'] = true;
+                $v['shipping_weight_basis'] = (string) $curated['basis'];
+            }
             elseif ( isset( $row['weight_kg'] ) ) { $v['weight_kg'] = (float) $row['weight_kg']; }
             else {
                 $estimated = null; $basis = '';
@@ -402,6 +407,85 @@ final class MDO_Connector_Tropitop {
         }
         ksort( $output, SORT_NATURAL );
         return $output;
+    }
+
+    /**
+     * Tropitop 2026-10-21 merchant-approved shipping tariff conventions.
+     *
+     * Each entry is keyed by one supplier PRODUCT ID and the EXACT printed
+     * UNIT COUNT in that product's priced option. The source composition is
+     * independently documented in its own Tropitop product listing, NOT
+     * deduced from photos. Only these individual packs receive the override.
+     *
+     * Physical packed/gross weight is not claimed. These are kg charged to
+     * WCFM's existing weight-based shipping rate for Spanish mainland.
+     * Persist in variation meta as estimated and auditable. New/unknown
+     * choices stay drafts rather than silently inheriting a per-piece rate.
+     *
+     * Sources: https://tropitop.com/es/<category>/<id>-<slug>.html
+     */
+    private static function curated_unit_tariff_weight( string $product_id, array $row ): ?array {
+        if ( (string) ( $row['unit'] ?? '' ) !== 'unid' ) { return null; }
+        $amount = (float) ( $row['amount'] ?? 0 );
+        if ( $amount < 1 || $amount > 24 || $amount !== floor( $amount ) ) { return null; }
+        $packs = array(
+            // 4kg Hass + 1x200g mango jam, sold as 4 units.
+            '2285' => array( 4 => 4.20 ),
+            // No producer mass stated: 6 living lettuces, merchant estimate 250g each.
+            '2321' => array( 6 => 1.50 ),
+            // Mixed artisanal jams: 5 individually labelled jars of 200g.
+            '2349' => array( 5 => 1.00 ),
+            // Watermelon striped: around 6kg apiece, boxes of 2 or 3.
+            '2362' => array( 2 => 12.00, 3 => 18.00 ),
+            // Piel de sapo: approximately 3.5kg apiece.
+            '2363' => array( 2 => 7.00, 3 => 10.50 ),
+            // Galia approximately 2kg; Cantalupo upper producer range 1.8kg.
+            '2451' => array( 2 => 4.00, 3 => 6.00 ),
+            '2452' => array( 2 => 3.60, 3 => 5.40 ),
+            // Mix 2x2kg Galia + 2x1.8kg Cantalupo.
+            '2453' => array( 4 => 7.60 ),
+            // 2 mountain honey x 500g + 2 orange blossom honey x 500g.
+            '2535' => array( 4 => 2.00 ),
+            // 3 green olive pâtés x120g + 3 black olive pâtés x120g.
+            '2536' => array( 6 => 0.72 ),
+            // AOVE cosmetics known 100g+500ml+50ml+75ml (725g);
+            // 25g is explicitly a MERCHANT ESTIMATE for the unlabelled lip balm.
+            '2538' => array( 5 => 0.75 ),
+            // Honey cosmetics 75ml+100ml; 25g merchant estimate for lip balm.
+            '2539' => array( 3 => 0.20 ),
+            // Nut jars 2 x 580g; mixed pack has one of each.
+            '2579' => array( 2 => 1.16 ),
+            '2580' => array( 2 => 1.16 ),
+            '2581' => array( 2 => 1.16 ),
+            // Black watermelon around 7kg apiece.
+            '2677' => array( 2 => 14.00, 3 => 21.00 ),
+            // 1 piel de sapo 2.8kg + 1 Galia 2kg + 1 striped 6kg + 1 black 7kg.
+            '2693' => array( 4 => 17.80 ),
+            // 1 piel de sapo 2.8kg + 2 Galia 2kg.
+            '2695' => array( 3 => 6.80 ),
+            // Sugar/Sunset melon upper published weight ~1.7kg per fruit.
+            '2699' => array( 2 => 3.40, 4 => 6.80 ),
+            // 6 intact coconuts, ~450g apiece.
+            '2710' => array( 6 => 2.70 ),
+            '2711' => array( 2 => 3.40, 4 => 6.80 ),
+            // Extra Sweet pineapples around 2.3kg apiece.
+            '2712' => array( 2 => 4.60, 3 => 6.90 ),
+            // Premium 4-melon selection states ~7kg total in producer copy.
+            '2717' => array( 4 => 7.00 ),
+            // Smoothie 2kg pitahaya + 2kg banana + papaya; 6kg follows
+            // supplier's price/quoted EUR per kg: 32.90 / 5.48 ≈ 6kg.
+            '2732' => array( 5 => 6.00 ),
+        );
+        $n = (int) $amount;
+        if ( ! isset( $packs[ $product_id ][ $n ] ) ) { return null; }
+        $kg = (float) $packs[ $product_id ][ $n ];
+        if ( null === self::estimated_chargeable_weight( $kg ) ) { return null; }
+        $merchant_estimate = in_array( $product_id, array( '2321', '2538', '2539' ), true );
+        return array(
+            'kg' => $kg,
+            'basis' => $merchant_estimate ? 'merchant_approximation_reviewable'
+                : 'tropitop_listed_pack_composition_20261021',
+        );
     }
 
     /** Read liquid net content only. Units of fruit have no volume. */

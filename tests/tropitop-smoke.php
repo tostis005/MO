@@ -189,6 +189,44 @@ verify( null === reflected( 'estimated_description_weight',
     array( 'unit' => 'unid', 'amount' => 4.0 ),
     'Lleva 4 botes de 200g y 4 botellas de 250ml.' ),
     'Different possible pack weights must not be guessed.' );
+
+// Per-product tariff weights: source-listed compositions, exact unit choices,
+// and a separately flagged merchant estimate for missing lip balm/lettuce size.
+$approved = array(
+    2285 => array(4=>4.20), 2321 => array(6=>1.50),
+    2349 => array(5=>1), 2362 => array(2=>12,3=>18),
+    2363 => array(2=>7,3=>10.5), 2451 => array(2=>4,3=>6),
+    2452 => array(2=>3.6,3=>5.4), 2453 => array(4=>7.6),
+    2535 => array(4=>2), 2536 => array(6=>.72),
+    2538 => array(5=>.75), 2539 => array(3=>.20),
+    2579 => array(2=>1.16), 2580 => array(2=>1.16),
+    2581 => array(2=>1.16), 2677 => array(2=>14,3=>21),
+    2693 => array(4=>17.8), 2695 => array(3=>6.8),
+    2699 => array(2=>3.4,4=>6.8), 2710 => array(6=>2.7),
+    2711 => array(2=>3.4,4=>6.8), 2712 => array(2=>4.6,3=>6.9),
+    2717 => array(4=>7), 2732 => array(5=>6)
+);
+verify( count( $approved ) === 24, 'All 24 pending product-specific weights must be accounted for.' );
+foreach ( $approved as $id => $options ) {
+    foreach ( $options as $units => $weight ) {
+        $v = reflected( 'curated_unit_tariff_weight', (string)$id,
+            array('unit'=>'unid','amount'=>(float)$units,'price'=>24.90) );
+        verify( is_array($v) && abs($v['kg']-$weight)<0.0005,
+            'Producer pack tariff weight mismatch for '.$id.' / '.$units );
+        verify( MDO_Tropitop_Shipping::cost_for_weight( (float)$v['kg'] ) !== null,
+            'Unshippable weight for '.$id );
+    }
+    verify( null === reflected( 'curated_unit_tariff_weight', (string)$id,
+        array('unit'=>'unid','amount'=>37.0) ), 'Unknown pack option must not be invented.' );
+}
+verify( null === reflected( 'curated_unit_tariff_weight', '2321',
+    array('unit'=>'kg','amount'=>6.0) ), 'Explicit kilogram variants override unit conventions.' );
+verify( null === reflected( 'curated_unit_tariff_weight', '999998',
+    array('unit'=>'unid','amount'=>4.0) ), 'No global guessed per-unit shipping conversion.' );
+verify( reflected( 'curated_unit_tariff_weight','2538',
+    array('unit'=>'unid','amount'=>5.0))['basis'] === 'merchant_approximation_reviewable',
+    'Unknown lip balm content must be labelled as merchant estimate.' );
+
 echo "Tropitop connector and shipping smoke checks passed.\n";
 
 $expected = array( 3 => 2.95, 4 => 2.95, 6 => 5.95, 8 => 5.95, 9 => 5.95,

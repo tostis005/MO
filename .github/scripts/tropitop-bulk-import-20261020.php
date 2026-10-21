@@ -441,6 +441,23 @@ if ( $start >= $total && empty( $state['description_title_stock_retry_20261021']
     update_option( $key, $state, false );
     echo 'TROPITOP_DESCRIPTION_RECOVERY_UNLOCKED=' . $reopened . "\n";
 }
+// One focused reprocess of the 24 draft products with individual source-backed
+// (or explicitly flagged merchant-estimated) tariff weights. Keep Woo SKU and
+// all source-driven price/stock/description/image fields under normal sync.
+if ( $start >= $total && empty( $state['curated_unit_weight_retry_20261021'] ) ) {
+    $reopened = 0;
+    foreach ( (array) ( $state['failed'] ?? array() ) as $pid => $failure ) {
+        if ( ! str_contains( (string) ( $failure['reason'] ?? '' ),
+            'falta el peso embalado' ) ) { continue; }
+        if ( ! in_array( (string) ( $failure['url'] ?? '' ), (array) $state['urls'], true ) ) { continue; }
+        $state['retry_attempts'][$pid] = 1;
+        ++$reopened;
+    }
+    $state['curated_unit_weight_retry_20261021'] = 1;
+    if ( $reopened ) { unset( $state['finished_at'] ); }
+    update_option( $key, $state, false );
+    echo 'TROPITOP_CURATED_WEIGHTS_RETRY=' . $reopened . "\n";
+}
 // The saved cursor is authoritative for first-pass progress. After reaching
 // the end, retry only failed source URLs (at most twice), never regenerate the
 // entire catalog merely because a previous upload was interrupted.
