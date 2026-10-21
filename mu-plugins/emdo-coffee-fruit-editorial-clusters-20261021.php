@@ -237,3 +237,22 @@ add_filter('get_the_archive_description',static function(string $description):st
     if(!emdo_cluster21_products($term->slug==='cafe'?'cafe':($term->slug==='aguacates'?'aguacate':($term->slug==='citricos'?'citricos':($term->slug==='mangos'?'mango':'frutas'))),1,1))return $description;
     return $description.'<p class="emdo-editorial-blog-hub-link"><a href="'.esc_url($url).'">'.esc_html($label).' &rarr;</a></p>';
 },22);
+
+
+// Keep the legacy standalone orange category out of search until it has real products.
+// This is independent of mixed orange/mandarin boxes in the fruit category.
+function emdo_cluster21_empty_oranges():bool {
+    if(!function_exists('is_product_category')||!is_product_category('naranjas'))return false;
+    $term=get_queried_object();
+    return $term instanceof WP_Term && (int)$term->count===0;
+}
+add_filter('aioseo_robots_meta',static function($robots){
+    if(!is_array($robots)||!emdo_cluster21_empty_oranges())return $robots;
+    $robots['noindex']='noindex';
+    $robots['nofollow']='';
+    return $robots;
+},PHP_INT_MAX);
+add_filter('wp_robots',static function(array $robots):array {
+    if(emdo_cluster21_empty_oranges())$robots['noindex']=true;
+    return $robots;
+},PHP_INT_MAX);
