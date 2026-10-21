@@ -543,13 +543,14 @@ final class MDO_Woo_Importer {
         // actual WooCommerce product family. Map by verified source title.
         if ( in_array( $key, array( 'gourmet', 'zumos-y-tes' ), true ) ) {
             if ( preg_match( '/\\b(?:mermelada|confitura)\\b/u', $title ) ) { $key = 'mermeladas-y-confituras'; }
-            elseif ( preg_match( '/\\b(?:zumo|n[eé]ctar|limonada)\\b/u', $title ) ) { $key = 'zumos-nectares-y-limonadas'; }
-            elseif ( preg_match( '/\\b(?:infusi[oó]n|t[eé]\\s+verde|t[eé]\\s+negro)\\b/u', $title ) ) { $key = 'tes-e-infusiones'; }
+            elseif ( preg_match( '/\\b(?:zumos?|n[eé]ctar|limonada)\\b/u', $title ) ) { $key = 'zumos-nectares-y-limonadas'; }
+            elseif ( preg_match( '/\\b(?:infusi[oó](?:n|nes)|t[eé]\\s+verde|t[eé]\\s+negro)\\b/u', $title ) ) { $key = 'tes-e-infusiones'; }
             elseif ( preg_match( '/\\b(?:miel|mieles)\\b/u', $title ) ) { $key = 'mieles'; }
-            elseif ( preg_match( '/\\b(?:almendra|almendras|avellana|avellanas|casta[nñ]as?)\\b/u', $title ) ) { $key = 'frutos-secos'; }
+            elseif ( preg_match( '/\\b(?:almendra|almendras|avellana|avellanas|casta[nñ]as?|nueces)\\b/u', $title ) ) { $key = 'frutos-secos'; }
+            elseif ( preg_match( '/\\baceite\\s+de\\s+oliva\\b/u', $title ) && ! preg_match( '/\\b(?:pack|cesta|lote)\\b/u', $title ) ) { $key = 'aceites'; }
             elseif ( preg_match( '/\\bd[aá]tiles?\\b/u', $title ) ) { $key = 'frutas-del-mundo'; }
             elseif ( preg_match( '/\\bpat[eé]s?\\s+de\\s+aceituna\\b/u', $title ) ) { $key = 'foie-pates-untables'; }
-            elseif ( preg_match( '/\\btomates?\\s+raf\\s+y\\s+aceite\\b/u', $title ) ) { $key = 'packs'; }
+            elseif ( preg_match( '/\\b(?:tomates?\\s+raf\\s+y\\s+aceite|pack\\s+mediterr[aá]neo|cesta\\s+(?:desayuno|regalo))\\b/u', $title ) ) { $key = 'packs'; }
             else { throw new RuntimeException( 'Gourmet Tropitop sin familia verificada: ' . $title ); }
         }
         if ( in_array( $key, array( 'cosmetica', 'cosmetica-natural' ), true ) ) { $key = 'cosmetica-natural'; }
@@ -566,6 +567,7 @@ final class MDO_Woo_Importer {
             'frutos-secos' => array( 'Frutos secos', 'frutos-secos', '' ),
             'mieles' => array( 'Mieles', 'mieles', '' ),
             'conservas' => array( 'Conservas', 'conservas', '' ),
+            'aceites' => array( 'Aceites', 'aceites', '' ),
             'foie-pates-untables' => array( 'Foie, patés y untables', 'foie-pates-untables', '' ),
             'packs' => array( 'Packs y lotes', 'packs-y-lotes', '' ),
             'cajas-de-temporada' => array( 'Cajas de temporada', 'cajas-de-temporada', 'packs-y-lotes' ),
@@ -623,9 +625,13 @@ final class MDO_Woo_Importer {
             if ( $pack instanceof WP_Term ) { $ids[] = (int) $pack->term_id; }
         }
         // Mixed product packs retain the relevant family plus the pack archive.
-        if ( 'packs' === $key && preg_match( '/tomates?\\s+raf\\s+y\\s+aceite/u', $title ) ) {
+        if ( 'packs' === $key && preg_match( '/tomates?\\s+raf\\s+y\\s+aceite|pack\\s+mediterr[aá]neo/u', $title ) ) {
             $vegetables = get_term_by( 'slug', 'hortalizas-verduras', 'product_cat' );
             if ( $vegetables instanceof WP_Term ) { $ids[] = (int) $vegetables->term_id; }
+            if ( preg_match( '/pack\\s+mediterr[aá]neo/u', $title ) ) {
+                $frutas = get_term_by( 'slug', 'frutas', 'product_cat' );
+                if ( $frutas instanceof WP_Term ) { $ids[] = (int) $frutas->term_id; }
+            }
         }
         // Avoid classifying overseas roots as fruit just because of their
         // source "frutas-del-mundo" shelf.
