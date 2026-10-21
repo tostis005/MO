@@ -1,0 +1,194 @@
+name: Publish new category photos and editorial 20261021
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/finalize-new-categories-20261021.yml'
+      - '.github/scripts/finalize-category-assets-20261021.php'
+      - '.github/assets/category-images-20261021/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: finish-category-photos-and-editorial-20261021
+  cancel-in-progress: false
+
+jobs:
+  finish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: \${{ secrets.STAGING_HOST }}
+      STAGING_PORT: \${{ secrets.STAGING_PORT }}
+      STAGING_USER: \${{ secrets.STAGING_USER }}
+      SSHPASS: \${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate category release files and PHP syntax
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/finalize-category-assets-20261021.php
+          php -l elmercadodeorigen-child/page-categorias.php
+          for slug in bebidas mieles frutos-secos cosmetica-natural; do
+            file=".github/assets/category-images-20261021/categoria-$slug-20261021.webp"
+            test -s "$file"
+            test "$(file --brief --mime-type "$file")" = image/webp
+            test "$(stat -c%s "$file")" -lt 100000
+          done
+          test -n "$STAGING_HOST"
+          test -n "$STAGING_USER"
+          test -n "$SSHPASS"
+
+      - name: Configure secure transfer
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="$STAGING_PORT"
+          if [ -z "$PORT" ]; then PORT=22; fi
+          echo "PROD_SSH_PORT=$PORT" >> "$GITHUB_ENV"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Transfer photos and scoped update script to production host
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ServerAliveInterval=15 -p $PROD_SSH_PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PROD_SSH_PORT"
+          REMOTE="/tmp/emdo-category-finish-$GITHUB_RUN_ID"
+          echo "EMDO_CATEGORY_REMOTE=$REMOTE" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE/images'"
+          sshpass -e scp $SCP .github/assets/category-images-20261021/*.webp "$STAGING_USER@$STAGING_HOST:$REMOTE/images/"
+          sshpass -e scp $SCP .github/scripts/finalize-category-assets-20261021.php "$STAGING_USER@$STAGING_HOST:$REMOTE/finalize.php"
+          sshpass -e scp $SCP elmercadodeorigen-child/page-categorias.php "$STAGING_USER@$STAGING_HOST:$REMOTE/page-categorias.php"
+
+      - name: Backup, publish category cards and WooCommerce thumbnails
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ServerAliveInterval=15 -p $PROD_SSH_PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "bash -s -- '$EMDO_CATEGORY_REMOTE'" <<'REMOTE'
+          set -Eeuo pipefail
+          R="$1"
+          WP_BIN="$(command -v wp)"
+          PHP_BIN="$(command -v php || true)"
+          if [ -z "$PHP_BIN" ]; then
+            PHP_BIN="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          fi
+          test -n "$WP_BIN" && test -n "$PHP_BIN"
+          PROD=""
+          for config in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            root="$(dirname "$config")"
+            siteurl="$("$PHP_BIN" "$WP_BIN" option get siteurl --path="$root" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+            case "$siteurl" in
+              https://elmercadodeorigen.com|https://www.elmercadodeorigen.com|http://elmercadodeorigen.com|http://www.elmercadodeorigen.com)
+                PROD="$root"
+                break ;;
+            esac
+          done
+          test -n "$PROD"
+          THEME="$PROD/wp-content/themes/elmercadodeorigen-child"
+          test -f "$THEME/page-categorias.php"
+          test -f "$R/page-categorias.php"
+          "$PHP_BIN" -l "$R/page-categorias.php" >/dev/null
+
+          export EMDO_CATEGORY_ASSETS_DIR="$R/images"
+          export EMDO_CATEGORY_FINISH_MODE=audit
+          timeout --kill-after=20s 240s "$PHP_BIN" -d memory_limit=1024M "$WP_BIN" eval-file "$R/finalize.php" --path="$PROD" --allow-root --skip-plugins=woostify-sites-library
+
+          BACKUP="$HOME/.elmercado-rollbacks/category-assets/theme-page-$(date -u +%Y%m%dT%H%M%SZ)-$RANDOM.php"
+          mkdir -p "$(dirname "$BACKUP")"
+          cp "$THEME/page-categorias.php" "$BACKUP"
+          deployed=0
+          rollback() {
+            status=$?
+            if [ "$status" -ne 0 ] && [ "$deployed" -eq 1 ]; then
+              cp "$BACKUP" "$THEME/page-categorias.php"
+            fi
+            exit "$status"
+          }
+          trap rollback EXIT
+          cp "$R/page-categorias.php" "$THEME/page-categorias.php"
+          deployed=1
+          "$PHP_BIN" -l "$THEME/page-categorias.php" >/dev/null
+
+          export EMDO_CATEGORY_FINISH_MODE=apply
+          timeout --kill-after=20s 300s "$PHP_BIN" -d memory_limit=1024M "$WP_BIN" eval-file "$R/finalize.php" --path="$PROD" --allow-root --skip-plugins=woostify-sites-library
+          "$PHP_BIN" -d memory_limit=512M "$WP_BIN" cache flush --path="$PROD" --skip-plugins --allow-root >/dev/null
+
+          export EMDO_CATEGORY_FINISH_MODE=audit
+          timeout --kill-after=20s 240s "$PHP_BIN" -d memory_limit=1024M "$WP_BIN" eval-file "$R/finalize.php" --path="$PROD" --allow-root --skip-plugins=woostify-sites-library
+          test -f "$THEME/page-categorias.php"
+          echo "CATEGORY_FINISH_PRODUCTION_WP_OK backup=$BACKUP"
+          trap - EXIT
+          REMOTE
+
+      - name: Verify category photographs and copy on live page
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl -fLsS --compressed --retry 3 --max-time 80 \
+            "https://www.elmercadodeorigen.com/categorias/?emdo_finish=$GITHUB_RUN_ID" \
+            -o /tmp/emdo-categories-finished.html
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          class Cards(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.cards = {}
+                  self.all_copy = ""
+                  self.in_summary = False
+              def handle_starttag(self, tag, attributes):
+                  attributes = dict(attributes)
+                  if tag == "article" and "emo-category-hub-card" in attributes.get("class", ""):
+                      self.cards[attributes.get("data-category-slug", "")] = attributes.get("style", "")
+                  if tag == "p" and "emo-category-hub-card__summary" in attributes.get("class", ""):
+                      self.in_summary = True
+              def handle_endtag(self, tag):
+                  if tag == "p":
+                      self.in_summary = False
+              def handle_data(self, data):
+                  if self.in_summary:
+                      self.all_copy += data
+          html = Path("/tmp/emdo-categories-finished.html").read_text(errors="replace")
+          assert 'data-emo-categories-hub="010259"' in html, "Category page is not the expected template"
+          p = Cards()
+          p.feed(html)
+          expected = {
+              "bebidas": "categoria-bebidas-20261021",
+              "mieles": "categoria-mieles-20261021",
+              "frutos-secos": "categoria-frutos-secos-20261021",
+              "cosmetica-natural": "categoria-cosmetica-natural-20261021",
+          }
+          visible = {}
+          for slug, photo in expected.items():
+              if slug in p.cards:
+                  style = p.cards[slug]
+                  assert photo in style or "--emo-category-image" in style and "20261021" in style, (slug, style)
+                  visible[slug] = True
+              else:
+                  visible[slug] = False
+          assert "agrupados en una misma categoría para consultar" not in p.all_copy, "Generic card text remains"
+          print("CATEGORY_FINISH_LIVE_HUB_OK", {"total_visible_categories": len(p.cards), "new_photos_visible": visible})
+          PY
+
+      - name: Clean remote temporary files
+        if: always()
+        shell: bash
+        run: |
+          PORT="$STAGING_PORT"
+          if [ -z "$PORT" ]; then PORT=22; fi
+          if [ -n "$STAGING_HOST" ] && [ -n "$STAGING_USER" ] && [ -n "$EMDO_CATEGORY_REMOTE" ]; then
+            sshpass -e ssh -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -p "$PORT" "$STAGING_USER@$STAGING_HOST" \
+              "rm -rf '$EMDO_CATEGORY_REMOTE'" || true
+          fi
