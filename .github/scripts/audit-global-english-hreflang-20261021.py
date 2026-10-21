@@ -111,17 +111,24 @@ def select_evenly(urls, maximum):
     return [urls[round(i * (len(urls) - 1) / (maximum - 1))] for i in range(maximum)]
 
 def global_pairs():
-    sitemap = get(ROOT + "/english-sitemap.xml/", timeout=60)
-    if "page" not in sitemap:
-        print("GLOBAL_SITEMAP_TRANSPORT_FAILURE", sitemap["errors"], flush=True)
-        urls = []
+    exported = OUT / "english-seed-urls.json"
+    if exported.exists():
+        obj = json.loads(exported.read_text(encoding="utf-8"))
+        urls = list(obj.get("urls", []))
+        print("GLOBAL_URL_SOURCE=verified_WordPress_database", len(urls), flush=True)
     else:
+        urls = []
+    sitemap = get(ROOT + "/english-sitemap.xml/", timeout=60) if not urls else {}
+    if not urls and "page" not in sitemap:
+        print("GLOBAL_SITEMAP_TRANSPORT_FAILURE", sitemap.get("errors"), flush=True)
+    elif not urls:
         try:
             root = ET.fromstring(sitemap["page"])
             urls = [(x.text or "").strip() for x in root.iter() if x.tag.rsplit("}",1)[-1] == "loc"]
+            if not urls:
+                print("GLOBAL_SITEMAP_EMPTY", repr(sitemap["page"][:250]), flush=True)
         except Exception as ex:
             print("GLOBAL_SITEMAP_PARSE_FAILURE", str(ex)[:180], flush=True)
-            urls = []
     urls = [u for u in urls if urlparse(u).netloc in ("www.elmercadodeorigen.com", "elmercadodeorigen.com")
             and urlparse(u).path.startswith("/en/")]
     active24 = {en for _es, en, _g in article_pairs()}
