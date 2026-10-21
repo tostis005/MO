@@ -4,6 +4,9 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/deploy-quick-search-20261021.yml'
+      - 'mu-plugins/mdo-quick-search-20261021.php'
+      - 'elmercadodeorigen-child/assets/js/quick-search-20261021.js'
+      - 'elmercadodeorigen-child/assets/css/quick-search-20261021.css'
 permissions:
   contents: read
 concurrency:
@@ -27,6 +30,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           php -l mu-plugins/mdo-quick-search-20261021.php
+          php tests/quick-search-price-20261021.php
           node --check elmercadodeorigen-child/assets/js/quick-search-20261021.js
           test -s elmercadodeorigen-child/assets/css/quick-search-20261021.css
           grep -q 'elmercado/v1' mu-plugins/mdo-quick-search-20261021.php
@@ -154,11 +158,13 @@ jobs:
             if (count($data["products"]) > 6) { exit(2); }
             foreach ($data["products"] as $p) {
               if (empty($p["name"]) || empty($p["url"])) { exit(3); }
+              if (preg_match("/Rango de precios|Price range|desde .+ hasta /iu", (string) ($p["price"] ?? ""))) { exit(4); }
             }
             echo "QUICK_SEARCH_API_OK suggestions=" . count($data["products"]) . PHP_EOL;
           ' /tmp/emdo-qs-response-$runid.json
           curl -fsSL --retry 2 --max-time 30 "$site/wp-content/themes/elmercadodeorigen-child/assets/js/quick-search-20261021.js?release=$runid" -o /tmp/emdo-qs-script-$runid.js
           grep -q 'emoQuickSearchBound' /tmp/emdo-qs-script-$runid.js
+          grep -q 'showLoading(term)' /tmp/emdo-qs-script-$runid.js
           curl -fsSL --retry 2 --max-time 30 "$site/?quick_search_release=$runid" -o /tmp/emdo-qs-home-$runid.html
           grep -q 'quick-search-20261021.js' /tmp/emdo-qs-home-$runid.html
           rm -f /tmp/emdo-qs-response-$runid.json /tmp/emdo-qs-script-$runid.js /tmp/emdo-qs-home-$runid.html
