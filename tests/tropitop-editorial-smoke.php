@@ -55,4 +55,19 @@ $farmer = MDO_Tropitop_Editorial::description('<ul><li>Agricultor: Hermán, agri
 check( str_contains($farmer,'Agricultor: Hermán'), 'Retain farmer identity' );
 check( str_contains($farmer,'El contenido se ajusta'), 'Preserve objective pack explanation' );
 check( ! str_contains($farmer,'de confianza de Tropitop'), 'No source-store attributions' );
+$remaining = '<p>En Tropitop trabajamos junto a agricultores que recolectan la fruta.</p>'
+    .'<p>Comprar uva verde online en Tropitop es una experiencia especial.</p>'
+    .'<p>Tropitop ofrece cada melón para ofrecerte una caja especial.</p>'
+    .'<p>La fruta tiene pulpa dulce y un aroma intenso.</p>';
+$neutral = MDO_Tropitop_Editorial::description( $remaining );
+check( !str_contains( $neutral,'En Tropitop' ), 'Reject supplier as retailer' );
+check( !str_contains( $neutral,'Tropitop ofrece' ), 'Reject supplier self-promotion' );
+check( str_contains( $neutral, 'pulpa dulce' ), 'Retain independently factual product copy' );
+check( MDO_Tropitop_Editorial::residual_markers($neutral)===array(), 'No residual producer-store markers' );
+check( MDO_Tropitop_Editorial::title('Cerezas online en tropitop | cerezas frescas de castellón')
+    === 'Cerezas frescas de Castellón', 'Verified source SEO title normalized' );
+check( MDO_Tropitop_Editorial::title('Aguacate Bacon')==='Aguacate Bacon', 'Do not rename clean titles' );
+$farmer_tag = MDO_Tropitop_Editorial::description('<li><strong>Agricultor:</strong> Hermán, agricultor de confianza de Tropitop.</li>');
+check( str_contains($farmer_tag,'Hermán'), 'Farmer name retained with HTML formatting' );
+check( !str_contains($farmer_tag,'Tropitop'), 'Producer self-endorsement removed with HTML formatting' );
 echo "TROPITOP_EDITORIAL_SMOKE_OK\n";
