@@ -95,4 +95,12 @@ check(!str_contains($seoClean,'Tropitop ofrece'),'Avoid supplier sales copy');
 check(str_contains($seoClean,'Sugar Sunset'),'Do not remove product composition');
 check(str_contains($seoClean,'Conservación'),'Do not remove storage guidance');
 
+
+$packBullet='<ul><li><strong>Comprar sandía online:</strong> Elige entre sandía rayada o sandía negra.</li>'
+    .'<li><strong>Peso:</strong> Entre 8 y 12 kg según variedad.</li></ul>';
+$packBulletClean=MDO_Tropitop_Editorial::description($packBullet,'Pack sabor de verano','');
+check(!preg_match('/Comprar\s+sand[ií]a\s+online/iu',$packBulletClean),'Remove source checkout SEO bullet');
+check(str_contains($packBulletClean,'sandía negra'),'Preserve product variant choice');
+check(str_contains($packBulletClean,'8 y 12 kg'),'Preserve declared pack weight');
+
 echo "TROPITOP_EDITORIAL_SMOKE_OK\n";
