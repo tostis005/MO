@@ -274,6 +274,36 @@ $dom = new DOMDocument();
     . '<button data-button-action="add-to-cart">Comprar</button>' );
 verify( reflected( 'stock',new DOMXPath($dom)) === 'instock',
     'JavaScript template stock warnings are not product availability.' );
+
+// Legacy honey pages have a single exact 2kg presentation with one trusted
+// meta source price and one *product-scoped* visible price. No invented tiers.
+foreach( array(
+    '2525'=>'https://tropitop.com/es/gourmet/2525-comprar-miel-azahar-artesanal-2kg.html',
+    '2526'=>'https://tropitop.com/es/gourmet/2526-comprar-miel-montana-artesanal-4x500g.html',
+) as $id=>$url ){
+    $d=new DOMDocument();
+    @$d->loadHTML('<?xml encoding="UTF-8" ?><html><head>'
+        . '<meta property="product:price:amount" content="34.9"></head>'
+        . '<body><div id="col-product-info"><span class="current-price">'
+        . '34,90 €</span></div><div class="product-variants"></div>'
+        . '<aside class="related"><span class="current-price">1,00 €</span></aside>'
+        . '</body></html>');
+    $v=reflected('honey_single_size',new DOMXPath($d),(string)$id,$url);
+    verify(count($v)===1 && abs($v['kg:2.000']['price']-34.9)<.001,
+        'Honey page price must come from its own matching metadata and visible price '.$id);
+    verify(reflected('honey_single_size',new DOMXPath($d),(string)$id,
+        'https://tropitop.com/es/gourmet/9999-wrong-source.html')===array(),
+        'Honey page slug must prove exact packaging '.$id);
+}
+$d=new DOMDocument();
+@$d->loadHTML('<?xml encoding="UTF-8" ?><html><head>'
+    . '<meta property="product:price:amount" content="34.9"></head>'
+    . '<body><div id="col-product-info"><span class="current-price">'
+    . '31,90 €</span></div></body></html>');
+verify(reflected('honey_single_size',new DOMXPath($d),'2525',
+    'https://tropitop.com/es/gourmet/2525-comprar-miel-azahar-artesanal-2kg.html')===array(),
+    'Conflicting producer prices must fail closed.');
+
 echo "Tropitop connector and shipping smoke checks passed.\n";
 
 $expected = array( 3 => 2.95, 4 => 2.95, 6 => 5.95, 8 => 5.95, 9 => 5.95,
