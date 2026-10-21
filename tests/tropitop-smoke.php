@@ -154,11 +154,11 @@ verify( abs( (float) reflected( 'estimated_chargeable_weight', 5.0 ) - 5.0 ) < .
     '5x1L is exactly 5kg for shipping.' );
 verify( abs( (float) reflected( 'estimated_chargeable_weight', 2.4 ) - 2.4 ) < .001,
     '12x200ml is exactly 2.4kg for shipping.' );
-verify( abs( (float) reflected( 'estimated_jar_weight',
+verify( abs( (float) reflected( 'estimated_description_weight',
     array( 'unit' => 'unid', 'amount' => 4.0 ),
     '<p>1 caja contiene 4 botes de 200g de mermelada.</p>' ) - 0.8 ) < .001,
     'Four 200g jars charge only the exact 0.8kg contents.' );
-verify( null === reflected( 'estimated_jar_weight',
+verify( null === reflected( 'estimated_description_weight',
     array( 'unit' => 'unid', 'amount' => 5.0 ), '<p>Cinco frutas.</p>' ),
     'Piece-based fruit stays unestimated.' );
 verify( abs( (float) reflected( 'estimated_chargeable_weight', 29.0 ) - 29.0 ) < .001,
