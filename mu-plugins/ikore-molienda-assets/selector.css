@@ -1,4 +1,4 @@
-/* Only applies after JS has built all matching visual choices. */
+/* Solo se aplica tras crear correctamente las tarjetas desde las variaciones WooCommerce. */
 .emdo-ikore-mounted select.emdo-ikore-native {
   position: absolute !important;
   width: 1px !important;
@@ -16,27 +16,96 @@
 .emdo-ikore-title { margin: 0 0 3px !important; color: #263a30; font-size: 15px; font-weight: 700; line-height: 1.3; }
 .emdo-ikore-help { margin: 0 0 13px !important; color: #66746e; font-size: 12px; line-height: 1.45; }
 .emdo-ikore-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; }
-button.emdo-ikore-card {
-  appearance: none; display: flex; flex-direction: column; justify-content: center; align-items: center;
-  gap: 4px; width: 100%; min-width: 0; min-height: 106px; padding: 9px 5px 10px;
-  background: #fff; color: #304139; border: 1px solid #dfe5df; border-radius: 12px;
-  box-shadow: none; cursor: pointer; line-height: 1.25; text-align: center;
+
+/* Alta especificidad para impedir que Woostify/otros estilos de botones
+   sobrescriban el fondo y dejen letras blancas sobre verde claro. */
+body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  min-height: 100px;
+  padding: 9px 6px;
+  color: #24583e !important;
+  background: #fff !important;
+  background-image: none !important;
+  border: 1px solid #d9e2dc !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  cursor: pointer;
+  line-height: 1.25;
+  text-align: center;
+  text-decoration: none !important;
+  text-transform: none;
   transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease;
 }
-button.emdo-ikore-card img { display: block; width: 66px; height: 66px; max-width: 100%; object-fit: contain; }
-.emdo-ikore-card-label { display: block; overflow-wrap: anywhere; font-size: 12px; font-weight: 600; line-height: 1.25; }
-button.emdo-ikore-card:hover:not(:disabled) { border-color: #7b9d89; background: #fafcf9; }
-button.emdo-ikore-card:focus-visible { outline: 3px solid #88b69b; outline-offset: 2px; }
-button.emdo-ikore-card[aria-pressed="true"] { border: 2px solid #2b7050; padding: 8px 4px 9px; background: #f1f8f3; box-shadow: 0 0 0 1px rgba(43,112,80,.1); }
-button.emdo-ikore-card:disabled { opacity: .42; cursor: not-allowed; }
+body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card::before,
+body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card::after {
+  content: none !important;
+  display: none !important;
+}
+body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card img {
+  display: block;
+  width: 66px;
+  height: 66px;
+  max-width: 100%;
+  object-fit: contain;
+}
+body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card .emdo-ikore-card-label {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #24583e !important;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card:hover:not(:disabled) {
+  color: #24583e !important;
+  border-color: #91b09e !important;
+  background: #f7faf8 !important;
+}
+body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card:focus-visible {
+  outline: 3px solid #7cae91 !important;
+  outline-offset: 2px;
+}
+body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card[aria-pressed="true"],
+body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card[aria-pressed="true"]:hover,
+body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card[aria-pressed="true"]:active {
+  color: #20583b !important;
+  background: #edf6ef !important;
+  border: 2px solid #2b7050 !important;
+  padding: 8px 5px;
+  box-shadow: 0 0 0 1px rgba(43,112,80,.08) !important;
+}
+body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card[aria-pressed="true"] .emdo-ikore-card-label {
+  color: #20583b !important;
+  font-weight: 750;
+}
+body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
 @media (max-width: 500px) {
   .emdo-ikore-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  button.emdo-ikore-card { min-height: 116px; padding: 10px; }
-  button.emdo-ikore-card img { width: 72px; height: 72px; }
+  body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card {
+    min-height: 106px;
+    padding: 8px 6px;
+  }
+  body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card[aria-pressed="true"] {
+    padding: 7px 5px;
+  }
+  body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card img {
+    width: 68px;
+    height: 68px;
+  }
 }
 @media (min-width: 501px) and (max-width: 900px) {
   .emdo-ikore-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) {
-  button.emdo-ikore-card { transition: none; }
+  body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card { transition: none; }
 }

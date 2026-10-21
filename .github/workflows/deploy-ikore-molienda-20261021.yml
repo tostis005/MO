@@ -35,6 +35,9 @@ jobs:
           php -l mu-plugins/mdo-ikore-molienda-selector-20261021.php
           node --check mu-plugins/ikore-molienda-assets/selector.js
           test -s mu-plugins/ikore-molienda-assets/selector.css
+          grep -Fq 'background: #edf6ef !important' mu-plugins/ikore-molienda-assets/selector.css
+          grep -Fq 'color: #20583b !important' mu-plugins/ikore-molienda-assets/selector.css
+          grep -Fq "20261021.2" mu-plugins/mdo-ikore-molienda-selector-20261021.php
           for variant in grano italiana espresso francesa cold-brew aeropress filtro-v60; do
             test -s "mu-plugins/ikore-molienda-assets/${variant}.webp"
             file "mu-plugins/ikore-molienda-assets/${variant}.webp" | grep -qi Web/P
@@ -148,6 +151,10 @@ jobs:
           curl -fsSL --retry 2 --max-time 45 "$url" -o "/tmp/ikore-smoke-$runid.html"
           grep -q 'ikore-molienda-assets/selector.js' "/tmp/ikore-smoke-$runid.html"
           grep -q 'ikore-molienda-assets/selector.css' "/tmp/ikore-smoke-$runid.html"
+          grep -q '20261021.2' "/tmp/ikore-smoke-$runid.html"
+          curl -fsSL --retry 2 --max-time 25 "https://www.elmercadodeorigen.com/wp-content/mu-plugins/ikore-molienda-assets/selector.css?v=20261021.2&release=$runid" -o "/tmp/ikore-css-$runid.css"
+          grep -Fq 'background: #edf6ef !important' "/tmp/ikore-css-$runid.css"
+          grep -Fq 'color: #20583b !important' "/tmp/ikore-css-$runid.css"
           for rel in grano italiana espresso francesa cold-brew aeropress filtro-v60; do
             asset="https://www.elmercadodeorigen.com/wp-content/mu-plugins/ikore-molienda-assets/${rel}.webp"
             curl -fsSL --retry 1 --max-time 20 "$asset" -o "/tmp/ikore-asset-$runid.webp"
@@ -157,6 +164,6 @@ jobs:
           echo "IKORE_SELECTOR_PRODUCTION_OK run=$runid backup=$backup"
           changed=0
           trap - EXIT
-          rm -f "/tmp/ikore-smoke-$runid.html" "/tmp/ikore-asset-$runid.webp"
+          rm -f "/tmp/ikore-smoke-$runid.html" "/tmp/ikore-asset-$runid.webp" "/tmp/ikore-css-$runid.css"
           rm -rf "$stage"
           REMOTE
