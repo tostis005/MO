@@ -159,3 +159,53 @@ foreach (array(
         'availability'=>$sale&&$sale->length?trim((string)$sale->item(0)->textContent):'',
     ),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
 }
+
+
+// Read-only honey-page single-price and PrestaShop variant evidence.
+foreach(array(
+    '2525'=>'https://tropitop.com/es/gourmet/2525-comprar-miel-azahar-artesanal-2kg.html',
+    '2526'=>'https://tropitop.com/es/gourmet/2526-comprar-miel-montana-artesanal-4x500g.html',
+) as $id=>$url){
+    $res=wp_remote_get($url,array('timeout'=>18,'headers'=>array('Accept-Language'=>'es-ES,es;q=0.9')));
+    if(is_wp_error($res)){ continue; }
+    $html=(string)wp_remote_retrieve_body($res);
+    $dom=new DOMDocument();
+    @$dom->loadHTML('<?xml encoding="UTF-8" ?>'.$html,LIBXML_NONET|LIBXML_NOERROR|LIBXML_NOWARNING);
+    $xp=new DOMXPath($dom);
+    $sel=array();
+    foreach(array(
+        '//meta[@property="product:price:amount"]/@content',
+        '//meta[@property="og:price:amount"]/@content',
+        '//*[@id="main-product-wrapper"]//*[contains(@class,"current-price")]',
+        '//*[@id="col-product-info"]//*[contains(@class,"current-price")]',
+        '//div[contains(@class,"product-variants")]',
+        '//select[starts-with(@name,"group")]',
+        '//*[contains(@class,"product-price")]',
+        '//*[@id="product-availability"]',
+    ) as $expr){
+        $nodes=$xp->query($expr);
+        $values=array();
+        foreach($nodes?:array() as $n){
+            $v=trim(preg_replace('/\s+/u',' ',(string)$n->textContent));
+            if($n instanceof DOMAttr){$v=(string)$n->value;}
+            $v=mb_substr($v,0,280);
+            if($v!=='' && !in_array($v,$values,true)){$values[]=$v;}
+            if(count($values)>=3){break;}
+        }
+        $sel[$expr]=$values;
+    }
+    $ld=array();
+    foreach($xp->query('//script[@type="application/ld+json"]')?:array() as $n){
+        $decoded=json_decode((string)$n->textContent,true);
+        if(is_array($decoded)){
+            foreach(array('name','offers','sku','@type') as $k){
+                if(isset($decoded[$k])){$ld[$k]=$decoded[$k];}
+            }
+            break;
+        }
+    }
+    echo 'TROPITOP_HONEY_PROBE='.wp_json_encode(array(
+        'id'=>$id,'status'=>wp_remote_retrieve_response_code($res),
+        'source_markup'=>$sel, 'json_ld'=>$ld,
+    ),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
+}
