@@ -1,0 +1,20 @@
+name: Audit live reciprocal coffee fruit chocolate links 20261021
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/audit-live-topic-product-reciprocity-20261021.py'
+      - '.github/workflows/audit-live-topic-product-reciprocity-20261021.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 24
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax
+        run: python3 -m py_compile .github/scripts/audit-live-topic-product-reciprocity-20261021.py
+      - name: Check live articles, products and hub links
+        run: python3 .github/scripts/audit-live-topic-product-reciprocity-20261021.py
