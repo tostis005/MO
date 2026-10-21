@@ -61,4 +61,31 @@ foreach($codes as $code){
   }
   $result['suppliers'][$code]=['counts'=>$counts,'issues'=>$issues];
 }
+// Ikore Kofi is deliberately a manual WooCommerce producer, not a supplier-sync record.
+$ikore=get_user_by('login','ikore-kofi');
+if($ikore){
+    $ids=get_posts(['post_type'=>'product','author'=>(int)$ikore->ID,'post_status'=>'publish','posts_per_page'=>100,'fields'=>'ids','suppress_filters'=>true]);
+    $counts=['published'=>count($ids),'published_buyable'=>0,'missing_english_native'=>0,'missing_english_title'=>0,'missing_english_excerpt'=>0,'missing_english_content'=>0,'english_not_published'=>0];
+    $issues=[];
+    foreach($ids as $id){
+        $p=wc_get_product($id);
+        if(!$p||!$p->is_visible()||!$p->is_purchasable()||!$p->is_in_stock())continue;
+        $counts['published_buyable']++;
+        $translated=(string)get_post_meta($id,'_en_US_published',true)==='1';
+        $name=trim((string)get_post_meta($id,'_en_US_post_title',true));
+        $slug=trim((string)get_post_meta($id,'_en_US_post_name',true));
+        $excerpt=trim(wp_strip_all_tags((string)get_post_meta($id,'_en_US_post_excerpt',true)));
+        $body=trim(wp_strip_all_tags((string)get_post_meta($id,'_en_US_post_content',true)));
+        $missing=[];
+        if(!$translated){$counts['english_not_published']++;$missing[]='not_published';}
+        if(!$name||!$slug){$counts['missing_english_title']++;$missing[]='title_or_slug';}
+        if(trim(wp_strip_all_tags($p->get_short_description()))!==''&&!$excerpt){$counts['missing_english_excerpt']++;$missing[]='excerpt';}
+        if(trim(wp_strip_all_tags($p->get_description()))!==''&&!$body){$counts['missing_english_content']++;$missing[]='content';}
+        if($missing){
+            $counts['missing_english_native']++;
+            $issues[]=['id'=>(int)$id,'title'=>$p->get_name(),'missing'=>$missing,'url'=>get_permalink($id)];
+        }
+    }
+    $result['suppliers']['ikore-kofi']=['mode'=>'manual_woocommerce','counts'=>$counts,'issues'=>$issues];
+}
 echo 'EMDO_NEW_SUPPLIER_ENGLISH_QA='.wp_json_encode($result,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE).PHP_EOL;
