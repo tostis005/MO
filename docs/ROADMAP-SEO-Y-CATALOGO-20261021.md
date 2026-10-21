@@ -126,3 +126,22 @@ https://github.com/tostis005/MO/actions/runs/39578563621.
 De los 295 productos comprables de estos cuatro grupos, 180 cuentan con ficha nativa EN según la prueba de integridad de metadatos (no equivale a evaluación estilística completa del inglés). Esos 115 pendientes son el siguiente bloque de trabajo de mayor volumen. Requieren traducción controlada de datos reales, incluidas variaciones, unidades, ingredientes y alérgenos, sin inventar datos comerciales. Por tanto no se rellenan automáticamente a ciegas.
 
 **Estado al cierre de este hito:** SEO ES Tropitop 187/187 conforme; 48/48 páginas editoriales nuevas sin fallos SEO técnicos; 6/6 cafés Ikore ingleses publicados; 3/3 bucles ingleses de categorías corregidos. Pendientes: 115 fichas inglesas y revisión comercial de seis productos Isabel personalizados aún en borrador.
+
+## Continuación — traducciones nativas del 21/10/2026
+
+**Lote 13/13 desplegado en producción:** https://github.com/tostis005/MO/actions/runs/39580332217, resultado `published=13`, `matched=13`, `skipped=[]`, `verified=true`, con copia de seguridad de metadatos. Son cuatro fichas de Chocolates Artesanos Isabel —dos kits bean-to-bar, cracker de chocolate blanco con quinoa y Chocobone blanco con almendra— y nueve productos cárnicos de Latitudes —cebra, avestruz, bisonte, búfalo, cocodrilo y Black Angus—. En las fichas cárnicas se conservaron ingredientes, códigos de aditivos y la declaración de **sulfitos**. No se modificaron propiedades comerciales ni versiones españolas.
+
+**Pulido inglés después de aplicación:** https://github.com/tostis005/MO/actions/runs/39580716807, `reviewed=8`, `updated=8`, `verified=true`; corrige artefactos de redacción en listas inglesas de ingredientes, solo en ocho elaborados cárnicos del lote nuevo.
+
+**Auditoría independiente tras publicar:** https://github.com/tostis005/MO/actions/runs/39580778246:
+| Productor | Comprables auditados | Pendientes ingleses | Estado |
+|---|---:|---:|---|
+| Chocolates Isabel | 78 | **0** | Cobertura nativa completa |
+| Ikore Kofi | 6 | **0** | Cobertura nativa completa |
+| Latitudes | 109 | **0** | Cobertura nativa completa |
+| Tropitop | 102 | **102** | Traducción pendiente |
+| **Total** | **295** | **102** | **193/295 con campos EN completos** |
+
+Estos son contadores de metadatos nativos EN completos (título, slug, resumen y descripción), no una certificación de todos los detalles editoriales de las 193 fichas.
+
+**Siguiente lote Tropitop:** flujo acotado a un máximo de 18 productos comprables, con exportación desde WooCommerce, traducción sin modificar el español, pruebas de integridad de números y estructura, guardas de identidad del proveedor, copia de seguridad y verificación posterior. Ejecución lanzada: https://github.com/tostis005/MO/actions/runs/39581293247. **No se suman traducciones de este lote hasta obtener ejecución completa con resultado satisfactorio.**
