@@ -163,7 +163,7 @@ $summary['legacy_gourmet_remaining']=is_wp_error($remaining)?-1:count((array)$re
 if($mode==='audit' && !is_wp_error($remaining) && $remaining) {
  foreach(array_slice((array)$remaining,0,75) as $legacyId) {
    $related=get_post((int)$legacyId);
-   echo 'CATEGORY_LEGACY_OBJECT='.wp_json_encode(['id'=>(int)$legacyId,'type'=>$related?$related->post_type:'not_post','status'=>$related?$related->post_status:'missing','title'=>$related?$related->post_title:'missing'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
+   echo 'CATEGORY_LEGACY_OBJECT='.wp_json_encode(['id'=>(int)$legacyId,'type'=>$related?$related->post_type:'not_post','status'=>$related?$related->post_status:'missing','title'=>$related?$related->post_title:'missing','was_scanned'=>isset($seen[$legacyId]),'slugs'=>emdo_category_slugs((int)$legacyId)],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
  }
 }
 $children=$legacy instanceof WP_Term?get_terms(['taxonomy'=>'product_cat','parent'=>(int)$legacy->term_id,'hide_empty'=>false]):[];
