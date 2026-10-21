@@ -100,6 +100,28 @@ foreach ( $rows as $row ) {
             if ( $categories_changed ) { $product->set_category_ids( $new_cats ); }
             $product->save();
         }
+        if ( $flags ) {
+            // Only public-facing copy. Bounded excerpts expose residual wording
+            // without dumping full product descriptions into the action log.
+            $plain = trim(preg_replace('/\\s+/u', ' ', html_entity_decode(
+                wp_strip_all_tags($after_description . ' ' . $after_short), ENT_QUOTES | ENT_HTML5, 'UTF-8'
+            )));
+            $re = '/\\b(?:nuestr\\w*|nosotr\\w*|ofrecemos|seleccionamos|preparamos|enviamos|cultivamos|recolectamos|trabajamos|colaboramos|cosechamos|garantizamos|suscr[ií]bete|whatsapp|visita|escr[ií]benos)\\b/iu';
+            $ctx = array();
+            if ( preg_match_all($re, $plain, $hits, PREG_OFFSET_CAPTURE) ) {
+                foreach ( array_slice($hits[0],0,6) as $hit ) {
+                    $ctx[] = mb_substr($plain,max(0,mb_strlen(mb_strcut($plain,0,$hit[1],'UTF-8'))-90),220,'UTF-8');
+                }
+            }
+            $details['residual_context']=$ctx;
+        }
+        if ( $categories_changed ) {
+            $details['category_term_names']=array();
+            foreach (array_values(array_unique(array_merge($current_cats,$new_cats))) as $term_id) {
+                $term=get_term($term_id,'product_cat');
+                $details['category_term_names'][(string)$term_id]=$term instanceof WP_Term ? $term->name : 'term_missing';
+            }
+        }
         if ($text_changed || $categories_changed || $flags || $details['description_empty']) {
             echo 'TROPITOP_EDITORIAL_PRODUCT=' . wp_json_encode($details,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . PHP_EOL;
         }
