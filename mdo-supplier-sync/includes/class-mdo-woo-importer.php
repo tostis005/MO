@@ -502,7 +502,7 @@ final class MDO_Woo_Importer {
      * scoring (meat/chocolate categories elsewhere in this marketplace).
      * A new term is created only for these audited product category slugs.
      */
-    public static function tropitop_category_ids( array $payload ): array {
+    public static function tropitop_category_ids( array $payload, bool $create_missing = true ): array {
         $source = (string) ( $payload['source_url'] ?? '' );
         if ( ! in_array( strtolower( (string) wp_parse_url( $source, PHP_URL_HOST ) ),
             array( 'tropitop.com', 'www.tropitop.com' ), true ) ) {
@@ -542,7 +542,7 @@ final class MDO_Woo_Importer {
         $parent_id = 0;
         if ( $target[2] ) {
             $parent = get_term_by( 'slug', $target[2], 'product_cat' );
-            if ( ! $parent instanceof WP_Term && isset( $map[ $target[2] ] ) ) {
+            if ( ! $parent instanceof WP_Term && isset( $map[ $target[2] ] ) && $create_missing ) {
                 $p = $map[ $target[2] ];
                 $result = wp_insert_term( $p[0], 'product_cat', array( 'slug' => $p[1] ) );
                 if ( is_wp_error( $result ) ) { throw new RuntimeException( $result->get_error_message() ); }
@@ -558,6 +558,9 @@ final class MDO_Woo_Importer {
         // recreate a competing root if the shop term was removed.
         if ( 'verduras' === $key && ! $term instanceof WP_Term ) {
             throw new RuntimeException( 'Falta la categoría existente Hortalizas/Verduras.' );
+        }
+        if ( ! $term instanceof WP_Term && ! $create_missing ) {
+            throw new RuntimeException( 'Categoría aún no existente: ' . $target[1] );
         }
         if ( ! $term instanceof WP_Term ) {
             $result = wp_insert_term( $target[0], 'product_cat', array(
