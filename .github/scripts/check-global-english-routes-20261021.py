@@ -55,7 +55,24 @@ def get(path):
   "alternates":d.alts(),"robots":d.desc("robots"),"h1":d.h1,
   "contains_noindex":"noindex" in d.desc("robots").lower()})
  return x
+
+def raw_probe(path):
+ class NoRedirect(urllib.request.HTTPRedirectHandler):
+  def redirect_request(self, req, fp, code, msg, headers, newurl):return None
+ opener=urllib.request.build_opener(NoRedirect)
+ req=urllib.request.Request(ROOT+path,headers={"User-Agent":"Mozilla/5.0 (EMDO SEO redirect diagnosis)"})
+ try:r=opener.open(req,timeout=20);code=r.status
+ except urllib.error.HTTPError as e:r=e;code=e.code
+ except Exception as e:return {"url":path,"error":repr(e)}
+ with r:
+  return {"url":path,"http":code,"location":r.headers.get("Location",""),"server":r.headers.get("Server",""),
+     "cache_control":r.headers.get("Cache-Control",""),"vary":r.headers.get("Vary",""),"x_redirect_by":r.headers.get("X-Redirect-By",""),
+     "content_type":r.headers.get("Content-Type","")}
+
 def main():
+ for raw in ["/en/category/hams-and-shoulders/","/en/category/hams-and-shoulders/?emdo_route_probe=20261021",
+   "/en/category/jamones-y-paletas/","/english-sitemap.xml","/english-sitemap.xml/","/english-sitemap.xml/?emdo_route_probe=20261021"]:
+  print("RAW_REDIRECT",json.dumps(raw_probe(raw),ensure_ascii=False),flush=True)
  from concurrent.futures import ThreadPoolExecutor
  with ThreadPoolExecutor(max_workers=3) as pool:res=list(pool.map(get,PATHS))
  for x in res:print("GLOBAL_ROUTE_QA",json.dumps(x,ensure_ascii=False),flush=True)
