@@ -109,7 +109,7 @@ do{
    }elseif(in_array('gourmet',$original,true)) {
     throw new RuntimeException('Gourmet belongs to another vendor, requires manual review');
    }
-   if(in_array('conservas',$new,true) && preg_match('/^(?:mermelada|confitura)\b/iu',$name)) {
+   if(in_array('conservas',$new,true) && preg_match('/\b(?:mermelada|confitura)\b/iu',$name)) {
     $new[]='mermeladas-y-confituras';$reason=$reason?:'existing_conservas';
    }
    if(count($new)===1 && in_array('sin-categorizar',$new,true)) {
