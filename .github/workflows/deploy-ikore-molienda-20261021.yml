@@ -1,0 +1,162 @@
+name: Deploy Ikore Kofi visual coffee grind selector
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-ikore-molienda-20261021.yml'
+      - 'mu-plugins/mdo-ikore-molienda-selector-20261021.php'
+      - 'mu-plugins/ikore-molienda-assets/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate isolated Ikore selector release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l mu-plugins/mdo-ikore-molienda-selector-20261021.php
+          node --check mu-plugins/ikore-molienda-assets/selector.js
+          test -s mu-plugins/ikore-molienda-assets/selector.css
+          for variant in grano italiana espresso francesa cold-brew aeropress filtro-v60; do
+            test -s "mu-plugins/ikore-molienda-assets/${variant}.webp"
+            file "mu-plugins/ikore-molienda-assets/${variant}.webp" | grep -qi Web/P
+          done
+          : "${STAGING_HOST:?missing host}"
+          : "${STAGING_USER:?missing SSH user}"
+          : "${STAGING_PASSWORD:?missing SSH password}"
+          : "${STAGING_REMOTE_PATH:?missing configured WordPress path}"
+          [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
+
+      - name: Install SSH transfer dependency
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass rsync >/dev/null
+
+      - name: Upload scoped release to remote staging directory
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          test -s ~/.ssh/known_hosts && chmod 600 ~/.ssh/known_hosts
+          SSHOPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          STAGE="/tmp/emdo-ikore-selector-${GITHUB_RUN_ID}"
+          echo "STAGE=$STAGE" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSHOPTS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$STAGE'"
+          sshpass -e rsync -azR -e "ssh $SSHOPTS" \
+            mu-plugins/mdo-ikore-molienda-selector-20261021.php \
+            mu-plugins/ikore-molienda-assets/ \
+            "$STAGING_USER@$STAGING_HOST:$STAGE/"
+
+      - name: Release to production with rollback and actual-page smoke
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSHOPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSHOPTS "$STAGING_USER@$STAGING_HOST" \
+            "bash -s -- '$STAGING_REMOTE_PATH' '$STAGE' '$GITHUB_RUN_ID'" <<'REMOTE'
+          set -Eeuo pipefail
+          raw="${1%/}"; stage="$2"; runid="$3"
+          case "$raw" in
+            */wp-content/*) dev="${raw%%/wp-content/*}" ;;
+            *) echo 'Invalid WordPress path' >&2; exit 1 ;;
+          esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || exit 1
+            dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          test -f "$prod/wp-config.php"
+          test -d "$prod/wp-content/mu-plugins"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          [ -x "$php_bin" ] && [ -n "$wp_bin" ]
+          site="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --skip-plugins --skip-themes --allow-root)"
+          case "$site" in
+            https://www.elmercadodeorigen.com*|https://elmercadodeorigen.com*|http://www.elmercadodeorigen.com*|http://elmercadodeorigen.com*) ;;
+            *) echo 'Unexpected production site URL' >&2; exit 1 ;;
+          esac
+          "$php_bin" -l "$stage/mu-plugins/mdo-ikore-molienda-selector-20261021.php" >/dev/null
+          dest="$prod/wp-content/mu-plugins"
+          files=(mdo-ikore-molienda-selector-20261021.php ikore-molienda-assets/selector.js ikore-molienda-assets/selector.css)
+          for variant in grano italiana espresso francesa cold-brew aeropress filtro-v60; do
+            files+=("ikore-molienda-assets/${variant}.webp")
+          done
+          backup="$HOME/.elmercado-rollbacks/ikore-molienda-$runid"
+          mkdir -p "$backup"
+          changed=0
+          rollback() {
+            status=$?
+            trap - EXIT
+            if [ "$status" -ne 0 ] && [ "$changed" -eq 1 ]; then
+              echo 'Ikore visual selector smoke failed: restoring previous files'
+              for rel in "${files[@]}"; do
+                if [ -f "$backup/$rel" ]; then
+                  cp -p "$backup/$rel" "$dest/$rel"
+                else
+                  rm -f "$dest/$rel"
+                fi
+              done
+              "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
+            fi
+            rm -rf "$stage"
+            exit "$status"
+          }
+          trap rollback EXIT
+          for rel in "${files[@]}"; do
+            test -s "$stage/mu-plugins/$rel"
+            if [ -f "$dest/$rel" ]; then
+              mkdir -p "$backup/$(dirname "$rel")"
+              cp -p "$dest/$rel" "$backup/$rel"
+            fi
+          done
+          mkdir -p "$dest/ikore-molienda-assets"
+          for rel in "${files[@]}"; do
+            install -m 0644 "$stage/mu-plugins/$rel" "$dest/$rel"
+            changed=1
+            cmp -s "$stage/mu-plugins/$rel" "$dest/$rel"
+          done
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
+          url="https://www.elmercadodeorigen.com/producto/cafe-ikore-kofi-typica-mejorado/?emdo_ikore_release=$runid"
+          curl -fsSL --retry 2 --max-time 45 "$url" -o "/tmp/ikore-smoke-$runid.html"
+          grep -q 'ikore-molienda-assets/selector.js' "/tmp/ikore-smoke-$runid.html"
+          grep -q 'ikore-molienda-assets/selector.css' "/tmp/ikore-smoke-$runid.html"
+          for rel in grano italiana espresso francesa cold-brew aeropress filtro-v60; do
+            asset="https://www.elmercadodeorigen.com/wp-content/mu-plugins/ikore-molienda-assets/${rel}.webp"
+            curl -fsSL --retry 1 --max-time 20 "$asset" -o "/tmp/ikore-asset-$runid.webp"
+            test "$(wc -c < "/tmp/ikore-asset-$runid.webp")" -gt 300
+            head -c 4 "/tmp/ikore-asset-$runid.webp" | grep -q RIFF
+          done
+          echo "IKORE_SELECTOR_PRODUCTION_OK run=$runid backup=$backup"
+          changed=0
+          trap - EXIT
+          rm -f "/tmp/ikore-smoke-$runid.html" "/tmp/ikore-asset-$runid.webp"
+          rm -rf "$stage"
+          REMOTE
