@@ -6,7 +6,7 @@
 const { chromium } = require('playwright-core');
 const fs = require('fs');
 const plugin = fs.readFileSync('mu-plugins/mdo-product-vendor-breadcrumb-20261021.php', 'utf8');
-const cssMatch = plugin.match(/<style id="emo-product-breadcrumb-20261021">([\\s\\S]*?)<\\/style>/);
+const cssMatch = plugin.match(/<style id="emo-product-breadcrumb-20261021">([\s\S]*?)<\/style>/);
 if (!cssMatch) throw Error('Candidate breadcrumb CSS missing');
 const candidateCss = cssMatch[1];
 
