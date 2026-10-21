@@ -77,7 +77,7 @@ foreach ( $rows as $row ) {
         $current_cats = array_map('intval', $product->get_category_ids('edit'));
         sort($current_cats);
         // The importer owns the authoritative, bounded source taxonomy.
-        $new_cats = MDO_Woo_Importer::tropitop_category_ids( $payload );
+        $new_cats = MDO_Woo_Importer::tropitop_category_ids( $payload, $mode === 'apply' );
         sort($new_cats);
         $text_changed = $before_description !== $after_description || $before_short !== $after_short;
         $categories_changed = $current_cats !== $new_cats;
