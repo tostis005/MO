@@ -1,0 +1,163 @@
+name: Deploy live product search 20261021
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-quick-search-20261021.yml'
+permissions:
+  contents: read
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate PHP JS and exact release scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l mu-plugins/mdo-quick-search-20261021.php
+          node --check elmercadodeorigen-child/assets/js/quick-search-20261021.js
+          test -s elmercadodeorigen-child/assets/css/quick-search-20261021.css
+          grep -q 'elmercado/v1' mu-plugins/mdo-quick-search-20261021.php
+          grep -q 'site-dialog-search' elmercadodeorigen-child/assets/js/quick-search-20261021.js
+          : "${STAGING_HOST:?missing SSH host}"
+          : "${STAGING_USER:?missing SSH user}"
+          : "${STAGING_PASSWORD:?missing SSH password}"
+          : "${STAGING_REMOTE_PATH:?missing remote path}"
+          [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
+
+      - name: Install safe transfer tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass rsync >/dev/null
+
+      - name: Verify SSH and upload isolated release
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          test -s ~/.ssh/known_hosts && chmod 600 ~/.ssh/known_hosts
+          SSHOPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          STAGE="/tmp/emdo-quick-search-${GITHUB_RUN_ID}"
+          echo "STAGE=$STAGE" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSHOPTS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$STAGE'"
+          sshpass -e rsync -azR -e "ssh $SSHOPTS" \
+            mu-plugins/mdo-quick-search-20261021.php \
+            elmercadodeorigen-child/assets/js/quick-search-20261021.js \
+            elmercadodeorigen-child/assets/css/quick-search-20261021.css \
+            "$STAGING_USER@$STAGING_HOST:$STAGE/"
+
+      - name: Apply minimal production release with rollback and live smoke
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSHOPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSHOPTS "$STAGING_USER@$STAGING_HOST" \
+            "bash -s -- '$STAGING_REMOTE_PATH' '$STAGE' '$GITHUB_RUN_ID'" <<'REMOTE'
+          set -Eeuo pipefail
+          raw="${1%/}"
+          stage="$2"
+          runid="$3"
+          case "$raw" in
+            */wp-content/*) dev="${raw%%/wp-content/*}" ;;
+            *) echo 'Invalid configured staging WordPress path' >&2; exit 1 ;;
+          esac
+          [ -f "$dev/wp-config.php" ] || { echo 'Staging WordPress path not verified' >&2; exit 1; }
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] || { echo 'Production WordPress path not verified' >&2; exit 1; }
+          theme="$prod/wp-content/themes/elmercadodeorigen-child"
+          mu="$prod/wp-content/mu-plugins"
+          [ -f "$theme/functions.php" ] || { echo 'Active child-theme directory not found' >&2; exit 1; }
+          [ -d "$mu" ] || { echo 'MU-plugin directory absent; refusing automatic creation' >&2; exit 1; }
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          [ -x "$php_bin" ] && [ -n "$wp_bin" ] || { echo 'PHP/WP CLI unavailable' >&2; exit 1; }
+          siteurl="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --skip-plugins --skip-themes --allow-root)"
+          case "$siteurl" in
+            https://www.elmercadodeorigen.com*|https://elmercadodeorigen.com*|http://www.elmercadodeorigen.com*|http://elmercadodeorigen.com*) ;;
+            *) echo "Unexpected production siteurl: $siteurl" >&2; exit 1 ;;
+          esac
+          "$php_bin" -l "$stage/mu-plugins/mdo-quick-search-20261021.php" >/dev/null
+          test -s "$stage/elmercadodeorigen-child/assets/js/quick-search-20261021.js"
+          test -s "$stage/elmercadodeorigen-child/assets/css/quick-search-20261021.css"
+
+          backup="$HOME/.elmercado-rollbacks/quick-search-$runid"
+          mkdir -p "$backup"
+          files=(
+            'mu-plugins/mdo-quick-search-20261021.php'
+            'themes/elmercadodeorigen-child/assets/js/quick-search-20261021.js'
+            'themes/elmercadodeorigen-child/assets/css/quick-search-20261021.css'
+          )
+          changed=0
+          rollback() {
+            status=$?
+            trap - EXIT
+            if [ "$status" -ne 0 ] && [ "$changed" -eq 1 ]; then
+              echo 'Quick-search smoke failed: restoring previous files'
+              for rel in "${files[@]}"; do
+                dest="$prod/wp-content/$rel"
+                if [ -f "$backup/$rel" ]; then
+                  cp -p "$backup/$rel" "$dest"
+                else
+                  rm -f "$dest"
+                fi
+              done
+              "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
+            fi
+            rm -rf "$stage"
+            exit "$status"
+          }
+          trap rollback EXIT
+
+          for rel in "${files[@]}"; do
+            dest="$prod/wp-content/$rel"
+            if [ -f "$dest" ]; then
+              mkdir -p "$backup/$(dirname "$rel")"
+              cp -p "$dest" "$backup/$rel"
+            fi
+          done
+
+          install -m 0644 "$stage/mu-plugins/mdo-quick-search-20261021.php" "$mu/mdo-quick-search-20261021.php"
+          changed=1
+          install -m 0644 "$stage/elmercadodeorigen-child/assets/js/quick-search-20261021.js" "$theme/assets/js/quick-search-20261021.js"
+          install -m 0644 "$stage/elmercadodeorigen-child/assets/css/quick-search-20261021.css" "$theme/assets/css/quick-search-20261021.css"
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
+
+          site="https://www.elmercadodeorigen.com"
+          curl -fsSL --retry 2 --max-time 35 "$site/wp-json/elmercado/v1/quick-search?q=man&lang=es" -o /tmp/emdo-qs-response-$runid.json
+          "$php_bin" -r '
+            $data = json_decode(file_get_contents($argv[1]), true);
+            if (!is_array($data) || !isset($data["products"]) || !is_array($data["products"])) { exit(1); }
+            if (count($data["products"]) > 6) { exit(2); }
+            foreach ($data["products"] as $p) {
+              if (empty($p["name"]) || empty($p["url"])) { exit(3); }
+            }
+            echo "QUICK_SEARCH_API_OK suggestions=" . count($data["products"]) . PHP_EOL;
+          ' /tmp/emdo-qs-response-$runid.json
+          curl -fsSL --retry 2 --max-time 30 "$site/wp-content/themes/elmercadodeorigen-child/assets/js/quick-search-20261021.js?release=$runid" | grep -q 'emoQuickSearchBound'
+          curl -fsSL --retry 2 --max-time 30 "$site/?quick_search_release=$runid" | grep -q 'quick-search-20261021.js'
+          rm -f /tmp/emdo-qs-response-$runid.json
+          echo "PRODUCTION_QUICK_SEARCH_OK run=$runid backup=$backup"
+          changed=0
+          trap - EXIT
+          rm -rf "$stage"
+          REMOTE
