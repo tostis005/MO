@@ -52,8 +52,12 @@ jobs:
           [ -n "$PHP_BIN" ] || PHP_BIN="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
           echo "TROPITOP_PRODUCTION_VERSION_BEGIN"
           "$PHP_BIN" -d memory_limit=256M "$WP_BIN" plugin get mdo-supplier-sync --field=version --path="$P" --allow-root
+          echo "TROPITOP_ACTIVE_CACHE_PLUGINS"
+          "$PHP_BIN" -d memory_limit=256M "$WP_BIN" option get active_plugins --format=json --path="$P" --allow-root --skip-plugins --skip-themes | grep -Eo '"[^"]*(cache|rocket|litespeed|autoptimize|perfmatters)[^"]*"' || true
           echo "TROPITOP_READONLY_AUDIT_BEGIN"
           timeout --kill-after=20s 500s env TROPITOP_EDITORIAL_MODE=audit \
             "$PHP_BIN" -d memory_limit=1024M "$WP_BIN" eval-file "$SCRIPT" \
             --path="$P" --allow-root --skip-plugins=woostify-sites-library
           REMOTE
+          echo "TROPITOP_PUBLIC_RESPONSE"
+          curl -sS -L -I --max-time 25 'https://www.elmercadodeorigen.com/categoria-producto/verduras/' | grep -Ei '^(HTTP/|location:|x-cache:|x-litespeed-cache:|cf-cache-status:|cache-control:)' || true
