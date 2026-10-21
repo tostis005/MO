@@ -7,6 +7,7 @@ declare(strict_types=1);
 
 define( 'ABSPATH', __DIR__ );
 function add_action( ...$args ): void {}
+function add_filter( ...$args ): void {}
 function wp_strip_all_tags( string $html ): string { return strip_tags( $html ); }
 function wc_price( float $value ): string {
 	return '<span class="amount">' . number_format( $value, 2, ',', '.' ) . '&nbsp;€</span>';

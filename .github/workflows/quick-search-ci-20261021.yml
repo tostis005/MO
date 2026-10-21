@@ -7,6 +7,7 @@ on:
       - 'elmercadodeorigen-child/assets/css/quick-search-20261021.css'
       - '.github/workflows/quick-search-ci-20261021.yml'
       - 'tests/quick-search-price-20261021.php'
+      - 'tests/quick-search-relevance-20261021.php'
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,6 +22,8 @@ jobs:
           php -l mu-plugins/mdo-quick-search-20261021.php
           php -l tests/quick-search-price-20261021.php
           php tests/quick-search-price-20261021.php
+          php -l tests/quick-search-relevance-20261021.php
+          php tests/quick-search-relevance-20261021.php
           node --check elmercadodeorigen-child/assets/js/quick-search-20261021.js
           test -s elmercadodeorigen-child/assets/css/quick-search-20261021.css
       - name: Ensure live search preserves native form and catalogue rules
@@ -34,5 +37,7 @@ jobs:
           grep -q "is_in_stock" mu-plugins/mdo-quick-search-20261021.php
           grep -q "wp_strip_all_tags" mu-plugins/mdo-quick-search-20261021.php
           grep -q "get_variation_price" mu-plugins/mdo-quick-search-20261021.php
+          grep -q "'search_columns'" mu-plugins/mdo-quick-search-20261021.php
+          grep -q "'post_excerpt'" mu-plugins/mdo-quick-search-20261021.php
           grep -q "showLoading(term)" elmercadodeorigen-child/assets/js/quick-search-20261021.js
           grep -q "aria-busy" elmercadodeorigen-child/assets/js/quick-search-20261021.js
