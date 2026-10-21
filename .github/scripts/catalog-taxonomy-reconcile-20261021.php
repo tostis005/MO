@@ -81,6 +81,8 @@ function emdo_uncategorized_targets($title){
  if(preg_match('/^alubia|^garbanzo|^lenteja/u',$t))return ['legumbres'];
  if(preg_match('/^aceite\s+de\s+oliva/u',$t))return ['aceites'];
  if(preg_match('/^queso\b|^cu[nñ]a\s+de\s+queso/u',$t))return ['quesos'];
+ if(preg_match('/^t-bone\s+de\s+ternera\b/u',$t))return ['carnes'];
+ if(preg_match('/^(?:gel[eé]e\s+de\s+juran[cç][oó]n|crema\s+de\s+casta[nñ]a)\b/u',$t))return ['conservas','mermeladas-y-confituras'];
  if(preg_match('/^(?:monbazillac|c[oô]tes?\s+de\s+bergerac|vino\b|aguardiente\b|licor\b|crema\s+de\s+orujo)/u',$t))return ['bebidas','vinos-y-licores'];
  if(preg_match('/^(?:tubo\s+(?:sal|pimienta)|reducci[oó]n\s+de\s+pedro)/u',$t))return ['condimentos-y-especias'];
  if(preg_match('/^(?:crema\s+(?:de\s+morcilla|de\s+boletus))/u',$t))return ['foie-pates-untables'];
