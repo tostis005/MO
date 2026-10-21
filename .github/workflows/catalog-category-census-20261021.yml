@@ -53,3 +53,8 @@ jobs:
           timeout --kill-after=20s 400s "$PHP_BIN" -d memory_limit=1024M "$WP_BIN" eval-file "$SCRIPT" --path="$P" --allow-root --skip-plugins=woostify-sites-library
           REMOTE
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$SCRIPT'" || true
+          echo "CATEGORY_PUBLIC_HTTP_QA"
+          for path in gourmet mermeladas-y-confituras bebidas frutos-secos mieles cosmetica-natural; do
+            echo "CATEGORY_PUBLIC=$path"
+            curl -sSI --max-time 25 "https://www.elmercadodeorigen.com/categoria-producto/$path/" | grep -Ei '^(HTTP/|location:|cache-control:)' || true
+          done
