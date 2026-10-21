@@ -44,6 +44,9 @@ final class MDO_Ham_Taxonomy {
 			return;
 		}
 		$id = $product->is_type( 'variation' ) ? (int) $product->get_parent_id() : (int) $product->get_id();
+        // Tropical fruit/vegetable products must never enter a ham taxonomy
+        // queue, even if a previous import accidentally assigned a ham term.
+        if ( $id > 0 && self::is_tropitop_product( $id ) ) { return; }
 		if ( $id > 0 ) {
 			self::$queue[ $id ] = true;
 		}
@@ -106,6 +109,7 @@ final class MDO_Ham_Taxonomy {
 	}
 
 	public static function classify_product( int $product_id ): bool {
+        if ( $product_id > 0 && self::is_tropitop_product( $product_id ) ) { return false; }
 		$product = $product_id > 0 && function_exists( 'wc_get_product' ) ? wc_get_product( $product_id ) : false;
 		if ( ! $product ) {
 			return false;
@@ -126,6 +130,12 @@ final class MDO_Ham_Taxonomy {
 		self::apply_classification( $product, self::classify( $product, $context ) );
 		return true;
 	}
+
+    private static function is_tropitop_product( int $product_id ): bool {
+        $url=(string)get_post_meta($product_id,'_emdo_source_url',true);
+        $host=strtolower((string)wp_parse_url($url,PHP_URL_HOST));
+        return in_array($host,['tropitop.com','www.tropitop.com'],true);
+    }
 
 	private static function ensure_attributes(): void {
 		if ( self::$attribute_ids ) {
