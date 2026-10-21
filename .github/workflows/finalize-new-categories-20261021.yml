@@ -20,10 +20,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      STAGING_HOST: \${{ secrets.STAGING_HOST }}
-      STAGING_PORT: \${{ secrets.STAGING_PORT }}
-      STAGING_USER: \${{ secrets.STAGING_USER }}
-      SSHPASS: \${{ secrets.STAGING_PASSWORD }}
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
