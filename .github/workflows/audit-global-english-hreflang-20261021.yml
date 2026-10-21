@@ -1,0 +1,41 @@
+name: Audit global English native SEO and all 48 editorial pages
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/audit-global-english-hreflang-20261021.py'
+      - '.github/workflows/audit-global-english-hreflang-20261021.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  all-48-editorial:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python audit syntax
+        run: python3 -m py_compile .github/scripts/audit-global-english-hreflang-20261021.py
+      - name: Audit each of 48 Spanish and English editorial pages
+        run: python3 -u .github/scripts/audit-global-english-hreflang-20261021.py articles
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: editorial-48-pages-native-SEO-evidence
+          path: .audit-output/*.json
+          retention-days: 30
+          if-no-files-found: warn
+  entire-english-island:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit products, categories, previous blog posts and pages from live English sitemap
+        run: python3 -u .github/scripts/audit-global-english-hreflang-20261021.py global
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sitewide-English-SEO-stratified-audit
+          path: .audit-output/*.json
+          retention-days: 30
+          if-no-files-found: warn
