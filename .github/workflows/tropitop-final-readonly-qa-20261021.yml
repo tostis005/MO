@@ -15,7 +15,7 @@ jobs:
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Verify live Tropitop catalog without modifying WordPress
+      - name: Verify live Tropitop catalog after retailer-heading cleanup
         shell: bash
         run: |
           set -Eeuo pipefail
