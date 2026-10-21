@@ -251,7 +251,7 @@ foreach ( array(
     verify( abs($named[array_key_last($named)]['weight_kg'] - $fixture[3]) < .01,
         'Source-weighted black combination '.$id );
     verify( abs($named[array_key_first($named)]['price'] -
-        ($id==='2365' ? 20.9 : 17.9)) < .001, 'Producer price, not related card '.$id );
+        ((string)$id==='2365' ? 20.9 : 17.9)) < .001, 'Producer price, not related card '.$id );
     verify( null !== MDO_Tropitop_Shipping::cost_for_weight($named[array_key_first($named)]['weight_kg']),
         'Named pack shipping tariff verified '.$id );
 }
