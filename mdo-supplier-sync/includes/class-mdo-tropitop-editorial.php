@@ -41,6 +41,63 @@ final class MDO_Tropitop_Editorial {
 
     private const SOURCE_LINK = '~https?://(?:www\.)?tropitop\.com(?:/[^"<> ]*)?~iu';
 
+    public static function title( string $title ): string {
+        // A single source SEO title incorrectly names the supplier webshop
+        // instead of the item. Keep the existing product URL unchanged.
+        if ( preg_match( '/^cerezas\s+online\s+en\s+Tropitop\s*\|\s*cerezas\s+frescas\s+de\s+castell[oó]n$/iu', trim( $title ) ) ) {
+            return 'Cerezas frescas de Castellón';
+        }
+        return $title;
+    }
+
+    /**
+     * Remove the source retailer's promotional voice, not independently useful
+     * ingredients, origins, sizes, storage guidance or product descriptions.
+     * Works on existing Woo HTML as well as on new supplier imports.
+     */
+    public static function marketplace_voice( string $html ): string {
+        $html = preg_replace(
+            '/\bNo\s+trabajamos\s+un\s+calibre\s+espec[ií]fico\.?/iu',
+            'No se selecciona un calibre específico.', $html
+        );
+        // The supplier's relationship/endorsement is not the farmer's name.
+        $html = preg_replace( '/,\s*agricultor\s+de\s+confianza\s+de\s+Tropitop\b/iu', '', $html );
+        $html = preg_replace( '~\bIdeal\s+para\s+<strong>\s*comprar\s+[^<]{0,110}\s+online\s*</strong>\s*\.?~iu', '', $html );
+
+        $html = preg_replace_callback(
+            '~<(p|h[2-6])\b([^>]*)>(.*?)</\1>~isu',
+            static function ( array $m ): string {
+                $plain = trim( html_entity_decode( wp_strip_all_tags( $m[3] ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+                if ( '' === $plain ) { return ''; }
+                $heading = strtolower( $m[1] ) !== 'p';
+                // Remove only checkout/SEO headings. Following product facts,
+                // care instructions and FAQ answers remain in place.
+                if ( $heading && preg_match(
+                    '/^(?:(?:comprar|compra)\b|faqs?\s+sobre\s+comprar\b|preguntas\s+frecuentes\s+(?:sobre|al)\s+comprar\b)/iu',
+                    $plain
+                ) ) { return ''; }
+                if ( preg_match(
+                    '/\b(?:Tropitop\s+(?:ofrece|presenta|env[ií]a|garantiza|selecciona)\b|'
+                    . '(?:elegir|con)\s+Tropitop\b|'
+                    . '(?:trabajamos|colaboramos|apostamos|nos\s+enorgullece|nos\s+comprometemos|'
+                    . 'conseguimos|contamos\s+con|te\s+ofrecemos|aceptamos\s+pagos)\b|'
+                    . '(?:comprar|compra)\s+[^.!?]{0,110}\bonline\b|'
+                    . 'al\s+comprar\s+directamente\s+(?:del|al)\s+(?:campo|agricultor)\b|'
+                    . '(?:compra|comprar)\s+[^.!?]{0,100}\bdirectamente\s+(?:del|al)\s+(?:agricultor|productor)\b)'
+                    . '/iu', $plain
+                ) ) {
+                    return '';
+                }
+                return $m[0];
+            },
+            $html
+        );
+        // Remove offsite-sales persuasion from retained specification lists;
+        // a measurement or origin in the same bullet is preserved.
+        $html = preg_replace( '/\bIdeal\s+para\s+comprar\s+[^.]{0,140}\bonline\.?/iu', '', $html );
+        return trim( (string) preg_replace( '~<(p|div|h[1-6])\b[^>]*>\s*</\1>~iu', '', $html ) );
+    }
+
     public static function description( string $html, string $title = '', string $short = '' ): string {
         $clean = self::neutralize( $html );
         // A factual producer-identity clause in one mixed box is not a
@@ -235,6 +292,7 @@ final class MDO_Tropitop_Editorial {
 
         // Do not silently publish residual first-person or webshop copy:
         // caller's production audit will report every remaining occurrence.
+        $html = self::marketplace_voice( $html );
         return trim( wp_kses_post( (string) $html ) );
     }
 }
