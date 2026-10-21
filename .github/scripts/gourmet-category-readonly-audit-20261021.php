@@ -32,4 +32,14 @@ foreach($ids as $post_id){
  $all[]=$data;
  echo 'EMDO_GOURMET_PRODUCT='.wp_json_encode($data,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
 }
+
+$child=get_term_by('slug','cosmetica-natural','product_cat');
+if($child instanceof WP_Term){
+ $child_ids=get_posts(['post_type'=>'product','post_status'=>['publish','private','draft','pending','future'],'posts_per_page'=>-1,'fields'=>'ids','tax_query'=>[['taxonomy'=>'product_cat','field'=>'term_id','terms'=>(int)$child->term_id,'include_children'=>false]]]);
+ foreach($child_ids as $child_id){
+   $cp=wc_get_product((int)$child_id);
+   if(!$cp)continue;
+   echo 'EMDO_GOURMET_CHILD_PRODUCT='.wp_json_encode(['id'=>(int)$child_id,'title'=>$cp->get_name(),'sku'=>$cp->get_sku(),'status'=>$cp->get_status(),'permalink'=>get_permalink((int)$child_id),'categories'=>array_map(static fn($cat)=>$term_index[$cat]??['id'=>$cat],$cp->get_category_ids())],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
+ }
+}
 echo 'EMDO_GOURMET_SUMMARY='.wp_json_encode(['term'=>$term_index[$term->term_id], 'total'=>count($all),'status_counts'=>$status_counts,'vendor_counts'=>$vendor_counts,'source_counts'=>$source_counts,'catalogue_category_count'=>count($term_index)],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
