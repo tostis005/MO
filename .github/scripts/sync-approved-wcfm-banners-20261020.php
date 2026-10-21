@@ -2,7 +2,7 @@
 /**
  * One-shot WP-CLI tool: synchronize the actual WCFM vendor store AND store-list
  * banners to the same verified 10 producer assets used on /productores/.
- * Modes: audit, apply, rollback. Does not alter logos or other store settings.
+ * Modes: audit, apply, verify, rollback. Preserves logos and all other settings.
  */
 if ( ! defined( 'ABSPATH' ) || ! defined( 'WP_CLI' ) || ! WP_CLI ) {
     throw new RuntimeException( 'WP-CLI only' );
@@ -51,15 +51,25 @@ if ( $mode === 'verify' ) {
         }
         $banner = (int) ( $settings['banner'] ?? 0 );
         $list = (int) ( $settings['list_banner'] ?? 0 );
+        $mobile = (int) ( $settings['mobile_banner'] ?? 0 );
         $url = $banner ? wp_get_attachment_url( $banner ) : '';
         $filepath = $banner ? get_attached_file( $banner ) : '';
-        if ( ! $banner || $banner !== $list ||
+        $mobile_path = $mobile ? get_attached_file( $mobile ) : '';
+        $mobile_url = $mobile ? wp_get_attachment_url( $mobile ) : '';
+        $mobile_size = $mobile_path && is_readable( $mobile_path ) ? @getimagesize( $mobile_path ) : false;
+        if ( ! $banner || ! $mobile || $list !== $mobile ||
+             ( $settings['banner_type'] ?? '' ) !== 'image' ||
+             ( $settings['list_banner_type'] ?? '' ) !== 'image' ||
              ! $url || ! str_contains( $url, 'emdo-producer-' . $slug . '-banner-20261020.webp' ) ||
              ! $filepath || ! is_readable( $filepath ) ||
-             hash_file( 'sha256', $filepath ) !== hash_file( 'sha256', $base . $slug . '.webp' ) ) {
-            throw new RuntimeException( 'WCFM native store/list banner mismatch: ' . $slug );
+             hash_file( 'sha256', $filepath ) !== hash_file( 'sha256', $base . $slug . '.webp' ) ||
+             ! $mobile_url || ! str_contains( $mobile_url, 'emdo-producer-' . $slug . '-banner-mobile-960-20261021' ) ||
+             ! $mobile_size || $mobile_size[0] !== 960 || $mobile_size[1] !== 369 ||
+             ( $mobile_size['mime'] ?? '' ) !== 'image/webp' ||
+             get_post_meta( $mobile, '_emdo_banner_variant_source_sha256', true ) !== hash_file( 'sha256', $base . $slug . '.webp' ) ) {
+            throw new RuntimeException( 'WCFM desktop/mobile/list banner mismatch: ' . $slug );
         }
-        echo 'WCFM_STORE_AND_LIST_VERIFIED ' . $slug . ' attachment=' . $banner . PHP_EOL;
+        echo 'WCFM_THREE_BANNERS_VERIFIED ' . $slug . ' desktop=' . $banner . ' mobile/list=' . $mobile . ' mobile_bytes=' . filesize( $mobile_path ) . PHP_EOL;
     }
     echo 'ALL_TEN_WCFM_NATIVE_BANNERS_VERIFIED' . PHP_EOL;
     exit;
@@ -93,7 +103,10 @@ foreach ( $ids as $slug => $id ) {
 if ( $mode === 'audit' ) {
     foreach ( $state as $slug => $v ) {
         echo 'WCFM_OLD_BANNER_META ' . $slug . ' banner=' . ( $v['settings']['banner'] ?? '' ) .
-            ' list_banner=' . ( $v['settings']['list_banner'] ?? '' ) . PHP_EOL;
+            ' mobile_banner=' . ( $v['settings']['mobile_banner'] ?? '' ) .
+            ' list_banner=' . ( $v['settings']['list_banner'] ?? '' ) .
+            ' banner_type=' . ( $v['settings']['banner_type'] ?? '' ) .
+            ' list_banner_type=' . ( $v['settings']['list_banner_type'] ?? '' ) . PHP_EOL;
     }
     exit;
 }
@@ -148,17 +161,86 @@ foreach ( $state as $slug => $v ) {
     if ( ! wp_get_attachment_url( $attachment_id ) ) {
         throw new RuntimeException( 'Attachment URL unavailable for ' . $slug );
     }
+    // Keep the original approved 2022x778 WebP as the desktop header.
+    // WCFM stores mobile/list references separately; use a smaller, exact same
+    // photograph (960x369) for those two surfaces to reduce transfer bytes.
+    $existing = get_posts( [
+        'post_type' => 'attachment', 'post_status' => 'inherit',
+        'fields' => 'ids', 'posts_per_page' => 1,
+        'meta_query' => [
+            [ 'key' => '_emdo_banner_variant_slug', 'value' => $slug ],
+            [ 'key' => '_emdo_banner_variant_source_sha256', 'value' => $v['hash'] ],
+            [ 'key' => '_emdo_banner_variant_width', 'value' => '960' ],
+        ],
+    ] );
+    $mobile_id = $existing ? (int) $existing[0] : 0;
+    if ( $mobile_id ) {
+        $mobile_file = get_attached_file( $mobile_id );
+        $mobile_size = $mobile_file && is_readable( $mobile_file ) ? @getimagesize( $mobile_file ) : false;
+        if ( ! $mobile_size || $mobile_size[0] !== 960 || $mobile_size[1] !== 369 ||
+            ( $mobile_size['mime'] ?? '' ) !== 'image/webp' ) {
+            $mobile_id = 0;
+        }
+    }
+    if ( ! $mobile_id ) {
+        $editor = wp_get_image_editor( $v['source_path'] );
+        if ( is_wp_error( $editor ) ) {
+            throw new RuntimeException( 'Cannot optimize mobile banner: ' . $slug . ': ' . $editor->get_error_message() );
+        }
+        $editor->set_quality( 78 );
+        $resized = $editor->resize( 960, null, false );
+        if ( is_wp_error( $resized ) ) {
+            throw new RuntimeException( 'Cannot resize mobile banner: ' . $slug );
+        }
+        $tmp = sys_get_temp_dir() . '/emdo-banner-' . wp_generate_uuid4() . '.webp';
+        $saved = $editor->save( $tmp, 'image/webp' );
+        if ( is_wp_error( $saved ) || ! is_readable( $tmp ) ) {
+            throw new RuntimeException( 'Cannot encode mobile banner: ' . $slug );
+        }
+        $pixel_size = @getimagesize( $tmp );
+        $mobile_bytes = file_get_contents( $tmp );
+        @unlink( $tmp );
+        if ( ! $pixel_size || $pixel_size[0] !== 960 || $pixel_size[1] !== 369 ||
+             ( $pixel_size['mime'] ?? '' ) !== 'image/webp' ||
+             strlen( $mobile_bytes ) >= filesize( $v['source_path'] ) ) {
+            throw new RuntimeException( 'Mobile optimization did not reduce original bytes: ' . $slug );
+        }
+        $mobile_written = wp_upload_bits( 'emdo-producer-' . $slug . '-banner-mobile-960-20261021.webp', null, $mobile_bytes );
+        if ( ! empty( $mobile_written['error'] ) || ! is_file( $mobile_written['file'] ?? '' ) ) {
+            throw new RuntimeException( 'Mobile media upload failed: ' . $slug );
+        }
+        $mobile_id = wp_insert_attachment( [
+            'post_title' => 'Banner móvil optimizado ' . $v['settings']['store_name'],
+            'post_mime_type' => 'image/webp',
+            'post_status' => 'inherit',
+        ], $mobile_written['file'], 0, true );
+        if ( is_wp_error( $mobile_id ) || ! $mobile_id ) {
+            throw new RuntimeException( 'Cannot register mobile banner: ' . $slug );
+        }
+        $mobile_id = (int) $mobile_id;
+        wp_update_attachment_metadata( $mobile_id, wp_generate_attachment_metadata( $mobile_id, $mobile_written['file'] ) );
+        update_post_meta( $mobile_id, '_emdo_banner_variant_slug', $slug );
+        update_post_meta( $mobile_id, '_emdo_banner_variant_source_sha256', $v['hash'] );
+        update_post_meta( $mobile_id, '_emdo_banner_variant_width', '960' );
+    }
     $settings = $v['settings'];
+    $settings['banner_type'] = 'image';
+    $settings['list_banner_type'] = 'image';
     $settings['banner'] = (string) $attachment_id;
-    $settings['list_banner'] = (string) $attachment_id;
+    $settings['mobile_banner'] = (string) $mobile_id;
+    $settings['list_banner'] = (string) $mobile_id;
     update_user_meta( $v['id'], 'wcfmmp_profile_settings', $settings );
     $test = get_user_meta( $v['id'], 'wcfmmp_profile_settings', true );
     if ( ! is_array( $test ) ||
        (string) ( $test['banner'] ?? '' ) !== (string) $attachment_id ||
-       (string) ( $test['list_banner'] ?? '' ) !== (string) $attachment_id ) {
+       (string) ( $test['mobile_banner'] ?? '' ) !== (string) $mobile_id ||
+       (string) ( $test['list_banner'] ?? '' ) !== (string) $mobile_id ||
+       (string) ( $test['banner_type'] ?? '' ) !== 'image' ||
+       (string) ( $test['list_banner_type'] ?? '' ) !== 'image' ) {
         throw new RuntimeException( 'Banner settings verification failed: ' . $slug );
     }
-    echo 'WCFM_STORE_AND_LIST_BANNERS_UPDATED ' . $slug . ' attachment=' . $attachment_id .
-         ' url=' . wp_get_attachment_url( $attachment_id ) . PHP_EOL;
+    echo 'WCFM_DESKTOP_MOBILE_LIST_UPDATED ' . $slug . ' desktop=' . $attachment_id .
+         ' mobile/list=' . $mobile_id . ' desktop_url=' . wp_get_attachment_url( $attachment_id ) .
+         ' mobile_url=' . wp_get_attachment_url( $mobile_id ) . PHP_EOL;
 }
 echo 'ALL_TEN_WCFM_NATIVE_BANNERS_UPDATED' . PHP_EOL;
