@@ -1,0 +1,168 @@
+name: Tropitop bounded English batch 18 with offline review
+# Run initiated after the read-only live catalog audit
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/translate-tropitop-first-batch-20261021.yml'
+      - '.github/scripts/apply-tropitop-first-english-batch-20261021.php'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mdo-tropitop-english-first-batch-20261021
+  cancel-in-progress: false
+jobs:
+  complete:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate and initialize
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/apply-tropitop-first-english-batch-20261021.php
+          php -l .github/scripts/export-tropitop-first-english-batch-20261021.php
+          python3 -m py_compile .github/scripts/translate-tropitop-first-batch-offline-20261021.py
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          python3 -m pip install --quiet --disable-pip-version-check --break-system-packages torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+          python3 -m pip install --quiet --disable-pip-version-check --break-system-packages transformers==4.46.3 sentencepiece==0.2.0 sacremoses==0.1.1
+          mkdir -p /tmp/emdo-translate .deploy-status ~/.ssh
+          chmod 700 ~/.ssh
+          PORT="${STAGING_PORT:-22}"
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          echo "SSH_PORT=$PORT" >> "$GITHUB_ENV"
+          PROD_PATH="$(sshpass -e ssh -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -p "$PORT" "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+      - name: Export missing English data from production
+        shell: bash
+        run: |
+          set -euo pipefail
+          REMOTE="/tmp/mdo-en-export-${GITHUB_RUN_ID}.php"
+          sshpass -e scp -o StrictHostKeyChecking=yes -P "$SSH_PORT" .github/scripts/export-tropitop-first-english-batch-20261021.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh -o StrictHostKeyChecking=yes -p "$SSH_PORT" "$STAGING_USER@$STAGING_HOST" "
+            wp_bin=\$(command -v wp)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -d memory_limit=1024M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root
+            rc=\$?
+            rm -f '$REMOTE'
+            exit \$rc
+          " > /tmp/emdo-translate/export.log
+          grep '^EMDO_TROPITOP_EN_EXPORT_SUMMARY=' /tmp/emdo-translate/export.log
+          sed -n 's/^EMDO_TROPITOP_EN_EXPORT=//p' /tmp/emdo-translate/export.log | tail -n1 > /tmp/emdo-translate/export.json
+          python3 -m json.tool /tmp/emdo-translate/export.json >/dev/null
+          python3 - <<'PY'
+          import json,pathlib
+          src=json.load(open('/tmp/emdo-translate/export.json',encoding='utf-8'))
+          eligible=src['products']
+          assert 1 <= len(eligible) <= 18, f'Unexpected Tropitop batch: {len(eligible)}'
+          assert all(i.get('supplier_code')=='tropitop' for i in eligible)
+          pathlib.Path('/tmp/emdo-translate/eligible.json').write_text(json.dumps({'site':src['site'],'products':eligible},ensure_ascii=False))
+          print('ELIGIBLE_PRODUCTS',len(eligible),'TOTAL_EXPORTED',src['count'])
+          PY
+      - name: Translate missing fields locally without rate-limited external APIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/translate-tropitop-first-batch-offline-20261021.py \
+            /tmp/emdo-translate/eligible.json \
+            /tmp/emdo-translate/payload.json \
+            /tmp/emdo-translate/translate-report.json
+      - name: Strict field integrity and English quality smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,re
+          from html import unescape
+          base='/tmp/emdo-translate/'
+          source=json.load(open(base+'eligible.json'))
+          payload=json.load(open(base+'payload.json'))['products']
+          report=json.load(open(base+'translate-report.json'))
+          ids={p['id'] for p in source['products']}
+          assert payload and len(payload)<=18
+          assert len(payload)==len({p['id'] for p in payload})
+          assert all(p['id'] in ids and p.get('supplier_code')=='tropitop' and p.get('source_id') for p in payload)
+          def plain(s):return re.sub(r'\\s+',' ',unescape(re.sub(r'<[^>]+>',' ',s))).strip()
+          for p in payload:
+              src=next(x for x in source['products'] if x['id']==p['id'])
+              assert len(plain(p['title'])) >= 5
+              assert len(plain(p['excerpt'])) >= 10 or not plain(src['excerpt'])
+              assert len(plain(p['content'])) >= max(40, int(0.35*len(plain(src['content']))))
+              assert 'tropitop.com' not in (p['content']+' '+p['excerpt']).lower()
+              assert not re.search(r'\\b(?:suscr[ií]bete|nuestros?|nosotros|comprar\\s+en\\s+tropitop)\\b',p['content'],re.I)
+          print('TROPITOP_BATCH_QUALITY',len(payload),'of',len(source['products']))
+          print('TROPITOP_MODEL_FAILED',json.dumps(report['translation_failed'][:15]))
+          for p in payload[:3]:
+              print('EN_TRANSLATION_SAMPLE',json.dumps({'id':p['id'],'title':p['title'],'excerpt':plain(p['excerpt'])[:240],'content_start':plain(p['content'])[:280]},ensure_ascii=False))
+          PY
+      - name: Apply vetted translations to existing Falang product metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$(python3 -c 'import json;print(len(json.load(open("/tmp/emdo-translate/payload.json"))["products"]))')" = "0" ]; then
+             echo 'NO_TRANSLATIONS_TO_APPLY'; exit 1
+          fi
+          REMOTE_PHP="/tmp/mdo-en-apply-${GITHUB_RUN_ID}.php"
+          REMOTE_JSON="/tmp/mdo-en-payload-${GITHUB_RUN_ID}.json"
+          sshpass -e scp -o StrictHostKeyChecking=yes -P "$SSH_PORT" .github/scripts/apply-tropitop-first-english-batch-20261021.php "$STAGING_USER@$STAGING_HOST:$REMOTE_PHP"
+          sshpass -e scp -o StrictHostKeyChecking=yes -P "$SSH_PORT" /tmp/emdo-translate/payload.json "$STAGING_USER@$STAGING_HOST:$REMOTE_JSON"
+          sshpass -e ssh -o StrictHostKeyChecking=yes -p "$SSH_PORT" "$STAGING_USER@$STAGING_HOST" "
+            wp_bin=\$(command -v wp)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            MDO_EN_PAYLOAD='$REMOTE_JSON' \"\$php_bin\" -d memory_limit=1536M \"\$wp_bin\" eval-file '$REMOTE_PHP' --path='$PROD_PATH' --allow-root
+            rc=\$?
+            rm -f '$REMOTE_PHP' '$REMOTE_JSON'
+            exit \$rc
+          " | tee /tmp/emdo-translate/apply.log
+          grep '^MDO_TROPITOP_FIRST_ENGLISH=' /tmp/emdo-translate/apply.log >/dev/null
+      - name: Final safe translation counts
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,pathlib
+          d=pathlib.Path('/tmp/emdo-translate')
+          report=json.loads((d/'translate-report.json').read_text()) if (d/'translate-report.json').exists() else {}
+          print('TROPITOP_FIRST_BATCH_TRANSLATED',report.get('translated_count',0))
+          print('TROPITOP_FIRST_BATCH_FAILED',len(report.get('translation_failed',[])))
+          if (d/'apply.log').exists():
+              for line in (d/'apply.log').read_text().splitlines():
+                  if line.startswith('MDO_TROPITOP_FIRST_ENGLISH='): print(line)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tropitop-first-batch-english-evidence
+          path: |
+            /tmp/emdo-translate/translate-report.json
+            /tmp/emdo-translate/apply.log
+          retention-days: 20
+          if-no-files-found: warn
