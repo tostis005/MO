@@ -2,6 +2,7 @@
 """Public, read-only smoke QA of 13 newly translated buyable product routes."""
 import html
 import json
+from html.parser import HTMLParser
 import re
 import time
 import urllib.error
@@ -35,14 +36,30 @@ for slug in SLUGS:
                 body=resp.read(1_800_000).decode("utf-8","replace")
                 result["http_code"]=resp.status
                 result["final_url"]=resp.geturl()
-            heading=re.search(r"<h1\\b[^>]*>(.*?)</h1>",body,re.I|re.S)
-            title=html.unescape(re.sub(r"<[^>]*>"," ",heading.group(1))) if heading else ""
-            title=re.sub(r"\\s+"," ",title).strip()
-            canonical=re.search(r"<link\\b(?=[^>]*rel=[\\\"']canonical[\\\"'])(?=[^>]*href=[\\\"']([^\\\"']+))[^^>]*>",body,re.I|re.S)
-            if not canonical:
-                canonical=re.search(r'<link[^>]*rel=["\\']canonical["\\'][^>]*href=["\\']([^"\\']+)',body,re.I)
-            noindex=bool(re.search(r"<meta[^>]*name=[\\\"']robots[\\\"'][^>]*content=[\\\"'][^\\\"']*noindex",body,re.I))
-            result.update({"h1":title[:160],"canonical":canonical.group(1) if canonical else "","noindex":noindex})
+            class ExtractSEO(HTMLParser):
+                def __init__(self):
+                    super().__init__()
+                    self.in_h1=False
+                    self.h1_parts=[]
+                    self.canonical=""
+                    self.noindex=False
+                def handle_starttag(self,tag,attrs):
+                    d=dict(attrs)
+                    if tag=="h1":self.in_h1=True
+                    if tag=="link" and "canonical" in d.get("rel","").lower().split():
+                        self.canonical=d.get("href","")
+                    if tag=="meta" and d.get("name","").lower()=="robots" and "noindex" in d.get("content","").lower():
+                        self.noindex=True
+                def handle_endtag(self,tag):
+                    if tag=="h1":self.in_h1=False
+                def handle_data(self,data):
+                    if self.in_h1:self.h1_parts.append(data)
+            page=ExtractSEO()
+            page.feed(body)
+            title=" ".join(html.unescape(" ".join(page.h1_parts)).split())
+            canonical=page.canonical
+            noindex=page.noindex
+            result.update({"h1":title[:160],"canonical":canonical,"noindex":noindex})
             if result["http_code"]!=200:result["errors"].append("not_200")
             if urlparse(result["final_url"]).path.rstrip("/")!=urlparse(url).path.rstrip("/"):
                 result["errors"].append("redirected_elsewhere")
