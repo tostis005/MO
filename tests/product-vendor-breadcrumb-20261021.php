@@ -67,4 +67,10 @@ $unknown = emdo_product_breadcrumb_html_20261021( emdo_product_breadcrumb_data_2
 assert_breadcrumb( substr_count( $unknown, '<li>' ) === 2, 'sin inventar tienda para usuario no productor' );
 assert_breadcrumb( emdo_product_breadcrumb_data_20261021( 1 ) === array(), 'no se muestra en artículos' );
 
-echo "PRODUCT_VENDOR_BREADCRUMB_OK 11 assertions\n";
+$source = file_get_contents( dirname( __DIR__ ) . '/mu-plugins/mdo-product-vendor-breadcrumb-20261021.php' );
+assert_breadcrumb( str_contains( $source, 'max-width: 1280px;' ), 'desktop centrado y contenido acotado' );
+assert_breadcrumb( str_contains( $source, 'margin: 0 auto clamp(14px, 1.8vw, 22px);' ), 'márgenes laterales automáticos en escritorio' );
+assert_breadcrumb( str_contains( $source, 'padding: clamp(16px, 1.6vw, 22px) clamp(24px, 2.8vw, 42px);' ), 'espacios interiores escritorio vertical y horizontal' );
+assert_breadcrumb( str_contains( $source, 'padding: 15px 24px 16px;' ), 'móvil: al menos 24px a cada lado y espacio arriba' );
+
+echo "PRODUCT_VENDOR_BREADCRUMB_OK 15 assertions\n";
