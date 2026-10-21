@@ -157,7 +157,7 @@ add_action(
 			 */
 			body.elmercado-child-theme.single-product .site-main > .emo-product-breadcrumb-20261021 ~ div.product {
 				box-sizing: border-box;
-				padding-top: clamp(22px, 2.4vw, 30px);
+				padding-top: clamp(22px, 2.4vw, 30px) !important;
 				background-color: #fff;
 			}
 			body.elmercado-child-theme .emo-product-breadcrumb__items {
