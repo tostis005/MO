@@ -168,7 +168,7 @@ final class MDO_Tropitop_Editorial {
                 $href = html_entity_decode( $m[2], ENT_QUOTES | ENT_HTML5, 'UTF-8' );
                 if ( preg_match( '~^(?:mailto:|tel:|https?://(?:www\.)?tropitop\.com(?:/|$))~iu', $href ) ) {
                     $label = trim( wp_strip_all_tags( $m[3] ) );
-                    return preg_match( '/\b(?:comprar|tienda|contactar|ver\s+m[aá]s|haz\s+tu\s+pedido|descubre\s+m[aá]s)\b/iu', $label )
+                    return preg_match( '/\b(?:comprar|compra|compras?|adquiere|tienda|contactar|ver\s+m[aá]s|haz\s+tu\s+pedido|descubre\s+m[aá]s)\b/iu', $label )
                         ? '' : esc_html( $label );
                 }
                 return $m[0];
