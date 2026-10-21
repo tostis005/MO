@@ -84,10 +84,11 @@ function emdo_uncategorized_targets($title){
  if(preg_match('/^(?:pimientos?\s+asados|cebolla\s+caramelizada|chutney\b|agridulce\b|fais[aá]n\s+escabechado|casta[nñ]as\s+al\s+natural)/u',$t))return ['conservas'];
  return [];
 }
+global $wpdb;
 $offset=0;$limit=250;$summary=['mode'=>$mode,'scanned'=>0,'published'=>0,'draft'=>0,'changes'=>0,'gourmet'=>0,'other'=>0,'uncategorized'=>0,'unresolved'=>0,'errors'=>0,'created_terms'=>$created,'cosmetics_reparented'=>$cosReparent,'legacy_gourmet_remaining'=>null];
 $seen=[];
 do{
- $posts=get_posts(['post_type'=>'product','post_status'=>['publish','draft','private','pending','future'],'fields'=>'ids','posts_per_page'=>$limit,'offset'=>$offset,'orderby'=>'ID','order'=>'ASC']);
+ $posts=$wpdb->get_col($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type=%s AND post_status IN ('publish','draft','private','pending','future') ORDER BY ID ASC LIMIT %d OFFSET %d",'product',$limit,$offset));
  foreach($posts as $id) {
   if(isset($seen[$id]))continue;
   $seen[$id]=true;
