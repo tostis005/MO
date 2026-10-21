@@ -547,7 +547,7 @@ final class MDO_Woo_Importer {
             elseif ( preg_match( '/\\b(?:infusi[oó](?:n|nes)|t[eé]\\s+verde|t[eé]\\s+negro)\\b/u', $title ) ) { $key = 'tes-e-infusiones'; }
             elseif ( preg_match( '/\\b(?:miel|mieles)\\b/u', $title ) ) { $key = 'mieles'; }
             elseif ( preg_match( '/\\b(?:almendra|almendras|avellana|avellanas|casta[nñ]as?|nueces)\\b/u', $title ) ) { $key = 'frutos-secos'; }
-            elseif ( preg_match( '/\\baceite\\s+de\\s+oliva\\b/u', $title ) && ! preg_match( '/\\b(?:pack|cesta|lote)\\b/u', $title ) ) { $key = 'aceites'; }
+            elseif ( preg_match( '/^aceite\\s+de\\s+oliva\\b/u', $title ) && ! preg_match( '/\\b(?:pack|cesta|lote)\\b/u', $title ) ) { $key = 'aceites'; }
             elseif ( preg_match( '/\\bd[aá]tiles?\\b/u', $title ) ) { $key = 'frutas-del-mundo'; }
             elseif ( preg_match( '/\\bpat[eé]s?\\s+de\\s+aceituna\\b/u', $title ) ) { $key = 'foie-pates-untables'; }
             elseif ( preg_match( '/\\b(?:tomates?\\s+raf\\s+y\\s+aceite|pack\\s+mediterr[aá]neo|cesta\\s+(?:desayuno|regalo))\\b/u', $title ) ) { $key = 'packs'; }
