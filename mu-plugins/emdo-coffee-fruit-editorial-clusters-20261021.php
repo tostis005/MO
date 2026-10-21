@@ -234,6 +234,6 @@ add_filter('get_the_archive_description',static function(string $description):st
     $url=get_term_link($dest);
     if(is_wp_error($url)||!$url)return $description;
     // Only a legitimate live product category can become a commercial recommendation.
-    if(!emdo_cluster21_products($term->slug==='cafe'?'cafe':($term->slug==='aguacates'?'aguacate':($term->slug==='citricos'?'citricos':'frutas')),1,1))return $description;
+    if(!emdo_cluster21_products($term->slug==='cafe'?'cafe':($term->slug==='aguacates'?'aguacate':($term->slug==='citricos'?'citricos':($term->slug==='mangos'?'mango':'frutas'))),1,1))return $description;
     return $description.'<p class="emdo-editorial-blog-hub-link"><a href="'.esc_url($url).'">'.esc_html($label).' &rarr;</a></p>';
 },22);
