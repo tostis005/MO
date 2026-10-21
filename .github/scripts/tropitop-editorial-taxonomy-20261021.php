@@ -13,7 +13,7 @@ foreach ( array( 'WooCommerce', 'MDO_Database', 'MDO_Woo_Importer', 'MDO_Tropito
     if ( ! class_exists( $needed ) ) { throw new RuntimeException( 'Missing ' . $needed ); }
 }
 $mode = (string) ( getenv( 'TROPITOP_EDITORIAL_MODE' ) ?: 'audit' );
-if ( ! in_array( $mode, array( 'audit', 'apply' ), true ) ) { throw new RuntimeException( 'Invalid mode.' ); }
+if ( ! in_array( $mode, array( 'audit', 'apply', 'finalize_categories' ), true ) ) { throw new RuntimeException( 'Invalid mode.' ); }
 $canonical = get_term_by( 'slug', 'hortalizas-verduras', 'product_cat' );
 if ( ! $canonical instanceof WP_Term ) {
     throw new RuntimeException( 'Existing canonical Hortalizas/Verduras category was not found. No changes.' );
@@ -35,6 +35,47 @@ $rows = $wpdb->get_results(
     ), ARRAY_A
 );
 if ( ! $rows ) { throw new RuntimeException( 'No linked Tropitop catalog found; refuse an empty migration.' ); }
+if ( $mode === 'finalize_categories' ) {
+    // Separate WP-CLI process avoids WooCommerce save/shutdown observers
+    // reintroducing an unrelated ham term after the main reconciliation.
+    // One exact product and source row, no product save or commerce changes.
+    $target_id=20413;
+    $row=null;
+    foreach($rows as $candidate)if((int)$candidate['wc_product_id']===$target_id){$row=$candidate;break;}
+    $product=wc_get_product($target_id);
+    if(!$row||!$product||(string)$product->get_sku()!=='TROPITOP-2717'||
+        (int)get_post_field('post_author',$target_id)!==$vendor){
+        throw new RuntimeException('Tropitop one-product category verification failed');
+    }
+    $payload=json_decode((string)$row['source_payload'],true);
+    if(!is_array($payload))throw new RuntimeException('Missing source payload');
+    $payload['source_url']=(string)($payload['source_url']??$row['source_url']);
+    $payload['title']=(string)($payload['title']??$row['title']);
+    $want=MDO_Woo_Importer::tropitop_category_ids($payload,false);
+    sort($want);
+    $current=wp_get_post_terms($target_id,'product_cat',['fields'=>'ids']);
+    if(is_wp_error($current))throw new RuntimeException('Cannot read current categories');
+    $current=array_map('intval',(array)$current);
+    sort($current);
+    if(!metadata_exists('post',$target_id,'_emdo_tropitop_category_backup_20261021')){
+        add_post_meta($target_id,'_emdo_tropitop_category_backup_20261021',$current,true);
+    }
+    if($current!==$want){
+        $done=wp_set_object_terms($target_id,$want,'product_cat',false);
+        if(is_wp_error($done))throw new RuntimeException('Cannot persist one-product taxonomy');
+        clean_post_cache($target_id);
+    }
+    $after=wp_get_post_terms($target_id,'product_cat',['fields'=>'ids']);
+    if(is_wp_error($after))throw new RuntimeException('Cannot reread final categories');
+    $after=array_map('intval',(array)$after);sort($after);
+    $ok=$after===$want;
+    echo 'EMDO_TROPITOP_FINALIZE='.wp_json_encode([
+      'product_id'=>$target_id,'before'=>$current,'expected'=>$want,'after'=>$after,'verified'=>$ok
+    ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
+    if(!$ok)exit(18);
+    return;
+}
+
 $counts = array(
     'linked_source_rows' => count( $rows ), 'reviewed' => 0,
     'changed_copy' => 0, 'changed_categories' => 0,
