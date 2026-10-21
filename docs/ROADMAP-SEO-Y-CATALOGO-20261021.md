@@ -100,3 +100,29 @@ Regla: solo correcciones acotadas a artículos/productos nuevos y, excepcionalme
 | Rutas inglesas antiguas | 3 redirecciones 301 bajo diagnóstico/corrección | Verificación pública final |
 
 **Control de alcance:** sin cambiar nombres/URL españolas, precios, stock, variantes, inventario ni SEO de productos antiguos españoles.
+
+## Cierre adicional: rutas inglesas recuperadas
+
+Fecha de comprobación: 2026-10-21.
+
+**Reparación inglesa exclusivamente local:**
+- El despliegue del enrutador de categorías del blog en inglés fue correcto: https://github.com/tostis005/MO/actions/runs/39578235653.
+- La categoría inglesa antigua «hams-and-shoulders», término 238 (0 artículos), tenía el mismo alias que la activa, término 438 (64 artículos). Se despublicó **solo el alias inglés** de la categoría vacía, con copia de respaldo, conservando el término español y el catálogo.
+- Comprobación tras cambio https://github.com/tostis005/MO/actions/runs/39578782981: **3/3 rutas ESPECÍFICAS inglesas HTTP 200** sin redirección, correspondientes a `/en/category/meat/`, `/en/category/preserves/` y `/en/category/hams-and-shoulders/`. La categoría de 64 artículos permanece accesible.
+- `/en/product-category/oranges/` y `/en/product-category/cheeses/` conservan `noindex` porque ambas categorías comerciales tienen cero productos; no deben forzarse a indexación.
+- Las tres fichas inglesas de jamón que devolvían 404/timeouts no son visibles ni comprables en WordPress. No modificar indexación ni publicarlas sin validación comercial.
+
+**Recuento final de fichas nativas EN (auditoría independiente):**
+https://github.com/tostis005/MO/actions/runs/39578563621.
+
+| Productor | Productos comprables auditados | Fichas nativas EN faltantes |
+|---|---:|---:|
+| Ikore Kofi | 6 | **0** |
+| Chocolates Artesanos Isabel | 78 | **4** |
+| Tropitop | 102 | **102** |
+| Latitudes | 109 | **9** |
+| **Total** | **295** | **115** |
+
+De los 295 productos comprables de estos cuatro grupos, 180 cuentan con ficha nativa EN según la prueba de integridad de metadatos (no equivale a evaluación estilística completa del inglés). Esos 115 pendientes son el siguiente bloque de trabajo de mayor volumen. Requieren traducción controlada de datos reales, incluidas variaciones, unidades, ingredientes y alérgenos, sin inventar datos comerciales. Por tanto no se rellenan automáticamente a ciegas.
+
+**Estado al cierre de este hito:** SEO ES Tropitop 187/187 conforme; 48/48 páginas editoriales nuevas sin fallos SEO técnicos; 6/6 cafés Ikore ingleses publicados; 3/3 bucles ingleses de categorías corregidos. Pendientes: 115 fichas inglesas y revisión comercial de seis productos Isabel personalizados aún en borrador.
