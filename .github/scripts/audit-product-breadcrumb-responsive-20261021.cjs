@@ -27,6 +27,7 @@ const round = x => Math.round(x * 10) / 10;
           await page.locator('.emo-product-breadcrumb-20261021').waitFor({ timeout: 20000 });
           await page.waitForTimeout(500);
           const d = await page.evaluate(() => {
+            const round = x => Math.round(x * 10) / 10;
             const sel = s => document.querySelector(s);
             const nav = sel('.emo-product-breadcrumb-20261021');
             const list = sel('.emo-product-breadcrumb__items');
