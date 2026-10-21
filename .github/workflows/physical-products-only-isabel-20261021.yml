@@ -1,0 +1,71 @@
+name: Isabel physical products only - scoped catalog correction
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/physical-products-only-isabel-20261021.php'
+      - '.github/workflows/physical-products-only-isabel-20261021.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: isabel-physical-products-only-20261021
+  cancel-in-progress: false
+jobs:
+  physical-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax and scope validation
+        run: |
+          php -l .github/scripts/physical-products-only-isabel-20261021.php
+          grep -q "chocolates-artesanos-isabel" .github/scripts/physical-products-only-isabel-20261021.php
+      - name: Preflight + apply to Isabel only
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-P $PORT -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] && [ -n "$php" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s|%s|%s" "$p" "$php" "$wp"; break;;
+              esac
+            done
+          ')"
+          [ -n "$INFO" ] || exit 3
+          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
+          REMOTE="/tmp/emdo-isabel-physical-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/physical-products-only-isabel-20261021.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $REMOTE" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_SCOPE_PREFLIGHT=1 '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE' --path='$PROD' --allow-root" | tee /tmp/emdo-physical-preflight.log
+          sed -n 's/^EMDO_PHYSICAL_ONLY //p' /tmp/emdo-physical-preflight.log | tail -n1 | jq -e '.source_reviewed>=90 and .source_reviewed<=160 and .eligible_for_hide<=25 and .kit_kept>=1 and (.skipped|length)==0' >/dev/null
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE' --path='$PROD' --allow-root" | tee /tmp/emdo-physical-applied.log
+          sed -n 's/^EMDO_PHYSICAL_ONLY //p' /tmp/emdo-physical-applied.log | tail -n1 | jq -e '.verified==true and (.skipped|length)==0 and .kit_kept>=1 and (.gift_and_service_excluded>=2)' >/dev/null
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+      - name: Preserve outcome as workflow artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: isabel-physical-only-preflight-and-result
+          path: |
+            /tmp/emdo-physical-preflight.log
+            /tmp/emdo-physical-applied.log
+          if-no-files-found: warn
+          retention-days: 30
