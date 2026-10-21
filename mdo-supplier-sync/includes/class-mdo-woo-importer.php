@@ -82,7 +82,16 @@ final class MDO_Woo_Importer {
 
 		self::apply_common_fields( $product, $payload );
 		if ( 'tropitop' === (string) $supplier['code'] ) {
-			$product->set_short_description( wp_kses_post( (string) ( $payload['short_description'] ?? '' ) ) );
+			// This page is sold on EMDO, not on the producer's webshop.
+			// Source fields remain untouched for a traceable future sync.
+			$product->set_description( MDO_Tropitop_Editorial::description(
+				(string) ( $payload['description'] ?? '' ),
+				(string) $payload['title'],
+				(string) ( $payload['short_description'] ?? '' )
+			) );
+			$product->set_short_description( MDO_Tropitop_Editorial::short_description(
+				(string) ( $payload['short_description'] ?? '' )
+			) );
 		}
 		// Product copy may be authored for the supplier's own checkout.
 		// Neutralize ONLY verified supplier-first-person/promotional wording,
@@ -493,7 +502,7 @@ final class MDO_Woo_Importer {
      * scoring (meat/chocolate categories elsewhere in this marketplace).
      * A new term is created only for these audited product category slugs.
      */
-    private static function tropitop_category_ids( array $payload ): array {
+    public static function tropitop_category_ids( array $payload ): array {
         $source = (string) ( $payload['source_url'] ?? '' );
         if ( ! in_array( strtolower( (string) wp_parse_url( $source, PHP_URL_HOST ) ),
             array( 'tropitop.com', 'www.tropitop.com' ), true ) ) {
@@ -506,14 +515,14 @@ final class MDO_Woo_Importer {
         if ( $key === 'productos' ) {
             $key = preg_match( '/pimient|tomate|patata|verdura/u', $title ) ? 'verduras' : 'frutas';
         }
-        if ( $key === 'home-verduras' ) { $key = 'verduras'; }
+        if ( in_array( $key, array( 'home-verduras', 'hortalizas', 'hortalizas-verduras', 'verduras-y-hortalizas' ), true ) ) { $key = 'verduras'; }
         if ( $key === 'disponible' ) { $key = 'packs'; }
         $map = array(
             'aguacates' => array( 'Aguacates', 'aguacates', 'frutas' ),
             'frutas' => array( 'Frutas', 'frutas', '' ),
             'frutas-tropicales' => array( 'Frutas tropicales', 'frutas-tropicales', 'frutas' ),
             'frutas-del-mundo' => array( 'Frutas del mundo', 'frutas-del-mundo', 'frutas' ),
-            'verduras' => array( 'Verduras', 'verduras', '' ),
+            'verduras' => array( 'Hortalizas/Verduras', 'hortalizas-verduras', '' ),
             'gourmet' => array( 'Gourmet', 'gourmet', '' ),
             'packs' => array( 'Packs y lotes', 'packs-y-lotes', '' ),
             'cajas-de-temporada' => array( 'Cajas de temporada', 'cajas-de-temporada', 'packs-y-lotes' ),
@@ -545,6 +554,11 @@ final class MDO_Woo_Importer {
             $parent_id = (int) $parent->term_id;
         }
         $term = get_term_by( 'slug', $target[1], 'product_cat' );
+        // Canonical vegetable taxonomy predates this importer: never
+        // recreate a competing root if the shop term was removed.
+        if ( 'verduras' === $key && ! $term instanceof WP_Term ) {
+            throw new RuntimeException( 'Falta la categoría existente Hortalizas/Verduras.' );
+        }
         if ( ! $term instanceof WP_Term ) {
             $result = wp_insert_term( $target[0], 'product_cat', array(
                 'slug' => $target[1], 'parent' => $parent_id,
@@ -555,6 +569,11 @@ final class MDO_Woo_Importer {
         }
         if ( ! $term instanceof WP_Term ) { throw new RuntimeException( 'No se guardó la categoría Tropitop.' ); }
         $ids = array( (int) $term->term_id );
+        // Keep broad category navigation consistent with other producers.
+        // Child terms Aguacates and Mangos remain more precise filters.
+        if ( $parent_id > 0 && in_array( $key, array( 'aguacates', 'mangos' ), true ) ) {
+            $ids[] = $parent_id;
+        }
         if ( $is_pack && 'packs' !== $key && 'cajas-de-temporada' !== $key ) {
             $pack = get_term_by( 'slug', 'packs-y-lotes', 'product_cat' );
             if ( $pack instanceof WP_Term ) { $ids[] = (int) $pack->term_id; }
