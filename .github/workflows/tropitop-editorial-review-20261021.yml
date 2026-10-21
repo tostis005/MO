@@ -1,9 +1,9 @@
-name: Tropitop editorial read-only production audit
+name: Tropitop detailed live editorial content inspection
 on:
   pull_request:
     paths:
       - '.github/workflows/tropitop-editorial-review-20261021.yml'
-      - '.github/scripts/tropitop-editorial-taxonomy-20261021.php'
+      - '.github/scripts/tropitop-editorial-detailed-review-20261021.php'
       - 'tests/catalog-taxonomy-smoke.php'
       - 'mdo-supplier-sync/includes/class-mdo-woo-importer.php'
 permissions: {contents: read}
@@ -18,11 +18,11 @@ jobs:
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Review 187 linked source fiches read-only and report residual webshop voice
+      - name: Inspect all Tropitop WooCommerce titles and descriptions for suspect producer sales language
         shell: bash
         run: |
           set -Eeuo pipefail
-          php -l .github/scripts/tropitop-editorial-taxonomy-20261021.php
+          php -l .github/scripts/tropitop-editorial-detailed-review-20261021.php
           php -l mdo-supplier-sync/includes/class-mdo-woo-importer.php
           php tests/tropitop-smoke.php
           php tests/tropitop-editorial-smoke.php
@@ -49,7 +49,7 @@ jobs:
           ')"
           test -n "$PROD_PATH"
           SCRIPT="/tmp/emdo-tropitop-copy-preview-$GITHUB_RUN_ID.php"
-          sshpass -e scp $SCP .github/scripts/tropitop-editorial-taxonomy-20261021.php "$STAGING_USER@$STAGING_HOST:$SCRIPT"
+          sshpass -e scp $SCP .github/scripts/tropitop-editorial-detailed-review-20261021.php "$STAGING_USER@$STAGING_HOST:$SCRIPT"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH' '$SCRIPT'" <<'REMOTE'
           set -Eeuo pipefail
           P="$1"; SCRIPT="$2"
