@@ -141,27 +141,29 @@ verify( count( $basket ) === 1, 'Unit price must not block a real price.' );
 verify( abs( (float) ( $basket['unid:5.000']['weight_kg'] ?? 0 ) - 6.0 ) < 0.001,
     'Direct source EUR/kg quote yields this basket 6kg weight.' );
 
-// Approximate SHIPPING kg, not a misleading product net-weight claim.
+// Merchant's literal 1:1 tariff convention with NO packaging added.
 verify( abs( (float) reflected( 'volume_in_liters', 1.0, 'L' ) - 1.0 ) < .001,
     'One liter is one liter of net liquid.' );
 verify( abs( (float) reflected( 'volume_in_liters', 200.0, 'ml' ) - .2 ) < .001,
     '200ml is 0.2L.' );
 verify( null === reflected( 'volume_in_liters', 4.0, 'unid' ),
     'Unit count must not be interpreted as liquid.' );
-verify( abs( (float) reflected( 'estimated_chargeable_weight', 3.0, 3 ) - 4.5 ) < .001,
-    '3x1L estimates 4.5kg with parcel buffer.' );
-verify( abs( (float) reflected( 'estimated_chargeable_weight', 5.0, 5 ) - 7.0 ) < .001,
-    '5x1L estimates 7kg including packaging.' );
-verify( abs( (float) reflected( 'estimated_chargeable_weight', 2.4, 12 ) - 6.0 ) < .001,
-    '12x200ml estimates 6kg including 12 small containers.' );
+verify( abs( (float) reflected( 'estimated_chargeable_weight', 3.0 ) - 3.0 ) < .001,
+    '3x1L is exactly 3kg for shipping.' );
+verify( abs( (float) reflected( 'estimated_chargeable_weight', 5.0 ) - 5.0 ) < .001,
+    '5x1L is exactly 5kg for shipping.' );
+verify( abs( (float) reflected( 'estimated_chargeable_weight', 2.4 ) - 2.4 ) < .001,
+    '12x200ml is exactly 2.4kg for shipping.' );
 verify( abs( (float) reflected( 'estimated_jar_weight',
     array( 'unit' => 'unid', 'amount' => 4.0 ),
-    '<p>1 caja contiene 4 botes de 200g de mermelada.</p>' ) - 3.0 ) < .001,
-    'Four jam jars 200g each estimate 3kg packaged.' );
+    '<p>1 caja contiene 4 botes de 200g de mermelada.</p>' ) - 0.8 ) < .001,
+    'Four 200g jars charge only the exact 0.8kg contents.' );
 verify( null === reflected( 'estimated_jar_weight',
     array( 'unit' => 'unid', 'amount' => 5.0 ), '<p>Cinco frutas.</p>' ),
     'Piece-based fruit stays unestimated.' );
-verify( null === reflected( 'estimated_chargeable_weight', 29.0, 10 ),
+verify( abs( (float) reflected( 'estimated_chargeable_weight', 29.0 ) - 29.0 ) < .001,
+    'Existing 29kg shipping tariff can be used without an added buffer.' );
+verify( null === reflected( 'estimated_chargeable_weight', 30.5 ),
     'Do not invent shipping rates for unverified high weight bands.' );
 
 echo "Tropitop connector and shipping smoke checks passed.\n";

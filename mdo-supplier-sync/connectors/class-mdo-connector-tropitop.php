@@ -140,12 +140,11 @@ final class MDO_Connector_Tropitop {
             else {
                 $estimated = null; $basis = '';
                 if ( isset( $row['net_volume_l'] ) && isset( $row['container_count'] ) ) {
-                    $estimated = self::estimated_chargeable_weight(
-                        (float) $row['net_volume_l'], (int) $row['container_count'] );
-                    $basis = 'liquid_volume_with_packaging';
+                    $estimated = self::estimated_chargeable_weight( (float) $row['net_volume_l'] );
+                    $basis = 'liquid_volume_1_liter_1_kg';
                 } elseif ( preg_match( '/mermelada/iu', $name ) ) {
                     $estimated = self::estimated_jar_weight( $row, $description );
-                    $basis = 'jar_net_weight_with_packaging';
+                    $basis = 'jar_net_grams_1_to_1';
                 }
                 if ( null !== $estimated ) {
                     $v['weight_kg'] = $estimated;
@@ -385,15 +384,14 @@ final class MDO_Connector_Tropitop {
     }
 
     /**
-     * Merchant-authorized CHARGEABLE weight (not producer-certified net mass):
-     * 1.10 kg per litre/kg net + 0.20 kg per bottle + 0.50 kg parcel.
-     * Round UP to half a kg and stay within validated shipping bands.
+     * Merchant-approved 1:1 shipping conversion: 1 L liquid = 1 kg and
+     * 1,000 g of explicitly stated jar contents = 1 kg. No bottle,
+     * glass, carton or outer packaging allowance. This is a tariff
+     * convention, NOT a claim about the physical parcel's gross mass.
+     * Do not guess tariffs above the existing verified 30 kg bands.
      */
-    private static function estimated_chargeable_weight( float $net, int $containers, float $container_kg = 0.20 ): ?float {
-        if ( $net <= 0 || $net > 24 || $containers < 1 || $containers > 24 ) { return null; }
-        if ( $container_kg < 0.20 || $container_kg > 0.50 ) { return null; }
-        $kg = ceil( ( $net * 1.10 + $containers * $container_kg + 0.50 ) * 2 ) / 2;
-        return $kg <= 30 ? $kg : null;
+    private static function estimated_chargeable_weight( float $net ): ?float {
+        return $net > 0 && $net <= 30 ? round( $net, 3 ) : null;
     }
 
     /** Source copy must explicitly say "4 botes de 200g" for a 4-jar pack. */
@@ -408,7 +406,7 @@ final class MDO_Connector_Tropitop {
         $jars = (int) $matches[1];
         $grams = (float) str_replace( ',', '.', $matches[2] );
         if ( $jars !== (int) $count || $grams < 50 || $grams > 1000 ) { return null; }
-        return self::estimated_chargeable_weight( $jars * $grams / 1000, $jars, 0.40 );
+        return self::estimated_chargeable_weight( $jars * $grams / 1000 );
     }
 
     private static function missing_prices( array $sizes ): bool {

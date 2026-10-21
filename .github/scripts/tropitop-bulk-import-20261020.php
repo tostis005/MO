@@ -370,6 +370,57 @@ if ( $start >= $total && empty( $state['approx_weight_retry_20261021'] ) ) {
     update_option( $key, $state, false );
     echo 'TROPITOP_APPROX_WEIGHT_RETRY_UNLOCKED=' . $reopened . "\n";
 }
+// The merchant has removed ALL bottle/jar/packaging margins. Previously
+// imported products with our old estimated kilogram values must be revisited
+// as well as draft failures, or customers would retain inflated shipping.
+// The producer SKU remains authoritative; preserve the 187-item cursor.
+if ( $start >= $total && empty( $state['net_weight_one_to_one_retry_20261021'] ) ) {
+    $reopened = 0; $reweighted = 0;
+    $linked_rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT wc_product_id,source_url,source_payload FROM $src_table WHERE supplier_id=%d AND wc_product_id>0",
+        8
+    ), ARRAY_A );
+    foreach ( (array) $linked_rows as $linked ) {
+        $source_url = (string) ( $linked['source_url'] ?? '' );
+        if ( ! in_array( $source_url, (array) $state['urls'], true ) ) { continue; }
+        $payload = json_decode( (string) ( $linked['source_payload'] ?? '' ), true );
+        $has_estimate = false;
+        foreach ( (array) ( $payload['variations'] ?? array() ) as $variation ) {
+            if ( ! empty( $variation['shipping_weight_estimated'] ) ) {
+                $has_estimate = true; break;
+            }
+        }
+        if ( ! $has_estimate ) { continue; }
+        if ( ! preg_match( '~/([0-9]+)(?:-[0-9]+)?-[a-z0-9-]+\.html$~i',
+            (string) wp_parse_url( $source_url, PHP_URL_PATH ), $id_match ) ) { continue; }
+        $product_id = (string) $id_match[1];
+        if ( ! isset( $state['failed'][$product_id] ) ) {
+            $state['failed'][$product_id] = array(
+                'url' => $source_url, 'woo_id' => (int) $linked['wc_product_id'],
+                'reason' => 'Recalcular peso 1:1 sin envases ni embalaje.',
+            );
+            unset( $state['imported'][$product_id] );
+            ++$reweighted;
+        }
+        $state['retry_attempts'][$product_id] = 1;
+        ++$reopened;
+    }
+    foreach ( (array) ( $state['failed'] ?? array() ) as $product_id => $failure ) {
+        $reason = (string) ( $failure['reason'] ?? '' );
+        if ( ! str_contains( $reason, 'falta el peso embalado' ) &&
+            ! str_contains( $reason, 'matriz de pesos/precios incompleta' ) &&
+            ! str_contains( $reason, 'precio de una presentación no verificado' ) ) { continue; }
+        if ( ! in_array( (string) ( $failure['url'] ?? '' ), (array) $state['urls'], true ) ) { continue; }
+        if ( (int) ( $state['retry_attempts'][$product_id] ?? 0 ) !== 1 ) { ++$reopened; }
+        $state['retry_attempts'][$product_id] = 1;
+    }
+    $state['net_weight_one_to_one_retry_20261021'] = 1;
+    if ( $reopened ) { unset( $state['finished_at'] ); }
+    update_option( $key, $state, false );
+    echo 'TROPITOP_ONE_TO_ONE_RECOVERY=' . wp_json_encode( array(
+        'reopened' => $reopened, 'previously_linked_reweight' => $reweighted
+    ) ) . "\n";
+}
 // The saved cursor is authoritative for first-pass progress. After reaching
 // the end, retry only failed source URLs (at most twice), never regenerate the
 // entire catalog merely because a previous upload was interrupted.
