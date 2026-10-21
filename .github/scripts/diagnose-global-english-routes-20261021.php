@@ -2,7 +2,7 @@
 /** Read-only native route diagnostic for 404 URLs in global SEO registry. */
 if ( ! defined( 'ABSPATH' ) || ! defined( 'WP_CLI' ) || ! WP_CLI ) throw new RuntimeException('WP-CLI only');
 global $wpdb;
-$slugs=array('buy-6-pay-for-5-100-g-packs-of-50-iberian-acorn-fed-ham','acorn-fed-shoulder-ham-pack');
+$slugs=array('buy-6-pay-for-5-100-g-packs-of-50-iberian-acorn-fed-ham','acorn-fed-shoulder-ham-pack','premium-ham-shavings');
 $out=array('home'=>get_option('home'),'products'=>array(),'categories'=>array());
 foreach($slugs as $slug) {
  $rows=$wpdb->get_results($wpdb->prepare(
@@ -21,7 +21,7 @@ foreach($slugs as $slug) {
     'wc_catalog_visibility'=>$p?$p->get_catalog_visibility():'missing');
  }
 }
-foreach(array('hams-and-shoulders','oranges') as $slug) {
+foreach(array('hams-and-shoulders','oranges','cheeses','meat','preserves') as $slug) {
  foreach(array('category','product_cat') as $tax) {
    $rows=$wpdb->get_results($wpdb->prepare(
      "SELECT t.term_id,t.slug,tm.meta_value AS en_slug FROM {$wpdb->terms} t JOIN {$wpdb->term_taxonomy} tt ON tt.term_id=t.term_id AND tt.taxonomy=%s JOIN {$wpdb->termmeta} tm ON t.term_id=tm.term_id AND tm.meta_key='_en_US_slug' WHERE tm.meta_value=%s LIMIT 8",
