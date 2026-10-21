@@ -226,14 +226,20 @@ function mdo_en_find_term_by_slug( string $taxonomy, string $slug ) {
     $terms = get_terms( array(
         'taxonomy'   => $taxonomy,
         'hide_empty' => false,
-        'number'     => 2,
+        // Two old blog terms may share a translated slug. Prefer the live archive.
+        'number'     => 0,
+        'orderby'    => 'count',
+        'order'      => 'DESC',
         'meta_query' => array(
             'relation' => 'AND',
             array( 'key' => '_en_US_slug', 'value' => $slug, 'compare' => '=' ),
             array( 'key' => '_en_US_published', 'value' => '1', 'compare' => '=' ),
         ),
     ) );
-    if ( is_wp_error( $terms ) || count( $terms ) !== 1 ) { return null; }
+    if ( is_wp_error( $terms ) || empty( $terms ) ) { return null; }
+    usort( $terms, static fn ( WP_Term $a, WP_Term $b ): int =>
+        ( (int) $b->count <=> (int) $a->count ) ?: ( (int) $a->term_id <=> (int) $b->term_id )
+    );
     return $terms[0];
 }
 
@@ -367,6 +373,15 @@ add_action( 'template_redirect', static function (): void {
     if ( $native instanceof WP_Term ) {
         $target = mdo_en_term_url( $native );
         if ( $target !== '' ) {
+            // The global route bridge maps a public English slug to the native
+            // taxonomy slug internally. Never redirect the already-canonical
+            // public URL back to itself (a permanent 301 redirect loop).
+            $original_uri = (string) ( $GLOBALS['mdoer_public_request_uri'] ?? ( $_SERVER['REQUEST_URI'] ?? '/' ) );
+            $original_path = (string) wp_parse_url( $original_uri, PHP_URL_PATH );
+            $target_path = (string) wp_parse_url( $target, PHP_URL_PATH );
+            if ( $target_path !== '' && untrailingslashit( $original_path ) === untrailingslashit( $target_path ) ) {
+                return;
+            }
             wp_safe_redirect( $target, 301, 'MDO English taxonomy slug' );
             exit;
         }
