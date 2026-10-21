@@ -32,6 +32,52 @@ final class MDO_Tropitop_Editorial {
 
     public static function description( string $html, string $title = '', string $short = '' ): string {
         $clean = self::neutralize( $html );
+        // A factual producer-identity clause in one mixed box is not a
+        // checkout promise. Keep the product description, not the vendor voice.
+        if ( preg_match( '/aguacates hass y mermelada de guayaba/iu', $title ) ) {
+            $clean = preg_replace( '/hecha aqu[ií] en Espa[ñn]a por nosotros, los propios agricultores/iu',
+                'elaborada en España', $clean );
+        }
+
+        // These three physical boxes explicitly support "Pedido único" at
+        // source. Their original HTML is mostly subscription instructions,
+        // phone/WhatsApp contacts and claims about the producer's fulfilment
+        // timetable. On EMDO no subscription contract is sold: replace only
+        // these three pages with individual-order, source-grounded factual copy.
+        $seasonal = array(
+            'caja de fruta de temporada' => array(
+                'frutas', 'fruta fresca de temporada', 'frutas disponibles',
+                'fruta para consumir en casa durante la semana'
+            ),
+            'caja de verdura de temporada' => array(
+                'verduras y hortalizas', 'verdura fresca de temporada', 'hortalizas disponibles',
+                'verduras para las comidas de la semana'
+            ),
+            'caja de frutas y verduras de temporada' => array(
+                'frutas y verduras', 'fruta y verdura fresca de temporada', 'productos disponibles',
+                'una combinación de fruta para consumir y verdura para cocinar'
+            ),
+        );
+        $key = mb_strtolower(trim($title), 'UTF-8');
+        if ( isset($seasonal[$key]) ) {
+            $v = $seasonal[$key];
+            $clean = '<h2>Una caja de ' . esc_html($v[0]) . ' de temporada</h2>'
+              . '<p>Selección de ' . esc_html($v[1]) . ' de origen español, '
+              . 'preparada según la disponibilidad de la cosecha. El contenido '
+              . 'puede cambiar durante el año y, si falta alguna variedad, '
+              . 'puede sustituirse por otra o ajustarse la cantidad de las disponibles.</p>'
+              . '<h2>Formatos y pedido</h2>'
+              . '<p>Escoge la caja pequeña de 4 kg, la mediana de 9 kg o la grande '
+              . 'de 14 kg, según la cantidad que necesites. En El Mercado de Origen '
+              . 'la compra es puntual: no activa una suscripción ni pagos automáticos. '
+              . 'El precio y el envío aplicables se muestran al seleccionar el tamaño.</p>'
+              . '<h2>Qué conviene tener en cuenta</h2>'
+              . '<p>La selección reúne ' . esc_html($v[2]) . ' en el momento '
+              . 'de preparación. Al tratarse de cosechas de temporada, pueden variar '
+              . 'las variedades, el calibre y el grado de maduración. '
+              . 'Para elegir el tamaño, valora cuántas personas consumirán '
+              . esc_html($v[3]) . '.</p>';
+        }
         if ( '' !== trim( wp_strip_all_tags( $clean ) ) ) {
             return $clean;
         }
