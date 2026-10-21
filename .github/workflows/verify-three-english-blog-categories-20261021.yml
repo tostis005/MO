@@ -1,0 +1,18 @@
+name: Verify three English blog archives no redirect loops
+on:
+  workflow_run:
+    workflows: ["Production deploy English SEO routes 2026-08-16"]
+    types: [completed]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m py_compile .github/scripts/verify-three-english-blog-categories-20261021.py
+      - name: Verify English archives and redirects only
+        run: python3 -u .github/scripts/verify-three-english-blog-categories-20261021.py
