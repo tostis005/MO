@@ -38,6 +38,9 @@ final class MDO_Woo_Importer {
 			throw new RuntimeException( 'Los datos extraídos del producto están incompletos.' );
 		}
 		$payload['title'] = MDO_Text::normalize_title( (string) $payload['title'] );
+		if ( 'tropitop' === (string) $supplier['code'] ) {
+			$payload['title'] = MDO_Tropitop_Editorial::title( (string) $payload['title'] );
+		}
 		if ( in_array( (string) $supplier['code'], array( 'latitudes', 'chocolates-artesanos-isabel', 'tropitop' ), true ) &&
 			! in_array( (string) ( $payload['stock_status'] ?? 'unknown' ), array( 'instock', 'outofstock' ), true ) ) {
 			throw new RuntimeException( 'Stock del proveedor sin verificar: se cancela la importación de esta referencia.' );

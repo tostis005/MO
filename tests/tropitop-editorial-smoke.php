@@ -64,4 +64,35 @@ check(!str_contains($retailer_clean,'trabajamos'),'First-person store pitch remo
 check(str_contains($retailer_clean,'Castellón'),'Factual origin preserved');
 check(str_contains($retailer_clean,'conservar'),'Factual storage preserved');
 check(MDO_Tropitop_Editorial::residual_markers($retailer_clean)===array(),'No external retailer residuals');
+
+// Source-store sales language must disappear without deleting formats or facts.
+$marketed='<h4>¿Qué contiene la caja?</h4>'
+    .'<ul><li>Peso: 4 kg, en dos cajas.</li>'
+    .'<li>Origen: Castellón.</li>'
+    .'<li>Libre de calibres. No trabajamos un calibre específico.</li>'
+    .'<li><strong>Agricultor:</strong> Hermán, agricultor de confianza de Tropitop.</li></ul>'
+    .'<p>Trabajamos directamente con agricultores de Castellón y garantizamos entregas.</p>'
+    .'<p>Cada racimo se caracteriza por un sabor dulce y una piel fina.</p>'
+    .'<p>Comprar uva verde online es apostar por fruta auténtica.</p>'
+    .'<h2>Comprar uva verde online</h2>'
+    .'<p>Tropitop ofrece cada partida atendiendo a su frescura.</p>';
+$marketedClean=MDO_Tropitop_Editorial::description($marketed,'Uva verde','');
+check(str_contains($marketedClean,'4 kg'),'Measurements preserved when cleaning');
+check(str_contains($marketedClean,'Origen: Castellón'),'Place of origin retained');
+check(str_contains($marketedClean,'No se selecciona un calibre específico'),'Calibre details retained objectively');
+check(str_contains($marketedClean,'Hermán'),'Farmer preserved');
+check(str_contains($marketedClean,'piel fina'),'Product sensory facts retained');
+check(!preg_match('/\b(?:Tropitop ofrece|trabajamos|comprar\s+uva\s+verde|de confianza de Tropitop)\b/iu',$marketedClean),'Supplier store and checkout pitches cleared');
+check(MDO_Tropitop_Editorial::description($marketedClean,'Uva verde','')===$marketedClean,'Marketplace editorial cleanup is idempotent');
+check(MDO_Tropitop_Editorial::title('Cerezas online en tropitop | cerezas frescas de castellón')==='Cerezas frescas de Castellón','Supplier SEO title changed');
+check(MDO_Tropitop_Editorial::title('Sandía negra')==='Sandía negra','Normal titles unchanged');
+$seo='<h2>Comprar Pack de Melones Premium online: cuatro variedades en una sola caja</h2>'
+    .'<p>Incluye Melón Galia, Cantalupo, Sugar y Sugar Sunset.</p>'
+    .'<p>Tropitop ofrece cada melón para ofrecerte una caja atractiva.</p>'
+    .'<p>Conservación: mantén el melón en un lugar fresco.</p>';
+$seoClean=MDO_Tropitop_Editorial::description($seo,'Pack melones premium','');
+check(!str_contains($seoClean,'Tropitop ofrece'),'Avoid supplier sales copy');
+check(str_contains($seoClean,'Sugar Sunset'),'Do not remove product composition');
+check(str_contains($seoClean,'Conservación'),'Do not remove storage guidance');
+
 echo "TROPITOP_EDITORIAL_SMOKE_OK\n";
