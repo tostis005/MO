@@ -110,3 +110,6 @@ echo 'TROPITOP_CURSOR_STATUS='.wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_U
 
 // Audit names and reasons for all outstanding entries.
 foreach ($failed as $pid=>$entry) { echo 'REMAINING_TROPITOP='.wp_json_encode(array('id'=>$pid,'issue'=>$entry['reason'],'url'=>$entry['url']??''),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL; }
+
+// Read existing listing titles for reconciliation.
+foreach($failed as $id=>$entry){$product=isset($entry['woo_id'])?wc_get_product((int)$entry['woo_id']):false; echo 'TROPITOP_WOO_TITLE='.wp_json_encode(array('id'=>(string)$id,'title'=>$product?$product->get_name():'','state'=>$product?$product->get_status():'missing'),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;}
