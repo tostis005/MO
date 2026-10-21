@@ -1,0 +1,122 @@
+name: Actualizar los banners nativos de WCFM de 10 productores
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sync-wcfm-producer-banners-20261021.yml'
+      - '.github/scripts/sync-approved-wcfm-banners-20261020.php'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: emdo-production-producer-directory-release
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validar script y manifiesto de diez banners
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/sync-approved-wcfm-banners-20261020.php
+          python3 - <<'PY'
+          import json
+          manifest=json.load(open('elmercadodeorigen-child/assets/images/producer-banners/manifest.json'))
+          entries=manifest['producers']
+          assert len(entries)==10 and len({x['slug'] for x in entries})==10
+          assert manifest['dimensions']==[2022,778]
+          print('TEN_APPROVED_PRODUCER_BANNERS')
+          PY
+      - name: Migrar escritorio, movil y listado con backup y comprobación en la web real
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          : "${STAGING_HOST:?SSH host missing}"
+          : "${STAGING_USER:?SSH user missing}"
+          : "${SSHPASS:?SSH password missing}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ConnectTimeout=15 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          STAGE="/tmp/emdo-wcfm-banner-sync-$GITHUB_RUN_ID.php"
+          sshpass -e scp $SCP .github/scripts/sync-approved-wcfm-banners-20261020.php "$STAGING_USER@$STAGING_HOST:$STAGE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "bash -s -- '$GITHUB_RUN_ID' '$STAGE'" <<'REMOTE'
+          set -Eeuo pipefail
+          run_id="$1"
+          script="$2"
+          root=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+          php=/opt/plesk/php/8.2/bin/php
+          wp="$(command -v wp)"
+          backup="/tmp/emdo-wcfm-banner-settings-$run_id.bak"
+          export EMDO_BANNER_META_BACKUP="$backup"
+          rollback() {
+            status=$?
+            trap - EXIT
+            if [ "$status" -ne 0 ] && [ -s "$backup" ]; then
+              echo "::error::WCFM verification failed; rolling back all ten vendor settings"
+              EMDO_BANNER_MODE=rollback "$php" -d memory_limit=768M "$wp" eval-file "$script" --path="$root" --allow-root || true
+              "$php" "$wp" cache flush --path="$root" --allow-root >/dev/null 2>&1 || true
+            fi
+            rm -f "$script"
+            exit "$status"
+          }
+          trap rollback EXIT
+          test -s "$script" && test -s "$root/wp-config.php"
+          "$php" -l "$script"
+          site="$("$php" "$wp" option get siteurl --path="$root" --skip-plugins --skip-themes --allow-root)"
+          case "$site" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) ;;
+            *) echo "Wrong WordPress production site"; exit 1 ;;
+          esac
+          echo '=== WCFM BEFORE: READ ONLY ==='
+          EMDO_BANNER_MODE=audit "$php" -d memory_limit=768M "$wp" eval-file "$script" --path="$root" --allow-root
+          echo '=== WCFM APPLY: APPROVED SOURCE + OPTIMIZED MOBILE ==='
+          EMDO_BANNER_MODE=apply "$php" -d memory_limit=768M "$wp" eval-file "$script" --path="$root" --allow-root
+          echo '=== WCFM VERIFY ALL 3 FIELDS FOR 10 STORES ==='
+          EMDO_BANNER_MODE=verify "$php" -d memory_limit=768M "$wp" eval-file "$script" --path="$root" --allow-root
+          "$php" "$wp" cache flush --path="$root" --allow-root || true
+          "$php" -r '
+          $dir=$argv[1]."/wp-content/uploads/elmercado-hot-static-v1";
+          $slugs=["1957","hidalgo-de-la-jara","tolecarnes","la-huerta-de-ana-mary",
+          "montjam","selectos-de-castilla","latitudes","chocolates-artesanos-isabel",
+          "ikore-kofi","tropitop"];
+          $removed=0;
+          foreach($slugs as $slug) {
+            foreach(["/tienda/$slug/","/en/store/$slug/"] as $base) {
+              for($page=1;$page<=100;$page++) {
+                $path=$page===1?$base:$base."page/$page/";
+                $file=$dir."/vendor-page-".hash("sha256",$path).".html";
+                if(is_file($file) && unlink($file)) $removed++;
+              }
+            }
+          }
+          foreach(["en-store-hidalgo-de-la-jara.html","en-store-montjam.html"] as $name) {
+            if(is_file("$dir/$name") && unlink("$dir/$name")) $removed++;
+          }
+          echo "STOREFRONT_EARLY_CACHE_CLEARED count=$removed\n";
+          ' "$root"
+          echo '=== PUBLIC WCFM STOREFRONT CHECK ==='
+          for slug in 1957 hidalgo-de-la-jara tolecarnes la-huerta-de-ana-mary montjam selectos-de-castilla latitudes chocolates-artesanos-isabel ikore-kofi tropitop; do
+            tmp="/tmp/emdo-store-banner-$slug-$run_id.html"
+            curl --fail --silent --show-error --location --retry 2 --max-time 55 "https://www.elmercadodeorigen.com/tienda/$slug/?emdo-banner-verify=$run_id" -o "$tmp"
+            grep -Fq "emdo-producer-$slug-banner-20261020.webp" "$tmp" || { echo "::error::Incorrect storefront desktop image: $slug"; exit 1; }
+            rm -f "$tmp"
+            echo "PUBLIC_WCFM_BANNER_OK $slug"
+          done
+          trap - EXIT
+          rm -f "$script"
+          echo "ALL_TEN_WCFM_BANNERS_SYNCED backup=$backup"
+          REMOTE
+          echo 'PRODUCTION_WCFM_THREE_BANNERS_VERIFIED'
