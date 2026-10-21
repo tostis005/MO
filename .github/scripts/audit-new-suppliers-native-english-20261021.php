@@ -1,5 +1,7 @@
 <?php
-/** Read-only new-supplier SEO and English completeness inventory, EMDO production. */
+/** Read-only new-supplier SEO and English completeness inventory, EMDO production.
+ * Re-audit after six verified Ikore Kofi English product releases; no writes.
+ */
 if (!defined('ABSPATH') || !defined('WP_CLI') || !WP_CLI || !class_exists('WooCommerce') || !class_exists('MDO_Database')) {
     throw new RuntimeException('WordPress + supplier sync required');
 }
