@@ -1,0 +1,112 @@
+name: Deploy refreshed category hub copy to production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-category-hub-copy-20261021.yml'
+      - 'elmercadodeorigen-child/page-categorias.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emdo-category-hub-copy-production-20261021
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate approved category copy
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          src='elmercadodeorigen-child/page-categorias.php'
+          php -l "$src"
+          grep -q 'frutos-secos' "$src"
+          grep -q 'cosmetica-natural' "$src"
+          grep -q 'mieles' "$src"
+          grep -q 'bebidas' "$src"
+          ! grep -q 'agrupados en una misma categoría para consultar toda la selección' "$src"
+          test -n "${STAGING_HOST:-}" && test -n "${STAGING_USER:-}" && test -n "${SSHPASS:-}"
+      - name: Configure SSH and copy file to temporary production location
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          sshpass -e scp $SCP elmercadodeorigen-child/page-categorias.php \
+            "$STAGING_USER@$STAGING_HOST:/tmp/emdo-category-hub-copy-${GITHUB_RUN_ID}.php"
+      - name: Back up and deploy only the category page template
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ServerAliveInterval=15 -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "bash -s -- '$GITHUB_RUN_ID' '$GITHUB_SHA'" <<'REMOTE'
+          set -Eeuo pipefail
+          RUN="$1"; COMMIT="$2"
+          staged="/tmp/emdo-category-hub-copy-${RUN}.php"
+          trap 'rm -f "$staged"' EXIT
+          [ -s "$staged" ]
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp)"
+          [ -x "$php_bin" ] && [ -n "$wp_bin" ]
+          prod=''
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p="$(dirname "$cfg")"
+            site="$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+            case "$site" in
+              https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com)
+                prod="$p"; break ;;
+            esac
+          done
+          test -n "$prod"
+          theme="$prod/wp-content/themes/elmercadodeorigen-child"
+          target="$theme/page-categorias.php"
+          test -f "$target" && test -f "$theme/inc/categories-hub-010257.php"
+          "$php_bin" -l "$staged"
+          backup_root="$HOME/.elmercado-rollbacks/category-hub-copy"
+          mkdir -p "$backup_root"
+          backup="$backup_root/before-${RUN}-${COMMIT:0:10}.php"
+          cp -p "$target" "$backup"
+          rollback() { status=$?; if [ "$status" -ne 0 ]; then cp -p "$backup" "$target"; fi; exit "$status"; }
+          trap rollback EXIT
+          cp "$staged" "$target"
+          "$php_bin" -l "$target"
+          cmp -s "$staged" "$target"
+          grep -q "cosmetica-natural" "$target"
+          ! grep -q 'agrupados en una misma categoría para consultar toda la selección' "$target"
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+          printf 'CATEGORY_HUB_TEMPLATE_DEPLOYED sha=%s backup=%s\n' "$(sha256sum "$target" | cut -d' ' -f1)" "$backup"
+          trap - EXIT
+          REMOTE
+      - name: Public page smoke (nonblocking on origin timeout)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if curl -fLsS --retry 1 --max-time 30 \
+            "https://www.elmercadodeorigen.com/categorias/?category_copy_release=${GITHUB_SHA}" \
+            -o /tmp/emdo-category-hub-copy.html; then
+            grep -q 'data-emo-categories-hub="010259"' /tmp/emdo-category-hub-copy.html
+            ! grep -q 'agrupados en una misma categoría para consultar toda la selección' /tmp/emdo-category-hub-copy.html
+            echo 'CATEGORY_HUB_PUBLIC_COPY_OK'
+          else
+            echo '::warning::Site HTTP timeout: deployed template verified on disk; public browser check deferred.'
+          fi
