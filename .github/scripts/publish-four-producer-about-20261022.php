@@ -113,7 +113,7 @@ foreach ($approved as $slug => $html) {
     $old_profile = (string) ($old_settings['shop_description'] ?? '');
     $old_visible = trim(wp_strip_all_tags($old_primary !== '' ? $old_primary : $old_profile));
     // A concurrent editorial revision must never be overwritten automatically.
-    if (mb_strlen($old_visible) > 750 || mb_strlen($old_visible) < 40) {
+    if (($old_primary !== $html || $old_profile !== $html) && (mb_strlen($old_visible) > 750 || mb_strlen($old_visible) < 40)) {
         throw new RuntimeException("Vendor $slug: About copy has unexpectedly changed (".mb_strlen($old_visible)." characters)");
     }
     if (mb_strlen(wp_strip_all_tags($html)) < 2000 || count(explode('<p>', $html)) < 7) {
