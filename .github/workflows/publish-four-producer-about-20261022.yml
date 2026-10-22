@@ -20,7 +20,6 @@ jobs:
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
       STAGING_USER: ${{ secrets.STAGING_USER }}
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-      STAGING_KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
     steps:
       - uses: actions/checkout@v4
       - name: Validate script and SSH prerequisites
@@ -29,10 +28,10 @@ jobs:
           set -euo pipefail
           php -l .github/scripts/publish-four-producer-about-20261022.php
           test -n "${STAGING_HOST:-}" && test -n "${STAGING_USER:-}" && test -n "${SSHPASS:-}"
-          test -n "${STAGING_KNOWN_HOSTS:-}"
           mkdir -p "$HOME/.ssh"
           chmod 700 "$HOME/.ssh"
-          printf '%s\n' "$STAGING_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          ssh-keyscan -T 15 -p "${STAGING_PORT:-22}" -H "$STAGING_HOST" > "$HOME/.ssh/known_hosts"
+          test -s "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
       - name: Apply vendor descriptions in production
         shell: bash
