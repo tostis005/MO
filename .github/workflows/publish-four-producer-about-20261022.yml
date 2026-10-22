@@ -71,7 +71,9 @@ jobs:
           set -euo pipefail
           while IFS='|' read -r slug marker; do
             url="https://www.elmercadodeorigen.com/tienda/$slug/acercade/?fresh=${GITHUB_RUN_ID}"
-            curl -fLsS --retry 3 --max-time 45 -H 'Cache-Control: no-cache' "$url" | grep -Fq "$marker"
+            output="/tmp/about-page-$slug.html"
+            curl -fLsS --retry 3 --max-time 45 -H 'Cache-Control: no-cache' "$url" -o "$output"
+            grep -Fq "$marker" "$output" || { echo "ABOUT_PUBLIC_MISSING_MARKER $slug"; exit 19; }
             echo "PUBLIC_ABOUT_OK $slug"
           done <<'STORES'
           chocolates-artesanos-isabel|La historia de Chocolates Artesanos Isabel comienza mucho antes
