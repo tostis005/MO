@@ -46,19 +46,23 @@ jobs:
           sshpass -e ssh -p "$port" -o StrictHostKeyChecking=yes "$STAGING_USER@$STAGING_HOST" bash -s -- "$remote" <<'REMOTE'
           set -euo pipefail
           script="$1"
+          echo 'ABOUT_DEPLOY_REMOTE_CONNECTED'
           trap 'rm -f "$script"' EXIT
-          wp_bin="$(command -v wp)"
-          php_bin="$(command -v php)"
+          wp_bin="$(command -v wp || true)"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          [ -n "$wp_bin" ] && [ -n "$php_bin" ] || { echo 'ABOUT_DEPLOY_WP_CLI_NOT_FOUND'; exit 12; }
           site_path=""
           for config in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
             candidate="$(dirname "$config")"
             url="$("$php_bin" "$wp_bin" option get siteurl --path="$candidate" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
             case "$url" in
-              https://www.elmercadodeorigen.com|https://elmercadodeorigen.com)
+              https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com)
                 site_path="$candidate"; break ;;
             esac
           done
-          test -n "$site_path"
+          [ -n "$site_path" ] || { echo 'ABOUT_DEPLOY_PRODUCTION_SITE_NOT_FOUND'; exit 13; }
+          echo 'ABOUT_DEPLOY_WP_CLI_STARTED'
           "$php_bin" "$wp_bin" eval-file "$script" --path="$site_path" --allow-root
           REMOTE
       - name: Confirm approved About copy appears publicly
