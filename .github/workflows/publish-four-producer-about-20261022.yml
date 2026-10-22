@@ -63,7 +63,7 @@ jobs:
           done
           [ -n "$site_path" ] || { echo 'ABOUT_DEPLOY_PRODUCTION_SITE_NOT_FOUND'; exit 13; }
           echo 'ABOUT_DEPLOY_WP_CLI_STARTED'
-          "$php_bin" "$wp_bin" eval-file "$script" --path="$site_path" --allow-root
+          "$php_bin" -d memory_limit=1024M "$wp_bin" eval-file "$script" --path="$site_path" --allow-root --skip-plugins=woostify-sites-library
           REMOTE
       - name: Confirm approved About copy appears publicly
         shell: bash
