@@ -1,0 +1,78 @@
+name: Publish approved four producer About pages
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-four-producer-about-20261022.yml'
+      - '.github/scripts/publish-four-producer-about-20261022.php'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: emdo-approved-vendor-about-oct22
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate script and SSH prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/publish-four-producer-about-20261022.php
+          test -n "${STAGING_HOST:-}" && test -n "${STAGING_USER:-}" && test -n "${SSHPASS:-}"
+          test -n "${STAGING_KNOWN_HOSTS:-}"
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$STAGING_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+      - name: Apply vendor descriptions in production
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          port="${STAGING_PORT:-22}"
+          script=".github/scripts/publish-four-producer-about-20261022.php"
+          remote="/tmp/emdo-approved-about-${GITHUB_RUN_ID}.php"
+          sshpass -e scp -P "$port" -o StrictHostKeyChecking=yes "$script" "$STAGING_USER@$STAGING_HOST:$remote"
+          sshpass -e ssh -p "$port" -o StrictHostKeyChecking=yes "$STAGING_USER@$STAGING_HOST" bash -s -- "$remote" <<'REMOTE'
+          set -euo pipefail
+          script="$1"
+          trap 'rm -f "$script"' EXIT
+          wp_bin="$(command -v wp)"
+          php_bin="$(command -v php)"
+          site_path=""
+          for config in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            candidate="$(dirname "$config")"
+            url="$("$php_bin" "$wp_bin" option get siteurl --path="$candidate" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+            case "$url" in
+              https://www.elmercadodeorigen.com|https://elmercadodeorigen.com)
+                site_path="$candidate"; break ;;
+            esac
+          done
+          test -n "$site_path"
+          "$php_bin" "$wp_bin" eval-file "$script" --path="$site_path" --allow-root
+          REMOTE
+      - name: Confirm approved About copy appears publicly
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS='|' read -r slug marker; do
+            url="https://www.elmercadodeorigen.com/tienda/$slug/acercade/?fresh=${GITHUB_RUN_ID}"
+            curl -fLsS --retry 3 --max-time 45 -H 'Cache-Control: no-cache' "$url" | grep -Fq "$marker"
+            echo "PUBLIC_ABOUT_OK $slug"
+          done <<'STORES'
+          chocolates-artesanos-isabel|La historia de Chocolates Artesanos Isabel comienza mucho antes
+          tropitop|La historia de Tropitop nace de una tradición agrícola familiar
+          ikore-kofi|La historia de Ikore Kofi está ligada a la búsqueda
+          latitudes|La historia de Latitudes está vinculada a una especialización
+          STORES
