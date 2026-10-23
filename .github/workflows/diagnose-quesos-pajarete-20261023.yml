@@ -1,4 +1,4 @@
-name: Diagnose Quesos Pajarete source media and markup
+name: Diagnose Quesos Pajarete source media and routes
 on:
   push:
     branches: [main]
@@ -65,7 +65,7 @@ jobs:
           export PATH="$(dirname "$php"):$PATH"
           "$php" -d memory_limit=1536M "$wp" eval-file "$script" --path="$prod" --allow-root
           REMOTE
-          grep -q '^PAJARETE_DIAG=' /tmp/pajarete-diagnostic.log
+          grep -q '^PAJARETE_ROUTE=' /tmp/pajarete-diagnostic.log
       - name: Save diagnostics
         if: always()
         uses: actions/upload-artifact@v4
