@@ -109,7 +109,7 @@ jobs:
             grep -Eiq '^cache-control:.*no-cache' "/tmp/home-$n.head"
             grep -Eiq '^x-el-mercado-home-fresh:[[:space:]]*BYPASS' "/tmp/home-$n.head"
             grep -q 'emo-hero__visual--vendors' "/tmp/home-$n.body"
-            grep -q 'data-emo-vendor-count="6"' "/tmp/home-$n.body"
+            grep -q 'data-emo-vendor-count="9"' "/tmp/home-$n.body"
             grep -q 'id="elmercado-home-visibility-polish-010245"' "/tmp/home-$n.body"
             grep -q 'object-fit: cover !important' "/tmp/home-$n.body"
             if grep -q 'De los más elegidos' "/tmp/home-$n.body"; then
@@ -135,14 +135,17 @@ jobs:
           count = int(count_match.group(1)) if count_match else 0
           hero = re.search(r'<section class="emo-hero".*?</section>', html, re.S)
           cards = len(re.findall(r'<figcaption><span>Productor</span><strong>', hero.group(0))) if hero else 0
-          if cards != count or count != 6:
-              raise SystemExit(f'Producer card mismatch: marker={count}, cards={cards}; expected 6')
+          if cards != count or count != 9:
+              raise SystemExit(f'Producer card mismatch: marker={count}, cards={cards}; expected 9')
 
-          expected_names = ['Hidalgo de la Jara', '1957', 'Montjam', 'Tolecarnes', 'Tropitop', 'Latitudes']
+          expected_names = ['Hidalgo de la Jara', '1957', 'Montjam', 'Tolecarnes', 'Tropitop', 'Latitudes', 'La Huerta de Ana Mary', 'Ikore Kofi', 'Selectos de Castilla']
           names = re.findall(r'<figcaption><span>Productor</span><strong>(.*?)</strong>', hero.group(0), re.S) if hero else []
           names = [html_module.unescape(name.strip()) for name in names]
           if names != expected_names:
               raise SystemExit(f'Unexpected producer order: {names!r}')
+
+          if 'emo-vendor-count-9' not in hero.group(0):
+              raise SystemExit('Nine-card responsive grid class missing')
 
           directory_link = re.search(r'<a class="emo-hero-vendors-more" href="([^"]+)"', hero.group(0)) if hero else None
           if not directory_link or '/productores/' not in html_module.unescape(directory_link.group(1)):

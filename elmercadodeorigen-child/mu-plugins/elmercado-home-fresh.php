@@ -173,10 +173,10 @@ function elmercado_home_vendor_url_010244( int $vendor_id ): string {
  *
  * @return int[]
  */
-function elmercado_home_active_vendor_ids_010244( int $limit = 6 ): array {
+function elmercado_home_active_vendor_ids_010244( int $limit = 9 ): array {
 	global $wpdb;
 
-	$limit = max( 1, min( 6, $limit ) );
+	$limit = max( 1, min( 9, $limit ) );
 	$ids   = get_users(
 		array(
 			'role__in' => array( 'wcfm_vendor', 'vendor', 'seller' ),
@@ -228,7 +228,7 @@ function elmercado_home_active_vendor_ids_010244( int $limit = 6 ): array {
 	/*
 	 * Editorial order for the Home hero. Only active producers with published
 	 * products are eligible; names are matched to the actual WCFM store names.
-	 * Do not cap or sort candidates alphabetically before finding these six.
+	 * Do not cap or sort candidates alphabetically before finding these nine.
 	 */
 	$featured_slugs = array(
 		'hidalgo-de-la-jara',
@@ -237,6 +237,9 @@ function elmercado_home_active_vendor_ids_010244( int $limit = 6 ): array {
 		'tolecarnes',
 		'tropitop',
 		'latitudes',
+		'la-huerta-de-ana-mary',
+		'ikore-kofi',
+		'selectos-de-castilla',
 	);
 	$active_by_slug = array();
 	foreach ( $vendors as $vendor_id ) {
@@ -257,17 +260,17 @@ function elmercado_home_active_vendor_ids_010244( int $limit = 6 ): array {
 }
 
 /**
- * Render between one and six valid producer cards.
+ * Render between one and nine valid producer cards.
  */
 function elmercado_render_home_vendor_visual_010244(): string {
-	$vendor_ids = elmercado_home_active_vendor_ids_010244( 6 );
+	$vendor_ids = elmercado_home_active_vendor_ids_010244( 9 );
 	if ( empty( $vendor_ids ) ) {
 		return '';
 	}
 
 	$cards = array();
 	foreach ( $vendor_ids as $vendor_id ) {
-		if ( count( $cards ) >= 6 ) {
+		if ( count( $cards ) >= 9 ) {
 			break;
 		}
 
@@ -301,7 +304,7 @@ function elmercado_render_home_vendor_visual_010244(): string {
 }
 
 /**
- * Requested Home-only sizing and 1–6 producer collage CSS.
+ * Requested Home-only sizing and 1–9 producer collage CSS.
  */
 function elmercado_home_vendor_css_010244(): string {
 	return <<<'CSS'
@@ -420,10 +423,82 @@ html body.home.elmercado-child-theme .emo-home .emo-hero__grid > .emo-hero__visu
 	transform: none !important;
 }
 
+
+/* Nine producers fit within the old desktop mosaic's ~370-420px height. */
+html body.home.elmercado-child-theme .emo-home .emo-hero__grid > .emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-9 {
+	display: grid !important;
+	grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+	grid-template-rows: repeat(3, clamp(118px, 8.8vw, 132px)) !important;
+	grid-auto-rows: auto !important;
+	gap: 10px !important;
+	width: 100% !important;
+	height: auto !important;
+	min-height: 0 !important;
+	max-height: none !important;
+	transform: none !important;
+}
+html body.home.elmercado-child-theme .emo-home .emo-hero__grid > .emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-9 > .emo-hero-card {
+	grid-column: auto !important;
+	grid-row: auto !important;
+	width: auto !important;
+	height: auto !important;
+	min-width: 0 !important;
+	min-height: 0 !important;
+	border-radius: 13px !important;
+	transform: none !important;
+}
+html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-9 .emo-hero-card img {
+	object-fit: cover !important;
+	object-position: center center !important;
+}
+html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-9 .emo-hero-card figcaption {
+	padding: .58rem .7rem !important;
+}
+html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-9 .emo-hero-card figcaption strong {
+	font-size: .8rem !important;
+	line-height: 1.18 !important;
+}
+@media (min-width: 600px) and (max-width: 1180px) {
+	html body.home.elmercado-child-theme .emo-home .emo-hero__grid > .emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-9 {
+		width: min(100%, 720px) !important;
+		margin: .35rem auto 0 !important;
+		grid-template-rows: repeat(3, clamp(122px, 13vw, 146px)) !important;
+		gap: clamp(9px, 1.5vw, 12px) !important;
+	}
+}
+@media (max-width: 599px) {
+	html body.home.elmercado-child-theme .emo-home .emo-hero__grid > .emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-9 {
+		width: 100% !important;
+		margin: .15rem auto 0 !important;
+		grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+		grid-template-rows: repeat(3, clamp(106px, 24vw, 128px)) !important;
+		gap: 8px !important;
+	}
+	html body.home.elmercado-child-theme .emo-home .emo-hero__visual--vendors.emo-vendor-count-9 > .emo-hero-card {
+		min-height: 0 !important;
+		border-radius: 10px !important;
+	}
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-9 .emo-hero-card figcaption {
+		padding: .42rem .46rem !important;
+		gap: 0 !important;
+	}
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-9 .emo-hero-card figcaption span {
+		display: none !important;
+	}
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-9 .emo-hero-card figcaption strong {
+		display: -webkit-box !important;
+		font-size: clamp(.63rem, 1.82vw, .72rem) !important;
+		line-height: 1.15 !important;
+		letter-spacing: -.01em;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 3 !important;
+		overflow-wrap: anywhere;
+	}
+}
+
 /*
- * Keep the producer directory link directly beneath the mosaic. It is a
- * sibling of the visual, not a seventh grid card, so six-card sizing remains
- * unchanged at every breakpoint.
+ * Keep the producer directory link beneath the mosaic, outside the card grid.
+ * All nine cards retain equal-sized cells; the link is not a tenth card.
  */
 html body.home .emo-home .emo-hero__grid > .emo-hero-vendors-more {
 	grid-column: 2;
@@ -586,8 +661,20 @@ function elmercado_home_fresh_output_010244( string $html ): string {
 		}
 	}
 
-	if ( ! str_contains( $html, 'id="elmercado-home-vendors-010244"' ) ) {
-		$style    = '<style id="elmercado-home-vendors-010244">' . elmercado_home_vendor_css_010244() . '</style>';
+	/* Cached Home HTML can contain the previous six-card style. Replace it on
+	 * every request so the nine-card layout takes effect even on a cache HIT. */
+	$style = '<style id="elmercado-home-vendors-010244">' . elmercado_home_vendor_css_010244() . '</style>';
+	if ( str_contains( $html, 'id="elmercado-home-vendors-010244"' ) ) {
+		$updated_styles = preg_replace_callback(
+			'~<style\\b[^>]*id=["\\\']elmercado-home-vendors-010244["\\\'][^>]*>.*?</style>~is',
+			static function () use ( $style ): string { return $style; },
+			$html,
+			1
+		);
+		if ( is_string( $updated_styles ) ) {
+			$html = $updated_styles;
+		}
+	} else {
 		$head_end = strpos( $html, '</head>' );
 		if ( false !== $head_end ) {
 			$html = substr_replace( $html, $style, $head_end, 0 );
