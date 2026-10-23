@@ -2,10 +2,10 @@
 /**
  * Tropitop-specific WooCommerce shipping guard.
  *
- * The Spanish mainland weight quotes were captured from Tropitop's original
- * cart on 2026-10-20. Only ES mainland is enabled after explicit verification
- * of rates and cart calculation; all other source-advertised destinations
- * remain blocked until their independent postal-code quotes are verified.
+ * Mainland Spain shipping amounts follow the merchant-provided i2Gourmet
+ * refrigerated parcel tariff (23 October 2026), inclusive of VAT as shown
+ * in the "Precio" column. Bands are upper-inclusive (up to 3/5/10/.../100 kg).
+ * Other destinations stay blocked until independently verified.
  *
  * Never modify rates for another WCFM vendor.
  */
@@ -71,18 +71,33 @@ final class MDO_Tropitop_Shipping {
         return false;
     }
 
-    /** Observed bands; conservative upper amounts prevent undercharging. */
+    /**
+     * Merchant's refrigerated parcel rate card (gross EUR, VAT included).
+     * Charge the price of the first bracket whose maximum covers the total
+     * package weight. Do not extrapolate beyond the published 100 kg limit.
+     */
     public static function cost_for_weight( float $kg ): ?float {
         if ( $kg <= 0.0 ) { return null; }
-        if ( $kg <= 5.0001 ) { return 2.95; }
-        if ( $kg <= 10.0001 ) { return 5.95; }
-        if ( $kg <= 15.0001 ) { return 7.95; }
-        if ( $kg <= 20.0001 ) { return 10.95; }
-        if ( $kg <= 25.0001 ) { return 12.95; }
-        if ( $kg <= 30.0001 ) { return 15.95; }
-        // The 36kg price was checked, but intermediate 30–35kg and >36kg
-        // were not. Do not guess amounts for unmeasured ranges.
-        if ( abs( $kg - 36.0 ) < 0.0001 ) { return 20.95; }
+        $bands = array(
+            3 => 2.95,
+            5 => 3.95,
+            10 => 5.95,
+            15 => 7.95,
+            20 => 10.95,
+            30 => 15.95,
+            40 => 20.95,
+            50 => 25.95,
+            60 => 31.95,
+            70 => 38.95,
+            80 => 44.95,
+            90 => 49.95,
+            100 => 55.95,
+        );
+        foreach ( $bands as $maximum_kg => $price ) {
+            if ( $kg <= (float) $maximum_kg + 0.000001 ) {
+                return $price;
+            }
+        }
         return null;
     }
 

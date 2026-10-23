@@ -306,15 +306,29 @@ verify(reflected('honey_single_size',new DOMXPath($d),'2525',
 
 echo "Tropitop connector and shipping smoke checks passed.\n";
 
-$expected = array( 3 => 2.95, 4 => 2.95, 6 => 5.95, 8 => 5.95, 9 => 5.95,
-    12 => 7.95, 18 => 10.95, 20 => 10.95, 24 => 12.95,
-    27 => 15.95, 36 => 20.95 );
-foreach ( $expected as $kg => $price ) {
+// Merchant-provided i2Gourmet rate card, "Precio" (VAT-inclusive), 23 Oct 2026.
+$expected = array(
+    array( 0.1, 2.95 ), array( 3, 2.95 ), array( 3.01, 3.95 ),
+    array( 4, 3.95 ), array( 5, 3.95 ), array( 5.01, 5.95 ),
+    array( 9, 5.95 ), array( 10, 5.95 ), array( 10.01, 7.95 ),
+    array( 12, 7.95 ), array( 15, 7.95 ), array( 15.01, 10.95 ),
+    array( 18, 10.95 ), array( 20, 10.95 ), array( 20.01, 15.95 ),
+    array( 24, 15.95 ), array( 27, 15.95 ), array( 30, 15.95 ),
+    array( 30.01, 20.95 ), array( 33, 20.95 ), array( 40, 20.95 ),
+    array( 40.01, 25.95 ), array( 50, 25.95 ), array( 50.01, 31.95 ),
+    array( 60, 31.95 ), array( 60.01, 38.95 ), array( 70, 38.95 ),
+    array( 70.01, 44.95 ), array( 80, 44.95 ), array( 80.01, 49.95 ),
+    array( 90, 49.95 ), array( 90.01, 55.95 ), array( 100, 55.95 ),
+);
+foreach ( $expected as $case ) {
+    list( $kg, $price ) = $case;
     verify( MDO_Tropitop_Shipping::cost_for_weight( (float) $kg ) === $price,
-        'Source cart shipping mismatch for ' . $kg . 'kg.' );
+        'Merchant mainland shipping mismatch for ' . $kg . ' kg.' );
 }
-verify( null === MDO_Tropitop_Shipping::cost_for_weight( 33.0 ),
-    'Unverified weight bracket must not be guessed.' );
+verify( null === MDO_Tropitop_Shipping::cost_for_weight( 0.0 ),
+    'Zero-weight packages must not receive a shipping quote.' );
+verify( null === MDO_Tropitop_Shipping::cost_for_weight( 100.01 ),
+    'Above 100 kg is outside the merchant tariff.' );
 
 
 // The source storefront sometimes leaves the buy button clickable while
