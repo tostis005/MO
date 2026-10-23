@@ -84,6 +84,11 @@ final class MDO_Woo_Importer {
 		}
 
 		self::apply_common_fields( $product, $payload );
+        if ( 'quesos-pajarete' === (string) $supplier['code'] ) {
+            // Pajarete publishes its verified per-product synopsis via Store API.
+            $product->set_short_description( wp_kses_post( (string) ( $payload['short_description'] ?? '' ) ) );
+        }
+
 		if ( 'tropitop' === (string) $supplier['code'] ) {
 			// This page is sold on EMDO, not on the producer's webshop.
 			// Source fields remain untouched for a traceable future sync.
@@ -212,6 +217,14 @@ final class MDO_Woo_Importer {
 			$category_result = array( 'assigned' => true, 'reason' => 'tropitop_source_category',
 				'category_ids' => $categories, 'score' => null );
 		}
+        if ( 'quesos-pajarete' === (string) $supplier['code'] ) {
+            $pajarete_categories = self::pajarete_category_ids( $payload );
+            if ( $pajarete_categories ) {
+                $product->set_category_ids( $pajarete_categories );
+                $category_result = array( 'assigned' => true, 'reason' => 'pajarete_verified_source_category',
+                    'category_ids' => $pajarete_categories, 'score' => null );
+            }
+        }
 		if ( $is_variable ) {
 			self::apply_variable_product( $product, $variations );
 		} else {
@@ -307,6 +320,15 @@ final class MDO_Woo_Importer {
 		}
 
 
+        // Reassert source-backed categories after third-party save hooks.
+        if ( 'quesos-pajarete' === (string) $supplier['code'] && ! empty( $pajarete_categories ) ) {
+            $set = wp_set_object_terms( $product_id, $pajarete_categories, 'product_cat', false );
+            if ( is_wp_error( $set ) ) {
+                throw new RuntimeException( 'Pajarete: error al confirmar categorías oficiales.' );
+            }
+            clean_post_cache( $product_id );
+        }
+
 		$wpdb->update(
 			$table,
 			array(
@@ -342,6 +364,61 @@ final class MDO_Woo_Importer {
         }
 		return $product_id;
 	}
+
+    /**
+     * Conservative semantic mapping from verified Pajarete native categories
+     * to terms already present in El Mercado de Origen. No new terms created.
+     * Generic marketing categories (bestsellers, featured, gourmet) are ignored.
+     */
+    private static function pajarete_category_ids( array $payload ): array {
+        $source_names = array();
+        foreach ( (array) ( $payload['source_categories'] ?? array() ) as $item ) {
+            if ( is_array( $item ) && isset( $item['name'] ) ) {
+                $source_names[] = remove_accents( mb_strtolower( (string) $item['name'] ) );
+            }
+        }
+        if ( ! $source_names ) { return array(); }
+        $source = implode( ' | ', $source_names );
+        $title = remove_accents( mb_strtolower( (string) ( $payload['title'] ?? '' ) ) );
+        $slug = '';
+        if ( preg_match( '/queso de (?:cabra|oveja)|queso mezcla de cabra y oveja/i', $source ) ||
+             preg_match( '/\\b(?:queso|mini(?:queso|sensaciones)|patrufo|curado|semicurado|gran reserva|blister)\\b/i', $title ) &&
+             ! preg_match( '/\\b(?:mermelada|miel|pan|pate|carne|chorizo)\\b/i', $title ) ) {
+            $slug = 'quesos';
+        } elseif ( str_contains( $source, 'maridaje' ) ) {
+            $slug = 'vinos-y-licores';
+        } elseif ( str_contains( $source, 'conservas de pescado' ) ||
+                   str_contains( $source, 'conservas vegetales' ) ) {
+            $slug = 'conservas';
+        } elseif ( str_contains( $source, 'embutidos' ) ||
+                  ( str_contains( $source, 'conservas de caza' ) &&
+                    preg_match( '/\\b(?:chorizo|salchichon|cecina|lomo|embutido)\\b/i', $title ) ) ) {
+            $slug = 'embutidos-y-curados';
+        } elseif ( str_contains( $source, 'conservas de caza' ) ) {
+            $slug = 'conservas';
+        } elseif ( str_contains( $source, 'pate' ) || preg_match( '/\\bpate\\b/i', $title ) ) {
+            $slug = 'foie-pates-untables';
+        } elseif ( preg_match( '/\\b(?:mermelada|confitura)\\b/i', $title ) ) {
+            $slug = 'mermeladas-y-confituras';
+        } elseif ( preg_match( '/\\bmiel\\b/i', $title ) ) {
+            $slug = 'mieles';
+        } elseif ( preg_match( '/\\b(?:pistacho|macadamia|almendra|anacardo|avellana|nueces)\\b/i', $title ) ) {
+            $slug = 'frutos-secos';
+        } elseif ( preg_match( '/\\baceite de oliva\\b/i', $title ) ) {
+            $slug = 'aceites';
+        } elseif ( str_contains( $source, 'aderezos' ) ) {
+            $slug = 'condimentos-y-especias';
+        } elseif ( ( str_contains( $source, 'regalos' ) || str_contains( $source, 'seleccion premiada' ) ) &&
+                   preg_match( '/\\b(?:pack|lote|cesta|duo|d[uú]o)\\b/iu', $title ) ) {
+            $slug = 'packs-y-lotes';
+        } elseif ( str_contains( $source, 'productos elaborados' ) &&
+                   preg_match( '/\\b(?:carne|cabrito|cordero)\\b/i', $title ) ) {
+            $slug = 'elaborados-carnicos';
+        }
+        if ( '' === $slug ) { return array(); }
+        $term = get_term_by( 'slug', $slug, 'product_cat' );
+        return $term instanceof WP_Term ? array( (int) $term->term_id ) : array();
+    }
 
 	public static function sync_if_active( int $supplier_id, string $source_url ): void {
 		global $wpdb;
