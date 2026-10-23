@@ -41,7 +41,7 @@ final class MDO_Woo_Importer {
 		if ( 'tropitop' === (string) $supplier['code'] ) {
 			$payload['title'] = MDO_Tropitop_Editorial::title( (string) $payload['title'] );
 		}
-		if ( in_array( (string) $supplier['code'], array( 'latitudes', 'chocolates-artesanos-isabel', 'tropitop' ), true ) &&
+		if ( in_array( (string) $supplier['code'], array( 'latitudes', 'chocolates-artesanos-isabel', 'tropitop', 'quesos-pajarete' ), true ) &&
 			! in_array( (string) ( $payload['stock_status'] ?? 'unknown' ), array( 'instock', 'outofstock' ), true ) ) {
 			throw new RuntimeException( 'Stock del proveedor sin verificar: se cancela la importación de esta referencia.' );
 		}
@@ -50,7 +50,7 @@ final class MDO_Woo_Importer {
 		$variations = self::usable_variations( $payload );
 		$declared_variations = isset( $payload['variation_count'] ) ? (int) $payload['variation_count'] : 0;
 		if ( $declared_variations > 1 && ( ! $variations ||
-			( in_array( (string) $supplier['code'], array( 'chocolates-artesanos-isabel', 'tropitop' ), true ) && count( $variations ) < $declared_variations ) ) ) {
+			( in_array( (string) $supplier['code'], array( 'chocolates-artesanos-isabel', 'tropitop', 'quesos-pajarete' ), true ) && count( $variations ) < $declared_variations ) ) ) {
 			throw new RuntimeException( 'El producto tiene opciones/variantes, pero EMDO aún no dispone de la matriz completa de precios y stock. No se importará hasta evitar una ficha incorrecta.' );
 		}
 
@@ -164,7 +164,7 @@ final class MDO_Woo_Importer {
 
 		// Prelaunch products from Latitudes must never become public while its
 		// WCFM vendor is hard-disabled, including after nightly updates.
-		if ( in_array( (string) $supplier['code'], array( 'latitudes', 'chocolates-artesanos-isabel', 'tropitop' ), true ) && get_user_meta( $vendor_id, '_disable_vendor', true ) ) {
+		if ( in_array( (string) $supplier['code'], array( 'latitudes', 'chocolates-artesanos-isabel', 'tropitop', 'quesos-pajarete' ), true ) && get_user_meta( $vendor_id, '_disable_vendor', true ) ) {
 			$product->set_status( 'draft' );
 			$product->set_catalog_visibility( 'hidden' );
 		}
