@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/compare-pajarete-store-api-20261023.yml'
+      - '.github/scripts/compare-pajarete-store-api-20261023.php'
   workflow_dispatch:
 permissions:
   contents: read
