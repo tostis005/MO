@@ -156,8 +156,10 @@ update_option('mdo_tropitop_shipping_rates_verified','0',false);
 // filter: it simulates verified readiness without opening live checkout.
 $fake_ready=static fn()=>'1';
 add_filter('pre_option_mdo_tropitop_shipping_rates_verified',$fake_ready,10,0);
-$shipping_samples=[3=>2.95,4=>2.95,6=>5.95,8=>5.95,9=>5.95,
- 12=>7.95,18=>10.95,20=>10.95,24=>12.95,27=>15.95,36=>20.95];
+$shipping_samples=[3=>2.95,4=>3.95,5=>3.95,6=>5.95,8=>5.95,9=>5.95,
+ 12=>7.95,18=>10.95,20=>10.95,24=>15.95,27=>15.95,
+ 30=>15.95,36=>20.95,50=>25.95,60=>31.95,70=>38.95,
+ 80=>44.95,90=>49.95,100=>55.95];
 try {
  foreach($shipping_samples as $kg=>$expected) {
    $fake=new WC_Product_Simple();
