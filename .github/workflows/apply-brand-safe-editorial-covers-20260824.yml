@@ -1,0 +1,132 @@
+name: Apply brand-safe editorial covers 20260824
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-brand-safe-editorial-covers-20260824.yml'
+      - '.github/scripts/apply-brand-safe-editorial-covers-20260824.php'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-blog-image-pagination-010262
+  cancel-in-progress: false
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate repair script
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/apply-brand-safe-editorial-covers-20260824.php
+          : "${STAGING_HOST:?STAGING_HOST missing}"
+          : "${STAGING_USER:?STAGING_USER missing}"
+          : "${STAGING_PASSWORD:?STAGING_PASSWORD missing}"
+      - name: Install SSH helper
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Apply and verify production covers
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 8 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+          REMOTE="/tmp/emdo-brand-safe-covers-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          sshpass -e scp $SCP .github/scripts/apply-brand-safe-editorial-covers-20260824.php "$STAGING_USER@$STAGING_HOST:$REMOTE/"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sh -s -- '$PROD_PATH' '$REMOTE' '${GITHUB_SHA}'" <<'REMOTE_SCRIPT'
+          set -eu
+          prod="$1"; incoming="$2"; source_sha="$3"
+          wp_bin="$(command -v wp)"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_cmd="$php_bin -d memory_limit=768M $wp_bin --path=$prod --skip-plugins --skip-themes --allow-root"
+          rollback_root="$HOME/.elmercado-rollbacks/elmercadodeorigen.com"
+          backup_dir="$rollback_root/$(date -u +%Y%m%dT%H%M%SZ)-before-brand-safe-covers"
+          mkdir -p "$backup_dir"
+          state="$backup_dir/featured-state.json"
+
+          MDO_COVER_MODE=backup MDO_COVER_STATE_FILE="$state" sh -c "$wp_cmd eval-file '$incoming/apply-brand-safe-editorial-covers-20260824.php'" > "$backup_dir/backup.json"
+          test -s "$state"
+          changed=1
+          rollback_on_error() {
+            rc=$?
+            if [ "$rc" -ne 0 ] && [ "$changed" -eq 1 ]; then
+              MDO_COVER_MODE=restore MDO_COVER_STATE_FILE="$state" sh -c "$wp_cmd eval-file '$incoming/apply-brand-safe-editorial-covers-20260824.php'" >/dev/null 2>&1 || true
+              sh -c "$wp_cmd cache flush" >/dev/null 2>&1 || true
+            fi
+            exit "$rc"
+          }
+          trap rollback_on_error EXIT
+
+          MDO_COVER_MODE=apply MDO_COVER_STATE_FILE="$state" sh -c "$wp_cmd eval-file '$incoming/apply-brand-safe-editorial-covers-20260824.php'" > "$incoming/report.json"
+          "$php_bin" -r '$r=json_decode(file_get_contents($argv[1]),true);if(!is_array($r)||($r["status"]??"")!=="ok"||($r["custom_count"]??0)!==12||($r["pexels_count"]??0)!==6){fwrite(STDERR,"cover report invalid\n");exit(1);}echo "COVER_DATABASE_OK\n";' "$incoming/report.json"
+          sh -c "$wp_cmd cache flush" >/dev/null 2>&1 || true
+
+          "$php_bin" -r '$r=json_decode(file_get_contents($argv[1]),true);foreach($r["local"] as $x){echo $x["asset"]."\t".$x["url"]."\n";}foreach($r["pexels"] as $x){echo $x["pexels_id"]."\t".$x["url"]."\n";}' "$incoming/report.json" > "$incoming/checks.tsv"
+          checks=0
+          while IFS="$(printf '\t')" read -r marker url; do
+            [ -n "$marker" ] && [ -n "$url" ]
+            file="$incoming/public-$checks.html"
+            result="$(curl -ksS -L --retry 3 --retry-delay 2 --connect-timeout 12 --max-time 60 -A 'EMDO brand safe cover certification/20260824' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$file" -w '%{http_code}|%{url_effective}' "${url}?emdo_cover_cert=${source_sha}")"
+            code="${result%%|*}"
+            [ "$code" = 200 ] || { echo "HTTP $code for $url" >&2; exit 1; }
+            grep -Fq "$marker" "$file" || { echo "Expected cover marker $marker not rendered for $url" >&2; exit 1; }
+            checks=$((checks+1))
+          done < "$incoming/checks.tsv"
+          [ "$checks" -eq 18 ]
+
+          # Verify the Journal cards too: the user's review is on these archive pages.
+          : > "$incoming/archive-all.html"
+          for page in 1 2 3 4 5 6; do
+            if [ "$page" -eq 1 ]; then path='/journal/'; else path="/journal/page/$page/"; fi
+            file="$incoming/archive-$page.html"
+            result="$(curl -ksS -L --retry 3 --retry-delay 2 --connect-timeout 12 --max-time 60 -A 'EMDO brand safe cover certification/20260824' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$file" -w '%{http_code}|%{url_effective}' "https://www.elmercadodeorigen.com${path}?emdo_cover_cert=${source_sha}")"
+            code="${result%%|*}"
+            [ "$code" = 200 ] || { echo "Archive $path returned $code" >&2; exit 1; }
+            ! grep -Eqi 'Fatal error:|Parse error:|Uncaught Error:|There has been a critical error|Página no encontrada|Page not found' "$file"
+            cat "$file" >> "$incoming/archive-all.html"
+          done
+          while IFS="$(printf '\t')" read -r marker url; do
+            grep -Fq "$marker" "$incoming/archive-all.html" || { echo "New cover marker $marker missing from Journal cards" >&2; exit 1; }
+          done < "$incoming/checks.tsv"
+
+          for old in 37639098 17056969 11906259 6995300 34100094 3296657 37326564 38289321 28879279 37326360 38681145 5532663 3737656 31275833 34100077; do
+            if grep -Fq "$old" "$incoming"/public-*.html "$incoming/archive-all.html"; then
+              echo "Retired cover marker still rendered: $old" >&2; exit 1
+            fi
+          done
+
+          cp "$incoming/report.json" "$backup_dir/report.json"
+          trap - EXIT
+          echo "PUBLIC_BRAND_SAFE_COVERS_OK article_checks=$checks archive_pages=6"
+          echo "BACKUP_DIR=$backup_dir"
+          echo BRAND_SAFE_EDITORIAL_COVERS_CERTIFIED
+          REMOTE_SCRIPT
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'"
