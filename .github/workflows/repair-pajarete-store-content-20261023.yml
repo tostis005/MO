@@ -100,23 +100,13 @@ jobs:
           echo PAJARETE_REPAIR_WORKFLOW_COMPLETED
           REMOTE
           grep -q '^PAJARETE_REPAIR_REPORT=' /tmp/pajarete-repair.log
-          grep -q '^PAJARETE_REPAIR_WORKFLOW_COMPLETED /tmp/pajarete-repair.log
+          grep -q '^PAJARETE_REPAIR_WORKFLOW_COMPLETED$' /tmp/pajarete-repair.log
           echo "Review image/description/category quality audit and remaining exceptions."
       - name: Save repair results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: quesos-pajarete-content-repair-20261023
-          path: /tmp/pajarete-repair.log
-          if-no-files-found: warn
-          retention-days: 30
- /tmp/pajarete-repair.log
-          echo "Review source scrape/import counts and pending exceptions in workflow logs."
-      - name: Save onboarding results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: quesos-pajarete-onboarding-20261023
           path: /tmp/pajarete-repair.log
           if-no-files-found: warn
           retention-days: 30
