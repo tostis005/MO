@@ -9,7 +9,7 @@ permissions:
   contents: read
 concurrency:
   group: onboard-quesos-pajarete-production
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   onboard:
     runs-on: ubuntu-24.04
@@ -69,7 +69,7 @@ jobs:
             echo "Waiting for production EMDO source: $path"
             ok=0
             for attempt in $(seq 1 75); do
-              actual="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sha256sum '$PROD/wp-content/plugins/mdo-supplier-sync/$path' 2>/dev/null | awk '{print \\\$1}'" 2>/dev/null | tr -d '\r\n' || true)"
+              actual="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sha256sum '$PROD/wp-content/plugins/mdo-supplier-sync/$path' 2>/dev/null | cut -d ' ' -f1" 2>/dev/null | tr -d '\r\n' || true)"
               if [ "$expected" = "$actual" ]; then ok=1; break; fi
               sleep 12
             done
