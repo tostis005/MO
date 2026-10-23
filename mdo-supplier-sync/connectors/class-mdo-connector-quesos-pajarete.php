@@ -50,7 +50,7 @@ final class MDO_Connector_Quesos_Pajarete {
                 }
                 // Catalog archive pagination and explicit product categories only;
                 // never crawl articles, user accounts or checkout.
-                if ( preg_match( '~^/(?:tienda(?:/page/[0-9]+)?|categoria-producto/[a-z0-9-/]+(?:page/[0-9]+)?)/$~', $path ) &&
+                if ( preg_match( '~^/(?:tienda(?:/page/[0-9]+)?|categoria-producto/[a-z0-9/-]+(?:page/[0-9]+)?)/$~', $path ) &&
                     ! isset( $seen[ $url ] ) ) {
                     $queue[$url] = $url;
                 }
