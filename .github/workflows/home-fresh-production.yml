@@ -36,7 +36,7 @@ jobs:
           php -l elmercadodeorigen-child/dropins/advanced-cache.php >/dev/null
           php -l elmercadodeorigen-child/mu-plugins/elmercado-home-fresh.php >/dev/null
           php -l elmercadodeorigen-child/mu-plugins/elmercado-home-visibility-polish.php >/dev/null
-          grep -q 'ELMERCADO_EARLY_HOME_CACHE.*false' elmercadodeorigen-child/dropins/advanced-cache.php
+          grep -q "if ( '/' ===" elmercadodeorigen-child/dropins/advanced-cache.php
           grep -q 'X-El-Mercado-Home-Fresh: BYPASS' elmercadodeorigen-child/mu-plugins/elmercado-home-fresh.php
           grep -q 'object-fit: cover' elmercadodeorigen-child/mu-plugins/elmercado-home-visibility-polish.php
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
