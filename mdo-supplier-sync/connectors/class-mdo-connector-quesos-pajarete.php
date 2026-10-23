@@ -92,6 +92,49 @@ final class MDO_Connector_Quesos_Pajarete {
         if ( self::excluded( $canonical, (string) $product['title'] ) ) {
             throw new RuntimeException( 'Pajarete: producto excluido por nombre.' );
         }
+        // Pajarete's Avada layout keeps genuine descriptions and media in Woo
+        // product data, not in the markup supported by the generic scraper.
+        // Read its official public Store API by exact slug; no price/stock or
+        // variant values are inferred from this merchandising response.
+        $api = self::store_api_product( $canonical );
+        $long = wp_kses_post( (string) ( $api['description'] ?? '' ) );
+        if ( '' === trim( wp_strip_all_tags( $long ) ) ) {
+            throw new RuntimeException( 'Pajarete: Store API sin descripción larga verificable.' );
+        }
+        $short = wp_kses_post( (string) ( $api['short_description'] ?? '' ) );
+        if ( '' === trim( wp_strip_all_tags( $short ) ) ) {
+            // Copy an excerpt of the actual original copy, not invented claims.
+            $short = esc_html( wp_trim_words( wp_strip_all_tags( $long ), 34, '…' ) );
+        }
+        $pictures = array();
+        foreach ( (array) ( $api['images'] ?? array() ) as $image ) {
+            if ( ! is_array( $image ) ) { continue; }
+            $image_url = esc_url_raw( (string) ( $image['src'] ?? '' ) );
+            $host = strtolower( (string) wp_parse_url( $image_url, PHP_URL_HOST ) );
+            $path = (string) wp_parse_url( $image_url, PHP_URL_PATH );
+            if ( in_array( $host, array( self::HOST, 'www.' . self::HOST ), true ) &&
+                str_starts_with( $path, '/wp-content/uploads/' ) &&
+                preg_match( '~\\.(?:png|jpe?g|webp)$~i', $path ) ) {
+                $pictures[$image_url] = $image_url;
+            }
+        }
+        if ( ! $pictures ) {
+            throw new RuntimeException( 'Pajarete: Store API sin fotografía original verificable.' );
+        }
+        $product['description'] = $long;
+        $product['short_description'] = $short;
+        $product['images'] = array_slice( array_values( $pictures ), 0, 12 );
+        $product['image_count'] = count( $product['images'] );
+        $product['source_categories'] = array();
+        foreach ( (array) ( $api['categories'] ?? array() ) as $category ) {
+            if ( is_array( $category ) && ! empty( $category['name'] ) ) {
+                $product['source_categories'][] = array(
+                    'name' => sanitize_text_field( (string) $category['name'] ),
+                    'slug' => sanitize_title( (string) ( $category['slug'] ?? '' ) ),
+                );
+            }
+        }
+        $product['source_api_product_id'] = absint( (string) ( $api['id'] ?? '' ) );
         $description = $xp->query( "//*[@id='tab-description'] | //div[contains(@class,'woocommerce-Tabs-panel--description')]" );
         if ( $description && $description->length ) {
             $node = $description->item( 0 );
@@ -135,6 +178,47 @@ final class MDO_Connector_Quesos_Pajarete {
         unset( $hash_data['source_hash'] );
         $product['source_hash'] = hash( 'sha256', wp_json_encode( $hash_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) );
         return $product;
+    }
+
+    /**
+     * A single product lookup is bounded and matched by its canonical path.
+     * Public Woo Store API fields describe the source's actual product.
+     */
+    private static function store_api_product( string $product_url ): array {
+        $path = trim( (string) wp_parse_url( $product_url, PHP_URL_PATH ), '/' );
+        if ( ! preg_match( '~^producto/([a-z0-9-]+)$~i', $path, $match ) ) {
+            throw new RuntimeException( 'Pajarete: URL sin slug de tienda válido.' );
+        }
+        $api_url = 'https://' . self::HOST . '/wp-json/wc/store/v1/products?slug=' . rawurlencode( $match[1] );
+        $response = wp_remote_get( $api_url, array(
+            'timeout' => 30, 'redirection' => 2,
+            'user-agent' => 'EMDO/' . MDO_SUPPLIER_SYNC_VERSION . ' (+https://www.elmercadodeorigen.com/)',
+            'headers' => array( 'Accept' => 'application/json' ),
+        ) );
+        if ( is_wp_error( $response ) ) {
+            throw new RuntimeException( 'Pajarete Store API: ' . $response->get_error_message() );
+        }
+        if ( 200 !== (int) wp_remote_retrieve_response_code( $response ) ) {
+            throw new RuntimeException( 'Pajarete Store API: HTTP ' . (int) wp_remote_retrieve_response_code( $response ) );
+        }
+        $rows = json_decode( (string) wp_remote_retrieve_body( $response ), true );
+        if ( ! is_array( $rows ) ) {
+            throw new RuntimeException( 'Pajarete Store API: respuesta no válida.' );
+        }
+        $matches = array();
+        foreach ( $rows as $record ) {
+            if ( ! is_array( $record ) ) { continue; }
+            $record_url = (string) ( $record['permalink'] ?? '' );
+            $host = strtolower( (string) wp_parse_url( $record_url, PHP_URL_HOST ) );
+            $record_path = trim( (string) wp_parse_url( $record_url, PHP_URL_PATH ), '/' );
+            if ( in_array( $host, array( self::HOST, 'www.' . self::HOST ), true ) && $record_path === $path ) {
+                $matches[] = $record;
+            }
+        }
+        if ( 1 !== count( $matches ) ) {
+            throw new RuntimeException( 'Pajarete Store API: ficha no encontrada de manera unívoca.' );
+        }
+        return $matches[0];
     }
 
     public static function upsert_product( int $supplier_id, array $product ): string {
