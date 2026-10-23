@@ -50,3 +50,9 @@ foreach($rows as $r){
  }
 }
 echo 'PAJARETE_API_AUDIT='.wp_json_encode(array('count'=>$count,'total_source_api'=>count($records),'categories'=>$categories,'unmatched'=>array_slice($unmatched,0,25),'examples'=>$examples),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
+
+$terms=get_terms(array('taxonomy'=>'product_cat','hide_empty'=>false));
+if(is_wp_error($terms)){throw new RuntimeException('Product categories unavailable');}
+$out=array();
+foreach($terms as $term){$out[]=array('id'=>(int)$term->term_id,'name'=>(string)$term->name,'slug'=>(string)$term->slug,'parent'=>(int)$term->parent);}
+echo 'PAJARETE_TAXONOMY='.wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
