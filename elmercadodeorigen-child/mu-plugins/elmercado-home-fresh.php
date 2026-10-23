@@ -225,15 +225,35 @@ function elmercado_home_active_vendor_ids_010244( int $limit = 6 ): array {
 		}
 	}
 
-	usort(
-		$vendors,
-		static function ( int $left, int $right ): int {
-			return strnatcasecmp( elmercado_home_vendor_name_010244( $left ), elmercado_home_vendor_name_010244( $right ) );
-		}
+	/*
+	 * Editorial order for the Home hero. Only active producers with published
+	 * products are eligible; names are matched to the actual WCFM store names.
+	 * Do not cap or sort candidates alphabetically before finding these six.
+	 */
+	$featured_slugs = array(
+		'hidalgo-de-la-jara',
+		'1957',
+		'montjam',
+		'tolecarnes',
+		'tropitop',
+		'latitudes',
 	);
+	$active_by_slug = array();
+	foreach ( $vendors as $vendor_id ) {
+		$slug = sanitize_title( elmercado_home_vendor_name_010244( $vendor_id ) );
+		if ( '' !== $slug && ! isset( $active_by_slug[ $slug ] ) ) {
+			$active_by_slug[ $slug ] = $vendor_id;
+		}
+	}
 
-	/* Allow a few extra candidates so invalid stores do not prevent reaching 6 valid cards. */
-	return array_slice( $vendors, 0, max( 6, $limit + 3 ) );
+	$featured = array();
+	foreach ( $featured_slugs as $slug ) {
+		if ( isset( $active_by_slug[ $slug ] ) ) {
+			$featured[] = $active_by_slug[ $slug ];
+		}
+	}
+
+	return array_slice( $featured, 0, $limit );
 }
 
 /**
@@ -400,6 +420,58 @@ html body.home.elmercado-child-theme .emo-home .emo-hero__grid > .emo-hero__visu
 	transform: none !important;
 }
 
+/*
+ * Keep the producer directory link directly beneath the mosaic. It is a
+ * sibling of the visual, not a seventh grid card, so six-card sizing remains
+ * unchanged at every breakpoint.
+ */
+html body.home .emo-home .emo-hero__grid > .emo-hero-vendors-more {
+	grid-column: 2;
+	grid-row: 2;
+	justify-self: end;
+	align-self: start;
+	display: inline-flex;
+	align-items: center;
+	gap: .45rem;
+	margin-top: calc(-1 * clamp(2rem, 4vw, 4rem) + 1.25rem);
+	color: #fffdf8;
+	font-size: .95rem;
+	font-weight: 700;
+	text-decoration: underline;
+	text-decoration-color: rgba(255, 255, 255, .5);
+	text-underline-offset: .3em;
+	transition: color .2s ease, text-decoration-color .2s ease;
+}
+html body.home .emo-home .emo-hero__grid > .emo-hero-vendors-more:hover,
+html body.home .emo-home .emo-hero__grid > .emo-hero-vendors-more:focus-visible {
+	color: #f0cfaa;
+	text-decoration-color: currentColor;
+}
+html body.home .emo-home .emo-hero__grid > .emo-hero-vendors-more svg {
+	width: 18px;
+	height: 18px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.8;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+@media (max-width: 1180px) {
+	html body.home .emo-home .emo-hero__grid > .emo-hero-vendors-more {
+		grid-column: 1;
+		grid-row: auto;
+		width: min(100%, 720px);
+		margin: -1rem auto 0;
+		justify-content: flex-end;
+	}
+}
+@media (max-width: 599px) {
+	html body.home .emo-home .emo-hero__grid > .emo-hero-vendors-more {
+		margin-top: -.35rem;
+		font-size: .9rem;
+	}
+}
+
 body.home .emo-hero-vendor-fallback {
 	display: grid;
 	width: 100%;
@@ -485,7 +557,11 @@ function elmercado_home_fresh_output_010244( string $html ): string {
 
 	$visual = elmercado_render_home_vendor_visual_010244();
 	if ( $visual ) {
-		$updated = preg_replace( '~<div class="emo-hero__visual"[^>]*>.*?</div>~s', $visual, $html, 1 );
+		$vendor_url = elmercado_page_url( array( 'productores', 'store-listing', 'tiendas' ), '/productores/' );
+		$more_link  = '<a class="emo-hero-vendors-more" href="' . esc_url( $vendor_url ) . '" aria-label="' . esc_attr__( 'Ver todos los productores', 'elmercadodeorigen' ) . '">'
+			. esc_html__( 'Ver todos', 'elmercadodeorigen' )
+			. '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>';
+		$updated = preg_replace( '~<div class="emo-hero__visual"[^>]*>.*?</div>~s', $visual . $more_link, $html, 1 );
 		if ( is_string( $updated ) ) {
 			$html = $updated;
 		}
