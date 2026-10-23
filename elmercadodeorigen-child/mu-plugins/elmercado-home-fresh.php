@@ -561,7 +561,14 @@ function elmercado_home_fresh_output_010244( string $html ): string {
 		$more_link  = '<a class="emo-hero-vendors-more" href="' . esc_url( $vendor_url ) . '" aria-label="' . esc_attr__( 'Ver todos los productores', 'elmercadodeorigen' ) . '">'
 			. esc_html__( 'Ver todos', 'elmercadodeorigen' )
 			. '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>';
-		$updated = preg_replace( '~<div class="emo-hero__visual"[^>]*>.*?</div>~s', $visual . $more_link, $html, 1 );
+		/* Replace the legacy product visual or a previously cached vendor visual.
+		 * Also consume any existing directory link to keep this transformation idempotent. */
+		$updated = preg_replace(
+			'~<div class="emo-hero__visual\\b[^"]*"[^>]*>.*?</div>(?:\\s*<a class="emo-hero-vendors-more"[^>]*>.*?</a>)?~s',
+			$visual . $more_link,
+			$html,
+			1
+		);
 		if ( is_string( $updated ) ) {
 			$html = $updated;
 		}
