@@ -1,0 +1,47 @@
+name: Audit live producer banner mobile geometry 20261024
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-producer-banner-mobile-20261024.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect banner geometry in a real browser without changing production
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null
+          node <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          (async()=>{
+            const b=await puppeteer.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox','--disable-dev-shm-usage']});
+            try{
+              for(const width of [1440,390]){
+                const p=await b.newPage();
+                await p.setViewport({width,height:900});
+                for(const slug of ['1957','hidalgo-de-la-jara','latitudes']){
+                  await p.goto('https://www.elmercadodeorigen.com/tienda/'+slug+'/?banner-audit='+Date.now(),{waitUntil:'domcontentloaded',timeout:45000});
+                  await p.waitForSelector('#wcfmmp-store .banner_area',{timeout:15000});
+                  await new Promise(r=>setTimeout(r,800));
+                  const result=await p.evaluate(()=>{
+                    const root=document.querySelector('#wcfmmp-store');
+                    const banner=root?.querySelector('.banner_area');
+                    const wrap=root?.querySelector('.emo-producer-banner-title-wrap');
+                    const h=wrap?.querySelector('h1');
+                    const logo=banner?.querySelector('.emo-vendor-logo');
+                    const box=n=>{if(!n)return null;const r=n.getBoundingClientRect(),s=getComputedStyle(n);return {x:r.x,y:r.y,width:r.width,height:r.height,bottom:r.bottom,right:r.right,display:s.display,visibility:s.visibility,position:s.position,overflow:s.overflow,top:s.top,left:s.left,rightCss:s.right,padding:s.padding,font:s.fontSize,transform:s.transform,margin:s.margin}};
+                    return {body:document.body.className,hText:h?.textContent?.trim(),banner:box(banner),wrap:box(wrap),heading:box(h),logo:box(logo),bannerAreaChildren:[...banner.children].map(x=>({tag:x.tagName,className:x.className}))};
+                  });
+                  console.log('BANNER_GEOMETRY='+JSON.stringify({slug,width,...result}));
+                }
+                await p.close();
+              }
+            }finally{await b.close();}
+          })().catch(err=>{console.error(err);process.exit(1)});
+          NODE
