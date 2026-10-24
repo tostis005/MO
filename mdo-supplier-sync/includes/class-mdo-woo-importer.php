@@ -86,7 +86,19 @@ final class MDO_Woo_Importer {
 		self::apply_common_fields( $product, $payload );
         if ( 'quesos-pajarete' === (string) $supplier['code'] ) {
             // Pajarete publishes its verified per-product synopsis via Store API.
-            $product->set_short_description( wp_kses_post( (string) ( $payload['short_description'] ?? '' ) ) );
+            $source_short = wp_kses_post( (string) ( $payload['short_description'] ?? '' ) );
+            $product->set_short_description( $source_short );
+            // Preserve a verified source-specific editorial excerpt in Pajarete,
+            // but only while the original manufacturer's short copy has not
+            // changed since the SEO audit. New source facts always take priority.
+            if ( $existing_id && '1' === (string) get_post_meta( $existing_id, '_mdo_pajarete_seo_short_approved', true ) ) {
+                $approved_short = (string) get_post_meta( $existing_id, '_mdo_pajarete_seo_editorial_short', true );
+                $original_sha = (string) get_post_meta( $existing_id, '_mdo_pajarete_seo_short_source_sha256', true );
+                if ( $approved_short && $original_sha &&
+                    hash_equals( $original_sha, hash( 'sha256', (string) ( $payload['short_description'] ?? '' ) ) ) ) {
+                    $product->set_short_description( wp_kses_post( $approved_short ) );
+                }
+            }
         }
 
 		if ( 'tropitop' === (string) $supplier['code'] ) {
