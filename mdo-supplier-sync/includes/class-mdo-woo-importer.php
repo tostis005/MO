@@ -179,6 +179,18 @@ final class MDO_Woo_Importer {
 			$product->set_catalog_visibility( 'hidden' );
 		}
 
+        // A Pajarete source listing with a manufacturer-supplied uncertainty
+        // note about its photograph must not be resold automatically until
+        // its real image is verified. Only products explicitly flagged in
+        // the scoped audit are held; clearing the flag requires approval.
+        if ( 'quesos-pajarete' === (string) $supplier['code'] &&
+            $existing_id && '1' === (string) get_post_meta(
+                $existing_id, '_mdo_pajarete_photo_validation_required', true
+            ) ) {
+            $product->set_status( 'draft' );
+            $product->set_catalog_visibility( 'hidden' );
+        }
+
 		// Prelaunch products from Latitudes must never become public while its
 		// WCFM vendor is hard-disabled, including after nightly updates.
 		if ( in_array( (string) $supplier['code'], array( 'latitudes', 'chocolates-artesanos-isabel', 'tropitop', 'quesos-pajarete' ), true ) && get_user_meta( $vendor_id, '_disable_vendor', true ) ) {
