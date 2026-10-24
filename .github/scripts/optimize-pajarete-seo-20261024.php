@@ -107,20 +107,27 @@ foreach($published as $id=>$r){
     $p=$r['product'];$data=$r['payload'];$title=$clean($p->get_name());
     $original_short=$clean((string)$data['short_description']);
     $long=$clean((string)$data['description']);
-    $stripped_title=$compact($title,48);
-    $seo_title=$compact($stripped_title.' | El Mercado de Origen',68);
-    // Curated, source-backed result snippets; never invent awards, provenance,
-    // food claims or shipping promises. Distinct by exact product name.
-    $detail=$compact($original_short,90);
-    if(mb_strlen($detail)<40){
-       $source_sentences=preg_split('/(?<=[.!?])\s+/u',$long,2);
-       $source_first=$compact((string)($source_sentences[0]??$long),104);
+    // Keep the full marketplace name in the SEO title; abbreviate only
+    // overly long product names, not the brand or its separator.
+    $brand=' | El Mercado de Origen';
+    $seo_title=$compact($title,68-mb_strlen($brand)).$brand;
+    // Each meta description uses actual source product copy. Reserve room
+    // for the complete store name rather than truncating half a phrase.
+    $detail=$original_short;
+    if(mb_strlen($detail)<62){
+       $source_sentences=preg_split('/(?<=[.!?])\\s+/u',$long,2);
+       $source_first=$clean((string)($source_sentences[0]??$long));
        if(mb_strlen($source_first)>mb_strlen($detail))$detail=$source_first;
     }
-    // Some products are temporarily out of stock; avoid availability promises.
+    $detail=str_replace(['nuestros quesos y cremas','Nuestros quesos y cremas'],
+                        ['quesos y cremas','quesos y cremas'],$detail);
     $preface=$p->get_stock_status()==='instock'?'Descubre ':'Conoce ';
-    $meta_desc=$compact($preface.$title.'. '.$detail.' En El Mercado de Origen.',157);
-    if(mb_strlen($meta_desc)<65)$meta_desc=$compact($meta_desc.' Selección de la tienda de Quesos Pajarete.',157);
+    $meta_intro=$preface.$title.'. ';
+    $meta_end=' En El Mercado de Origen.';
+    if(mb_strlen($meta_intro)+mb_strlen($meta_end)>106)
+        $meta_intro=$preface.$compact($title,70).'. ';
+    $detail_limit=max(35,157-mb_strlen($meta_intro)-mb_strlen($meta_end));
+    $meta_desc=$meta_intro.$compact($detail,$detail_limit).$meta_end;
     if(mb_strlen($seo_title)<15||mb_strlen($meta_desc)<40)throw new RuntimeException('Invalid SEO text '.$id);
     $duplicate=count($short_hashes[md5($original_short)]??[])>1;
     $short_to_write='';
