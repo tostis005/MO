@@ -41,6 +41,16 @@ final class MDO_Woo_Importer {
 		if ( 'tropitop' === (string) $supplier['code'] ) {
 			$payload['title'] = MDO_Tropitop_Editorial::title( (string) $payload['title'] );
 		}
+        // Last-line exclusion check for Pajarete: do not accidentally sell
+        // fresh, tender or spreadable cheeses found in future source crawls.
+        if ( 'quesos-pajarete' === (string) $supplier['code'] &&
+            class_exists( 'MDO_Connector_Quesos_Pajarete' ) &&
+            MDO_Connector_Quesos_Pajarete::excluded(
+                (string) $row['source_url'], (string) $payload['title']
+            ) ) {
+            throw new RuntimeException( 'Referencia Pajarete excluida; no se importará.' );
+        }
+
 		if ( in_array( (string) $supplier['code'], array( 'latitudes', 'chocolates-artesanos-isabel', 'tropitop', 'quesos-pajarete' ), true ) &&
 			! in_array( (string) ( $payload['stock_status'] ?? 'unknown' ), array( 'instock', 'outofstock' ), true ) ) {
 			throw new RuntimeException( 'Stock del proveedor sin verificar: se cancela la importación de esta referencia.' );
@@ -267,8 +277,12 @@ final class MDO_Woo_Importer {
         }
         // New Tropitop products become public immediately after the full
         // photo and variation commit, not midway through a slow image request.
-        $publish_after_verified_import = 'tropitop' === (string) $supplier['code']
-            && ! $existing_id && 'publish' === $product->get_status();
+        $publish_after_verified_import = (
+                'tropitop' === (string) $supplier['code'] ||
+                ( 'quesos-pajarete' === (string) $supplier['code'] &&
+                  ! empty( $supplier['active'] ) &&
+                  ! get_user_meta( $vendor_id, '_disable_vendor', true ) )
+            ) && ! $existing_id && 'publish' === $product->get_status();
         if ( $publish_after_verified_import ) {
             $product->set_status( 'draft' );
             $product->set_catalog_visibility( 'hidden' );
