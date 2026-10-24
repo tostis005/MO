@@ -100,7 +100,7 @@ foreach($src as $r){
     $published[$id]=['product'=>$p,'source'=>$r,'payload'=>$data,'aio'=>$aio_row,'imgs'=>$attached];
     $short_hashes[md5($clean($raw_short))][]=$id;
 }
-if(count($published)!==107||$skipped!==['excluded'=>22,'pending'=>4,'other'=>0,'photo_review'=>1])
+if(count($published)!==111||$skipped!==['excluded'=>22,'pending'=>0,'other'=>0,'photo_review'=>1])
     throw new RuntimeException('Unexpected publication/exclusion counts: '.wp_json_encode(['count'=>count($published),'skip'=>$skipped]));
 $plans=[];$all_media=[];$new_shorts=0;
 foreach($published as $id=>$r){
