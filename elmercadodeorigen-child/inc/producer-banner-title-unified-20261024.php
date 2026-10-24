@@ -75,7 +75,7 @@ add_action(
 		if ( ! elmercado_producer_banner_is_store_20261024() ) {
 			return;
 		}
-		$name = elmercado_producer_banner_name_20261024( absint( $vendor_id ) );
+		$name = elmercado_producer_banner_name_20261024( is_numeric( $vendor_id ) ? absint( $vendor_id ) : 0 );
 		if ( '' === $name ) {
 			return;
 		}
@@ -160,7 +160,7 @@ add_action(
 				const banner = document.querySelector('body.wcfmmp-store-page #wcfmmp-store .banner_area');
 				if (!banner) return;
 				const nativeTitle = banner.querySelector('.banner_text h1');
-				const existingWrap = banner.querySelector('.emo-producer-banner-title-wrap');
+				const existingWrap = document.querySelector('body.wcfmmp-store-page #wcfmmp-store .emo-producer-banner-title-wrap');
 				const existingTitle = existingWrap?.querySelector('h1');
 				const headerName = document.querySelector('#wcfm_store_header .store_name, #wcfm_store_header h1')?.textContent?.trim() || '';
 				const pageName = (document.title || '').split(/\s+[|–—]\s+/)[0].trim();
