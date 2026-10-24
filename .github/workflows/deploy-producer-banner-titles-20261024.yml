@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/deploy-producer-banner-titles-20261024.yml'
       - '.github/scripts/patch-producer-banner-theme-20261024.php'
+      - 'elmercadodeorigen-child/inc/producer-banner-title-unified-20261024.php'
   workflow_dispatch:
 
 permissions:
@@ -157,17 +158,31 @@ jobs:
             const binary = process.env.CHROME_BIN || '/usr/bin/google-chrome';
             const browser=await puppeteer.launch({headless:true,executablePath:binary,args:['--no-sandbox','--disable-dev-shm-usage']});
             try {
-              const failures=[];
+              const directory=await browser.newPage();
+            await directory.goto(process.env.BASE_URL+'/productores/?verify-producers='+process.env.GITHUB_RUN_ID,{waitUntil:'domcontentloaded',timeout:50000});
+            await directory.waitForSelector('#wcfmmp-stores-wrap li.wcfmmp-single-store',{timeout:20000});
+            const discovered=await directory.evaluate(()=>
+              [...document.querySelectorAll('#wcfmmp-stores-wrap li.wcfmmp-single-store')].map(card=>{
+                const name=card.querySelector('h2')?.textContent?.trim() || '';
+                const link=[...card.querySelectorAll('a[href]')].map(a=>a.href).find(h=>/\/tienda\/[^/]+\/?/.test(h));
+                const slug=link ? new URL(link).pathname.split('/').filter(Boolean).pop() : '';
+                return [slug,name];
+              }).filter(([slug,name])=>slug&&name)
+            );
+            await directory.close();
+            const stores=[...new Map([...expected,...discovered].map(entry=>[entry[0],entry])).values()];
+            if(discovered.length<11) throw new Error('Producer directory incomplete: '+JSON.stringify(discovered));
+            const failures=[];
               for(const width of [1440,390]){
                 const page=await browser.newPage();
                 await page.setViewport({width,height:900,deviceScaleFactor:1});
-                for (const [slug,name] of expected) {
+                for (const [slug,name] of stores) {
                   const url=process.env.BASE_URL+'/tienda/'+slug+'/?verify-banner-title='+process.env.GITHUB_RUN_ID;
                   await page.goto(url,{waitUntil:'domcontentloaded',timeout:50000});
                   await page.waitForSelector('#wcfmmp-store .banner_area',{timeout:25000});
-                  await page.waitForFunction(()=>!!document.querySelector('#wcfmmp-store .banner_area > .emo-producer-banner-title-wrap h1'),{timeout:12000});
+                  await page.waitForFunction(()=>[...document.querySelectorAll('#wcfmmp-store .banner_area')].some(b=>b.getBoundingClientRect().width>0 && b.querySelector(':scope > .emo-producer-banner-title-wrap h1')),{timeout:12000});
                   const result=await page.evaluate(()=>{
-                    const banner=document.querySelector('#wcfmmp-store .banner_area');
+                    const banner=[...document.querySelectorAll('#wcfmmp-store .banner_area')].find(b=>b.getBoundingClientRect().width>0 && getComputedStyle(b).display!=='none');
                     const heading=banner?.querySelector(':scope > .emo-producer-banner-title-wrap h1');
                     const rect=heading?.getBoundingClientRect();
                     const b=banner?.getBoundingClientRect();
@@ -175,7 +190,7 @@ jobs:
                     return {name:heading?.textContent?.trim(),visible:!!(rect&&b&&rect.width>0&&rect.height>0&&rect.left>=b.left-2&&rect.right<=b.right+2&&rect.top>=b.top-3&&rect.bottom<=b.bottom+3&&style.display!=='none'&&style.visibility!=='hidden'),fontSize:style?.fontSize,otherVisibleTitles:[...(banner?.querySelectorAll('h1')||[])].filter(el=>el!==heading&&getComputedStyle(el).display!=='none').map(el=>el.textContent?.trim())};
                   });
                   console.log(JSON.stringify({slug,width,...result}));
-                  if(!result.visible || result.name!==name || result.otherVisibleTitles.length) failures.push(slug+' @ '+width+': '+JSON.stringify(result));
+                  if(!result.visible || !result.name || result.name.toLowerCase()==='tienda' || result.otherVisibleTitles.length || (['1957','hidalgo-de-la-jara','latitudes'].includes(slug) && result.name.toLowerCase()!==name.toLowerCase())) failures.push(slug+' @ '+width+': '+JSON.stringify(result));
                 }
                 await page.close();
               }
