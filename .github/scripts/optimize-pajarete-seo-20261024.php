@@ -25,7 +25,7 @@ $mode=getenv('PAJARETE_SEO_PHASE')?:'audit';
 if (!in_array($mode,['audit','apply','verify'],true))throw new RuntimeException('Invalid SEO phase');
 $src=$wpdb->get_results($wpdb->prepare("SELECT id,title,status,source_url,source_payload,wc_product_id FROM {$source_table} WHERE supplier_id=%d ORDER BY id",(int)$s['id']),ARRAY_A);
 if (count($src)!==134) throw new RuntimeException('Pajarete catalogue changed, re-audit');
-$published=[];$skipped=['excluded'=>0,'pending'=>0,'other'=>0];
+$published=[];$skipped=['excluded'=>0,'pending'=>0,'other'=>0,'photo_review'=>0];
 $short_hashes=[];
 $clean=static function(string $html):string {
     $text=html_entity_decode(wp_strip_all_tags($html),ENT_QUOTES|ENT_HTML5,'UTF-8');
@@ -45,6 +45,28 @@ foreach($src as $r){
     if(!$r['wc_product_id']){$skipped['pending']++;continue;}
     $id=(int)$r['wc_product_id'];$p=wc_get_product($id);
     if(!$p||(int)get_post_field('post_author',$id)!==4974)throw new RuntimeException('Invalid vendor product '.$id);
+    // The official source itself flags this particular wine photo as
+    // "FOTO NO ES?". Keep it out of public sale until a verified image
+    // is supplied; do not optimize a possibly misrepresented listing.
+    if($id===21483){
+        $suspicious=json_decode((string)$r['source_payload'],true);
+        $note=is_array($suspicious)?$clean((string)($suspicious['short_description']??'')):'';
+        if($note!=='FOTO NO ES?' || !str_contains(remove_accents(mb_strtolower($p->get_name())),'salvador rivero')){
+            throw new RuntimeException('Wine photo hold mismatch, requires manual review');
+        }
+        if($mode==='apply'){
+            $p->set_status('draft');
+            $p->set_catalog_visibility('hidden');
+            $p->save();
+            update_post_meta($id,'_mdo_pajarete_photo_validation_required','1');
+            update_post_meta($id,'_mdo_pajarete_photo_validation_reason','La fuente oficial indica "FOTO NO ES?"; solicitar foto correcta del vino.');
+        }
+        if($mode==='verify' && ($p->get_status()!=='draft'||$p->get_catalog_visibility()!=='hidden')){
+            throw new RuntimeException('Suspect source photo must not remain published '.$id);
+        }
+        $skipped['photo_review']++;
+        continue;
+    }
     if($r['status']!=='active'||$p->get_status()!=='publish'||$p->get_catalog_visibility()!=='visible'){
         $skipped['other']++;continue;
     }
@@ -78,7 +100,7 @@ foreach($src as $r){
     $published[$id]=['product'=>$p,'source'=>$r,'payload'=>$data,'aio'=>$aio_row,'imgs'=>$attached];
     $short_hashes[md5($clean($raw_short))][]=$id;
 }
-if(count($published)!==108||$skipped!==['excluded'=>22,'pending'=>4,'other'=>0])
+if(count($published)!==107||$skipped!==['excluded'=>22,'pending'=>4,'other'=>0,'photo_review'=>1])
     throw new RuntimeException('Unexpected publication/exclusion counts: '.wp_json_encode(['count'=>count($published),'skip'=>$skipped]));
 $plans=[];$all_media=[];$new_shorts=0;
 foreach($published as $id=>$r){
