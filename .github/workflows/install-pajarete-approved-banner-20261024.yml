@@ -1,0 +1,106 @@
+name: Install approved Quesos Pajarete producer banner
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/install-pajarete-approved-banner-20261024.yml'
+      - '.github/scripts/install-pajarete-approved-banner-20261024.php'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: install-pajarete-approved-banner-20261024
+  cancel-in-progress: true
+jobs:
+  onboard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode and install approved producer photo on production
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "${STAGING_HOST:-}"
+          test -n "${STAGING_USER:-}"
+          test -n "${STAGING_PASSWORD:-}"
+          BANNER_ASSETS=".github/assets/quesos-pajarete-20261024"
+          TMP_BANNER="$(mktemp -d)"
+          cat "$BANNER_ASSETS"/banner-part-{0,1,2,3}.b64 | base64 --decode > "$TMP_BANNER/source.avif"
+          echo "365a4eeabf3a344ae3cb22d438939c2d8d0d234bad704784d08a998715647d7a  $TMP_BANNER/source.avif" | sha256sum --check
+          python3 -m venv "$TMP_BANNER/venv"
+          "$TMP_BANNER/venv/bin/pip" install --quiet 'Pillow>=11.3.0'
+          "$TMP_BANNER/venv/bin/python" - "$TMP_BANNER" <<'PY'
+          import sys
+          from pathlib import Path
+          from PIL import Image
+          home=Path(sys.argv[1])
+          with Image.open(home/'source.avif') as source:
+              if source.size != (1024, 394):
+                  raise RuntimeError(f'Unexpected panorama dimensions: {source.size}')
+              image=source.convert('RGB')
+          for width,height,quality,path in (
+              (2022,778,84,home/'desktop.webp'),
+              (960,369,80,home/'mobile.webp'),
+          ):
+              image.resize((width,height),Image.Resampling.LANCZOS).save(
+                  path,format='WEBP',quality=quality,method=6)
+              with Image.open(path) as proof:
+                  if proof.size != (width,height) or proof.format != 'WEBP':
+                      raise RuntimeError(f'Encoded banner failed: {path}')
+              print('PAJARETE_IMAGE_READY',path,width,height,path.stat().st_size)
+          PY
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=30 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s|%s|%s" "$p" "$php_bin" "$wp_bin"; break ;;
+              esac
+            done
+          ')"
+          test -n "$INFO"
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+          REMOTE_SCRIPT="/tmp/pajarete-banner-${GITHUB_RUN_ID}.php"
+          REMOTE_DESKTOP="/tmp/pajarete-banner-desktop-${GITHUB_RUN_ID}.webp"
+          REMOTE_MOBILE="/tmp/pajarete-banner-mobile-${GITHUB_RUN_ID}.webp"
+          sshpass -e scp $SCP .github/scripts/install-pajarete-approved-banner-20261024.php "$TMP_BANNER/desktop.webp" "$TMP_BANNER/mobile.webp" "$STAGING_USER@$STAGING_HOST:/tmp/"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mv /tmp/install-pajarete-approved-banner-20261024.php '$REMOTE_SCRIPT' && mv /tmp/desktop.webp '$REMOTE_DESKTOP' && mv /tmp/mobile.webp '$REMOTE_MOBILE'"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f \'$REMOTE_SCRIPT\' \'$REMOTE_DESKTOP\' \'$REMOTE_MOBILE\'" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD' '$PHP' '$WP' '$REMOTE_SCRIPT' '$REMOTE_DESKTOP' '$REMOTE_MOBILE'" <<'REMOTE' | tee /tmp/pajarete-banner-install.log
+          set -Eeuo pipefail
+          prod="$1"; php="$2"; wp="$3"; script="$4"; desktop="$5"; mobile="$6"
+          export PATH="$(dirname "$php"):$PATH"
+          PAJARETE_BANNER_DESKTOP_FILE="$desktop" PAJARETE_BANNER_MOBILE_FILE="$mobile" "$php" -d memory_limit=1536M "$wp" eval-file "$script" --path="$prod" --allow-root
+          REMOTE
+          grep -q '^PAJARETE_BANNER_INSTALLED=' /tmp/pajarete-banner-install.log
+      - name: Save diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quesos-pajarete-banner-install-20261024
+          path: /tmp/pajarete-banner-install.log
+          if-no-files-found: warn
+          retention-days: 30
