@@ -1,0 +1,74 @@
+name: Latitudes media inventory quick count (READ ONLY)
+on:
+  push:
+    branches: ['audit/latitudes-media-20261024']
+    paths:
+      - '.github/workflows/audit-latitudes-media-fastcount-20261024.yml'
+permissions: {contents: read}
+jobs:
+  count:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            w=$(command -v wp)
+            p=$(command -v php || true)
+            [ -n "$p" ] || p=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              d=$(dirname "$cfg")
+              u=$("$p" "$w" option get siteurl --path="$d" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$d"; break ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+          SCRIPT="/tmp/latitudes-media-inventory-fast-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/audit-latitudes-media-20261024.php "$STAGING_USER@$STAGING_HOST:$SCRIPT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -d memory_limit=1024M \"\$(command -v wp)\" eval-file '$SCRIPT' --path='$PROD_PATH' --allow-root
+            rm -f '$SCRIPT'
+          " > latitudes-inventory.json
+          python3 - <<'PY'
+          import json
+          x=json.load(open("latitudes-inventory.json"))
+          print("LATITUDES_MEDIA_COUNT="+json.dumps({
+            k:x.get(k) for k in ["source_product_count","associated_product_count",
+              "vendor_authored_count","unique_media_count","media_placements",
+              "source_original_urls_count","vendor_id"]
+          },ensure_ascii=False), flush=True)
+          roles={}
+          for a in x['media']:
+            for role in a['roles']:
+              roles[role]=roles.get(role,0)+1
+          print("LATITUDES_MEDIA_ROLES="+json.dumps(roles,ensure_ascii=False),flush=True)
+          PY
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: latitudes-media-inventory-quick
+          path: latitudes-inventory.json
+          retention-days: 14
+          if-no-files-found: warn
