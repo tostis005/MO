@@ -422,7 +422,9 @@ final class MDO_Woo_Importer {
         // Keep the manually verified Pajarete classifications stable when its
         // catalogue is resynchronized. These explicit title families are
         // checked before generic source group/category fallbacks.
-        if ( preg_match( '/^gilda\\b/u', $title ) ) {
+        if ( str_contains( $title, 'pack mermeladas' ) ) {
+            $slug = 'packs-y-lotes';
+        } elseif ( preg_match( '/^gilda\\b/u', $title ) ) {
             $slug = 'conservas';
         } elseif ( str_contains( $title, 'patatas fritas' ) ||
                    str_contains( $title, 'regana' ) ||
