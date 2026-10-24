@@ -157,26 +157,33 @@ add_action(
 			'use strict';
 			const officialName = <?php echo wp_json_encode( $name, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT ) ?: '""'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>;
 			const normalize = () => {
-				const banner = document.querySelector('body.wcfmmp-store-page #wcfmmp-store .banner_area');
-				if (!banner) return;
-				const nativeTitle = banner.querySelector('.banner_text h1');
-				const existingWrap = document.querySelector('body.wcfmmp-store-page #wcfmmp-store .emo-producer-banner-title-wrap');
-				const existingTitle = existingWrap?.querySelector('h1');
+				const store = document.querySelector('body.wcfmmp-store-page #wcfmmp-store');
+				if (!store) return;
+				// WCFM renders two independent banners. Desktop and mobile have
+				// different images, and the inactive one is hidden by CSS.
+				const banners = [...store.querySelectorAll('.banner_area')];
+				if (!banners.length) return;
+				const nativeName = banners.map((banner) => banner.querySelector('.banner_text h1')?.textContent?.trim()).find(Boolean) || '';
 				const headerName = document.querySelector('#wcfm_store_header .store_name, #wcfm_store_header h1')?.textContent?.trim() || '';
-				const pageName = (document.title || '').split(/\s+[|–—]\s+/)[0].trim();
-				const storeName = officialName || nativeTitle?.textContent?.trim() || headerName || pageName;
+				const pageName = (document.title || '').split(/\\s+[|–—]\\s+/)[0].trim();
+				const storeName = officialName || nativeName || headerName || pageName;
 				if (!storeName) return;
 
-				const wrap = existingWrap || document.createElement('div');
-				wrap.className = 'emo-producer-banner-title-wrap';
-				const title = existingTitle || nativeTitle || document.createElement('h1');
-				title.classList.add('emo-producer-banner-title');
-				title.textContent = storeName;
-				wrap.appendChild(title);
-				if (wrap.parentElement !== banner) banner.appendChild(wrap);
-				if (nativeTitle && nativeTitle !== title) nativeTitle.remove();
-				// WCFM puede configurar el nombre en la cabecera, pero esa cabecera
-				// está oculta en nuestro diseño: el título visible siempre vive aquí.
+				banners.forEach((banner) => {
+					const wrap = [...banner.children].find((child) => child.classList?.contains('emo-producer-banner-title-wrap')) || document.createElement('div');
+					wrap.className = 'emo-producer-banner-title-wrap';
+					const title = wrap.querySelector('h1') || document.createElement('h1');
+					title.className = 'emo-producer-banner-title';
+					title.textContent = storeName;
+					wrap.appendChild(title);
+					if (wrap.parentElement !== banner) banner.appendChild(wrap);
+				});
+
+				// Some WCFM versions render a hook outside the banner. Prevent
+				// such orphaned markup from becoming a duplicate heading.
+				store.querySelectorAll('.emo-producer-banner-title-wrap').forEach((wrap) => {
+					if (!wrap.closest('.banner_area')) wrap.remove();
+				});
 			};
 			if (document.readyState === 'loading') {
 				document.addEventListener('DOMContentLoaded', normalize, {once: true});
