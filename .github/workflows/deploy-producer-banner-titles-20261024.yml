@@ -1,0 +1,220 @@
+name: Production unified producer banner headings 20261024
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-producer-banner-titles-20261024.yml'
+      - '.github/scripts/patch-producer-banner-theme-20261024.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Checkout current source
+        uses: actions/checkout@v4
+
+      - name: Validate exact files to deploy
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/producer-banner-title-unified-20261024.php
+          php -l .github/scripts/patch-producer-banner-theme-20261024.php
+          grep -Fq "'inc/producer-banner-title-unified-20261024.php'" elmercadodeorigen-child/functions.php
+          test -n "$STAGING_HOST"
+          test -n "$STAGING_USER"
+          test -n "$SSHPASS"
+
+      - name: Prepare production connection
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s" "$p"
+                  break
+                  ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+          test -f elmercadodeorigen-child/inc/producer-banner-title-unified-20261024.php
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          echo "BACKUP=/tmp/mdo-producer-banner-${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
+          echo "Production WordPress installation found. No files modified yet."
+
+      - name: Back up and deploy only producer title module
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          THEME="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
+          TARGET="$THEME/inc/producer-banner-title-unified-20261024.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sh -s -- '$THEME' '$BACKUP'" <<'REMOTE'
+          set -eu
+          theme="$1"
+          backup="$2"
+          test -f "$theme/functions.php"
+          test -d "$theme/inc"
+          mkdir -p "$backup"
+          cp -p "$theme/functions.php" "$backup/functions.php"
+          if [ -f "$theme/inc/producer-banner-title-unified-20261024.php" ]; then
+            cp -p "$theme/inc/producer-banner-title-unified-20261024.php" "$backup/module.php"
+            echo 1 > "$backup/module-existed"
+          else
+            echo 0 > "$backup/module-existed"
+          fi
+          REMOTE
+
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/producer-banner-title-unified-20261024.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-producer-banner-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/patch-producer-banner-theme-20261024.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-producer-banner-patcher-${GITHUB_RUN_ID}.php"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sh -s -- '$PROD_PATH' '$BACKUP' '${GITHUB_RUN_ID}'" <<'REMOTE'
+          set -eu
+          prod="$1"
+          backup="$2"
+          run="$3"
+          theme="$prod/wp-content/themes/elmercadodeorigen-child"
+          module="$theme/inc/producer-banner-title-unified-20261024.php"
+          incoming="/tmp/mdo-producer-banner-$run.php"
+          patcher="/tmp/mdo-producer-banner-patcher-$run.php"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          [ -x "$php_bin" ] && [ -n "$wp_bin" ]
+          "$php_bin" -l "$incoming" >/dev/null
+          "$php_bin" -l "$patcher" >/dev/null
+          cp -p "$incoming" "$module"
+          "$php_bin" "$patcher" "$theme/functions.php"
+          "$php_bin" -l "$theme/functions.php" >/dev/null
+          "$php_bin" -l "$module" >/dev/null
+          grep -Fq "'inc/producer-banner-title-unified-20261024.php'" "$theme/functions.php"
+          active="$("$php_bin" "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root)"
+          test "$active" = 'elmercadodeorigen-child'
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null || true
+          rm -f "$incoming" "$patcher"
+          echo 'PRODUCER_BANNER_DEPLOYED_OK'
+          REMOTE
+
+      - name: Reset production PHP OPcache
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          PROBE="emdo-producer-opcache-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$PROBE"
+          result="$(curl -fsSL --max-time 25 -H 'Cache-Control: no-store' "$BASE_URL/$PROBE?run=${GITHUB_RUN_ID}" || true)"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$PROBE'"
+          if [ "$result" != 'OPCACHE_RESET_OK' ]; then
+            echo "OPcache reset response: $result"
+            exit 1
+          fi
+
+      - name: Verify producer headings in desktop and mobile browsers
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null
+          node <<'NODE'
+          const puppeteer = require('puppeteer-core');
+          const expected = [
+            ['1957','1957'],
+            ['hidalgo-de-la-jara','Hidalgo de la Jara'],
+            ['latitudes','Latitudes']
+          ];
+          (async()=>{
+            const binary = process.env.CHROME_BIN || '/usr/bin/google-chrome';
+            const browser=await puppeteer.launch({headless:true,executablePath:binary,args:['--no-sandbox','--disable-dev-shm-usage']});
+            try {
+              const failures=[];
+              for(const width of [1440,390]){
+                const page=await browser.newPage();
+                await page.setViewport({width,height:900,deviceScaleFactor:1});
+                for (const [slug,name] of expected) {
+                  const url=process.env.BASE_URL+'/tienda/'+slug+'/?verify-banner-title='+process.env.GITHUB_RUN_ID;
+                  await page.goto(url,{waitUntil:'domcontentloaded',timeout:50000});
+                  await page.waitForSelector('#wcfmmp-store .banner_area',{timeout:25000});
+                  await page.waitForFunction(()=>!!document.querySelector('#wcfmmp-store .banner_area > .emo-producer-banner-title-wrap h1'),{timeout:12000});
+                  const result=await page.evaluate(()=>{
+                    const banner=document.querySelector('#wcfmmp-store .banner_area');
+                    const heading=banner?.querySelector(':scope > .emo-producer-banner-title-wrap h1');
+                    const rect=heading?.getBoundingClientRect();
+                    const b=banner?.getBoundingClientRect();
+                    const style=heading ? getComputedStyle(heading) : null;
+                    return {name:heading?.textContent?.trim(),visible:!!(rect&&b&&rect.width>0&&rect.height>0&&rect.left>=b.left-2&&rect.right<=b.right+2&&rect.top>=b.top-3&&rect.bottom<=b.bottom+3&&style.display!=='none'&&style.visibility!=='hidden'),fontSize:style?.fontSize,otherVisibleTitles:[...(banner?.querySelectorAll('h1')||[])].filter(el=>el!==heading&&getComputedStyle(el).display!=='none').map(el=>el.textContent?.trim())};
+                  });
+                  console.log(JSON.stringify({slug,width,...result}));
+                  if(!result.visible || result.name!==name || result.otherVisibleTitles.length) failures.push(slug+' @ '+width+': '+JSON.stringify(result));
+                }
+                await page.close();
+              }
+              if (failures.length) throw new Error(failures.join('\n'));
+              console.log('PRODUCER_BANNER_UNIFIED_LIVE_OK');
+            } finally {
+              await browser.close();
+            }
+          })().catch(err=>{console.error(err);process.exit(1)});
+          NODE
+
+      - name: Remove temporary backup after successful verification
+        if: success()
+        run: |
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$BACKUP'"
+          echo 'PRODUCER_BANNER_RELEASE_CONFIRMED'
+
+      - name: Roll back exactly the two files if any step fails
+        if: failure()
+        run: |
+          set +e
+          test -n "${PROD_PATH:-}" || exit 0
+          test -n "${BACKUP:-}" || exit 0
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sh -s -- '$PROD_PATH' '$BACKUP' '${GITHUB_RUN_ID}'" <<'REMOTE'
+          set +e
+          prod="$1"
+          backup="$2"
+          run="$3"
+          theme="$prod/wp-content/themes/elmercadodeorigen-child"
+          if [ -f "$backup/functions.php" ]; then cp -p "$backup/functions.php" "$theme/functions.php"; fi
+          if [ -f "$backup/module-existed" ]; then
+            if [ "$(cat "$backup/module-existed")" = '1' ]; then cp -p "$backup/module.php" "$theme/inc/producer-banner-title-unified-20261024.php"
+            else rm -f "$theme/inc/producer-banner-title-unified-20261024.php"; fi
+          fi
+          rm -f "/tmp/mdo-producer-banner-$run.php" "/tmp/mdo-producer-banner-patcher-$run.php" "$prod/emdo-producer-opcache-$run.php"
+          wp cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+          echo 'PRODUCER_BANNER_ROLLBACK_COMPLETE'
+          REMOTE
