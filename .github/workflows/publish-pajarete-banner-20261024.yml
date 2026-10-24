@@ -1,0 +1,93 @@
+name: Publish Quesos Pajarete approved producer banner
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-pajarete-banner-20261024.yml'
+      - '.github/scripts/publish-pajarete-banner-20261024.php'
+      - '.github/assets/pajarete-banner-20261024/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: publish-pajarete-banner-20261024
+  cancel-in-progress: true
+jobs:
+  onboard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install approved Pajarete producer banner, without modifying product or About content
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "${STAGING_HOST:-}"
+          test -n "${STAGING_USER:-}"
+          test -n "${STAGING_PASSWORD:-}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          sudo apt-get install -y --no-install-recommends ffmpeg >/dev/null
+          cat .github/assets/pajarete-banner-20261024/part{1,2,3}.b64 | tr -d '\\r\\n' | base64 --decode > /tmp/pajarete-art-20261024.avif
+          echo '52f1b031b98d439ca61324aa85644dee52903955fc614cbc75bdfc88698ca428  /tmp/pajarete-art-20261024.avif' | sha256sum --check
+          ffmpeg -y -hide_banner -loglevel error -i /tmp/pajarete-art-20261024.avif -vf 'scale=2022:778:flags=lanczos' -frames:v 1 -c:v libwebp -quality 82 /tmp/quesos-pajarete-banner-2022x778.webp
+          ffmpeg -y -hide_banner -loglevel error -i /tmp/pajarete-art-20261024.avif -vf 'scale=960:369:flags=lanczos' -frames:v 1 -c:v libwebp -quality 81 /tmp/quesos-pajarete-banner-960x369.webp
+          test -s /tmp/quesos-pajarete-banner-2022x778.webp
+          test -s /tmp/quesos-pajarete-banner-960x369.webp
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=30 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s|%s|%s" "$p" "$php_bin" "$wp_bin"; break ;;
+              esac
+            done
+          ')"
+          test -n "$INFO"
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+          REMOTE_SCRIPT="/tmp/pajarete-banner-${GITHUB_RUN_ID}.php"
+          REMOTE_DESKTOP="/tmp/pajarete-banner-${GITHUB_RUN_ID}-desktop.webp"
+          REMOTE_MOBILE="/tmp/pajarete-banner-${GITHUB_RUN_ID}-mobile.webp"
+          sshpass -e scp $SCP .github/scripts/publish-pajarete-banner-20261024.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+          sshpass -e scp $SCP /tmp/quesos-pajarete-banner-2022x778.webp "$STAGING_USER@$STAGING_HOST:$REMOTE_DESKTOP"
+          sshpass -e scp $SCP /tmp/quesos-pajarete-banner-960x369.webp "$STAGING_USER@$STAGING_HOST:$REMOTE_MOBILE"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $REMOTE_SCRIPT $REMOTE_DESKTOP $REMOTE_MOBILE" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD' '$PHP' '$WP' '$REMOTE_SCRIPT' '$REMOTE_DESKTOP' '$REMOTE_MOBILE'" <<'REMOTE' | tee /tmp/pajarete-banner-publication.log
+          set -Eeuo pipefail
+          prod="$1"; php="$2"; wp="$3"; script="$4"; desktop="$5"; mobile="$6"
+          export PATH="$(dirname "$php"):$PATH"
+          for phase in audit apply verify; do
+            PAJARETE_BANNER_DESKTOP="$desktop" PAJARETE_BANNER_MOBILE="$mobile" PAJARETE_BANNER_MODE="$phase" "$php" -d memory_limit=1536M "$wp" eval-file "$script" --path="$prod" --allow-root
+          done
+          "$php" "$wp" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
+          REMOTE
+          test "$(grep -c '^PAJARETE_BANNER_RESULT=' /tmp/pajarete-banner-publication.log)" = 2
+          echo 'PAJARETE_BANNER_WORKFLOW_COMPLETED'
+      - name: Save diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quesos-pajarete-banner-20261024
+          path: /tmp/pajarete-banner-publication.log
+          if-no-files-found: warn
+          retention-days: 30
