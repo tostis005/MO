@@ -39,6 +39,19 @@ jobs:
                     return {body:document.body.className,hText:h?.textContent?.trim(),banner:box(banner),wrap:box(wrap),heading:box(h),logo:box(logo),bannerAreaChildren:[...banner.children].map(x=>({tag:x.tagName,className:x.className}))};
                   });
                   console.log('BANNER_GEOMETRY='+JSON.stringify({slug,width,...result}));
+                  if(width===390){
+                    const layers=await p.evaluate(()=>{
+                      const root=document.querySelector('#wcfmmp-store');
+                      return [...root.querySelectorAll('*')].filter(n=>{
+                        const c=typeof n.className==='string'?n.className:'';
+                        return /banner|store_info|store_header|logo_area|mobile/i.test(c);
+                      }).slice(0,55).map(n=>{
+                        const c=getComputedStyle(n),r=n.getBoundingClientRect();
+                        return {tag:n.tagName,cls:n.className,tagId:n.id,parent:n.parentElement?.className,display:c.display,background:c.backgroundImage,x:r.x,y:r.y,w:r.width,h:r.height};
+                      });
+                    });
+                    console.log('MOBILE_BANNER_LAYERS='+JSON.stringify({slug,layers}));
+                  }
                 }
                 await p.close();
               }
