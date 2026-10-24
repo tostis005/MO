@@ -34,6 +34,10 @@ foreach($rows as $r){
         $pending[]=['source_id'=>(int)$r['id'],'title'=>$r['title'],'state'=>$r['status'],
            'source_url'=>$r['source_url'],'last_error'=>mb_substr((string)$r['last_error'],0,380),
            'has_payload'=>(bool)$origin,'price'=>$origin['price']??null,
+           'stock_status'=>$origin['stock_status']??null,
+           'short_chars'=>mb_strlen($norm((string)($origin['short_description']??''))),
+           'long_chars'=>mb_strlen($norm((string)($origin['description']??''))),
+           'image_urls'=>count((array)($origin['images']??[])),
            'variation_count'=>count((array)($origin['variations']??[]))];
         continue;
     }
