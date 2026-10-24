@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.316' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.317' );
 /* 0.10.316 evita bloqueos de Woostify al navegar entre productos agotados/ocultos. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
 	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsense' ); // Adsterra queda conservado pero inactivo.
@@ -47,6 +47,7 @@ $elmercado_modules = array(
 	'inc/vendor-home-verification.php',
 	'inc/vendor-home-verification-two.php',
 	'inc/vendor-home-verification-three.php',
+	'inc/producer-banner-title-unified-20261024.php',
 	'inc/accessibility-contrast-final.php',
 	'inc/storefront-final-pass.php',
 	'inc/premium-storefront-polish.php',
