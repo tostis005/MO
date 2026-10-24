@@ -107,7 +107,7 @@ foreach($published as $id=>$r){
         // Long source descriptions with ingredients/nutrition stay untouched.
         $label=esc_html($title);
         $source_markup=wp_kses_post((string)$data['short_description']);
-        $short_to_write='<p><strong>'.$label.'</strong>: '.$source_markup.'</p>';
+        $short_to_write='<p><strong>'.$label.'</strong>: '.esc_html($original_short).'</p>';
         if(mb_strlen($clean($short_to_write))>470){
             $short_to_write='<p><strong>'.$label.'</strong>: '.esc_html($compact($original_short,350)).'</p>';
         }
