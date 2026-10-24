@@ -111,6 +111,17 @@ foreach($published as $id=>$r){
     // overly long product names, not the brand or its separator.
     $brand=' | El Mercado de Origen';
     $seo_title=$compact($title,68-mb_strlen($brand)).$brand;
+    // The three "Nuestra Señora de los Ángeles" oil SKUs share a long
+    // prefix. Keep each verified bottle volume at the start of its SEO
+    // title rather than losing it through truncation.
+    if(in_array($id,[21491,21492,21493],true)){
+        $plain=remove_accents(mb_strtolower($title));
+        if(!str_contains($plain,'nuestra senora de los angeles')||
+           !preg_match('/\\b(2\\s*l|500\\s*ml|750\\s*ml)$/iu',$title,$match)){
+            throw new RuntimeException('Expected original AOVE volume absent '.$id);
+        }
+        $seo_title='AOVE Nuestra Señora de los Ángeles '.$match[1].$brand;
+    }
     // Each meta description uses actual source product copy. Reserve room
     // for the complete store name rather than truncating half a phrase.
     $detail=$original_short;
@@ -176,6 +187,14 @@ foreach($published as $id=>$r){
        'media'=>$attachments,'long_source_chars'=>mb_strlen($long),
        'original_aio'=>$r['aio'],'current_short'=>$p->get_short_description(),
        'product_name'=>$p->get_name(),'status'=>$p->get_status()];
+}
+// Verify every SEO title and snippet remains distinct before any writes.
+$unique_titles=[];$unique_descs=[];
+foreach($plans as $id=>$plan){
+    if(isset($unique_titles[$plan['title']]))throw new RuntimeException('Duplicate SEO titles: '.$id.'/'.$unique_titles[$plan['title']]);
+    if(isset($unique_descs[$plan['description']]))throw new RuntimeException('Duplicate SEO snippets: '.$id.'/'.$unique_descs[$plan['description']]);
+    $unique_titles[$plan['title']]=$id;
+    $unique_descs[$plan['description']]=$id;
 }
 $option='_mdo_pajarete_full_seo_rollback_20261024';
 if($mode==='audit'){
