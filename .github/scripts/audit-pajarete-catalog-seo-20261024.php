@@ -32,6 +32,13 @@ for($page=1;$page<=5;$page++){
   }
   if(count($arr)<100)break;
 }
+$aioseo_table=$wpdb->prefix.'aioseo_posts';
+$aioseo_exists=$wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$aioseo_table))===$aioseo_table;
+$aioseo_fields=$aioseo_exists?$wpdb->get_col("SHOW COLUMNS FROM {$aioseo_table}",0):[];
+$aioseo_rows=$aioseo_exists?$wpdb->get_results("SELECT post_id,title,description,canonical_url,robots_noindex,robots_nofollow FROM {$aioseo_table} WHERE post_id IN (21309,21319,21300) LIMIT 3",ARRAY_A):[];
+$aioseo_count=$aioseo_exists?(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$aioseo_table} WHERE post_id IN (SELECT wc_product_id FROM {$src_table} WHERE supplier_id=%d AND wc_product_id>0)",(int)$s['id'])):0;
+$imgs_unique=0;$imgs_duplicated=0;
+foreach($api as $entry){$images=array_filter(array_map(static fn($img)=>is_array($img)?(string)($img['src']??''):'',(array)($entry['images']??[])));$imgs_unique+=count(array_unique($images));$imgs_duplicated+=count($images)-count(array_unique($images));}
 $active_plugins=(array)get_option('active_plugins',[]);
 $seo_plugin=array_values(array_filter($active_plugins,static fn($p)=>str_contains($p,'wordpress-seo')||str_contains($p,'rank-math')||str_contains($p,'aioseo')||str_contains($p,'seo')));
 $summary=['source_rows'=>count($rows),'linked'=>0,'published'=>0,'draft'=>0,'excluded'=>0,'pending'=>0,
@@ -149,7 +156,8 @@ foreach($short_hashes as $ids){if(count($ids)>1)$summary['duplicate_short_count'
 $issues=array_values(array_filter($reports,static fn($p)=>!empty($p['warnings'])));
 echo 'PAJARETE_QA_OVERVIEW='.wp_json_encode([
   'summary'=>$summary,'api_pages'=>$api_counts,'api_errors'=>$api_errors,
-  'seo_plugins'=>$seo_plugin,'site_permalink_structure'=>get_option('permalink_structure'),
+  'seo_plugins'=>$seo_plugin,'aioseo'=>['table_exists'=>$aioseo_exists,'columns'=>$aioseo_fields,'sample_rows'=>$aioseo_rows,'record_count'=>$aioseo_count],
+  'api_image_url_unique_all_products'=>$imgs_unique,'api_image_url_duplicates_all_products'=>$imgs_duplicated,'site_permalink_structure'=>get_option('permalink_structure'),
   'issues'=>count($issues),'warning_counts'=>array_count_values(array_merge(...array_map(static fn($i)=>$i['warnings']??[],$reports))),
   'issue_examples'=>array_slice($issues,0,28),
 ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
