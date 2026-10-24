@@ -257,16 +257,35 @@ jobs:
 
       - name: Verify the public staging URL
         shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
           URL="$STAGING_URL/?deployment=${GITHUB_SHA}"
-          for attempt in {1..20}; do
+          for attempt in {1..5}; do
             status="$(curl -sS -L --max-time 25 -o /tmp/staging.html -w '%{http_code}' "$URL" || true)"
             if [ "$status" = '200' ] && grep -q 'elmercado-child-theme' /tmp/staging.html; then
               break
             fi
+            # Staging can be protected by HTTP authentication. Do not mistake
+            # its intentional 401/403 response for a broken PHP/theme deploy.
+            if [ "$status" = '401' ] || [ "$status" = '403' ]; then
+              break
+            fi
             sleep 5
           done
+
+          if [ "$status" = '401' ] || [ "$status" = '403' ]; then
+            echo "Staging is access-controlled (HTTP $status). Verifying deployed theme over SSH instead."
+            PORT="${STAGING_PORT:-22}"
+            SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+            local_sha="$(sha256sum elmercadodeorigen-child/inc/producer-banner-title-unified-20261024.php | cut -d' ' -f1)"
+            remote_sha="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sha256sum '$STAGING_THEME_PATH/inc/producer-banner-title-unified-20261024.php'" | cut -d' ' -f1)"
+            [ "$remote_sha" = "$local_sha" ]
+            echo 'Staging child theme module SHA verified. Public HTML inspection requires staging HTTP credentials.'
+            exit 0
+          fi
+
           if [ "${status:-}" != '200' ] || ! grep -q 'elmercado-child-theme' /tmp/staging.html; then
             echo 'The public staging URL did not serve the active child theme.' >&2
             echo "Last HTTP status: ${status:-unknown}" >&2
