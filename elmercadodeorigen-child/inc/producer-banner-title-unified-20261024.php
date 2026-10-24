@@ -165,7 +165,7 @@ add_action(
 				if (!banners.length) return;
 				const nativeName = banners.map((banner) => banner.querySelector('.banner_text h1')?.textContent?.trim()).find(Boolean) || '';
 				const headerName = document.querySelector('#wcfm_store_header .store_name, #wcfm_store_header h1')?.textContent?.trim() || '';
-				const pageName = (document.title || '').split(/\\s+[|–—]\\s+/)[0].trim();
+				const pageName = (document.title || '').split(/\s+[|–—]\s+/)[0].trim();
 				const storeName = officialName || nativeName || headerName || pageName;
 				if (!storeName) return;
 
