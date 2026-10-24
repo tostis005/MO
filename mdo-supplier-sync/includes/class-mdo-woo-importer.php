@@ -381,7 +381,20 @@ final class MDO_Woo_Importer {
         $source = implode( ' | ', $source_names );
         $title = remove_accents( mb_strtolower( (string) ( $payload['title'] ?? '' ) ) );
         $slug = '';
-        if ( preg_match( '/queso de (?:cabra|oveja)|queso mezcla de cabra y oveja/i', $source ) ||
+        // Keep the manually verified Pajarete classifications stable when its
+        // catalogue is resynchronized. These explicit title families are
+        // checked before generic source group/category fallbacks.
+        if ( preg_match( '/^gilda\\b/u', $title ) ) {
+            $slug = 'conservas';
+        } elseif ( str_contains( $title, 'patatas fritas' ) ||
+                   str_contains( $title, 'regana' ) ||
+                   preg_match( '/\\b(?:craker|cracker)\\b/u', $title ) ) {
+            $slug = 'aperitivos-y-snacks';
+        } elseif ( str_contains( $title, 'membrillo' ) ) {
+            $slug = 'mermeladas-y-confituras';
+        } elseif ( preg_match( '/^(?:salon gourmet|quesierra) 20[0-9]{2}\\b/u', $title ) ) {
+            $slug = 'packs-y-lotes';
+        } elseif ( preg_match( '/queso de (?:cabra|oveja)|queso mezcla de cabra y oveja/i', $source ) ||
              preg_match( '/\\b(?:queso|mini(?:queso|sensaciones)|patrufo|curado|semicurado|gran reserva|blister)\\b/i', $title ) &&
              ! preg_match( '/\\b(?:mermelada|miel|pan|pate|carne|chorizo)\\b/i', $title ) ) {
             $slug = 'quesos';
