@@ -294,9 +294,7 @@ jobs:
             early_ttfb="$(curl -sS -D /tmp/home-cache-headers.txt -o /tmp/home-cache.html --max-time 30 -w '%{time_starttransfer}' "$STAGING_URL/")"
             tr -d '\r' < /tmp/home-cache-headers.txt > /tmp/home-cache-headers-normalized.txt
             cat /tmp/home-cache-headers-normalized.txt
-            grep -Eiq '^x-el-mercado-early-cache:[[:space:]]*HIT
-
- /tmp/home-cache-headers-normalized.txt
+            grep -Eiq '^x-el-mercado-early-cache:[[:space:]]*HIT\$' /tmp/home-cache-headers-normalized.txt
             grep -q 'Los favoritos de nuestros clientes' /tmp/home-cache.html
             printf 'Early Home cache TTFB: %ss\n' "$early_ttfb"
           else
