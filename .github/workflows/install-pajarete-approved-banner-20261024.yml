@@ -88,7 +88,7 @@ jobs:
           REMOTE_MOBILE="/tmp/pajarete-banner-mobile-${GITHUB_RUN_ID}.webp"
           sshpass -e scp $SCP .github/scripts/install-pajarete-approved-banner-20261024.php "$TMP_BANNER/desktop.webp" "$TMP_BANNER/mobile.webp" "$STAGING_USER@$STAGING_HOST:/tmp/"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mv /tmp/install-pajarete-approved-banner-20261024.php '$REMOTE_SCRIPT' && mv /tmp/desktop.webp '$REMOTE_DESKTOP' && mv /tmp/mobile.webp '$REMOTE_MOBILE'"
-          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f \'$REMOTE_SCRIPT\' \'$REMOTE_DESKTOP\' \'$REMOTE_MOBILE\'" >/dev/null 2>&1 || true' EXIT
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $REMOTE_SCRIPT $REMOTE_DESKTOP $REMOTE_MOBILE" >/dev/null 2>&1 || true' EXIT
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD' '$PHP' '$WP' '$REMOTE_SCRIPT' '$REMOTE_DESKTOP' '$REMOTE_MOBILE'" <<'REMOTE' | tee /tmp/pajarete-banner-install.log
           set -Eeuo pipefail
           prod="$1"; php="$2"; wp="$3"; script="$4"; desktop="$5"; mobile="$6"
