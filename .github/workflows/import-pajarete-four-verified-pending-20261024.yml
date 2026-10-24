@@ -1,0 +1,106 @@
+name: Import 4 verified pending Pajarete gourmet products
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/import-pajarete-four-verified-pending-20261024.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: import-four-quesos-pajarete-verified-code
+  cancel-in-progress: true
+jobs:
+  onboard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate scoped importer and production connector
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l mdo-supplier-sync/connectors/class-mdo-connector-quesos-pajarete.php
+          php -l .github/scripts/import-pajarete-four-verified-pending-20261024.php
+          grep -q "quesos-pajarete" mdo-supplier-sync/includes/class-mdo-scheduler.php
+          php -l mdo-supplier-sync/includes/class-mdo-woo-importer.php
+      - name: Import four verified Pajarete source products and publish after media checks
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "${STAGING_HOST:-}"
+          test -n "${STAGING_USER:-}"
+          test -n "${STAGING_PASSWORD:-}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=30 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s|%s|%s" "$p" "$php_bin" "$wp_bin"; break ;;
+              esac
+            done
+          ')"
+          test -n "$INFO"
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+          for path in             'mdo-supplier-sync.php'             'connectors/class-mdo-connector-quesos-pajarete.php'             'includes/class-mdo-woo-importer.php'             'includes/class-mdo-scheduler.php'; do
+            expected="$(sha256sum "mdo-supplier-sync/$path" | awk '{print $1}')"
+            echo "Waiting for production EMDO source: $path"
+            ok=0
+            for attempt in $(seq 1 75); do
+              actual="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sha256sum '$PROD/wp-content/plugins/mdo-supplier-sync/$path' 2>/dev/null | cut -d ' ' -f1" 2>/dev/null | tr -d '\r\n' || true)"
+              if [ "$expected" = "$actual" ]; then ok=1; break; fi
+              sleep 12
+            done
+            test "$ok" = 1 || { echo "EMDO code is not yet deployed: $path" >&2; exit 20; }
+          done
+          REMOTE_SCRIPT="/tmp/repair-pajarete-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/import-pajarete-four-verified-pending-20261024.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $REMOTE_SCRIPT" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD' '$PHP' '$WP' '$REMOTE_SCRIPT'" <<'REMOTE' | tee /tmp/pajarete-four-import.log
+          set -Eeuo pipefail
+          prod="$1"; php="$2"; wp="$3"; script="$4"
+          export PATH="$(dirname "$php"):$PATH"
+          phase() {
+            PAJARETE_FOUR_PHASE="$1" PAJARETE_FOUR_SOURCE_ID="${2:-}" "$php" -d memory_limit=1536M "$wp" eval-file "$script" --path="$prod" --allow-root
+          }
+          phase prepare
+          for id in 1080 1081 1082 1083; do
+            phase import "$id"
+          done
+          phase verify
+          "$php" "$wp" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
+          echo PAJARETE_FOUR_WORKFLOW_COMPLETED
+          REMOTE
+          grep -q '^PAJARETE_FOUR_VERIFIED=' /tmp/pajarete-four-import.log
+          grep -q '^PAJARETE_REPAIR_WORKFLOW_COMPLETED$' /tmp/pajarete-four-import.log
+          echo "Four official Pajarete products source/variants/images validated."
+      - name: Save repair results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quesos-pajarete-four-import-20261024
+          path: /tmp/pajarete-four-import.log
+          if-no-files-found: warn
+          retention-days: 30
