@@ -1,4 +1,4 @@
-name: Pajarete cheese-only inventory
+name: Pajarete exclude visible non-cheeses safely
 on:
   push:
     branches: [main]
@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: true
-      - name: Report Pajarete currently shown and excluded items (read-only)
+      - name: Safely exclude audited non-cheeses and verify preserved items
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -66,23 +66,26 @@ jobs:
           set -Eeuo pipefail
           prod="$1"; php="$2"; wp="$3"; script="$4"
           export PATH="$(dirname "$php"):$PATH"
-          "$php" -d memory_limit=1536M "$wp" eval-file "$script" --path="$prod" --allow-root
+          for phase in preview apply verify; do
+            PAJARETE_ONLY_CHEESE_PHASE="$phase" "$php" -d memory_limit=1536M "$wp" eval-file "$script" --path="$prod" --allow-root
+          done
           REMOTE
-          grep '^PAJARETE_ONLY_CHEESE_PREVIEW=' /tmp/pajarete-cheese.log | tail -n1 | sed 's/^PAJARETE_ONLY_CHEESE_PREVIEW=//' > /tmp/pajarete-cheese.json
+          test "$(grep -c '^PAJARETE_ONLY_CHEESE_RESULT=' /tmp/pajarete-cheese.log)" = 2
+          grep '^PAJARETE_ONLY_CHEESE_RESULT=' /tmp/pajarete-cheese.log | tail -n1 | sed 's/^PAJARETE_ONLY_CHEESE_RESULT=//' > /tmp/pajarete-cheese.json
           python3 -m json.tool /tmp/pajarete-cheese.json >/dev/null
           mkdir -p .deploy-status
-          cp /tmp/pajarete-cheese.json .deploy-status/pajarete-cheese-only-inventory-20261024.json
+          cp /tmp/pajarete-cheese.json .deploy-status/pajarete-cheese-only-application-20261024.json
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
-          git add .deploy-status/pajarete-cheese-only-inventory-20261024.json
+          git add .deploy-status/pajarete-cheese-only-application-20261024.json
           if ! git diff --cached --quiet; then
-            git commit -m "Record Pajarete live catalogue cheese-only audit"
+            git commit -m "Record Pajarete cheese-only publication verification"
             git push origin HEAD:main
           fi
       - name: Save diagnostic report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pajarete-cheese-only-inventory-20261024
+          name: pajarete-cheese-only-application-20261024
           path: /tmp/pajarete-cheese.*
           if-no-files-found: warn
