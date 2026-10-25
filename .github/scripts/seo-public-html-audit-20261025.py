@@ -88,11 +88,21 @@ for path,cfg in PAGES.items():
                 if any(t in k.lower() for t in ("cache","age","server","vary","x-el-mercado","x-rocket","litespeed"))}
             row["final_url"]=response.url.split("?")[0]
             row["body_bytes"]=len(html.encode())
+            row["cache_headers"]={name:response.headers.get(name) for name in
+                ("X-LiteSpeed-Cache", "X-Cache", "CF-Cache-Status", "Cache-Control",
+                 "Age", "X-EMO-Blog-Cache") if response.headers.get(name)}
         parsed=Document(); parsed.feed(html)
         body=tidy(" ".join(parsed.body_text))
         row["title"]=parsed.titles[0][:120] if parsed.titles else ""
         row["h1_count"]=len(parsed.h1)
         row["h1_text"]=[tidy(x)[:120] for x in parsed.h1[:4]]
+        if cfg["type"]=="post":
+            row["h1_html_context"]=[
+                {"tag":m.group(0).split(">",1)[0][:240]+">",
+                 "before":tidy(html[max(0,m.start()-350):m.start()])[-300:],
+                 "after":tidy(html[m.end():m.end()+220])[:190]}
+                for m in list(re.finditer(r"<h1\\b[^>]*>.*?</h1\\s*>",html,re.I|re.S))[:4]
+            ]
         row["meta_description_count"]=len(parsed.meta)
         row["canonical"]=parsed.canonical[0] if parsed.canonical else ""
         row["canonical_count"]=len(parsed.canonical)
