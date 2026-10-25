@@ -125,7 +125,7 @@ for path,cfg in PAGES.items():
             # Site-internal product/category hyperlinks are the first measurable
             # bridge from informational SEO traffic to catalog discovery.
             internal_hrefs=[]
-            for raw in re.findall(r"""<a\\b[^>]*\\bhref\\s*=\\s*['"]([^'"]+)['"]""",html,re.I):
+            for raw in re.findall(r"""<a\b[^>]*\bhref\s*=\s*['"]([^'"]+)['"]""",html,re.I):
                 link=html_util.unescape(raw)
                 parsed_link=urlsplit(link)
                 if parsed_link.hostname not in (None,"www.elmercadodeorigen.com","elmercadodeorigen.com"):
