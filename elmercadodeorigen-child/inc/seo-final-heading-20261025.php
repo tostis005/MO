@@ -45,3 +45,19 @@ function elmercado_blog_final_h1_guard_20261025( $content, $title ) {
 
     return is_string( $clean ) ? $clean : $content;
 }
+
+/**
+ * The Woostify parent theme renders an H1 in its generic .page-header on
+ * single posts, while our single.php owns the actual editorial H1. Hide
+ * neither with CSS: remove only the parent's generator before header.php runs.
+ *
+ * Woostify registers woostify_page_header at woostify_after_header priority 10.
+ * Keep the parent's page header on other templates (categories, products etc.).
+ */
+function elmercado_blog_skip_woostify_post_page_header_20261025() {
+    if ( is_admin() || ! is_singular( 'post' ) ) {
+        return;
+    }
+    remove_action( 'woostify_after_header', 'woostify_page_header', 10 );
+}
+add_action( 'wp', 'elmercado_blog_skip_woostify_post_page_header_20261025', 100 );

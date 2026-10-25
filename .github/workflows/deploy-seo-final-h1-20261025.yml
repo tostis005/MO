@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/deploy-seo-final-h1-20261025.yml'
       - '.github/scripts/patch-seo-final-h1-production-20261025.php'
+      - 'elmercadodeorigen-child/inc/seo-final-heading-20261025.php'
   workflow_dispatch:
 
 permissions:
@@ -35,6 +36,7 @@ jobs:
           php -l elmercadodeorigen-child/inc/seo-final-heading-20261025.php
           php -l .github/scripts/elmercado-opcache-reset.php
           php tests/seo-final-heading-20261025.php
+          grep -Fq 'woostify_after_header' elmercadodeorigen-child/inc/seo-final-heading-20261025.php
           grep -Fq "'inc/seo-final-heading-20261025.php'" elmercadodeorigen-child/functions.php
           grep -Fq "elmercado_blog_final_h1_guard_20261025" elmercadodeorigen-child/single.php
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${SSHPASS:?}"
@@ -176,7 +178,7 @@ jobs:
           # Request live WordPress through a unique path and verify 1 H1 and
           # a healthy HTTP response before marking the deployment successful.
           base="https://www.elmercadodeorigen.com"
-          for slug in garbanzos-tiempo-remojo-cuanto-tardan-cocerse cuanta-legumbre-seca-por-persona-garbanzos-lentejas-alubias cuanta-proteina-tiene-carne-ternera; do
+          for slug in garbanzos-tiempo-remojo-cuanto-tardan-cocerse cuanta-legumbre-seca-por-persona-garbanzos-lentejas-alubias cuanta-proteina-tiene-carne-ternera hay-que-poner-lentejas-en-remojo-cuanto-tiempo cuanto-dura-carne-cocinada-nevera-conservacion-segura; do
             out="$backup/probe-$slug.html"
             status=$(curl -ksSL -o "$out" -w '%{http_code}' --connect-timeout 12 --max-time 45 "$base/$slug/?seo_h1_validation=$run" || true)
             if [ "$status" != 200 ]; then echo "$slug HTTP=$status" >&2; exit 9; fi
