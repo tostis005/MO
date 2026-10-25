@@ -71,7 +71,7 @@ def tidy(s):
 
 out={"generated_utc":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),
      "source":"Fresh public HTML via GitHub runner, no GSC live API",
-     "release_under_test":"ea87773bcdb8e3f51f1f657799c75c71435c970b",
+     "release_under_test":"3d85eb687168115579ce39692ab1d1d4353ae16b",
      "rows":[], "all_healthy":True}
 for path,cfg in PAGES.items():
     url=BASE+path+"?seo_public_audit="+uuid4().hex
