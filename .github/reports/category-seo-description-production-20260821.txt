@@ -1,34 +1,22 @@
-CATEGORY|/categoria-producto/aceites/|HTTP=200|DESCRIPTION_MARKER=True|BYTES=1202646
-CATEGORY|/en/product-category/oils/|HTTP=200|DESCRIPTION_MARKER=False|BYTES=0
-CATEGORY|/categoria-producto/jamones-paletas/|HTTP=200|DESCRIPTION_MARKER=False|BYTES=0
-CATEGORY|/en/product-category/hams-and-shoulders/|HTTP=200|DESCRIPTION_MARKER=False|BYTES=0
-CATEGORY|/categoria-producto/embutidos-y-curados/|HTTP=200|DESCRIPTION_MARKER=False|BYTES=0
-CATEGORY|/en/product-category/cured-meats/|HTTP=200|DESCRIPTION_MARKER=False|BYTES=0
-CATEGORY|/categoria-producto/packs-y-lotes/|HTTP=200|DESCRIPTION_MARKER=False|BYTES=0
-CATEGORY|/en/product-category/packs-and-bundles/|HTTP=301|DESCRIPTION_MARKER=False|BYTES=0
-CATEGORY|/categoria-producto/carnes/|HTTP=200|DESCRIPTION_MARKER=True|BYTES=1337955
-CATEGORY|/en/product-category/meat/|HTTP=301|DESCRIPTION_MARKER=False|BYTES=0
-CATEGORY|/categoria-producto/conservas/|HTTP=200|DESCRIPTION_MARKER=True|BYTES=1333190
-CATEGORY|/en/product-category/preserves/|HTTP=301|DESCRIPTION_MARKER=False|BYTES=0
-CATEGORY|/categoria-producto/hortalizas-verduras/|HTTP=200|DESCRIPTION_MARKER=True|BYTES=1332673
-CATEGORY|/en/product-category/vegetables/|HTTP=301|DESCRIPTION_MARKER=False|BYTES=0
-CATEGORY|/categoria-producto/legumbres/|HTTP=200|DESCRIPTION_MARKER=True|BYTES=1219817
-CATEGORY|/en/product-category/pulses/|HTTP=301|DESCRIPTION_MARKER=False|BYTES=0
-PAGINATION|HTTP=404|DESCRIPTION_MARKER=False
+CATEGORY|/categoria-producto/aceites/|HTTP=200|DESCRIPTION_MARKER=False|BYTES=1045513
+NATIVE_DESCRIPTION|/categoria-producto/aceites/|COUNT=0
+CATEGORY|/en/product-category/oils/|HTTP=200|DESCRIPTION_MARKER=True|BYTES=1033417
+CATEGORY|/categoria-producto/jamones-paletas/|HTTP=200|DESCRIPTION_MARKER=False|BYTES=1173784
+NATIVE_DESCRIPTION|/categoria-producto/jamones-paletas/|COUNT=1
+CATEGORY|/en/product-category/hams-and-shoulders/|HTTP=200|DESCRIPTION_MARKER=True|BYTES=1164095
+CATEGORY|/categoria-producto/embutidos-y-curados/|HTTP=200|DESCRIPTION_MARKER=True|BYTES=1158040
+CATEGORY|/en/product-category/cured-meats/|HTTP=200|DESCRIPTION_MARKER=True|BYTES=1143527
+CATEGORY|/categoria-producto/packs-y-lotes/|HTTP=200|DESCRIPTION_MARKER=True|BYTES=1155765
+CATEGORY|/en/product-category/packs-and-bundles/|HTTP=200|DESCRIPTION_MARKER=True|BYTES=1137740
+CATEGORY|/categoria-producto/carnes/|HTTP=200|DESCRIPTION_MARKER=True|BYTES=1150519
+CATEGORY|/en/product-category/meat/|HTTP=200|DESCRIPTION_MARKER=True|BYTES=1135028
+CATEGORY|/categoria-producto/conservas/|HTTP=200|DESCRIPTION_MARKER=True|BYTES=1152082
+CATEGORY|/en/product-category/preserves/|HTTP=200|DESCRIPTION_MARKER=True|BYTES=1140769
+CATEGORY|/categoria-producto/hortalizas-verduras/|HTTP=200|DESCRIPTION_MARKER=True|BYTES=1165379
+CATEGORY|/en/product-category/vegetables/|HTTP=200|DESCRIPTION_MARKER=True|BYTES=1144435
+CATEGORY|/categoria-producto/legumbres/|HTTP=200|DESCRIPTION_MARKER=False|BYTES=1056286
+NATIVE_DESCRIPTION|/categoria-producto/legumbres/|COUNT=1
+CATEGORY|/en/product-category/pulses/|HTTP=200|DESCRIPTION_MARKER=True|BYTES=1045110
+PAGINATION|HTTP=200|DESCRIPTION_MARKER=False
 FAILURES:
-- /en/product-category/oils/ missing visible category description
-- /categoria-producto/jamones-paletas/ missing visible category description
-- /en/product-category/hams-and-shoulders/ missing visible category description
-- /categoria-producto/embutidos-y-curados/ missing visible category description
-- /en/product-category/cured-meats/ missing visible category description
-- /categoria-producto/packs-y-lotes/ missing visible category description
-- /en/product-category/packs-and-bundles/ HTTP 301
-- /en/product-category/packs-and-bundles/ missing visible category description
-- /en/product-category/meat/ HTTP 301
-- /en/product-category/meat/ missing visible category description
-- /en/product-category/preserves/ HTTP 301
-- /en/product-category/preserves/ missing visible category description
-- /en/product-category/vegetables/ HTTP 301
-- /en/product-category/vegetables/ missing visible category description
-- /en/product-category/pulses/ HTTP 301
-- /en/product-category/pulses/ missing visible category description
+- /categoria-producto/aceites/ native description count 0 != 1
