@@ -49,10 +49,17 @@ function emdo_category_seo_is_long_description( string $html ): bool {
 }
 
 function emdo_category_seo_render_description( string $position ): void {
-    // The WooCommerce archive template already prints these two short ES descriptions.
-    // Avoid a second identical paragraph from our extra SEO hook. Do not touch
-    // other categories or the EN fallback description.
-    if ( ! emdo_category_seo_is_english() && is_product_category( array( 'cafe-de-especialidad', 'cremas-de-cacao' ) ) ) {
+    // WooCommerce already renders the Spanish term description in these
+    // verified archives. The supplementary hook rendered it twice (or once
+    // above and again below the product grid for long descriptions), so
+    // suppress ONLY the extra copy. Preserve native output and all EN copies.
+    if ( ! emdo_category_seo_is_english() && is_product_category( array(
+        'cafe-de-especialidad',
+        'cremas-de-cacao',
+        'legumbres',
+        'aceites',
+        'jamones-paletas',
+    ) ) ) {
         return;
     }
     $html = emdo_category_seo_current_description();

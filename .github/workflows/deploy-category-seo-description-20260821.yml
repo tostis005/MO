@@ -74,6 +74,24 @@ jobs:
             '/categoria-producto/hortalizas-verduras/', '/en/product-category/vegetables/',
             '/categoria-producto/legumbres/', '/en/product-category/pulses/',
           ]
+          # Three ES archives were verified rendering their term description
+          # through WooCommerce already; the extra emdo hook must NOT repeat it.
+          native_only={
+            '/categoria-producto/legumbres/': 'Alubias, garbanzos y lentejas en distintas variedades, seleccionadas',
+            '/categoria-producto/aceites/': 'El aceite de oliva virgen extra es un zumo 100% natural',
+            '/categoria-producto/jamones-paletas/': 'Descubre nuestra selección de jamones y paletas de productores españoles',
+          }
+          from html.parser import HTMLParser
+          import re
+          class BodyText(HTMLParser):
+            def __init__(self):
+              super().__init__(); self.active=False; self.fragments=[]
+            def handle_starttag(self, tag, attrs):
+              if tag=='body': self.active=True
+            def handle_endtag(self, tag):
+              if tag=='body': self.active=False
+            def handle_data(self, data):
+              if self.active: self.fragments.append(data)
           failures=[]
           for path in paths:
             req=urllib.request.Request(base+path+'?emdo_category_desc_verify='+stamp,headers={'User-Agent':'EMDO-Category-Description-Verify/2026-08-21'})
@@ -85,7 +103,15 @@ jobs:
             marker='data-emdo-category-description="1"' in body
             print(f'CATEGORY|{path}|HTTP={status}|DESCRIPTION_MARKER={marker}|BYTES={len(body.encode())}')
             if status!=200: failures.append(f'{path} HTTP {status}')
-            if not marker: failures.append(f'{path} missing visible category description')
+            if path in native_only:
+              if marker: failures.append(f'{path} duplicate extra SEO description marker')
+              p=BodyText(); p.feed(body)
+              text=re.sub(r'\\s+',' ',' '.join(p.fragments))
+              count=text.count(native_only[path])
+              print(f'NATIVE_DESCRIPTION|{path}|COUNT={count}')
+              if count!=1: failures.append(f'{path} native description count {count} != 1')
+            elif not marker:
+              failures.append(f'{path} missing visible category description')
           # The visible description is intentionally omitted on page 2 to avoid repeating a long block.
           req=urllib.request.Request(base+'/categoria-producto/jamones-paletas/page/2/?emdo_category_desc_verify='+stamp,headers={'User-Agent':'EMDO-Category-Description-Verify/2026-08-21'})
           try:
