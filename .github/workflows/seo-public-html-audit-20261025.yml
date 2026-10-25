@@ -1,0 +1,55 @@
+name: Verify public SEO GSC guides and categories 20261025
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/seo-public-html-audit-20261025.py'
+      - '.github/workflows/seo-public-html-audit-20261025.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: seo-public-html-audit-20261025
+  cancel-in-progress: true
+
+jobs:
+  report:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read eight published pages and save observable evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .github/reports
+          python3 -m py_compile .github/scripts/seo-public-html-audit-20261025.py
+          python3 .github/scripts/seo-public-html-audit-20261025.py > .github/reports/seo-public-html-audit-20261025.json
+          python3 - <<'PY'
+          import json
+          path='.github/reports/seo-public-html-audit-20261025.json'
+          d=json.load(open(path,encoding='utf-8'))
+          for x in d['rows']:
+            print(x['path'],'OK='+str(x.get('ok')),
+                  'H1='+str(x.get('h1_count')),
+                  'COPY='+str(x.get('description_prefix_count','n/a')),
+                  x.get('error',''))
+          print('ALL_HEALTHY='+str(d['all_healthy']))
+          PY
+      - name: Preserve read-only report in repository
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          file=.github/reports/seo-public-html-audit-20261025.json
+          test -f "$file" || exit 1
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$file"
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Record public H1 and category SEO audit [skip ci]"
+          git pull --rebase origin main
+          git push
