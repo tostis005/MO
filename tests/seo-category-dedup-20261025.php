@@ -4,6 +4,7 @@ define( 'ABSPATH', __DIR__ );
 class WP_Term { public $term_id = 9; public $taxonomy = 'product_cat'; public $description = 'Una descripción española oficial.'; }
 $GLOBALS['test_category'] = 'legumbres';
 function wp_unslash($v) { return $v; }
+function wp_parse_url($v,$component= -1) { return parse_url($v,$component); }
 function add_action($hook,$callback,$priority=10) {}
 function is_paged() { return false; }
 function is_product_category($slugs=null) {
