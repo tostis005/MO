@@ -128,6 +128,10 @@ jobs:
         shell: bash
         run: php tests/seo-expired-special-20261012.php
 
+      - name: Validate unique Spanish category descriptions
+        shell: bash
+        run: php tests/seo-category-dedup-20261025.php
+
       - name: Validate final duplicate article H1 guard
         shell: bash
         run: php tests/seo-final-heading-20261025.php
