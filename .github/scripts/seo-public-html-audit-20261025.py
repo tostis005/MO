@@ -84,6 +84,8 @@ for path,cfg in PAGES.items():
         with urllib.request.urlopen(request,timeout=30) as response:
             html=response.read(3_000_000).decode("utf-8","replace")
             row["http_status"]=response.status
+            row["response_headers"]={k:v[:130] for k,v in response.headers.items()
+                if any(t in k.lower() for t in ("cache","age","server","vary","x-el-mercado","x-rocket","litespeed"))}
             row["final_url"]=response.url.split("?")[0]
             row["body_bytes"]=len(html.encode())
         parsed=Document(); parsed.feed(html)
@@ -101,6 +103,15 @@ for path,cfg in PAGES.items():
             at=body.find("El aceite de oliva")
             if path.endswith("/aceites/"):
                 row["aceites_content_excerpt"]=body[max(0,at-120):at+350] if at>=0 else body[:650]
+        if cfg["type"]=="post":
+            hits=list(re.finditer(r"<h1\\b[^>]*>.*?</h1\\s*>",html,re.I|re.S))
+            row["h1_markup_context"]=[
+                re.sub(r"\\s+"," ",html[max(0,m.start()-250):min(len(html),m.end()+250)])[:950]
+                for m in hits[:3]]
+            row["cache_markers"]={
+                "static_v2": "elmercado-blog-static-v2" in html,
+                "seo_h1_marker": "elmercado_blog_final_h1_guard_20261025" in html,
+            }
         bad = row["http_status"]!=200 or len(parsed.h1)!=1
         if "needle" in cfg and row["description_prefix_count"]!=1: bad=True
         row["ok"]=not bad
