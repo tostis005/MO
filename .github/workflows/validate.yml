@@ -9,6 +9,9 @@ on:
       - 'tests/seo-*.py'
       - '.github/workflows/validate.yml'
       - '.github/workflows/seo-staging-html-audit.yml'
+      - '.github/workflows/deploy-seo-final-h1-20261025.yml'
+      - '.github/scripts/patch-seo-final-h1-production-20261025.php'
+      - '.github/scripts/test-seo-h1-deploy-20261025.sh'
       - '.github/workflows/production-seo-gsc-batch1-20261013.yml'
       - '.github/workflows/diagnose-production-seo-origin-20261013.yml'
       - '.github/workflows/production-install-gsc-batch1-module-20261013.yml'
@@ -127,6 +130,10 @@ jobs:
       - name: Validate expired promotional card handling
         shell: bash
         run: php tests/seo-expired-special-20261012.php
+
+      - name: Validate surgical SEO H1 production patcher
+        shell: bash
+        run: bash .github/scripts/test-seo-h1-deploy-20261025.sh
 
       - name: Validate final duplicate article H1 guard
         shell: bash
