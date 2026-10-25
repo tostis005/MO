@@ -33,6 +33,7 @@ jobs:
           set -euo pipefail
           php -l .github/scripts/patch-seo-final-h1-production-20261025.php
           php -l elmercadodeorigen-child/inc/seo-final-heading-20261025.php
+          php -l .github/scripts/elmercado-opcache-reset.php
           php tests/seo-final-heading-20261025.php
           grep -Fq "'inc/seo-final-heading-20261025.php'" elmercadodeorigen-child/functions.php
           grep -Fq "elmercado_blog_final_h1_guard_20261025" elmercadodeorigen-child/single.php
@@ -77,8 +78,10 @@ jobs:
           SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
           PATCHER="/tmp/seo-h1-patcher-${GITHUB_RUN_ID}.php"
           MODULE="/tmp/seo-h1-module-${GITHUB_RUN_ID}.php"
+          OPCACHE="/tmp/seo-h1-opcache-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP .github/scripts/patch-seo-final-h1-production-20261025.php "$STAGING_USER@$STAGING_HOST:$PATCHER"
           sshpass -e scp $SCP elmercadodeorigen-child/inc/seo-final-heading-20261025.php "$STAGING_USER@$STAGING_HOST:$MODULE"
+          sshpass -e scp $SCP .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$OPCACHE"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sh -s -- '$PROD_PATH' '$GITHUB_RUN_ID'" <<'REMOTE'
           set -eu
           prod="$1"
@@ -113,6 +116,25 @@ jobs:
           "$php_bin" -l "$backup/functions.php" >/dev/null
           "$php_bin" -l "$backup/single.php" >/dev/null
           cp -p "$module" "$backup/new-module.php"
+          # The active web PHP-FPM OPcache is not the WP-CLI opcode cache.
+          # Use the existing one-shot production helper and delete its URL.
+          opcache_src="/tmp/seo-h1-opcache-$run.php"
+          opcache_url="$prod/emdo-seo-h1-opcache-$run.php"
+          reset_web_opcache() {
+            if [ ! -f "$opcache_src" ]; then
+              echo 'Missing web OPcache reset helper' >&2
+              return 1
+            fi
+            cp -p "$opcache_src" "$opcache_url"
+            response=$(curl -fsSL --max-time 25 -H 'Cache-Control: no-store' \
+              "https://www.elmercadodeorigen.com/$(basename "$opcache_url")?run=$run" || true)
+            rm -f "$opcache_url"
+            if [ "$response" != 'OPCACHE_RESET_OK' ]; then
+              echo "PHP-FPM OPcache reset not confirmed: $response" >&2
+              return 1
+            fi
+            echo 'SEO_WEB_OPCACHE_RESET_OK'
+          }
           apply_started=0
           cleanup() {
             status=$?
@@ -127,8 +149,9 @@ jobs:
                 rm -f "$target"
               fi
               "$php_bin" -d memory_limit=768M "$wp_bin" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
+              reset_web_opcache || echo 'WARNING: rollback web OPcache reset failed' >&2
             fi
-            rm -f "$patcher" "$module"
+            rm -f "$patcher" "$module" "$opcache_src" "$opcache_url"
             exit "$status"
           }
           trap cleanup EXIT HUP INT TERM
@@ -148,6 +171,7 @@ jobs:
             find "$static" -maxdepth 1 -type f -name '*.html' -delete
           fi
           "$php_bin" -d memory_limit=768M "$wp_bin" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
+          reset_web_opcache
 
           # Request live WordPress through a unique path and verify 1 H1 and
           # a healthy HTTP response before marking the deployment successful.
