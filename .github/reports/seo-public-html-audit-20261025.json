@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-10-25T09:03:22Z",
+  "generated_utc": "2026-10-25T09:07:47Z",
   "source": "Fresh public HTML via GitHub runner, no GSC live API",
   "release_under_test": "3d85eb687168115579ce39692ab1d1d4353ae16b",
   "rows": [
@@ -12,7 +12,7 @@
         "Vary": "accept,content-type,Accept-Encoding"
       },
       "final_url": "https://www.elmercadodeorigen.com/garbanzos-tiempo-remojo-cuanto-tardan-cocerse/",
-      "body_bytes": 1262241,
+      "body_bytes": 1262237,
       "cache_headers": {},
       "title": "Remojo de garbanzos: tiempo y cocción",
       "h1_count": 1,
@@ -32,6 +32,17 @@
       "canonical_count": 1,
       "canonical_self_reference": true,
       "category_extra_copy_blocks": 0,
+      "commercial_product_urls": [
+        "/producto/alubia-blanca-de-rinon/",
+        "/producto/alubia-canela/",
+        "/producto/alubias-pintas/",
+        "/producto/garbanzo-pedrosillano/",
+        "/producto/lenteja-pardina/"
+      ],
+      "commercial_category_urls": [
+        "/categoria-producto/legumbres/"
+      ],
+      "commercial_link_count": 6,
       "h1_markup_context": [],
       "cache_markers": {
         "static_v2": false,
@@ -48,7 +59,7 @@
         "Vary": "accept,content-type,Accept-Encoding"
       },
       "final_url": "https://www.elmercadodeorigen.com/cuanta-legumbre-seca-por-persona-garbanzos-lentejas-alubias/",
-      "body_bytes": 1262927,
+      "body_bytes": 1262969,
       "cache_headers": {},
       "title": "Legumbre seca por persona: gramos y raciones",
       "h1_count": 1,
@@ -68,6 +79,16 @@
       "canonical_count": 1,
       "canonical_self_reference": true,
       "category_extra_copy_blocks": 0,
+      "commercial_product_urls": [
+        "/producto/alubia-canela/",
+        "/producto/alubias-pintas/",
+        "/producto/garbanzo-pedrosillano/",
+        "/producto/lenteja-pardina/"
+      ],
+      "commercial_category_urls": [
+        "/categoria-producto/legumbres/"
+      ],
+      "commercial_link_count": 5,
       "h1_markup_context": [],
       "cache_markers": {
         "static_v2": false,
@@ -84,7 +105,7 @@
         "Vary": "accept,content-type,Accept-Encoding"
       },
       "final_url": "https://www.elmercadodeorigen.com/cuanta-proteina-tiene-carne-ternera/",
-      "body_bytes": 1256209,
+      "body_bytes": 1256059,
       "cache_headers": {},
       "title": "Proteína de la ternera por 100 g y por ración",
       "h1_count": 1,
@@ -104,6 +125,19 @@
       "canonical_count": 1,
       "canonical_self_reference": true,
       "category_extra_copy_blocks": 0,
+      "commercial_product_urls": [
+        "/producto/burger-meat-wagyu-100-japones-150-gr/",
+        "/producto/burger-meat-wagyu-australiano-500-gr-aprox/",
+        "/producto/burger-mixtas-sin-gluten-2-uds/",
+        "/producto/chuleton-de-vaca-vieja-madurado/",
+        "/producto/lote-barbacoa/",
+        "/producto/tapilla-o-picana-de-ternera/",
+        "/producto/tira-de-churrasco-argentino/"
+      ],
+      "commercial_category_urls": [
+        "/categoria-producto/carnes/"
+      ],
+      "commercial_link_count": 8,
       "h1_markup_context": [],
       "cache_markers": {
         "static_v2": false,
@@ -140,6 +174,16 @@
       "canonical_count": 1,
       "canonical_self_reference": true,
       "category_extra_copy_blocks": 0,
+      "commercial_product_urls": [
+        "/producto/alubia-canela/",
+        "/producto/alubias-pintas/",
+        "/producto/garbanzo-pedrosillano/",
+        "/producto/lenteja-pardina/"
+      ],
+      "commercial_category_urls": [
+        "/categoria-producto/legumbres/"
+      ],
+      "commercial_link_count": 5,
       "h1_markup_context": [],
       "cache_markers": {
         "static_v2": false,
@@ -176,6 +220,19 @@
       "canonical_count": 1,
       "canonical_self_reference": true,
       "category_extra_copy_blocks": 0,
+      "commercial_product_urls": [
+        "/producto/chuleton-de-vaca-vieja-madurado/",
+        "/producto/fingers-de-avestruz-500-gr-aprox/",
+        "/producto/fingers-de-canguro-1-kg-aprox/",
+        "/producto/fingers-de-canguro-500-gr-aprox/",
+        "/producto/lote-barbacoa/",
+        "/producto/tapilla-o-picana-de-ternera/",
+        "/producto/tira-de-churrasco-argentino/"
+      ],
+      "commercial_category_urls": [
+        "/categoria-producto/carnes/"
+      ],
+      "commercial_link_count": 8,
       "h1_markup_context": [],
       "cache_markers": {
         "static_v2": false,
@@ -260,5 +317,43 @@
       "ok": true
     }
   ],
-  "all_healthy": true
+  "all_healthy": true,
+  "redirect_checks": [
+    {
+      "source": "http://www.elmercadodeorigen.com/",
+      "status": 200,
+      "destination": "https://www.elmercadodeorigen.com/",
+      "hops": [
+        {
+          "status": 301,
+          "location": "https://www.elmercadodeorigen.com/"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "source": "http://elmercadodeorigen.com/",
+      "status": 200,
+      "destination": "https://www.elmercadodeorigen.com/",
+      "hops": [
+        {
+          "status": 301,
+          "location": "https://www.elmercadodeorigen.com/"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "source": "https://elmercadodeorigen.com/",
+      "status": 200,
+      "destination": "https://www.elmercadodeorigen.com/",
+      "hops": [
+        {
+          "status": 301,
+          "location": "https://www.elmercadodeorigen.com/"
+        }
+      ],
+      "ok": true
+    }
+  ]
 }
