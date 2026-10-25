@@ -103,9 +103,16 @@ for path,cfg in PAGES.items():
                  "after":tidy(html[m.end():m.end()+220])[:190]}
                 for m in list(re.finditer(r"<h1[^>]*>.*?</h1>",html,re.I|re.S))[:4]
             ]
+        row["title_count"]=len(parsed.titles)
         row["meta_description_count"]=len(parsed.meta)
         row["canonical"]=parsed.canonical[0] if parsed.canonical else ""
         row["canonical_count"]=len(parsed.canonical)
+        row["canonical_self_reference"]=(
+            len(parsed.canonical)==1
+            and urlsplit(parsed.canonical[0]).scheme=="https"
+            and urlsplit(parsed.canonical[0]).hostname=="www.elmercadodeorigen.com"
+            and urlsplit(parsed.canonical[0]).path.rstrip("/")==path.rstrip("/")
+        )
         row["category_extra_copy_blocks"]=parsed.description_markers
         if "needle" in cfg:
             needle=cfg["needle"]
@@ -122,7 +129,10 @@ for path,cfg in PAGES.items():
                 "static_v2": "elmercado-blog-static-v2" in html,
                 "seo_h1_marker": "elmercado_blog_final_h1_guard_20261025" in html,
             }
-        bad = row["http_status"]!=200 or len(parsed.h1)!=1
+        bad = (row["http_status"]!=200 or len(parsed.h1)!=1
+               or row["title_count"]!=1
+               or row["meta_description_count"]!=1
+               or not row["canonical_self_reference"])
         if "needle" in cfg and row["description_prefix_count"]!=1: bad=True
         row["ok"]=not bad
     except Exception as exc:
