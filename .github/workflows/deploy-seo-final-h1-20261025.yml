@@ -126,7 +126,7 @@ jobs:
               else
                 rm -f "$target"
               fi
-              "$php_bin" "$wp_bin" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
+              "$php_bin" -d memory_limit=768M "$wp_bin" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
             fi
             rm -f "$patcher" "$module"
             exit "$status"
@@ -139,7 +139,7 @@ jobs:
           "$php_bin" -l "$theme/functions.php" >/dev/null
           "$php_bin" -l "$theme/single.php" >/dev/null
           "$php_bin" -l "$target" >/dev/null
-          "$php_bin" "$wp_bin" eval 'if ( ! function_exists("elmercado_blog_final_h1_guard_20261025") ) { exit(27); } echo "SEO_H1_MODULE_LOADED_OK\n";' --path="$prod" --allow-root
+          "$php_bin" -d memory_limit=768M "$wp_bin" eval 'if ( ! function_exists("elmercado_blog_final_h1_guard_20261025") ) { exit(27); } echo "SEO_H1_MODULE_LOADED_OK\n";' --path="$prod" --allow-root
 
           # The Spanish blog publishes generated static article HTML. This is
           # cache only, not post_content. Remove stale HTML after the release.
@@ -147,7 +147,7 @@ jobs:
           if [ -d "$static" ]; then
             find "$static" -maxdepth 1 -type f -name '*.html' -delete
           fi
-          "$php_bin" "$wp_bin" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
+          "$php_bin" -d memory_limit=768M "$wp_bin" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
 
           # Request live WordPress through a unique path and verify 1 H1 and
           # a healthy HTTP response before marking the deployment successful.
