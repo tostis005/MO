@@ -3,6 +3,18 @@
 define( 'ABSPATH', __DIR__ );
 function wp_strip_all_tags( $text, $remove_breaks = false ) { return strip_tags( $text ); }
 function remove_accents( $text ) { return strtr( $text, 'ÁÉÍÓÚÜáéíóúü', 'AEIOUUaeiouu' ); }
+$GLOBALS['seo_h1_on_post'] = false;
+$GLOBALS['seo_h1_admin'] = false;
+$GLOBALS['seo_h1_removed'] = array();
+$GLOBALS['seo_h1_hooked'] = array();
+function add_action( $hook, $callback, $priority = 10 ) {
+    $GLOBALS['seo_h1_hooked'][] = array( $hook, $callback, $priority );
+}
+function remove_action( $hook, $callback, $priority = 10 ) {
+    $GLOBALS['seo_h1_removed'][] = array( $hook, $callback, $priority );
+}
+function is_admin() { return $GLOBALS['seo_h1_admin']; }
+function is_singular( $post_type ) { return 'post' === $post_type && $GLOBALS['seo_h1_on_post']; }
 require dirname( __DIR__ ) . '/elmercadodeorigen-child/inc/seo-final-heading-20261025.php';
 
 $cases = array(
@@ -39,4 +51,25 @@ foreach ( $cases as $index => $case ) {
         exit( 1 );
     }
 }
-echo 'PASS: final H1 guard keeps one main H1 and preserves distinct content headings' . PHP_EOL;
+// Woostify parent .page-header H1 must be removed at the 'wp' hook only for
+// actual blog posts; the custom editorial template keeps its own visible H1.
+$expected_callback = array( 'wp', 'elmercado_blog_skip_woostify_post_page_header_20261025', 100 );
+if ( ! in_array( $expected_callback, $GLOBALS['seo_h1_hooked'], true ) ) {
+    fwrite( STDERR, "FAIL: missing wp hook for native H1 removal\n" ); exit( 1 );
+}
+$GLOBALS['seo_h1_on_post'] = true;
+elmercado_blog_skip_woostify_post_page_header_20261025();
+$expected_removal = array( 'woostify_after_header', 'woostify_page_header', 10 );
+if ( $GLOBALS['seo_h1_removed'] !== array( $expected_removal ) ) {
+    fwrite( STDERR, "FAIL: incorrect Woostify parent title removal\n" ); exit( 1 );
+}
+$GLOBALS['seo_h1_removed'] = array();
+$GLOBALS['seo_h1_on_post'] = false; // other categories, pages, products
+elmercado_blog_skip_woostify_post_page_header_20261025();
+$GLOBALS['seo_h1_admin'] = true;
+$GLOBALS['seo_h1_on_post'] = true;
+elmercado_blog_skip_woostify_post_page_header_20261025();
+if ( $GLOBALS['seo_h1_removed'] ) {
+    fwrite( STDERR, "FAIL: parent header altered outside public posts\n" ); exit( 1 );
+}
+echo 'PASS: unique blog H1; native Woostify title removed on posts only' . PHP_EOL;
