@@ -101,7 +101,7 @@ for path,cfg in PAGES.items():
                 {"tag":m.group(0).split(">",1)[0][:240]+">",
                  "before":tidy(html[max(0,m.start()-350):m.start()])[-300:],
                  "after":tidy(html[m.end():m.end()+220])[:190]}
-                for m in list(re.finditer(r"<h1\\b[^>]*>.*?</h1\\s*>",html,re.I|re.S))[:4]
+                for m in list(re.finditer(r"<h1[^>]*>.*?</h1>",html,re.I|re.S))[:4]
             ]
         row["meta_description_count"]=len(parsed.meta)
         row["canonical"]=parsed.canonical[0] if parsed.canonical else ""
