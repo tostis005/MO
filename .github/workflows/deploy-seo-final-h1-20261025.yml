@@ -1,0 +1,164 @@
+name: Publish scoped GSC blog H1 fix 20261025
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-seo-final-h1-20261025.yml'
+      - '.github/scripts/patch-seo-final-h1-production-20261025.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate strictly scoped theme patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/patch-seo-final-h1-production-20261025.php
+          php -l elmercadodeorigen-child/inc/seo-final-heading-20261025.php
+          php tests/seo-final-heading-20261025.php
+          grep -Fq "'inc/seo-final-heading-20261025.php'" elmercadodeorigen-child/functions.php
+          grep -Fq "elmercado_blog_final_h1_guard_20261025" elmercadodeorigen-child/single.php
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${SSHPASS:?}"
+
+      - name: Prepare authenticated connection and production root
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          [[ "$PORT" =~ ^[0-9]+$ ]]
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] && [ -n "$php_bin" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s" "$p"; break;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production WordPress path not verified}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+
+      - name: Deploy only two theme files and one H1 module with rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          PATCHER="/tmp/seo-h1-patcher-${GITHUB_RUN_ID}.php"
+          MODULE="/tmp/seo-h1-module-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/patch-seo-final-h1-production-20261025.php "$STAGING_USER@$STAGING_HOST:$PATCHER"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/seo-final-heading-20261025.php "$STAGING_USER@$STAGING_HOST:$MODULE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sh -s -- '$PROD_PATH' '$GITHUB_RUN_ID'" <<'REMOTE'
+          set -eu
+          prod="$1"
+          run="$2"
+          theme="$prod/wp-content/themes/elmercadodeorigen-child"
+          target="$theme/inc/seo-final-heading-20261025.php"
+          patcher="/tmp/seo-h1-patcher-$run.php"
+          module="/tmp/seo-h1-module-$run.php"
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          wp_bin=$(command -v wp || true)
+          [ -x "$php_bin" ] && [ -n "$wp_bin" ] || exit 3
+          test -f "$prod/wp-config.php"
+          test -f "$theme/functions.php"
+          test -f "$theme/single.php"
+          siteurl=$("$php_bin" "$wp_bin" option get siteurl --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null)
+          case "$siteurl" in
+            https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ;;
+            *) echo 'Refusing non-production WordPress installation' >&2; exit 3;;
+          esac
+          active=$("$php_bin" "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root)
+          test "$active" = 'elmercadodeorigen-child' || exit 3
+
+          backup="$HOME/.elmercado-rollbacks/seo-final-h1-20261025-$run"
+          mkdir -p "$backup"
+          cp -p "$theme/functions.php" "$backup/original-functions.php"
+          cp -p "$theme/single.php" "$backup/original-single.php"
+          if [ -f "$target" ]; then cp -p "$target" "$backup/original-module.php"; echo 1 > "$backup/had-module"; else echo 0 > "$backup/had-module"; fi
+          "$php_bin" -l "$patcher" >/dev/null
+          "$php_bin" -l "$module" >/dev/null
+          "$php_bin" "$patcher" "$theme" "$backup"
+          "$php_bin" -l "$backup/functions.php" >/dev/null
+          "$php_bin" -l "$backup/single.php" >/dev/null
+          cp -p "$module" "$backup/new-module.php"
+          apply_started=0
+          cleanup() {
+            status=$?
+            trap - EXIT HUP INT TERM
+            if [ "$status" -ne 0 ] && [ "$apply_started" -eq 1 ]; then
+              echo 'SEO H1 verification failed: restoring previous production files' >&2
+              cp -p "$backup/original-functions.php" "$theme/functions.php"
+              cp -p "$backup/original-single.php" "$theme/single.php"
+              if [ "$(cat "$backup/had-module")" = 1 ]; then
+                cp -p "$backup/original-module.php" "$target"
+              else
+                rm -f "$target"
+              fi
+              "$php_bin" "$wp_bin" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
+            fi
+            rm -f "$patcher" "$module"
+            exit "$status"
+          }
+          trap cleanup EXIT HUP INT TERM
+          apply_started=1
+          cp -p "$backup/functions.php" "$theme/functions.php"
+          cp -p "$backup/single.php" "$theme/single.php"
+          cp -p "$backup/new-module.php" "$target"
+          "$php_bin" -l "$theme/functions.php" >/dev/null
+          "$php_bin" -l "$theme/single.php" >/dev/null
+          "$php_bin" -l "$target" >/dev/null
+          "$php_bin" "$wp_bin" eval 'if ( ! function_exists("elmercado_blog_final_h1_guard_20261025") ) { exit(27); } echo "SEO_H1_MODULE_LOADED_OK\n";' --path="$prod" --allow-root
+
+          # The Spanish blog publishes generated static article HTML. This is
+          # cache only, not post_content. Remove stale HTML after the release.
+          static="$prod/wp-content/uploads/elmercado-blog-static-v2"
+          if [ -d "$static" ]; then
+            find "$static" -maxdepth 1 -type f -name '*.html' -delete
+          fi
+          "$php_bin" "$wp_bin" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
+
+          # Request live WordPress through a unique path and verify 1 H1 and
+          # a healthy HTTP response before marking the deployment successful.
+          base="https://www.elmercadodeorigen.com"
+          for slug in garbanzos-tiempo-remojo-cuanto-tardan-cocerse cuanta-legumbre-seca-por-persona-garbanzos-lentejas-alubias cuanta-proteina-tiene-carne-ternera; do
+            out="$backup/probe-$slug.html"
+            status=$(curl -ksSL -o "$out" -w '%{http_code}' --connect-timeout 12 --max-time 45 "$base/$slug/?seo_h1_validation=$run" || true)
+            if [ "$status" != 200 ]; then echo "$slug HTTP=$status" >&2; exit 9; fi
+            count=$("$php_bin" -r '$s=file_get_contents($argv[1]); preg_match_all("~<h1\\b[^>]*>~i",$s,$m); echo count($m[0]);' "$out")
+            echo "SEO_H1_PROBE=$slug|COUNT=$count|HTTP=$status"
+            if [ "$count" != 1 ]; then echo "Duplicate or missing H1: $slug" >&2; exit 10; fi
+          done
+          echo 'SEO_FINAL_H1_PRODUCTION_VERIFIED=1'
+          REMOTE
