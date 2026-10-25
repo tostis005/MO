@@ -6,6 +6,10 @@ on:
     paths:
       - '.github/scripts/seo-public-html-audit-20261025.py'
       - '.github/workflows/seo-public-html-audit-20261025.yml'
+  workflow_run:
+    workflows:
+      - 'Publish scoped GSC blog H1 fix 20261025'
+    types: [completed]
   workflow_dispatch:
 
 permissions:
