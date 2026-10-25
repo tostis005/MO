@@ -237,6 +237,10 @@ while ( have_posts() ) :
 						if ( function_exists( 'elmercado_gsc_remove_repeated_heading_at_render_20261012' ) ) {
 							$content_html = elmercado_gsc_remove_repeated_heading_at_render_20261012( $content_html );
 						}
+						// Final presentation-level safeguard, also for older non-GSC posts.
+						if ( function_exists( 'elmercado_blog_final_h1_guard_20261025' ) ) {
+							$content_html = elmercado_blog_final_h1_guard_20261025( $content_html, get_the_title( $post_id ) );
+						}
 
 						/*
 						 * La entrada histórica de Jamón Ibérico conserva el encabezado de
