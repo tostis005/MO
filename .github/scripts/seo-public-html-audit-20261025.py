@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Read-only public SEO checks. Collect evidence, never mutate WordPress."""
+import html as html_util
 import json
 import re
 import sys
@@ -121,6 +122,22 @@ for path,cfg in PAGES.items():
             if path.endswith("/aceites/"):
                 row["aceites_content_excerpt"]=body[max(0,at-120):at+350] if at>=0 else body[:650]
         if cfg["type"]=="post":
+            # Site-internal product/category hyperlinks are the first measurable
+            # bridge from informational SEO traffic to catalog discovery.
+            internal_hrefs=[]
+            for raw in re.findall(r"""<a\b[^>]*\bhref\s*=\s*['"]([^'"]+)['"]""",html,re.I):
+                link=html_util.unescape(raw)
+                parsed_link=urlsplit(link)
+                if parsed_link.hostname not in (None,"www.elmercadodeorigen.com","elmercadodeorigen.com"):
+                    continue
+                if parsed_link.path.startswith(("/producto/","/categoria-producto/")):
+                    internal_hrefs.append(parsed_link.path)
+            row["commercial_product_urls"]=sorted(set(
+                link for link in internal_hrefs if link.startswith("/producto/")))
+            row["commercial_category_urls"]=sorted(set(
+                link for link in internal_hrefs if link.startswith("/categoria-producto/")))
+            row["commercial_link_count"]=len(set(internal_hrefs))
+        if cfg["type"]=="post":
             hits=list(re.finditer(r"<h1\\b[^>]*>.*?</h1\\s*>",html,re.I|re.S))
             row["h1_markup_context"]=[
                 re.sub(r"\\s+"," ",html[max(0,m.start()-250):min(len(html),m.end()+250)])[:950]
@@ -140,4 +157,37 @@ for path,cfg in PAGES.items():
         row["ok"]=False
     out["rows"].append(row)
     if not row["ok"]: out["all_healthy"]=False
+# Follow redirect chains explicitly rather than assuming that a final
+# HTTPS document proves an HTTP URL returns 301/308.
+class RedirectTrace(urllib.request.HTTPRedirectHandler):
+    def __init__(self):
+        super().__init__()
+        self.hops=[]
+    def redirect_request(self, request, fp, code, msg, headers, newurl):
+        self.hops.append({"status":code,"location":newurl})
+        return super().redirect_request(request,fp,code,msg,headers,newurl)
+
+out["redirect_checks"]=[]
+for source in ("http://www.elmercadodeorigen.com/",
+               "http://elmercadodeorigen.com/",
+               "https://elmercadodeorigen.com/"):
+    trace=RedirectTrace()
+    result={"source":source}
+    try:
+        opener=urllib.request.build_opener(trace)
+        request=urllib.request.Request(source,headers={
+            "User-Agent":"EMDO-SEO-redirect-validation/2026-10-25"})
+        with opener.open(request,timeout=25) as response:
+            result["status"]=response.status
+            result["destination"]=response.url
+        result["hops"]=trace.hops
+        result["ok"]=(result["status"]==200
+                      and result["destination"].split("?")[0]==BASE+"/"
+                      and len(trace.hops)>=1
+                      and all(hop["status"] in (301,308) for hop in trace.hops))
+    except Exception as exc:
+        result["error"]=type(exc).__name__+": "+str(exc)[:160]
+        result["hops"]=trace.hops
+        result["ok"]=False
+    out["redirect_checks"].append(result)
 print(json.dumps(out,indent=2,ensure_ascii=False))
