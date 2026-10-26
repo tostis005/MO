@@ -65,6 +65,29 @@ jobs:
                     return {markup:root.innerHTML.slice(-6500),prices:els.map(e=>({tag:e.tagName,cl:e.className,txt:e.textContent?.trim().slice(0,100),vis:e.getBoundingClientRect().height>0}))};
                   });
                   console.log('YITH_PRICE_'+type+' '+JSON.stringify(yith));
+                  const check = await page.evaluate(() => {
+                    const first=document.querySelector('ul.products li.product:has(.mdo-emdo-selection-badge):has(> a.emo-card-quick-add)');
+                    const badge=first?.querySelector('.mdo-emdo-selection-badge'),icon=first?.querySelector(':scope > a.emo-card-quick-add');
+                    const style=icon?getComputedStyle(icon):null;
+                    const bb=badge?.getBoundingClientRect(),ib=icon?.getBoundingClientRect();
+                    const root=document.querySelector('#emo-quick-cart-modal'), label=root?.querySelector('form.variations_form table.variations th');
+                    const yith=root?.querySelector('#wapo-total-price-table .wapo-total-order');
+                    const wcPrice=root?.querySelector('.woocommerce-variation-price');
+                    const visible=e=>{if(!e)return false;const r=e.getBoundingClientRect();const cs=getComputedStyle(e);return r.width>0&&r.height>0&&cs.display!=='none'&&cs.visibility!=='hidden';};
+                    const format=root?.querySelector('.yith-wapo-addon');
+                    const select=root?.querySelector('select[name^="attribute_"]');
+                    const sr=select?.getBoundingClientRect(),fr=format?.getBoundingClientRect();
+                    return {aligned:bb&&ib?Math.abs((bb.top+bb.height/2)-(ib.top+ib.height/2)):null,
+                      iconMargin:style?.margin,iconBg:style?.backgroundColor,iconColor:style?.color,iconHeight:Math.round(ib?.height||0),
+                      titleBorder:label?getComputedStyle(label).borderWidth:null,
+                      yithVisible:visible(yith),wooPriceVisible:visible(wcPrice),
+                      weightFormatGap:sr&&fr?Math.round(fr.top-sr.bottom):null,
+                      pricedClass:root?.classList.contains('emo-quick-cart-priced')};
+                  });
+                  console.log('DESIGN_QA_'+type+' '+JSON.stringify(check));
+                  if(check.aligned === null || check.aligned > 4 || check.iconMargin !== '0px' || check.iconBg !== 'rgba(23, 63, 50, 0.94)' || check.titleBorder !== '0px' || !check.yithVisible || check.wooPriceVisible || check.weightFormatGap > 30 || !check.pricedClass) {
+                    throw new Error('Visual layout acceptance failed: '+JSON.stringify(check));
+                  }
 
                 }
                 await page.screenshot({path:'/tmp/quick-'+type+'.png',fullPage:false});
