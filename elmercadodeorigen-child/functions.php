@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.317' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.319' );
 /* 0.10.316 evita bloqueos de Woostify al navegar entre productos agotados/ocultos. */
 if ( ! defined( 'ELMERCADO_BLOG_AD_PROVIDER' ) ) {
 	define( 'ELMERCADO_BLOG_AD_PROVIDER', 'adsense' ); // Adsterra queda conservado pero inactivo.
@@ -183,6 +183,7 @@ $elmercado_modules = array(
 	'inc/cart-cross-sells-layout-010314.php',
 	'inc/montjam-dop-attributes-010317.php',
 	'inc/product-gallery-controls-010318.php',
+	'inc/catalog-quick-add-20261026.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
