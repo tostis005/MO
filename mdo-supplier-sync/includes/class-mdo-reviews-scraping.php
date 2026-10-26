@@ -225,6 +225,30 @@ final class MDO_Reviews_Scraping {
 		return $result;
 	}
 
+	/**
+	 * Keep only independently attached photo URLs. Profile photos are separate.
+	 * Limit the gallery and never download/transform third-party assets.
+	 */
+	private static function normalize_review_images( $raw ): array {
+		if ( ! is_array( $raw ) ) {
+			return array();
+		}
+		$urls = array();
+		foreach ( array_slice( $raw, 0, 10 ) as $entry ) {
+			$url = is_string( $entry ) ? $entry : ( is_array( $entry ) ? (string) ( $entry['url'] ?? '' ) : '' );
+			$url = esc_url_raw( trim( $url ), array( 'http', 'https' ) );
+			if ( ! $url || ! wp_http_validate_url( $url ) ) {
+				continue;
+			}
+			$path = (string) wp_parse_url( $url, PHP_URL_PATH );
+			if ( preg_match( '~(?:avatar|profilephoto|profile[-_/]photo|/star/|/logo|/badge)~i', $path ) ) {
+				continue;
+			}
+			$urls[ $url ] = $url;
+		}
+		return array_values( $urls );
+	}
+
 	private static function normalize_review( string $source, array $review ): ?array {
 		$rating = (int) round( (float) ( $review['rating'] ?? 0 ) );
 		if ( $rating < 1 || $rating > 5 ) {
@@ -248,6 +272,7 @@ final class MDO_Reviews_Scraping {
 			'source_review_id' => $id,
 			'author_name' => $author,
 			'author_avatar_url' => esc_url_raw( (string) ( $review['author_avatar_url'] ?? '' ) ),
+			'review_images' => self::normalize_review_images( $review['review_images'] ?? array() ),
 			'rating' => $rating,
 			'review_title' => $title,
 			'review_text' => $text,
