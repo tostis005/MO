@@ -188,12 +188,12 @@ foreach($check as $id=>$x){
   // promotions appear, never changing pixels inside the real packaging/window.
   $cropX=0;$cropY=0;$cropW=$sw;$cropH=$sh;
   $key=(string)$source['key'];
-  $trimmable=['boar_tender','deer_loin','ostrich_filet','zebra_loin',
+  $trimmable=['boar_tender','deer_loin','ostrich_filet','croc_filet','zebra_loin',
               'ostrich_tender','croc_tender','buffalo_loin','elk_loin','boar_loin',
               'black_angus'];
   if(abs($sw/$sh-1.0)<0.16 && in_array($key,$trimmable,true)) {
-   $cropX=(int)round($sw*.17);$cropY=(int)round($sh*.08);
-   $cropW=(int)round($sw*.68);$cropH=(int)round($sh*.76);
+   $cropX=(int)round($sw*.21);$cropY=(int)round($sh*.05);
+   $cropW=(int)round($sw*.61);$cropH=(int)round($sh*.84);
   }
   $factor=min($photoW/$cropW,$photoH/$cropH);
   $dw=max(1,(int)floor($cropW*$factor));$dh=max(1,(int)floor($cropH*$factor));
