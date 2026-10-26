@@ -191,31 +191,32 @@ add_action(
 		?>
 		<style id="emo-catalog-quick-add-20261026">
 			body.elmercado-child-theme ul.products li.product:has(> a.emo-card-quick-add) { position:relative !important; }
+			/* Pestaña de carrito anclada a la esquina exterior de la tarjeta, sin margen. */
 			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add {
 				box-sizing:border-box !important;
 				position:absolute !important;
-				top:7px !important;
-				right:10px !important;
+				top:0 !important;
+				right:0 !important;
 				left:auto !important;
 				bottom:auto !important;
 				z-index:12 !important;
 				display:flex !important;
 				align-items:center !important;
 				justify-content:center !important;
-				width:40px !important;
-				min-width:40px !important;
-				max-width:40px !important;
-				height:34px !important;
-				min-height:34px !important;
-				max-height:34px !important;
+				width:46px !important;
+				min-width:46px !important;
+				max-width:46px !important;
+				height:42px !important;
+				min-height:42px !important;
+				max-height:42px !important;
 				padding:0 !important;
 				margin:0 !important;
 				gap:0 !important;
-				border:1px solid rgba(255,255,255,.36) !important;
-				border-radius:9px !important;
-				background:rgba(23,63,50,.94) !important;
+				border:0 !important;
+				border-radius:0 0 0 13px !important;
+				background:#173f32 !important;
 				color:#fff !important;
-				box-shadow:0 2px 7px rgba(13,38,30,.16) !important;
+				box-shadow:-2px 3px 9px rgba(13,38,30,.14) !important;
 				font-size:0 !important;
 				line-height:0 !important;
 				letter-spacing:0 !important;
@@ -243,8 +244,8 @@ add_action(
 			}
 			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add .emo-card-quick-add__symbol svg {
 				display:block !important;
-				width:19px !important;
-				height:19px !important;
+				width:21px !important;
+				height:21px !important;
 				stroke:currentColor !important;
 				fill:none !important;
 			}
@@ -258,9 +259,9 @@ add_action(
 			body.elmercado-child-theme ul.products li.product a.added_to_cart.wc-forward { display:none !important; }
 			@media (max-width:767px) {
 				body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add {
-					top:3px !important;right:8px !important;
-					width:40px !important;min-width:40px !important;max-width:40px !important;
-					height:34px !important;min-height:34px !important;max-height:34px !important;
+					top:0 !important;right:0 !important;
+					width:46px !important;min-width:46px !important;max-width:46px !important;
+					height:42px !important;min-height:42px !important;max-height:42px !important;
 					padding:0 !important;
 				}
 			}
@@ -646,9 +647,9 @@ add_action(
 				   con la pastilla «Selección EMDO» en todos los tamaños. */
 				control.style.setProperty('margin', '0px', 'important');
 				control.classList.remove('button'); // La clase genérica impone min-height:46px en Woostify.
-				control.style.setProperty('height', '34px', 'important');
-				control.style.setProperty('min-height', '34px', 'important');
-				control.style.setProperty('max-height', '34px', 'important');
+				control.style.setProperty('height', '42px', 'important');
+				control.style.setProperty('min-height', '42px', 'important');
+				control.style.setProperty('max-height', '42px', 'important');
 				control.style.setProperty('padding', '0px', 'important');
 				control.style.setProperty('line-height', '0px', 'important');
 				control.dataset.emoQuickAction = options ? 'options' : 'add';
