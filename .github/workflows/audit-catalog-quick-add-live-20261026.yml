@@ -11,7 +11,7 @@ permissions:
 jobs:
   audit-live:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 10
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
@@ -94,6 +94,36 @@ jobs:
                       };
                     });
                     console.log('RENDER_CHECK ' + JSON.stringify({ page: pageName, device, ...data }));
+                    /* Comprobar que las tarjetas que llegan por scroll también
+                       reciben un carrito. No realizar ninguna compra real. */
+                    if (pageName === 'Tienda') {
+                      const beforeCount = data.cards;
+                      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+                      await page.waitForTimeout(3500);
+                      const after = await page.evaluate(() => {
+                        const cards = [...document.querySelectorAll('ul.products li.product')];
+                        const missing = cards.filter(c => c.classList.contains('instock')
+                          && (c.classList.contains('product-type-simple') || c.classList.contains('product-type-variable'))
+                          && c.querySelector('.price') && !c.querySelector(':scope > a.emo-card-quick-add'));
+                        return { total:cards.length, missing:missing.length, lastHasCart:Boolean(cards[cards.length-1]?.querySelector(':scope > a.emo-card-quick-add')) };
+                      });
+                      console.log('SCROLL_CHECK ' + JSON.stringify({device, before:beforeCount,...after}));
+                      if (after.missing > 0) { failures++; console.error('SCROLL_FAILURE ' + device); }
+                    }
+                    const variant = page.locator('ul.products li.product > a.emo-card-quick-add.product_type_variable').first();
+                    if (await variant.count()) {
+                      await variant.click({timeout:8000});
+                      try {
+                        await page.waitForSelector('#emo-quick-cart-modal:not([hidden]) form.variations_form', {timeout:14000});
+                        console.log('VARIANT_MODAL_OK ' + pageName + ' ' + device);
+                        await page.locator('#emo-quick-cart-modal .emo-quick-cart-close').click();
+                      } catch(err) {
+                        failures++;
+                        console.error('VARIANT_MODAL_FAILURE ' + pageName + ' ' + device + ': ' + err.message);
+                      }
+                    } else {
+                      console.log('VARIANT_MODAL_SKIPPED no variable product in ' + pageName + ' ' + device);
+                    }
                     if (data.cards < 1 || data.buttons < 1 || data.visible < 1 || data.icons < 1 || data.positioned < 1) {
                       failures++;
                       console.error('RENDER_FAILURE ' + pageName + ' ' + device);
