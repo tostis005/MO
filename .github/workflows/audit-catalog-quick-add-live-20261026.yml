@@ -1,4 +1,4 @@
-name: Audit live quick-add deployment (variant submit verification)
+name: Debug quick-add variant submit response
 
 on:
   pull_request:
@@ -61,10 +61,16 @@ jobs:
             const browser = await chromium.launch({ headless: true, ...(process.env.CHROME_AVAILABLE === 'yes' ? { channel: 'chrome' } : {}) });
             let failures = 0;
             try {
-              for (const [pageName, path] of [['Tienda', '/tienda/'], ['1957', '/tienda/1957/']]) {
-                for (const [device, viewport] of [['desktop', { width: 1440, height: 900 }], ['mobile', { width: 390, height: 844 }]]) {
+              for (const [pageName, path] of [['1957', '/tienda/1957/']]) {
+                for (const [device, viewport] of [['desktop', { width: 1440, height: 900 }]]) {
                   const page = await browser.newPage({ viewport, locale: 'es-ES' });
                   page.on('pageerror', error => console.log('BROWSER_PAGE_ERROR ' + pageName + ' ' + device + ': ' + error.message));
+                  page.on('response', async response => {
+                    if (response.url().includes('admin-ajax.php') && response.request().method() === 'POST') {
+                      try { const text = await response.text(); console.log('AJAX_DEBUG ' + JSON.stringify({status:response.status(),body:text.slice(0,450)})); }
+                      catch(err) { console.log('AJAX_DEBUG_ERROR ' + err.message); }
+                    }
+                  });
                   const url = 'https://www.elmercadodeorigen.com' + path + '?quick-add-browser-check=20261026';
                   try {
                     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -137,7 +143,15 @@ jobs:
                           }
                           await page.waitForFunction(() => Number(document.querySelector('#emo-quick-cart-modal input[name="variation_id"]')?.value || 0) > 0, {timeout:10000});
                           await page.locator('#emo-quick-cart-modal .single_add_to_cart_button').click({timeout:10000});
-                          await page.waitForSelector('#emo-quick-cart-modal[hidden]', {timeout:15000});
+                          await page.waitForTimeout(2600);
+                          console.log('VARIANT_SUBMIT_STATE ' + JSON.stringify(await page.evaluate(() => ({
+                            hidden: document.querySelector('#emo-quick-cart-modal')?.hidden,
+                            error: document.querySelector('#emo-quick-cart-modal .emo-quick-cart-error')?.textContent,
+                            variation: document.querySelector('#emo-quick-cart-modal input[name="variation_id"]')?.value,
+                            buttonDisabled: document.querySelector('#emo-quick-cart-modal .single_add_to_cart_button')?.disabled,
+                            bodyNotices: [...document.querySelectorAll('.woocommerce-message,.woocommerce-error')].slice(0,3).map(x=>x.textContent.slice(0,100))
+                          }))));
+                          await page.waitForSelector('#emo-quick-cart-modal[hidden]', {timeout:1500});
                           const events = await page.evaluate(() => window.__emoCartTestEvents || 0);
                           console.log('VARIANT_ADD_TO_CART_TEST ' + JSON.stringify({events, modalClosed:true}));
                           if (!events) { failures++; console.error('VARIANT_CART_EVENT_MISSING'); }
