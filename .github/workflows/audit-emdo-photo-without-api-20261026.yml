@@ -129,7 +129,7 @@ jobs:
                     width:img.naturalWidth||0,height:img.naturalHeight||0,
                   }));
                   const photoButtons=Array.from(card.querySelectorAll('button')).filter(btn=>/foto|photo|image/i.test(btn.getAttribute('aria-label')||''));
-                  const parseHost=(v)=>{try{const m=String(v||'').match(/url\\(["']?(https?:[^"')]+)/i);return m?new URL(m[1]).hostname:'';}catch{return '';}};
+                  const parseHost=(v)=>{try{const candidate=String(v||'').split('url(')[1]?.split(')')[0]?.replaceAll('"','').replaceAll("'",'').trim();return candidate?new URL(candidate).hostname:'';}catch{return '';}};
                   const info=photoButtons.map(btn=>{
                     const nodes=[btn,...Array.from(btn.querySelectorAll('*')).slice(0,30)];
                     const styled=nodes.filter(el=>getComputedStyle(el).backgroundImage!=='none');
