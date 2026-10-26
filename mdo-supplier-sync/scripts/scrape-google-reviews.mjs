@@ -118,6 +118,25 @@ async function collect(page) {
       const text = compact(textNode?.textContent);
       const avatar = card.querySelector?.('.ti-profile-img img[src], .ti-profile-img [data-imgurl], img[alt*="profile"]');
       const avatarUrl = avatar?.getAttribute('src') || avatar?.getAttribute('data-imgurl') || '';
+      // Photo galleries belonging to this exact review only. Never infer photos
+      // from the page-wide image list (avatars, stars and company logos).
+      const gallerySelectors = [
+        '.ti-review-photos img', '.ti-review-photo img',
+        '.ti-review-images img', '.ti-review-gallery img',
+        '[class*="review-photo"] img', '[class*="review-image"] img',
+        '[class*="review-gallery"] img',
+      ];
+      const reviewImages = [];
+      for (const img of card.querySelectorAll(gallerySelectors.join(', '))) {
+        if (img.closest('.ti-profile-img, .ti-stars, .ti-logo, [class*="avatar"], [class*="rating"]')) continue;
+        const rawUrl = img.getAttribute('data-full') || img.getAttribute('data-src') || img.getAttribute('src') || '';
+        try {
+          const resolved = new URL(rawUrl, document.baseURI);
+          if (!['https:', 'http:'].includes(resolved.protocol)) continue;
+          if (/star\/|\/logo|avatar|profile|badge|default-avatar/i.test(resolved.pathname)) continue;
+          if (!reviewImages.includes(resolved.href)) reviewImages.push(resolved.href);
+        } catch {}
+      }
 
       let rating = card.querySelectorAll?.('.ti-stars .ti-star.f, .ti-stars img[src*="/star/f.svg"], .ti-stars [data-imgurl*="/star/f.svg"]').length || 0;
       if (rating < 1 || rating > 5) {
@@ -140,6 +159,7 @@ async function collect(page) {
         id,
         author_name: author,
         author_avatar_url: avatarUrl,
+        review_images: reviewImages.slice(0, 10),
         rating,
         title: '',
         text,
