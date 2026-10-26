@@ -1,4 +1,4 @@
-name: Final modal desktop and mobile visual acceptance
+name: Verify compact rectangular cart design in production
 on:
   pull_request:
     paths:
@@ -11,102 +11,77 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect card labels and variant popup computed styles
+      - name: Check live cart shape, badge alignment and popup regression in Chrome
         shell: bash
         run: |
           set -euo pipefail
-          npm install --silent --prefix /tmp/emo-inspect playwright@1.56.1
-          cat > /tmp/emo-inspect.cjs <<'JS'
-          const {chromium}=require('/tmp/emo-inspect/node_modules/playwright');
+          npm install --silent --prefix /tmp/emdo-design playwright@1.56.1
+          cat > /tmp/emdo-design-check.cjs <<'CHECK_JS'
+          const {chromium}=require('/tmp/emdo-design/node_modules/playwright');
           (async()=>{
             const browser=await chromium.launch({headless:true,channel:'chrome'});
-            let layoutFailures=0;
-            for(const [type,viewport] of [['desktop',{width:1440,height:900}],['mobile',{width:390,height:844}]]){
-              const page=await browser.newPage({viewport,locale:'es-ES'});
-              await page.goto('https://www.elmercadodeorigen.com/tienda/?emo-design-audit='+process.env.GITHUB_SHA,{waitUntil:'domcontentloaded',timeout:60000});
-              await page.waitForSelector('li.product > a.emo-card-quick-add',{timeout:20000});
-              const report=await page.evaluate(()=>{
-                const rect=e=>{if(!e)return null;const x=e.getBoundingClientRect();return {top:Math.round(x.top),right:Math.round(x.right),left:Math.round(x.left),width:Math.round(x.width),height:Math.round(x.height)};};
-                const style=e=>{if(!e)return null;const s=getComputedStyle(e);return {position:s.position,top:s.top,right:s.right,bg:s.backgroundColor,color:s.color,border:s.border,boxShadow:s.boxShadow,z:s.zIndex,padding:s.padding,margin:s.margin};};
-                const cards=[...document.querySelectorAll('ul.products li.product')].slice(0,15);
-                return cards.map((card,i)=>{
-                  const button=card.querySelector(':scope > a.emo-card-quick-add');
-                  const selectors=[...card.querySelectorAll('*')].filter(e=>e.children.length<4 && /selecci[oó]n|EMDO/i.test((e.textContent||'').trim()) && (e.textContent||'').trim().length<65).slice(0,6);
-                  return {i,name:(card.querySelector('h2,h3,.woocommerce-loop-product__title')?.textContent||'').trim().slice(0,75),rect:rect(card),button:rect(button),buttonStyle:style(button),badges:selectors.map(e=>({tag:e.tagName,cls:e.className,txt:e.textContent.trim().slice(0,65),r:rect(e),css:style(e)}))};
-                });
-              });
-              console.log('CARD_DESIGN_'+type+' '+JSON.stringify(report));
-              const cards=page.locator('ul.products li.product');
-              const ham=cards.filter({hasText:/jam[oó]n/i}).locator('> a.emo-card-quick-add.product_type_variable').first();
-              const trigger=await ham.count()?ham:page.locator('ul.products li.product > a.emo-card-quick-add.product_type_variable').first();
-              if(await trigger.count()){
-                await trigger.click({timeout:15000});
-                await page.waitForSelector('#emo-quick-cart-modal form.variations_form',{timeout:20000});
-                await page.waitForTimeout(1800);
-                const modal=await page.evaluate(()=>{
-                  const root=document.querySelector('#emo-quick-cart-modal');const fmt=e=>{if(!e)return null;const r=e.getBoundingClientRect(),c=getComputedStyle(e);return {tag:e.tagName,cls:e.className,txt:e.textContent?.replace(/\s+/g,' ').trim().slice(0,90),t:Math.round(r.top),h:Math.round(r.height),w:Math.round(r.width),margin:c.margin,padding:c.padding,border:c.border,display:c.display,bg:c.backgroundColor};};
-                  return {title:root.querySelector('.emo-quick-cart-title')?.textContent,form:fmt(root.querySelector('form')),dialog:fmt(root.querySelector('.emo-quick-cart-dialog')),body:fmt(root.querySelector('.emo-quick-cart-body')),sections:[...root.querySelectorAll('.price,.woocommerce-variation-price,.single_variation,.woocommerce-variation,.variations,.variations tr,.variations select,.wapo-product-price,.yith-wapo-container,.yith-wapo-block,.yith-wapo-addon,.yith-wapo-addon-type-select,.yith-wapo-addon-type-radio,.quantity,.single_add_to_cart_button,.single_variation_wrap')].slice(0,45).map(fmt),titles:[...root.querySelectorAll('label,th,legend')].slice(0,20).map(fmt),html:root.querySelector('.emo-quick-cart-body')?.innerHTML.slice(0,9500)};
-                });
-                console.log('MODAL_DESIGN_'+type+' '+JSON.stringify(modal));
-                const select = page.locator('#emo-quick-cart-modal select[name^="attribute_"]').first();
-                if (await select.count()) {
-                  const opts = await select.locator('option').evaluateAll(els=>els.map(e=>e.value).filter(Boolean));
-                  if(opts.length) await select.selectOption(opts[0]);
-                  await page.waitForTimeout(1800);
-                  const after=await page.evaluate(()=>{
-                    const root=document.querySelector('#emo-quick-cart-modal');
-                    const rect=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return {tag:e.tagName,cls:e.className,txt:e.textContent?.replace(/\\s+/g,' ').trim().slice(0,110),visible:r.width>0&&r.height>0&&s.visibility!=='hidden',top:Math.round(r.top),h:Math.round(r.height),margin:s.margin,padding:s.padding,border:s.border,display:s.display}};
-                    return [...root.querySelectorAll('.price,.woocommerce-variation-price,.woocommerce-variation,.single_variation,.yith-wapo-container,.yith-wapo-block,.yith-wapo-addon,.yith-wapo-addon-type-select,.yith-wapo-totals-container,.yith-wapo-totals,.wapo-product-price,.wapo-total-price,.wapo-total-options-price,.single_variation_wrap,.woocommerce-variation-add-to-cart,.variations select')].slice(0,60).map(rect);
+            let failures=0;
+            for(const [pageName,path] of [['Tienda','/tienda/'],['Productor 1957','/tienda/1957/']]){
+              for(const [device,viewport] of [['desktop',{width:1440,height:900}],['mobile',{width:390,height:844}]]){
+                const page=await browser.newPage({viewport,locale:'es-ES'});
+                try{
+                  const url='https://www.elmercadodeorigen.com'+path+'?emdo-cart-shape='+process.env.GITHUB_SHA;
+                  await page.goto(url,{waitUntil:'domcontentloaded',timeout:60000});
+                  await page.waitForSelector('ul.products li.product > a.emo-card-quick-add',{timeout:20000});
+                  const result=await page.evaluate(()=>{
+                    const cards=[...document.querySelectorAll('ul.products li.product')];
+                    const buttons=cards.map(card=>card.querySelector(':scope > a.emo-card-quick-add')).filter(Boolean);
+                    const shapes=buttons.map(button=>{
+                      const css=getComputedStyle(button),r=button.getBoundingClientRect();
+                      const svg=button.querySelector('.emo-card-quick-add__symbol svg');
+                      const badge=button.closest('li.product')?.querySelector('.mdo-emdo-selection-badge');
+                      const br=badge?.getBoundingClientRect();
+                      return {
+                        width:Math.round(r.width),height:Math.round(r.height),radius:Math.round(parseFloat(css.borderTopLeftRadius)),
+                        iconSize:svg?Math.round(svg.getBoundingClientRect().width):0,
+                        background:css.backgroundColor,color:css.color,
+                        badgeCenterDelta:br?Math.abs((br.top+br.height/2)-(r.top+r.height/2)):null,
+                        visible:r.width>0&&r.height>0&&css.display!=='none'
+                      };
+                    });
+                    return {cards:cards.length,buttons:buttons.length,shapes};
                   });
-                  console.log('MODAL_SELECTED_'+type+' '+JSON.stringify(after));
-                  const yith=await page.evaluate(()=>{
-                    const root=document.querySelector('#emo-quick-cart-modal .yith-wapo-container');
-                    if(!root)return {found:false};
-                    const els=[...root.querySelectorAll('*')].filter(e=>e.children.length<4 && /precio|opciones totales|total del pedido|€|formato/i.test(e.textContent||'')).slice(0,28);
-                    return {markup:root.innerHTML.slice(-6500),prices:els.map(e=>({tag:e.tagName,cl:e.className,txt:e.textContent?.trim().slice(0,100),vis:e.getBoundingClientRect().height>0}))};
-                  });
-                  console.log('YITH_PRICE_'+type+' '+JSON.stringify(yith));
-                  const check = await page.evaluate(() => {
-                    const first=document.querySelector('ul.products li.product:has(.mdo-emdo-selection-badge):has(> a.emo-card-quick-add)');
-                    const badge=first?.querySelector('.mdo-emdo-selection-badge'),icon=first?.querySelector(':scope > a.emo-card-quick-add');
-                    const style=icon?getComputedStyle(icon):null;
-                    const bb=badge?.getBoundingClientRect(),ib=icon?.getBoundingClientRect();
-                    const root=document.querySelector('#emo-quick-cart-modal'), label=root?.querySelector('form.variations_form table.variations th');
-                    const yith=root?.querySelector('#wapo-total-price-table .wapo-total-order');
-                    const wcPrice=root?.querySelector('.woocommerce-variation-price');
-                    const visible=e=>{if(!e)return false;const r=e.getBoundingClientRect();const cs=getComputedStyle(e);return r.width>0&&r.height>0&&cs.display!=='none'&&cs.visibility!=='hidden';};
-                    const format=root?.querySelector('.yith-wapo-addon');
-                    const select=root?.querySelector('select[name^="attribute_"]');
-                    const sr=select?.getBoundingClientRect(),fr=format?.getBoundingClientRect();
-                    return {aligned:bb&&ib?Math.abs((bb.top+bb.height/2)-(ib.top+ib.height/2)):null,
-                      iconMargin:style?.margin,iconBg:style?.backgroundColor,iconColor:style?.color,iconHeight:Math.round(ib?.height||0),
-                      titleBorder:label?getComputedStyle(label).borderWidth:null,
-                      yithVisible:visible(yith),wooPriceVisible:visible(wcPrice),
-                      weightFormatGap:sr&&fr?Math.round(fr.top-sr.bottom):null,
-                      pricedClass:root?.classList.contains('emo-quick-cart-priced'),
-                      inlineFixLoaded:document.querySelector('#emo-catalog-quick-add-js-20261026')?.textContent.includes('alignFormatFields'),
-                      formatWidthRatio: sr && root?.querySelector('.yith-wapo-addon-type-select select') ? Math.round(100*root.querySelector('.yith-wapo-addon-type-select select').getBoundingClientRect().width/sr.width)/100:null,
-                      formatAncestors:(()=>{const select=root?.querySelector('.yith-wapo-addon-type-select select'),a=[];for(let el=select,i=0;el&&i<8;el=el.parentElement,i++){const st=getComputedStyle(el);a.push({tag:el.tagName,cls:el.className,w:Math.round(el.getBoundingClientRect().width),parentW:Math.round(el.parentElement?.getBoundingClientRect().width||0),width:st.width,maxWidth:st.maxWidth,flexBasis:st.flexBasis,display:st.display,inline:el.getAttribute('style')});}return a;})()};
-                  });
-                  console.log('DESIGN_QA_'+type+' '+JSON.stringify(check));
-                  if(check.aligned === null || check.aligned > 4 || check.iconMargin !== '0px' || check.iconBg !== 'rgba(23, 63, 50, 0.94)' || check.titleBorder !== '0px' || !check.yithVisible || check.wooPriceVisible || check.weightFormatGap > 30 || !check.pricedClass || (check.formatWidthRatio !== null && check.formatWidthRatio < .96)) {
-                    layoutFailures++;
-                    console.error('DESIGN_QA_FAILURE '+type+' '+JSON.stringify(check));
+                  const first=result.shapes[0];
+                  const ok=result.buttons>0&&result.shapes.every(s=>s.width===40&&s.height===34&&s.radius===9&&s.iconSize===19&&s.visible&&s.background==='rgba(23, 63, 50, 0.94)'&&(s.badgeCenterDelta===null||s.badgeCenterDelta<3));
+                  console.log('BUTTON_SHAPE '+JSON.stringify({page:pageName,device,cards:result.cards,buttons:result.buttons,first,ok}));
+                  if(!ok){failures++;console.error('SHAPE_FAILURE '+pageName+' '+device);}
+                  if(pageName==='Tienda'){
+                    await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));
+                    await page.waitForTimeout(2800);
+                    const scroll=await page.evaluate(()=>{
+                      const cards=[...document.querySelectorAll('ul.products li.product')];
+                      const missing=cards.filter(c=>c.classList.contains('instock')&&c.querySelector('.price')&&(c.classList.contains('product-type-simple')||c.classList.contains('product-type-variable'))&&!c.querySelector(':scope > a.emo-card-quick-add')).length;
+                      return {loaded:cards.length,missing};
+                    });
+                    console.log('SCROLL_CHECK '+JSON.stringify({device,...scroll}));
+                    if(scroll.missing>0){failures++;console.error('SCROLL_FAILURE '+device);}
                   }
-
-                }
-                await page.screenshot({path:'/tmp/quick-'+type+'.png',fullPage:false});
+                  const variable=page.locator('ul.products li.product > a.emo-card-quick-add.product_type_variable').first();
+                  if(await variable.count()){
+                    await variable.click({timeout:10000});
+                    const form=page.locator('#emo-quick-cart-modal:not([hidden]) form.variations_form');
+                    await form.waitFor({timeout:17000});
+                    console.log('MODAL_REGRESSION_OK '+pageName+' '+device);
+                    await page.locator('#emo-quick-cart-modal .emo-quick-cart-close').click();
+                  }
+                  await page.screenshot({path:'/tmp/emdo-cart-'+(pageName==='Tienda'?'shop':'producer')+'-'+device+'.png'});
+                }catch(e){failures++;console.error('BROWSER_ERROR '+pageName+' '+device+' '+e.message);}
+                finally{await page.close();}
               }
-              await page.close();
             }
             await browser.close();
-            if (layoutFailures) process.exitCode=1;
-          })().catch(e=>{console.error(e);process.exitCode=1});
-          JS
-          node /tmp/emo-inspect.cjs
+            if(failures)process.exitCode=1;
+          })().catch(error=>{console.error(error);process.exitCode=1;});
+          CHECK_JS
+          node /tmp/emdo-design-check.cjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: quick-cart-design-screenshots
-          path: /tmp/quick-*.png
+          name: emdo-rounded-rectangle-live-screenshots
+          path: /tmp/emdo-cart-*.png
           retention-days: 3
