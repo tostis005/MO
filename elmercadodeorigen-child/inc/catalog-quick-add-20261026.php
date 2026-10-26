@@ -699,10 +699,13 @@ add_action(
 			let opener = null;
 			let currentProductUrl = '';
 			let currentControl = null;
+			let formatWidthObserver = null;
 
 			const closeModal = () => {
 				if (!modal || modal.hidden) return;
 				modal.hidden = true;
+				formatWidthObserver?.disconnect();
+				formatWidthObserver = null;
 				modal.classList.remove('emo-quick-cart-yith','emo-quick-cart-priced');
 				modal.querySelector('.emo-quick-cart-body').replaceChildren();
 				body.classList.remove('emo-quick-cart-open');
@@ -813,8 +816,12 @@ add_action(
 						const alignFormatFields = () => {
 							if (!form.isConnected) return;
 							form.querySelectorAll('.yith-wapo-addon-type-select .options, .yith-wapo-addon-type-select select.yith-wapo-option-value').forEach(field => {
-								field.style.setProperty('width', '100%', 'important');
-								field.style.setProperty('max-width', '100%', 'important');
+								if (field.style.getPropertyValue('width') !== '100%' || field.style.getPropertyPriority('width') !== 'important') {
+									field.style.setProperty('width', '100%', 'important');
+								}
+								if (field.style.getPropertyValue('max-width') !== '100%' || field.style.getPropertyPriority('max-width') !== 'important') {
+									field.style.setProperty('max-width', '100%', 'important');
+								}
 							});
 						};
 
@@ -829,6 +836,21 @@ add_action(
 						window.jQuery(form).wc_variation_form();
 						alignFormatFields();
 						window.setTimeout(alignFormatFields, 180);
+						/* YITH reescribe el estilo inline al recalcular opciones.
+						   Observar solo style en este formulario. No vigilar todo
+						   el DOM ni mutar si el ancho ya es correcto. */
+						formatWidthObserver?.disconnect();
+						formatWidthObserver = new MutationObserver(mutations => {
+							if (!form.isConnected) {
+								formatWidthObserver?.disconnect();
+								return;
+							}
+							if (mutations.some(m => m.target.matches?.('.yith-wapo-addon-type-select .options, .yith-wapo-addon-type-select select.yith-wapo-option-value'))) {
+								alignFormatFields();
+							}
+						});
+						formatWidthObserver.observe(form, { attributes: true, attributeFilter: ['style'], subtree: true });
+						alignFormatFields();
 						window.jQuery(form).find('.variations select').trigger('change');
 					} else if (form) {
 						showError('No se ha podido iniciar el selector. Abre la ficha del producto.');
