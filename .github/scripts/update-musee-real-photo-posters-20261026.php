@@ -104,6 +104,9 @@ function mdo_drawphoto($im,$path,$x,$y,$w,$h){
  if(!$src)throw new RuntimeException('Original photo cannot be decoded');
  $iw=imagesx($src);$ih=imagesy($src);
  if($iw<75||$ih<75)throw new RuntimeException('Source photo too small');
+ // Minimal non-generative retouch: remove only 4% of the original photo's bottom edge
+ // where supplier footer URLs may be printed. All remaining pixels are actual catalog photography.
+ $ih=max(75,(int)floor($ih*0.96));
  $z=min($w/$iw,$h/$ih);$dw=(int)round($iw*$z);$dh=(int)round($ih*$z);
  imagecopyresampled($im,$src,$x+(int)(($w-$dw)/2),$y+(int)(($h-$dh)/2),0,0,$dw,$dh,$iw,$ih);
  imagedestroy($src);
