@@ -1,4 +1,4 @@
-name: Audit live quick-add deployment (post production patch)
+name: Audit live quick-add deployment (rendered button verification)
 
 on:
   pull_request:
@@ -25,6 +25,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # La publicación puede arrancar a la vez que esta auditoría.
+          # Esperar a que aparezca el enlace renderizado por WooCommerce.
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            curl -ksSL --max-time 30 -H 'Cache-Control: no-cache' "https://www.elmercadodeorigen.com/tienda/?quick-add-deploy-check=${GITHUB_SHA}-$attempt" -o /tmp/emo-ready.html
+            if grep -Fq 'emo-card-quick-add-source' /tmp/emo-ready.html; then
+              echo 'QUICK_ADD_SOURCE_RENDERED in shop HTML'
+              break
+            fi
+            echo "Quick-add source not yet visible; retry $attempt"
+            sleep 5
+          done
+          grep -Fq 'emo-card-quick-add-source' /tmp/emo-ready.html || { echo 'QUICK_ADD_SOURCE_MISSING'; exit 1; }
           for page in tienda/ tienda/1957/; do
             url="https://www.elmercadodeorigen.com/$page?emo-audit=${GITHUB_SHA}"
             status="$(curl -ksSL --max-time 40 -H 'Cache-Control: no-cache' -A 'Mozilla/5.0' -o /tmp/emo-live.html -w '%{http_code}' "$url")"
