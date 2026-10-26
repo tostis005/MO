@@ -28,7 +28,13 @@ foreach($expected as $packId=>$conf) {
  if(!$imgId || !$current || !is_readable($current)) {fwrite(STDERR,"HERO_MISSING ".$packId."\n");exit(6);}
  $dims=@getimagesize($current);
  $targetH=478+85+$conf['rows']*$conf['rowH']+40;
+ echo "CURRENT_PACK_HERO_DIAGNOSTIC ".wp_json_encode([
+   'id'=>$packId,'name'=>$pack->get_name(),'image_id'=>$imgId,
+   'file'=>basename($current),'dimensions'=>[(int)$dims[0],(int)$dims[1]],'expected_height'=>$targetH,
+   'component_keys'=>array_map(static fn($l)=>$l['key']??'',get_post_meta($packId,'_emdo_mentta_pack_lines',true)??[])
+ ],JSON_UNESCAPED_UNICODE)."\n";
  if(!$dims || (int)$dims[0]!==1400 || (int)$dims[1]!==$targetH) {
+  if(getenv('MDO_REAL_BOX_APPLY')!=='1'){ echo "INSPECT_GEOMETRY_MISMATCH_NOT_MODIFIED ".$packId."\n";continue; }
   fwrite(STDERR,"HERO_GEOMETRY_UNEXPECTED ".$packId." ".json_encode($dims)."\n");exit(7);
  }
  $tiles=[];
