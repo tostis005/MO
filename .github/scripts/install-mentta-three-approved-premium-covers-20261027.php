@@ -35,6 +35,12 @@ $packs=[
   ['zebra_filet','cebra'],['bison_filet','bisonte'],['deer_loin','venado'],
   ['kangaroo_200','canguro'],['buffalo_tender','búfalo'],['elk_loin','alce'],['boar_loin','jabalí']]]
 ];
+$onlyKeys=trim((string)getenv('MDO_MUSEE_PREMIUM_KEYS'));
+if($onlyKeys!==''){
+ $whitelist=array_values(array_filter(explode(',',$onlyKeys)));
+ $packs=array_filter($packs,static fn($c)=>in_array($c['key'],$whitelist,true));
+ if(count($packs)!==count($whitelist)) {fwrite(STDERR,"INVALID_PREVIEW_KEYS\n");exit(15);}
+}
 function emdo_mp_normalize($s) {
  return strtolower(remove_accents((string)$s));
 }
