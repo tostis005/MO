@@ -814,8 +814,8 @@ add_action(
 						   como en el select. Un stylesheet no puede prevalecer:
 						   normalizar solo los dos nodos dentro de ESTE modal. */
 						const alignFormatFields = () => {
-							if (!form.isConnected) return;
-							form.querySelectorAll('.yith-wapo-addon-type-select .options, .yith-wapo-addon-type-select select.yith-wapo-option-value').forEach(field => {
+							if (dialog.hidden) return;
+							dialog.querySelectorAll('.yith-wapo-addon-type-select .options, .yith-wapo-addon-type-select select.yith-wapo-option-value').forEach(field => {
 								if (field.style.getPropertyValue('width') !== '100%' || field.style.getPropertyPriority('width') !== 'important') {
 									field.style.setProperty('width', '100%', 'important');
 								}
@@ -836,20 +836,20 @@ add_action(
 						window.jQuery(form).wc_variation_form();
 						alignFormatFields();
 						window.setTimeout(alignFormatFields, 180);
-						/* YITH reescribe el estilo inline al recalcular opciones.
-						   Observar solo style en este formulario. No vigilar todo
-						   el DOM ni mutar si el ancho ya es correcto. */
+						window.setTimeout(alignFormatFields, 700);
+						window.setTimeout(alignFormatFields, 1350);
+						/* En móvil YITH reemplaza controles DOM completos tras renderizar.
+						   Observar el modal (no el nodo form que puede sustituirse);
+						   la función evita escrituras repetidas y no hay bucles. */
 						formatWidthObserver?.disconnect();
 						formatWidthObserver = new MutationObserver(mutations => {
-							if (!form.isConnected) {
-								formatWidthObserver?.disconnect();
-								return;
-							}
-							if (mutations.some(m => m.target.matches?.('.yith-wapo-addon-type-select .options, .yith-wapo-addon-type-select select.yith-wapo-option-value'))) {
+							if (dialog.hidden) return;
+							if (mutations.some(m => m.type === 'childList'
+								|| m.target.matches?.('.yith-wapo-addon-type-select .options, .yith-wapo-addon-type-select select.yith-wapo-option-value'))) {
 								alignFormatFields();
 							}
 						});
-						formatWidthObserver.observe(form, { attributes: true, attributeFilter: ['style'], subtree: true });
+						formatWidthObserver.observe(dialog, { attributes: true, attributeFilter: ['style'], childList: true, subtree: true });
 						alignFormatFields();
 						window.jQuery(form).find('.variations select').trigger('change');
 					} else if (form) {
