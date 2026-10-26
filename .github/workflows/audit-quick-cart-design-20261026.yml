@@ -1,4 +1,4 @@
-name: Diagnose duplicate cart additions in live shop
+name: Diagnose variable cart quantities via real Chrome
 on:
   pull_request:
     paths:
@@ -6,58 +6,91 @@ on:
 permissions:
   contents: read
 jobs:
-  diagnose:
+  variable:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 9
     steps:
       - uses: actions/checkout@v4
-      - name: Reproduce single click and observe cart mutations in Chrome
+      - name: Test one variable modal purchase and one product-page purchase
         shell: bash
         run: |
           set -euo pipefail
           npm install --silent --prefix /tmp/emdo-dupe playwright@1.56.1
-          cat > /tmp/emdo-dupe.cjs <<'JAVASCRIPT'
+          cat > /tmp/emdo-variable.cjs <<'JAVASCRIPT'
           const {chromium}=require('/tmp/emdo-dupe/node_modules/playwright');
           (async()=>{
             const browser=await chromium.launch({headless:true,channel:'chrome'});
-            for(const [device,viewport] of [['desktop',{width:1440,height:900}],['mobile',{width:390,height:844}]]){
-              const ctx=await browser.newContext({viewport,locale:'es-ES'});
-              const page=await ctx.newPage();
+            for(const [mode,device,viewport] of [
+              ['modal','desktop',{width:1440,height:900}],
+              ['modal','mobile',{width:390,height:844}],
+              ['detail-simple','desktop',{width:1440,height:900}],
+              ['detail-variable','desktop',{width:1440,height:900}]
+            ]){
+              const context=await browser.newContext({viewport,locale:'es-ES'});
+              const page=await context.newPage();
               const events=[];
               page.on('request',r=>{
-                const u=r.url(); if(/(?:wc-ajax=|admin-ajax|add-to-cart=)/.test(u)){
+                const u=r.url();
+                if(/(?:wc-ajax=|admin-ajax|add-to-cart=)/.test(u)){
                   const d=r.postData()||'';
-                  events.push({kind:'request',method:r.method(),url:u.slice(0,220),data:d.slice(0,350)});
+                  if(/add_to_cart|add-to-cart|emo_quick_add_variation/.test(u+d)){
+                    events.push({type:'req',method:r.method(),url:u.slice(0,170),data:d.slice(0,900)});
+                  }
                 }
               });
-              page.on('response',async r=>{
-                const u=r.url(); if(/(?:wc-ajax=|admin-ajax|add-to-cart=)/.test(u)){
-                  events.push({kind:'response',status:r.status(),url:u.slice(0,220)});
-                }
+              page.on('response',r=>{
+                const u=r.url();
+                if(/add_to_cart|add-to-cart|admin-ajax/.test(u))events.push({type:'resp',status:r.status(),url:u.slice(0,150)});
               });
               try{
-                await page.goto('https://www.elmercadodeorigen.com/tienda/?emdo-dupe-check=20261026',{waitUntil:'domcontentloaded',timeout:60000});
-                await page.waitForSelector('a.emo-card-quick-add',{timeout:18000});
-                const buttons=await page.locator('a.emo-card-quick-add').evaluateAll(nodes=>nodes.map(el=>({type:el.className,id:el.dataset.product_id,href:el.href,text:el.parentElement?.querySelector('h2')?.textContent?.slice(0,80)})));
-                console.log('LISTING_BUTTONS '+device+' '+JSON.stringify(buttons.slice(0,9)));
-                const simple=page.locator('a.emo-card-quick-add.product_type_simple').first();
-                if(!(await simple.count())){console.log('NO_SIMPLE '+device);continue;}
-                const id=await simple.getAttribute('data-product_id');
-                console.log('CLICK_SIMPLE '+device+' '+id);
-                await simple.click({timeout:10000});
-                await page.waitForTimeout(2800);
-                console.log('AFTER_CLICK '+device+' '+JSON.stringify({url:page.url(),events}));
-                await page.goto('https://www.elmercadodeorigen.com/carrito/',{waitUntil:'domcontentloaded',timeout:45000});
-                const cart=await page.evaluate(()=>{
-                  const forms=[...document.querySelectorAll('.woocommerce-cart-form .cart_item, tr.cart_item, .wc-block-cart-items__row')];
-                  return {url:location.href,items:forms.map(el=>({name:el.querySelector('.product-name,.wc-block-components-product-name')?.textContent?.trim().slice(0,90),quantity:el.querySelector('input.qty,input[type="number"]')?.value,html:el.outerHTML.slice(0,450)})),body:document.body.innerText.slice(0,800)};
-                });
-                console.log('CART_STATE '+device+' '+JSON.stringify(cart));
-                console.log('ALL_EVENTS '+device+' '+JSON.stringify(events));
-              }catch(e){console.log('DIAG_ERROR '+device+' '+e.stack);}
-              finally{await ctx.close();}
+                const url=mode==='modal'?'https://www.elmercadodeorigen.com/tienda/':mode==='detail-simple'?'https://www.elmercadodeorigen.com/producto/foie-gras-de-pato-extra/':'https://www.elmercadodeorigen.com/producto/aceite-de-oliva-virgen-extra-5l/';
+                await page.goto(url,{waitUntil:'domcontentloaded',timeout:55000});
+                let form, button;
+                if(mode==='modal'){
+                  const trigger=page.locator('a.emo-card-quick-add.product_type_variable').first();
+                  await trigger.waitFor({timeout:12000});console.log('TRIGGER '+mode+' '+device+' '+await trigger.getAttribute('data-product_id'));
+                  await trigger.click();
+                  await page.locator('#emo-quick-cart-modal:not([hidden]) form.variations_form').waitFor({timeout:18000});
+                  form=page.locator('#emo-quick-cart-modal form.variations_form');
+                } else {
+                  await page.locator('form.cart').first().waitFor({timeout:12000});
+                  form=page.locator('form.cart').first();
+                }
+                await page.waitForTimeout(1100);
+                const info=await form.evaluate(el=>({
+                  action:el.getAttribute('action'),html:el.outerHTML.slice(0,3800),
+                  selects:[...el.querySelectorAll('select')].map(s=>({name:s.name,options:[...s.options].map(o=>({value:o.value,txt:o.textContent.trim().slice(0,70)}))})),
+                  inputs:[...el.querySelectorAll('input')].filter(x=>x.name).map(x=>({name:x.name,value:x.value,type:x.type})).slice(0,20),
+                  buttons:[...el.querySelectorAll('button')].map(x=>({class:x.className,text:x.textContent.trim().slice(0,70),disabled:x.disabled}))
+                }));
+                console.log('FORM_BEFORE '+mode+' '+device+' '+JSON.stringify(info).slice(0,7600));
+                for(const sel of await form.locator('select').all()){
+                  const opt=await sel.locator('option:not([value=""]):not([disabled])').first().getAttribute('value').catch(()=>null);
+                  if(opt){await sel.selectOption(opt).catch(e=>console.log('SELECT_ERR '+e.message));await page.waitForTimeout(220);}
+                }
+                await page.waitForTimeout(1300);
+                const formAfter=await form.evaluate(el=>({
+                  quantity:el.querySelector('input.qty,input[name="quantity"]')?.value,
+                  variation_id:el.querySelector('input[name="variation_id"]')?.value,
+                  selects:[...el.querySelectorAll('select')].map(s=>({name:s.name,value:s.value})),
+                  total:el.querySelector('#wapo-total-price-table')?.innerText?.slice(0,250)
+                }));
+                console.log('FORM_SELECTED '+mode+' '+device+' '+JSON.stringify(formAfter));
+                button=form.locator('button.single_add_to_cart_button').first();
+                const disabled=await button.isDisabled();
+                console.log('BUTTON_STATE '+mode+' '+device+' '+disabled);
+                if(!disabled){
+                  await button.click({timeout:10000});
+                  await page.waitForTimeout(3000);
+                  console.log('AFTER_BUY '+mode+' '+device+' '+JSON.stringify({url:page.url(),events}));
+                  await page.goto('https://www.elmercadodeorigen.com/carrito/',{waitUntil:'domcontentloaded',timeout:45000});
+                  const cart=await page.evaluate(()=>({items:[...document.querySelectorAll('.woocommerce-cart-form .cart_item, .wc-block-cart-items__row')].map(el=>({name:el.querySelector('.product-name,.wc-block-components-product-name')?.innerText?.trim().slice(0,100),qty:el.querySelector('input.qty,input[type="number"]')?.value})),header:document.body.innerText.slice(0,390)}));
+                  console.log('CART '+mode+' '+device+' '+JSON.stringify(cart));
+                }else console.log('SKIP_DISABLED '+mode+' '+device);
+              }catch(e){console.log('DIAG_ERROR '+mode+' '+device+' '+e.stack);}
+              finally{await context.close();}
             }
             await browser.close();
           })().catch(e=>{console.error(e);process.exitCode=1;});
           JAVASCRIPT
-          node /tmp/emdo-dupe.cjs
+          node /tmp/emdo-variable.cjs
