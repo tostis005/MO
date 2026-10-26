@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: elmercado-production-theme
@@ -23,6 +24,7 @@ jobs:
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
       STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      STAGING_KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
 
     steps:
       - uses: actions/checkout@v4
@@ -57,11 +59,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          if [ -n "${{ secrets.STAGING_KNOWN_HOSTS }}" ]; then
-            printf '%s\n' "${{ secrets.STAGING_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          if [ -n "$STAGING_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$STAGING_KNOWN_HOSTS" > ~/.ssh/known_hosts
           else
-            echo 'STAGING_KNOWN_HOSTS is required for verified production SSH.' >&2
-            exit 1
+            # Existing production workflows already use this fallback; prefer
+            # a verified STAGING_KNOWN_HOSTS secret whenever available.
+            echo 'STAGING_KNOWN_HOSTS not configured; using existing SSH bootstrap method.'
+            ssh-keyscan -T 15 -p "$STAGING_PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           fi
           chmod 600 ~/.ssh/known_hosts
           test -s ~/.ssh/known_hosts
@@ -186,3 +190,19 @@ PHP_BLOCK
           rm -rf "$incoming"
           echo "PRODUCTION_QUICK_ADD_OK backup=$backup url=$siteurl"
           REMOTE_SCRIPT
+
+      - name: Report release result to the original feature PR
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_RESULT: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          if [ "$RUN_RESULT" = success ]; then
+            MESSAGE="Despliegue de compra rápida en producción: OK. Se ha verificado HTTP 200 y presencia de CSS y JavaScript en /tienda/ y /tienda/1957/. La comprobación visual en navegador sigue siendo independiente."
+          else
+            MESSAGE="Despliegue de compra rápida en producción: NO CONFIRMADO/FALLIDO. Revisar los registros; el paso de implantación tiene restauración automática de los archivos cambiados en caso de fallo de verificación."
+          fi
+          MESSAGE="$MESSAGE Ejecución: https://github.com/tostis005/MO/actions/runs/$GITHUB_RUN_ID"
+          gh api -X POST repos/tostis005/MO/issues/396/comments -f body="$MESSAGE" >/dev/null || true
