@@ -477,6 +477,23 @@ add_action(
 				modal.querySelector('.emo-quick-cart-close').addEventListener('click', closeModal);
 				modal.addEventListener('click', (event) => { if (event.target === modal) closeModal(); });
 				modal.addEventListener('submit', submitVariation, true);
+				/* Los add-ons (p. ej., YITH WAPO) escuchan el click del botón
+				   y pueden bloquear el submit del formulario inyectado.
+				   Aquí capturamos únicamente el botón del modal, antes de
+				   handlers de terceros, y aplicamos validación en WC_Cart. */
+				modal.addEventListener('click', event => {
+					const button = event.target.closest?.('.single_add_to_cart_button');
+					if (!button || !modal.contains(button)) return;
+					event.preventDefault();
+					event.stopImmediatePropagation();
+					const form = button.closest('form.variations_form') || modal.querySelector('form.variations_form');
+					if (!form) return;
+					submitVariation({
+						target: form,
+						preventDefault() {},
+						stopPropagation() {}
+					});
+				}, true);
 				document.addEventListener('keydown', (event) => {
 					if (modal.hidden) return;
 					if (event.key === 'Escape') { event.preventDefault(); closeModal(); return; }
