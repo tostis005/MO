@@ -5,7 +5,6 @@ on:
     paths:
       - '.github/workflows/restore-musee-box-photos-20261026.yml'
       - '.github/scripts/restore-original-box-photos-three-packs-20261026.php'
-      - '.github/scripts/restore-original-box-photos-three-packs-20261026.php'
   workflow_dispatch:
 permissions:
   contents: read
@@ -23,7 +22,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Validate one-pack fix and reviewer safety
+      - name: Validate original media and private-pack safeguards
         run: |
           set -euo pipefail
           php -l .github/scripts/restore-original-box-photos-three-packs-20261026.php
@@ -31,7 +30,7 @@ jobs:
           php -l mu-plugins/emdo-musee-mentta-review-hold-20261026.php
           php -l mu-plugins/emdo-mentta-exclusive-products.php
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
-      - name: Apply to Pasaporte only and verify genuine buffalo cover and draft status
+      - name: Retain three cover headers and restore authentic product-box photographs
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
