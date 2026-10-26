@@ -1,4 +1,4 @@
-name: Verify final quick cart visual integration
+name: Verify quick cart selector widths
 on:
   pull_request:
     paths:
@@ -83,10 +83,11 @@ jobs:
                       titleBorder:label?getComputedStyle(label).borderWidth:null,
                       yithVisible:visible(yith),wooPriceVisible:visible(wcPrice),
                       weightFormatGap:sr&&fr?Math.round(fr.top-sr.bottom):null,
-                      pricedClass:root?.classList.contains('emo-quick-cart-priced')};
+                      pricedClass:root?.classList.contains('emo-quick-cart-priced'),
+                      formatWidthRatio: sr && root?.querySelector('.yith-wapo-addon-type-select select') ? Math.round(100*root.querySelector('.yith-wapo-addon-type-select select').getBoundingClientRect().width/sr.width)/100:null};
                   });
                   console.log('DESIGN_QA_'+type+' '+JSON.stringify(check));
-                  if(check.aligned === null || check.aligned > 4 || check.iconMargin !== '0px' || check.iconBg !== 'rgba(23, 63, 50, 0.94)' || check.titleBorder !== '0px' || !check.yithVisible || check.wooPriceVisible || check.weightFormatGap > 30 || !check.pricedClass) {
+                  if(check.aligned === null || check.aligned > 4 || check.iconMargin !== '0px' || check.iconBg !== 'rgba(23, 63, 50, 0.94)' || check.titleBorder !== '0px' || !check.yithVisible || check.wooPriceVisible || check.weightFormatGap > 30 || !check.pricedClass || (check.formatWidthRatio !== null && check.formatWidthRatio < .96)) {
                     layoutFailures++;
                     console.error('DESIGN_QA_FAILURE '+type+' '+JSON.stringify(check));
                   }
