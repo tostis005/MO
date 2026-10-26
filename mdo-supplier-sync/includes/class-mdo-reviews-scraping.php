@@ -273,12 +273,19 @@ final class MDO_Reviews_Scraping {
 	}
 
 	private static function persist_source_metadata( string $source, int $count, float $rating ): void {
+		$count_option = 'mdo_' . $source . '_review_count';
+		$rating_option = 'mdo_' . $source . '_rating';
+		$changed = false;
+
 		if ( $count > 0 ) {
-			update_option( 'mdo_' . $source . '_review_count', $count, false );
+			$changed = (int) get_option( $count_option, 0 ) !== $count;
+			update_option( $count_option, $count, false );
 			update_option( 'mdo_' . $source . '_review_count_updated_at', time(), false );
 		}
 		if ( $rating > 0 && $rating <= 5 ) {
-			update_option( 'mdo_' . $source . '_rating', round( $rating, 1 ), false );
+			$rounded_rating = round( $rating, 1 );
+			$changed = $changed || (float) get_option( $rating_option, 0 ) !== $rounded_rating;
+			update_option( $rating_option, $rounded_rating, false );
 		}
 		update_option( 'mdo_' . $source . '_review_source', $source . '_playwright_scraper', false );
 		update_option(
@@ -286,6 +293,11 @@ final class MDO_Reviews_Scraping {
 			'google' === $source ? self::GOOGLE_PROFILE_URL : self::TRUSTPILOT_PROFILE_URL,
 			false
 		);
+
+		// La portada puede estar cacheada incluso después de actualizar las opciones.
+		if ( $changed && function_exists( 'mdo_review_counts_purge_home_cache_010279' ) ) {
+			mdo_review_counts_purge_home_cache_010279();
+		}
 	}
 
 	private static function persist_last_import( string $source, array $result ): void {
