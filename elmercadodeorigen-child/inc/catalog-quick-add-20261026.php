@@ -367,7 +367,76 @@ add_action(
 				margin:0 !important;padding:0 !important;border:0 !important;
 				background:none !important;
 			}
-			#emo-quick-cart-modal .woocommerce-variation-add-to-cart {
+			
+			/* YITH WAPO calcula el precio final con corte/deshuesado. Evitar
+			   duplicar el precio WooCommerce: mostrar UN solo total, el de
+			   YITH, únicamente después de elegir el peso. Sin add-ons,
+			   WooCommerce sigue mostrando su precio habitual. */
+			#emo-quick-cart-modal.emo-quick-cart-yith .woocommerce-variation-price {
+				display:none !important;
+			}
+			#emo-quick-cart-modal.emo-quick-cart-yith:not(.emo-quick-cart-priced) #wapo-total-price-table {
+				display:none !important;
+			}
+			#emo-quick-cart-modal #wapo-total-price-table {
+				display:block !important;width:100% !important;
+				flex:1 1 100% !important;order:2 !important;
+				margin:10px 0 0 !important;padding:0 !important;border:0 !important;
+				background:transparent !important;box-shadow:none !important;
+			}
+			#emo-quick-cart-modal #wapo-total-price-table table.only_final,
+			#emo-quick-cart-modal #wapo-total-price-table tbody {
+				display:block !important;width:100% !important;
+				margin:0 !important;padding:0 !important;
+				border:0 !important;background:transparent !important;
+				box-shadow:none !important;
+			}
+			#emo-quick-cart-modal #wapo-total-price-table .wapo-total-order {
+				display:flex !important;justify-content:space-between !important;
+				align-items:center !important;gap:12px !important;
+				width:100% !important;
+				padding:10px 12px !important;margin:0 !important;
+				border:0 !important;border-radius:10px !important;
+				background:#eef4ef !important;
+			}
+			#emo-quick-cart-modal #wapo-total-price-table .wapo-total-order > th,
+			#emo-quick-cart-modal #wapo-total-price-table .wapo-total-order > td {
+				display:block !important;width:auto !important;
+				margin:0 !important;padding:0 !important;
+				background:none !important;border:0 !important;
+				color:#244736 !important;box-shadow:none !important;
+			}
+			#emo-quick-cart-modal #wapo-total-price-table .wapo-total-order > th {
+				font-size:12px !important;font-weight:650 !important;
+				white-space:nowrap !important;
+			}
+			#emo-quick-cart-modal #wapo-total-price-table .wapo-total-order > td {
+				font-size:19px !important;font-weight:800 !important;
+				text-align:right !important;white-space:nowrap !important;
+			}
+			#emo-quick-cart-modal #wapo-total-price-table .wapo-product-price,
+			#emo-quick-cart-modal #wapo-total-price-table .wapo-total-options {
+				display:none !important;
+			}
+			#emo-quick-cart-modal .yith-wapo-container {
+				flex:1 1 100% !important;width:100% !important;
+				order:0 !important;display:block !important;
+			}
+			#emo-quick-cart-modal .yith-wapo-addon h6.wapo-addon-title {
+				display:block !important;
+				margin:0 0 7px !important;padding:0 !important;
+				border:0 !important;background:none !important;
+				font-size:13px !important;font-weight:750 !important;
+				line-height:1.3 !important;color:#294c3b !important;
+				letter-spacing:.02em !important;box-shadow:none !important;
+			}
+			#emo-quick-cart-modal .yith-wapo-addon .addon-header,
+			#emo-quick-cart-modal .yith-wapo-addon .options-container {
+				margin:0 !important;padding:0 !important;
+				border:0 !important;background:none !important;box-shadow:none !important;
+			}
+			#emo-quick-cart-modal .yith-wapo-addon .option-description:empty {display:none !important;}
+#emo-quick-cart-modal .woocommerce-variation-add-to-cart {
 				display:flex !important;align-items:center !important;
 				gap:10px !important;margin:14px 0 0 !important;
 				padding:14px 0 0 !important;border-top:1px solid #e8ede8 !important;
@@ -597,6 +666,7 @@ add_action(
 			const closeModal = () => {
 				if (!modal || modal.hidden) return;
 				modal.hidden = true;
+				modal.classList.remove('emo-quick-cart-yith','emo-quick-cart-priced');
 				modal.querySelector('.emo-quick-cart-body').replaceChildren();
 				body.classList.remove('emo-quick-cart-open');
 				if (opener?.isConnected) opener.focus({ preventScroll: true });
@@ -700,6 +770,14 @@ add_action(
 
 					const form = content.querySelector('form.variations_form');
 					if (form && window.jQuery?.fn?.wc_variation_form) {
+						const hasYithTotal = Boolean(form.querySelector('#wapo-total-price-table .wapo-total-order'));
+						dialog.classList.toggle('emo-quick-cart-yith', hasYithTotal);
+						dialog.classList.remove('emo-quick-cart-priced');
+						if (hasYithTotal) {
+							window.jQuery(form)
+								.on('found_variation.emoQuickCart', () => dialog.classList.add('emo-quick-cart-priced'))
+								.on('reset_data.emoQuickCart hide_variation.emoQuickCart', () => dialog.classList.remove('emo-quick-cart-priced'));
+						}
 						window.jQuery(form).wc_variation_form();
 						window.jQuery(form).find('.variations select').trigger('change');
 					} else if (form) {
