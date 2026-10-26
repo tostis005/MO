@@ -194,7 +194,7 @@ add_action(
 			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add {
 				box-sizing:border-box !important;
 				position:absolute !important;
-				top:10px !important;
+				top:8px !important;
 				right:10px !important;
 				left:auto !important;
 				bottom:auto !important;
@@ -202,20 +202,20 @@ add_action(
 				display:flex !important;
 				align-items:center !important;
 				justify-content:center !important;
-				width:36px !important;
-				min-width:36px !important;
-				max-width:36px !important;
-				height:36px !important;
-				min-height:36px !important;
-				max-height:36px !important;
+				width:32px !important;
+				min-width:32px !important;
+				max-width:32px !important;
+				height:32px !important;
+				min-height:32px !important;
+				max-height:32px !important;
 				padding:0 !important;
 				margin:0 !important;
 				gap:0 !important;
-				border:1px solid rgba(23,63,50,.16) !important;
-				border-radius:50% !important;
-				background:rgba(255,255,255,.96) !important;
-				color:#173f32 !important;
-				box-shadow:0 2px 9px rgba(16,43,34,.12) !important;
+				border:1px solid rgba(255,255,255,.36) !important;
+				border-radius:999px !important;
+				background:rgba(23,63,50,.94) !important;
+				color:#fff !important;
+				box-shadow:0 2px 7px rgba(13,38,30,.16) !important;
 				font-size:0 !important;
 				line-height:0 !important;
 				letter-spacing:0 !important;
@@ -243,24 +243,24 @@ add_action(
 			}
 			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add .emo-card-quick-add__symbol svg {
 				display:block !important;
-				width:19px !important;
-				height:19px !important;
+				width:17px !important;
+				height:17px !important;
 				stroke:currentColor !important;
 				fill:none !important;
 			}
 			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add:is(:hover,:focus-visible,.emo-card-quick-add--confirmed) {
-				background:#173f32 !important;
-				border-color:#173f32 !important;
-				color:white !important;
+				background:#0c2b20 !important;
+				border-color:rgba(255,255,255,.68) !important;
+				color:#fff !important;
 			}
 			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add:focus-visible { outline:3px solid #ecc66f !important; outline-offset:2px !important; }
 			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add.loading { pointer-events:none !important; opacity:.62 !important; }
 			body.elmercado-child-theme ul.products li.product a.added_to_cart.wc-forward { display:none !important; }
 			@media (max-width:767px) {
 				body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add {
-					top:7px !important;right:7px !important;
-					width:36px !important;min-width:36px !important;max-width:36px !important;
-					height:36px !important;min-height:36px !important;max-height:36px !important;
+					top:3px !important;right:8px !important;
+					width:34px !important;min-width:34px !important;max-width:34px !important;
+					height:34px !important;min-height:34px !important;max-height:34px !important;
 					padding:0 !important;
 				}
 			}
@@ -270,6 +270,142 @@ add_action(
 				overflow:hidden !important;clip:rect(0,0,0,0) !important;white-space:nowrap !important;
 			}
 			body.emo-quick-cart-open { overflow:hidden !important; }
+			/* La ventana es una interfaz de compra, no una ficha WooCommerce.
+			   Aislar estilos agresivos de tablas, títulos y widgets del tema. */
+			#emo-quick-cart-modal, #emo-quick-cart-modal * { box-sizing:border-box; }
+			#emo-quick-cart-modal .emo-quick-cart-head {
+				padding:18px 20px 16px !important;
+				background:#f8f9f5 !important;
+				border-bottom:1px solid #e6ebe6 !important;
+			}
+			#emo-quick-cart-modal .emo-quick-cart-heading { min-width:0; }
+			#emo-quick-cart-modal .emo-quick-cart-eyebrow {
+				display:block;margin:0 0 6px;font-size:10px;font-weight:800;
+				line-height:1.15;letter-spacing:.11em;text-transform:uppercase;color:#687b70;
+			}
+			#emo-quick-cart-modal .emo-quick-cart-title {
+				font-size:19px !important;line-height:1.25 !important;
+				font-weight:750 !important;letter-spacing:-.015em !important;
+			}
+			#emo-quick-cart-modal .emo-quick-cart-close:hover { background:#e5ece5 !important; }
+			#emo-quick-cart-modal .emo-quick-cart-body { padding:18px 22px 20px !important; }
+			#emo-quick-cart-modal form.variations_form.cart {
+				display:block !important;
+				padding:0 !important;margin:0 !important;border:0 !important;
+				background:transparent !important;box-shadow:none !important;
+			}
+			#emo-quick-cart-modal form.variations_form table.variations {
+				display:block !important;width:100% !important;
+				margin:0 0 8px !important;padding:0 !important;
+				border:0 !important;box-shadow:none !important;
+				border-collapse:collapse !important;background:transparent !important;
+			}
+			#emo-quick-cart-modal form.variations_form table.variations tbody,
+			#emo-quick-cart-modal form.variations_form table.variations tr {
+				display:block !important;width:100% !important;height:auto !important;
+				padding:0 !important;margin:0 0 10px !important;
+				background:transparent !important;border:0 !important;
+			}
+			#emo-quick-cart-modal form.variations_form table.variations th,
+			#emo-quick-cart-modal form.variations_form table.variations td {
+				display:block !important;width:100% !important;float:none !important;
+				height:auto !important;box-shadow:none !important;background:none !important;
+				padding:0 !important;margin:0 !important;border:0 !important;
+				text-align:left !important;vertical-align:middle !important;
+			}
+			#emo-quick-cart-modal form.variations_form table.variations th.label {
+				margin:0 0 7px !important;
+				color:#244637 !important;
+			}
+			#emo-quick-cart-modal form.variations_form table.variations label,
+			#emo-quick-cart-modal .yith-wapo-addon .label-container label {
+				display:inline-block !important;
+				font-size:13px !important;font-weight:750 !important;
+				line-height:1.35 !important;color:#294c3b !important;
+				margin:0 !important;padding:0 !important;border:0 !important;
+			}
+			#emo-quick-cart-modal form.variations_form table.variations select,
+			#emo-quick-cart-modal .yith-wapo-addon select {
+				display:block !important;width:100% !important;max-width:100% !important;
+				height:43px !important;min-height:43px !important;
+				padding:0 12px !important;margin:0 !important;
+				border:1px solid #d5dfd8 !important;border-radius:9px !important;
+				background:#fff !important;color:#203f32 !important;
+				box-shadow:none !important;font-size:14px !important;line-height:1.25 !important;
+			}
+			#emo-quick-cart-modal form.variations_form select:focus-visible {
+				outline:2px solid #67947d !important;outline-offset:2px !important;
+			}
+			#emo-quick-cart-modal .reset_variations {
+				display:inline-block !important;margin:5px 0 0 !important;
+				padding:0 !important;color:#577366 !important;
+				font-size:11px !important;line-height:1.35 !important;
+				text-decoration:underline !important;
+			}
+			#emo-quick-cart-modal .single_variation_wrap {
+				margin:0 !important;padding:0 !important;clear:both !important;
+			}
+			#emo-quick-cart-modal .woocommerce-variation.single_variation {
+				padding:0 !important;margin:0 !important;border:0 !important;
+			}
+			#emo-quick-cart-modal .yith-wapo-container,
+			#emo-quick-cart-modal .yith-wapo-block {
+				margin:0 !important;padding:0 !important;
+				border:0 !important;box-shadow:none !important;
+				background:transparent !important;min-height:0 !important;
+			}
+			#emo-quick-cart-modal .yith-wapo-addon {
+				padding:0 !important;margin:0 0 11px !important;
+				border:0 !important;box-shadow:none !important;
+				background:transparent !important;min-height:0 !important;
+			}
+			#emo-quick-cart-modal .yith-wapo-addon .label-container {
+				margin:0 0 7px !important;padding:0 !important;border:0 !important;
+				background:none !important;box-shadow:none !important;
+			}
+			#emo-quick-cart-modal .yith-wapo-addon .options {
+				margin:0 !important;padding:0 !important;border:0 !important;
+				background:none !important;
+			}
+			#emo-quick-cart-modal .woocommerce-variation-add-to-cart {
+				display:flex !important;align-items:center !important;
+				gap:10px !important;margin:14px 0 0 !important;
+				padding:14px 0 0 !important;border-top:1px solid #e8ede8 !important;
+				flex-wrap:wrap !important;
+			}
+			#emo-quick-cart-modal .woocommerce-variation-add-to-cart .quantity {
+				flex:0 0 84px !important;max-width:84px !important;
+				min-width:0 !important;height:43px !important;min-height:43px !important;
+				margin:0 !important;padding:0 !important;
+				border:1px solid #d7dfd9 !important;border-radius:9px !important;
+				box-shadow:none !important;overflow:hidden !important;
+			}
+			#emo-quick-cart-modal .woocommerce-variation-add-to-cart .qty {
+				width:100% !important;min-height:41px !important;height:41px !important;
+				padding:0 4px !important;margin:0 !important;border:0 !important;
+				text-align:center !important;background:transparent !important;
+				box-shadow:none !important;
+			}
+			#emo-quick-cart-modal .woocommerce-variation-add-to-cart .single_add_to_cart_button {
+				flex:1 1 180px !important;min-width:0 !important;
+				width:auto !important;height:43px !important;min-height:43px !important;
+				margin:0 !important;padding:0 15px !important;
+				border:1px solid #173f32 !important;border-radius:9px !important;
+				box-shadow:none !important;
+			}
+			#emo-quick-cart-modal .emo-quick-cart-view-product {
+				display:block !important;width:max-content !important;max-width:100% !important;
+				margin:14px auto 0 !important;padding:0 !important;
+				font-size:12px !important;font-weight:550 !important;
+				color:#597467 !important;text-decoration:underline !important;
+				text-underline-offset:3px !important;
+			}
+			@media(max-width:600px) {
+				#emo-quick-cart-modal .emo-quick-cart-head { padding:15px 16px 13px !important; }
+				#emo-quick-cart-modal .emo-quick-cart-body { padding:16px !important; }
+				#emo-quick-cart-modal .emo-quick-cart-title { font-size:17px !important; }
+			}
+
 			#emo-quick-cart-modal {
 				position:fixed;inset:0;z-index:2147483000;
 				display:flex;align-items:center;justify-content:center;
@@ -405,6 +541,10 @@ add_action(
 				control.setAttribute('aria-label', name ? label + ': ' + name : label);
 				control.setAttribute('title', label);
 				control.classList.add('emo-card-quick-add');
+				/* Woostify añade margin:14px !important a los enlaces button del loop.
+				   Un estilo inline important cancela ese margen y alinea el icono
+				   con la pastilla «Selección EMDO» en todos los tamaños. */
+				control.style.setProperty('margin', '0px', 'important');
 				control.dataset.emoQuickAction = options ? 'options' : 'add';
 				if (!options && control.matches('.product_type_simple') && control.dataset.product_id && window.wc_add_to_cart_params) {
 					control.classList.add('ajax_add_to_cart');
@@ -470,7 +610,7 @@ add_action(
 				modal.id = 'emo-quick-cart-modal';
 				modal.hidden = true;
 				modal.innerHTML = '<section class="emo-quick-cart-dialog" role="dialog" aria-modal="true" aria-labelledby="emo-quick-cart-title">'
-					+ '<header class="emo-quick-cart-head"><h2 id="emo-quick-cart-title" class="emo-quick-cart-title">Seleccionar opciones</h2>'
+					+ '<header class="emo-quick-cart-head"><div class="emo-quick-cart-heading"><span class="emo-quick-cart-eyebrow">Personaliza tu pedido</span><h2 id="emo-quick-cart-title" class="emo-quick-cart-title">Seleccionar opciones</h2></div>'
 					+ '<button type="button" class="emo-quick-cart-close" aria-label="Cerrar">×</button></header>'
 					+ '<div class="emo-quick-cart-body"></div></section>';
 				body.append(modal);
