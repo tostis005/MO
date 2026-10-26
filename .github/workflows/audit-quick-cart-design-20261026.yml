@@ -1,4 +1,4 @@
-name: Final storefront quick cart visual QA
+name: Inspect latest inline YITH width fix in live storefront
 on:
   pull_request:
     paths:
@@ -84,6 +84,7 @@ jobs:
                       yithVisible:visible(yith),wooPriceVisible:visible(wcPrice),
                       weightFormatGap:sr&&fr?Math.round(fr.top-sr.bottom):null,
                       pricedClass:root?.classList.contains('emo-quick-cart-priced'),
+                      inlineFixLoaded:document.querySelector('#emo-catalog-quick-add-js-20261026')?.textContent.includes('alignFormatFields'),
                       formatWidthRatio: sr && root?.querySelector('.yith-wapo-addon-type-select select') ? Math.round(100*root.querySelector('.yith-wapo-addon-type-select select').getBoundingClientRect().width/sr.width)/100:null,
                       formatAncestors:(()=>{const select=root?.querySelector('.yith-wapo-addon-type-select select'),a=[];for(let el=select,i=0;el&&i<8;el=el.parentElement,i++){const st=getComputedStyle(el);a.push({tag:el.tagName,cls:el.className,w:Math.round(el.getBoundingClientRect().width),parentW:Math.round(el.parentElement?.getBoundingClientRect().width||0),width:st.width,maxWidth:st.maxWidth,flexBasis:st.flexBasis,display:st.display,inline:el.getAttribute('style')});}return a;})()};
                   });
