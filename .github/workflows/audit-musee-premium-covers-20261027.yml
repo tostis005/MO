@@ -65,7 +65,7 @@ jobs:
           "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "/tmp/musee-premium-QA-$ID.php" --path="$SITE" --allow-root
           ARCHIVE="/tmp/musee-premium-QA-$ID.tar.gz"
           EXPORT_DIR="$(find /tmp -maxdepth 1 -type d -name 'musee-premium-cover-QA-*' -mmin -10 | sort | tail -n1)"
-          test -n "$EXPORT_DIR" && test -f "$EXPORT_DIR/manifest.json"
+          test -n "$EXPORT_DIR" && test -f "$EXPORT_DIR/audit.json"
           tar -czf "$ARCHIVE" -C "$EXPORT_DIR" .
           REMOTE
           sshpass -e scp "${SCP[@]}" "$TARGET:/tmp/musee-premium-QA-$ID.tar.gz" "premium-covers-three.tar.gz"
