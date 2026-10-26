@@ -73,12 +73,110 @@ add_action(
 	999
 );
 
+
+/**
+ * El selector rápido utiliza la plantilla REAL de variaciones de WooCommerce.
+ * Esto respeta sus precios, stock y los campos adicionales que impriman los
+ * plugins, sin inventar un modelo de opciones distinto al de cada productor.
+ */
+function elmercado_quick_variations_form_20261026(): void {
+	if ( ! check_ajax_referer( 'emo_quick_cart_20261026', 'nonce', false ) ) {
+		wp_send_json_error( array( 'message' => 'La sesión ha caducado. Actualiza la página.' ), 403 );
+	}
+
+	$id = isset( $_POST['product_id'] ) ? absint( wp_unslash( $_POST['product_id'] ) ) : 0;
+	$item = wc_get_product( $id );
+	if ( ! $item || ! $item->is_type( 'variable' ) || ! $item->is_visible() || ! $item->is_purchasable() || ! $item->is_in_stock() ) {
+		wp_send_json_error( array( 'message' => 'Este producto no está disponible para compra rápida.' ), 400 );
+	}
+
+	global $product;
+	$original_product = $product;
+	$product          = $item;
+	ob_start();
+	try {
+		woocommerce_variable_add_to_cart();
+		$html = ob_get_clean();
+	} catch ( Throwable $error ) {
+		ob_end_clean();
+		$product = $original_product;
+		wp_send_json_error( array( 'message' => 'No se han podido cargar las opciones.' ), 500 );
+	}
+	$product = $original_product;
+
+	if ( ! $html || false === strpos( $html, 'variations_form' ) ) {
+		wp_send_json_error( array( 'message' => 'Este artículo necesita configurarse en su ficha.' ), 400 );
+	}
+
+	wp_send_json_success( array(
+		'html' => $html,
+		'title' => $item->get_name(),
+		'url' => get_permalink( $id ),
+	) );
+}
+
+add_action( 'wp_ajax_emo_quick_variations_20261026', 'elmercado_quick_variations_form_20261026' );
+add_action( 'wp_ajax_nopriv_emo_quick_variations_20261026', 'elmercado_quick_variations_form_20261026' );
+
+/**
+ * Registrar la variación real en el carrito; no crear una compra provisional.
+ * Usar WC_Cart garantiza las comprobaciones de atributos, existencias y
+ * validaciones de plugins, y devolver fragmentos nativos sincroniza el mini-cart.
+ */
+function elmercado_quick_add_variation_20261026(): void {
+	if ( ! check_ajax_referer( 'emo_quick_cart_20261026', 'nonce', false ) ) {
+		wp_send_json_error( array( 'message' => 'La sesión ha caducado. Actualiza la página.' ), 403 );
+	}
+
+	$id           = isset( $_POST['product_id'] ) ? absint( wp_unslash( $_POST['product_id'] ) ) : 0;
+	$variation_id = isset( $_POST['variation_id'] ) ? absint( wp_unslash( $_POST['variation_id'] ) ) : 0;
+	$quantity     = isset( $_POST['quantity'] ) ? wc_stock_amount( wp_unslash( $_POST['quantity'] ) ) : 1;
+	$item         = wc_get_product( $id );
+	$variation    = wc_get_product( $variation_id );
+
+	if ( ! $item || ! $item->is_type( 'variable' ) || ! $item->is_visible() || ! $item->is_purchasable()
+		|| ! $item->is_in_stock() || ! $variation || ! $variation->is_type( 'variation' )
+		|| (int) $variation->get_parent_id() !== $id || ! $variation->is_purchasable()
+		|| ! $variation->is_in_stock() || $quantity <= 0 ) {
+		wp_send_json_error( array( 'message' => 'Selecciona una variante disponible y una cantidad válida.' ), 400 );
+	}
+
+	$attributes = array();
+	foreach ( $_POST as $key => $value ) {
+		if ( str_starts_with( (string) $key, 'attribute_' ) && is_scalar( $value ) ) {
+			$attributes[ sanitize_text_field( wp_unslash( $key ) ) ] = sanitize_text_field( wp_unslash( $value ) );
+		}
+	}
+
+	try {
+		$is_valid = apply_filters( 'woocommerce_add_to_cart_validation', true, $id, $quantity, $variation_id, $attributes );
+		$added = $is_valid && WC()->cart && WC()->cart->add_to_cart( $id, $quantity, $variation_id, $attributes );
+	} catch ( Throwable $error ) {
+		$added = false;
+	}
+
+	if ( ! $added ) {
+		$errors = wc_get_notices( 'error' );
+		$message = ! empty( $errors[0]['notice'] ) ? wp_strip_all_tags( $errors[0]['notice'] ) : 'No se ha podido añadir el artículo. Revisa las opciones seleccionadas.';
+		wc_clear_notices();
+		wp_send_json_error( array( 'message' => $message ), 400 );
+	}
+
+	wc_clear_notices();
+	do_action( 'woocommerce_ajax_added_to_cart', $id );
+	WC_AJAX::get_refreshed_fragments();
+}
+
+add_action( 'wp_ajax_emo_quick_add_variation_20261026', 'elmercado_quick_add_variation_20261026' );
+add_action( 'wp_ajax_nopriv_emo_quick_add_variation_20261026', 'elmercado_quick_add_variation_20261026' );
+
 /* El AJAX de WooCommerce actualiza el contador y los fragmentos del minicart. */
 add_action(
 	'wp_enqueue_scripts',
 	static function (): void {
 		if ( elmercado_is_quick_add_catalog_page_20261026() && function_exists( 'WC' ) ) {
 			wp_enqueue_script( 'wc-add-to-cart' );
+			wp_enqueue_script( 'wc-add-to-cart-variation' );
 		}
 	},
 	30
@@ -92,117 +190,141 @@ add_action(
 		}
 		?>
 		<style id="emo-catalog-quick-add-20261026">
-			body.elmercado-child-theme ul.products li.product:has(> a.emo-card-quick-add) {
-				position: relative !important;
-			}
+			body.elmercado-child-theme ul.products li.product:has(> a.emo-card-quick-add) { position:relative !important; }
 			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add {
-				box-sizing: border-box !important;
-				position: absolute !important;
-				top: 11px !important;
-				right: 11px !important;
-				bottom: auto !important;
-				left: auto !important;
-				z-index: 8 !important;
-				display: inline-flex !important;
-				justify-content: center !important;
-				align-items: center !important;
-				gap: 6px !important;
-				width: auto !important;
-				max-width: calc(100% - 22px) !important;
-				min-width: 0 !important;
-				min-height: 40px !important;
-				height: auto !important;
-				margin: 0 !important;
-				padding: 8px 11px !important;
-				border: 1px solid rgba(23, 63, 50, .24) !important;
-				border-radius: 999px !important;
-				background: rgba(255, 255, 255, .97) !important;
-				box-shadow: 0 3px 12px rgba(16, 43, 34, .13) !important;
-				color: #173f32 !important;
-				font-size: 12px !important;
-				font-weight: 750 !important;
-				line-height: 1.2 !important;
-				letter-spacing: 0 !important;
-				text-align: center !important;
-				text-decoration: none !important;
-				text-transform: none !important;
-				white-space: nowrap !important;
-				visibility: visible !important;
-				opacity: 1 !important;
-				pointer-events: auto !important;
-				overflow: hidden !important;
-				transform: none !important;
-				transition: background-color .16s ease, color .16s ease, box-shadow .16s ease !important;
+				box-sizing:border-box !important;
+				position:absolute !important;
+				top:10px !important;
+				right:10px !important;
+				left:auto !important;
+				bottom:auto !important;
+				z-index:12 !important;
+				display:flex !important;
+				align-items:center !important;
+				justify-content:center !important;
+				width:36px !important;
+				min-width:36px !important;
+				max-width:36px !important;
+				height:36px !important;
+				min-height:36px !important;
+				max-height:36px !important;
+				padding:0 !important;
+				margin:0 !important;
+				gap:0 !important;
+				border:1px solid rgba(23,63,50,.16) !important;
+				border-radius:50% !important;
+				background:rgba(255,255,255,.96) !important;
+				color:#173f32 !important;
+				box-shadow:0 2px 9px rgba(16,43,34,.12) !important;
+				font-size:0 !important;
+				line-height:0 !important;
+				letter-spacing:0 !important;
+				text-decoration:none !important;
+				text-transform:none !important;
+				white-space:nowrap !important;
+				opacity:1 !important;
+				visibility:visible !important;
+				pointer-events:auto !important;
+				transform:none !important;
+				overflow:hidden !important;
+				transition:background-color .15s,color .15s !important;
 			}
-			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add::before {
-				content: none !important;
-				display: none !important;
+			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add::before,
+			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add::after { content:none !important; display:none !important; }
+			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add .emo-card-quick-add__symbol {
+				display:flex !important;
+				align-items:center !important;
+				justify-content:center !important;
+				width:20px !important;
+				height:20px !important;
+				margin:0 !important;
+				color:inherit !important;
+				font-size:0 !important;
 			}
-			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add > .emo-card-quick-add__symbol {
-				display: inline-block !important;
-				flex: 0 0 auto !important;
-				margin: 0 !important;
-				color: inherit !important;
-				font-family: Arial, sans-serif !important;
-				font-size: 20px !important;
-				font-weight: 500 !important;
-				line-height: 1 !important;
+			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add .emo-card-quick-add__symbol svg {
+				display:block !important;
+				width:19px !important;
+				height:19px !important;
+				stroke:currentColor !important;
+				fill:none !important;
 			}
-			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add:hover,
-			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add:focus-visible,
-			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add--confirmed {
-				background: #173f32 !important;
-				border-color: #173f32 !important;
-				color: #fff !important;
+			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add:is(:hover,:focus-visible,.emo-card-quick-add--confirmed) {
+				background:#173f32 !important;
+				border-color:#173f32 !important;
+				color:white !important;
 			}
-			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add:focus-visible {
-				outline: 3px solid #f1b95c !important;
-				outline-offset: 2px !important;
-			}
-			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add.loading {
-				opacity: .75 !important;
-				pointer-events: none !important;
-			}
-			/* WooCommerce inserta "Ver carrito" después del AJAX; el acceso a carrito
-			   ya existe en la cabecera y este enlace no debe tapar la tarjeta. */
-			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add ~ a.added_to_cart.wc-forward {
-				display: none !important;
+			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add:focus-visible { outline:3px solid #ecc66f !important; outline-offset:2px !important; }
+			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add.loading { pointer-events:none !important; opacity:.62 !important; }
+			body.elmercado-child-theme ul.products li.product a.added_to_cart.wc-forward { display:none !important; }
+			@media (max-width:767px) {
+				body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add {
+					top:7px !important;right:7px !important;
+					width:36px !important;min-width:36px !important;max-width:36px !important;
+					height:36px !important;min-height:36px !important;max-height:36px !important;
+					padding:0 !important;
+				}
 			}
 			.emo-card-quick-add__announcer {
-				position: absolute !important;
-				width: 1px !important;
-				height: 1px !important;
-				padding: 0 !important;
-				margin: -1px !important;
-				border: 0 !important;
-				overflow: hidden !important;
-				clip: rect(0, 0, 0, 0) !important;
-				white-space: nowrap !important;
+				position:absolute !important;width:1px !important;height:1px !important;
+				padding:0 !important;margin:-1px !important;border:0 !important;
+				overflow:hidden !important;clip:rect(0,0,0,0) !important;white-space:nowrap !important;
 			}
-			@media (max-width: 767px) {
-				body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add {
-					top: 8px !important;
-					right: 8px !important;
-					width: 42px !important;
-					min-width: 42px !important;
-					max-width: 42px !important;
-					height: 42px !important;
-					min-height: 42px !important;
-					padding: 0 !important;
-					gap: 0 !important;
-					font-size: 0 !important;
-				}
-				body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add > :not(.emo-card-quick-add__symbol) {
-					display: none !important;
-				}
-				body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add > .emo-card-quick-add__symbol {
-					font-size: 24px !important;
-				}
+			body.emo-quick-cart-open { overflow:hidden !important; }
+			#emo-quick-cart-modal {
+				position:fixed;inset:0;z-index:2147483000;
+				display:flex;align-items:center;justify-content:center;
+				padding:18px;background:rgba(13,35,28,.62);
 			}
-			@media (prefers-reduced-motion: reduce) {
-				body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add {
-					transition: none !important;
-				}
+			#emo-quick-cart-modal[hidden] { display:none !important; }
+			#emo-quick-cart-modal .emo-quick-cart-dialog {
+				box-sizing:border-box;width:min(510px,100%);max-height:min(85vh,750px);
+				display:flex;flex-direction:column;overflow:hidden;
+				background:#fff;border-radius:17px;box-shadow:0 17px 55px rgba(0,0,0,.25);
+				color:#173f32;
+			}
+			#emo-quick-cart-modal .emo-quick-cart-head {
+				display:flex;justify-content:space-between;align-items:center;
+				padding:17px 20px;border-bottom:1px solid #e4eae6;gap:16px;
+			}
+			#emo-quick-cart-modal .emo-quick-cart-title { margin:0;font-size:18px;line-height:1.35;font-weight:750; }
+			#emo-quick-cart-modal .emo-quick-cart-close {
+				display:grid;place-items:center;flex:0 0 36px;
+				width:36px;height:36px;min-width:36px;padding:0;
+				background:#f4f6f4;border:1px solid #dce5de;border-radius:50%;
+				color:#173f32;font-size:24px;line-height:1;cursor:pointer;
+			}
+			#emo-quick-cart-modal .emo-quick-cart-body { overflow-y:auto;overscroll-behavior:contain;padding:20px; }
+			#emo-quick-cart-modal .emo-quick-cart-error { color:#9b2226;font-size:13px;line-height:1.5; }
+			#emo-quick-cart-modal .emo-quick-cart-error:empty { display:none; }
+			#emo-quick-cart-modal .variations_form { display:block !important; }
+			#emo-quick-cart-modal .variations { width:100% !important;margin:0 0 12px !important; }
+			#emo-quick-cart-modal .variations tbody,#emo-quick-cart-modal .variations tr {
+				display:block !important;width:100% !important;
+			}
+			#emo-quick-cart-modal .variations tr { margin-bottom:12px !important; }
+			#emo-quick-cart-modal .variations th,#emo-quick-cart-modal .variations td {
+				display:block !important;width:100% !important;text-align:left !important;padding:3px 0 !important;
+			}
+			#emo-quick-cart-modal .variations select { width:100% !important;max-width:100% !important;min-height:43px !important; }
+			#emo-quick-cart-modal .quantity { display:inline-flex !important;max-width:100px !important; }
+			#emo-quick-cart-modal .single_add_to_cart_button {
+				display:inline-flex !important;justify-content:center !important;align-items:center !important;
+				min-height:43px !important;margin:8px 0 0 !important;padding:10px 18px !important;
+				background:#173f32 !important;color:#fff !important;border-radius:9px !important;
+				cursor:pointer !important;font-weight:700 !important;
+			}
+			#emo-quick-cart-modal .single_add_to_cart_button:disabled { opacity:.55 !important;cursor:not-allowed !important; }
+			#emo-quick-cart-modal .woocommerce-variation-price { margin:9px 0 !important;font-weight:700; }
+			#emo-quick-cart-modal .emo-quick-cart-view-product {
+				display:inline-block;margin:12px 0 0;font-size:13px;color:#173f32;text-decoration:underline;
+			}
+			@media (max-width:600px) {
+				#emo-quick-cart-modal { padding:10px;align-items:flex-end; }
+				#emo-quick-cart-modal .emo-quick-cart-dialog { max-height:90dvh;width:100%;border-radius:15px 15px 10px 10px; }
+				#emo-quick-cart-modal .emo-quick-cart-body { padding:16px; }
+			}
+			@media (prefers-reduced-motion:reduce) {
+				body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add { transition:none !important; }
 			}
 		</style>
 		<?php
