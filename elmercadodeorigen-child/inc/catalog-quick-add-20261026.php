@@ -436,6 +436,20 @@ add_action(
 				border:0 !important;background:none !important;box-shadow:none !important;
 			}
 			#emo-quick-cart-modal .yith-wapo-addon .option-description:empty {display:none !important;}
+			/* YITH asigna anchuras de ~55% al contenedor del desplegable;
+			   en el popup, Tamaño y Formato deben ocupar la misma columna. */
+			#emo-quick-cart-modal .yith-wapo-addon-type-select,
+			#emo-quick-cart-modal .yith-wapo-addon-type-select .options-container,
+			#emo-quick-cart-modal .yith-wapo-addon-type-select .options,
+			#emo-quick-cart-modal .yith-wapo-addon-type-select .options select {
+				width:100% !important;max-width:100% !important;min-width:0 !important;
+				float:none !important;
+			}
+			#emo-quick-cart-modal table.variations .reset_variations::before,
+			#emo-quick-cart-modal table.variations .reset_variations::after {
+				content:none !important;display:none !important;
+			}
+
 
 			/* La acción contiene también las opciones YITH. La línea superior
 			   antes de todas las opciones creaba un hueco de 30px; separar
