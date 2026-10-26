@@ -1,4 +1,4 @@
-name: Verify balanced 58x53 corner cart in production
+name: Diagnose duplicate cart additions in live shop
 on:
   pull_request:
     paths:
@@ -6,83 +6,58 @@ on:
 permissions:
   contents: read
 jobs:
-  inspect:
+  diagnose:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
-      - name: Check live cart shape, badge alignment and popup regression in Chrome
+      - name: Reproduce single click and observe cart mutations in Chrome
         shell: bash
         run: |
           set -euo pipefail
-          npm install --silent --prefix /tmp/emdo-design playwright@1.56.1
-          cat > /tmp/emdo-design-check.cjs <<'CHECK_JS'
-          const {chromium}=require('/tmp/emdo-design/node_modules/playwright');
+          npm install --silent --prefix /tmp/emdo-dupe playwright@1.56.1
+          cat > /tmp/emdo-dupe.cjs <<'JAVASCRIPT'
+          const {chromium}=require('/tmp/emdo-dupe/node_modules/playwright');
           (async()=>{
             const browser=await chromium.launch({headless:true,channel:'chrome'});
-            let failures=0;
-            for(const [pageName,path] of [['Tienda','/tienda/'],['Productor 1957','/tienda/1957/']]){
-              for(const [device,viewport] of [['desktop',{width:1440,height:900}],['mobile',{width:390,height:844}]]){
-                const page=await browser.newPage({viewport,locale:'es-ES'});
-                try{
-                  const url='https://www.elmercadodeorigen.com'+path+'?emdo-cart-shape='+process.env.GITHUB_SHA;
-                  await page.goto(url,{waitUntil:'domcontentloaded',timeout:60000});
-                  await page.waitForSelector('ul.products li.product > a.emo-card-quick-add',{timeout:20000});
-                  const result=await page.evaluate(()=>{
-                    const cards=[...document.querySelectorAll('ul.products li.product')];
-                    const buttons=cards.map(card=>card.querySelector(':scope > a.emo-card-quick-add')).filter(Boolean);
-                    const shapes=buttons.map(button=>{
-                      const css=getComputedStyle(button),r=button.getBoundingClientRect();
-                      const svg=button.querySelector('.emo-card-quick-add__symbol svg');
-                      const badge=button.closest('li.product')?.querySelector('.mdo-emdo-selection-badge');
-                      const br=badge?.getBoundingClientRect();
-                      return {
-                        width:Math.round(r.width),height:Math.round(r.height),radius:Math.round(parseFloat(css.borderBottomLeftRadius)),
-                        topLeftRadius:Math.round(parseFloat(css.borderTopLeftRadius)),edgeTopDelta:Math.abs(r.top-button.closest('li.product').getBoundingClientRect().top),edgeRightDelta:Math.abs(r.right-button.closest('li.product').getBoundingClientRect().right),
-                        iconSize:svg?Math.round(svg.getBoundingClientRect().width):0,
-                        background:css.backgroundColor,color:css.color,
-                        badgeCenterDelta:br?Math.abs((br.top+br.height/2)-(r.top+r.height/2)):null,
-                        visible:r.width>0&&r.height>0&&css.display!=='none'
-                      };
-                    });
-                    return {cards:cards.length,buttons:buttons.length,shapes};
-                  });
-                  const first=result.shapes[0];
-                  const ok=result.buttons>0&&result.shapes.every(s=>s.width===58&&s.height===53&&s.radius===16&&s.topLeftRadius===0&&s.iconSize===27&&s.visible&&s.background==='rgb(23, 63, 50)'&&s.edgeTopDelta<1&&s.edgeRightDelta<1);
-                  console.log('BUTTON_SHAPE '+JSON.stringify({page:pageName,device,cards:result.cards,buttons:result.buttons,first,ok}));
-                  if(!ok){failures++;console.error('SHAPE_FAILURE '+pageName+' '+device);}
-                  if(pageName==='Tienda'){
-                    await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));
-                    await page.waitForTimeout(2800);
-                    const scroll=await page.evaluate(()=>{
-                      const cards=[...document.querySelectorAll('ul.products li.product')];
-                      const missing=cards.filter(c=>c.classList.contains('instock')&&c.querySelector('.price')&&(c.classList.contains('product-type-simple')||c.classList.contains('product-type-variable'))&&!c.querySelector(':scope > a.emo-card-quick-add')).length;
-                      return {loaded:cards.length,missing};
-                    });
-                    console.log('SCROLL_CHECK '+JSON.stringify({device,...scroll}));
-                    if(scroll.missing>0){failures++;console.error('SCROLL_FAILURE '+device);}
-                  }
-                  const variable=page.locator('ul.products li.product > a.emo-card-quick-add.product_type_variable').first();
-                  if(await variable.count()){
-                    await variable.click({timeout:10000});
-                    const form=page.locator('#emo-quick-cart-modal:not([hidden]) form.variations_form');
-                    await form.waitFor({timeout:17000});
-                    console.log('MODAL_REGRESSION_OK '+pageName+' '+device);
-                    await page.locator('#emo-quick-cart-modal .emo-quick-cart-close').click();
-                  }
-                  await page.screenshot({path:'/tmp/emdo-cart-'+(pageName==='Tienda'?'shop':'producer')+'-'+device+'.png'});
-                }catch(e){failures++;console.error('BROWSER_ERROR '+pageName+' '+device+' '+e.message);}
-                finally{await page.close();}
-              }
+            for(const [device,viewport] of [['desktop',{width:1440,height:900}],['mobile',{width:390,height:844}]]){
+              const ctx=await browser.newContext({viewport,locale:'es-ES'});
+              const page=await ctx.newPage();
+              const events=[];
+              page.on('request',r=>{
+                const u=r.url(); if(/(?:wc-ajax=|admin-ajax|add-to-cart=)/.test(u)){
+                  const d=r.postData()||'';
+                  events.push({kind:'request',method:r.method(),url:u.slice(0,220),data:d.slice(0,350)});
+                }
+              });
+              page.on('response',async r=>{
+                const u=r.url(); if(/(?:wc-ajax=|admin-ajax|add-to-cart=)/.test(u)){
+                  events.push({kind:'response',status:r.status(),url:u.slice(0,220)});
+                }
+              });
+              try{
+                await page.goto('https://www.elmercadodeorigen.com/tienda/?emdo-dupe-check=20261026',{waitUntil:'domcontentloaded',timeout:60000});
+                await page.waitForSelector('a.emo-card-quick-add',{timeout:18000});
+                const buttons=await page.locator('a.emo-card-quick-add').evaluateAll(nodes=>nodes.map(el=>({type:el.className,id:el.dataset.product_id,href:el.href,text:el.parentElement?.querySelector('h2')?.textContent?.slice(0,80)})));
+                console.log('LISTING_BUTTONS '+device+' '+JSON.stringify(buttons.slice(0,9)));
+                const simple=page.locator('a.emo-card-quick-add.product_type_simple').first();
+                if(!(await simple.count())){console.log('NO_SIMPLE '+device);continue;}
+                const id=await simple.getAttribute('data-product_id');
+                console.log('CLICK_SIMPLE '+device+' '+id);
+                await simple.click({timeout:10000});
+                await page.waitForTimeout(2800);
+                console.log('AFTER_CLICK '+device+' '+JSON.stringify({url:page.url(),events}));
+                await page.goto('https://www.elmercadodeorigen.com/carrito/',{waitUntil:'domcontentloaded',timeout:45000});
+                const cart=await page.evaluate(()=>{
+                  const forms=[...document.querySelectorAll('.woocommerce-cart-form .cart_item, tr.cart_item, .wc-block-cart-items__row')];
+                  return {url:location.href,items:forms.map(el=>({name:el.querySelector('.product-name,.wc-block-components-product-name')?.textContent?.trim().slice(0,90),quantity:el.querySelector('input.qty,input[type="number"]')?.value,html:el.outerHTML.slice(0,450)})),body:document.body.innerText.slice(0,800)};
+                });
+                console.log('CART_STATE '+device+' '+JSON.stringify(cart));
+                console.log('ALL_EVENTS '+device+' '+JSON.stringify(events));
+              }catch(e){console.log('DIAG_ERROR '+device+' '+e.stack);}
+              finally{await ctx.close();}
             }
             await browser.close();
-            if(failures)process.exitCode=1;
-          })().catch(error=>{console.error(error);process.exitCode=1;});
-          CHECK_JS
-          node /tmp/emdo-design-check.cjs
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: emdo-rounded-rectangle-live-screenshots
-          path: /tmp/emdo-cart-*.png
-          retention-days: 3
+          })().catch(e=>{console.error(e);process.exitCode=1;});
+          JAVASCRIPT
+          node /tmp/emdo-dupe.cjs
