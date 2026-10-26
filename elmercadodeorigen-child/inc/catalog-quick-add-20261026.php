@@ -807,6 +807,17 @@ add_action(
 
 					const form = content.querySelector('form.variations_form');
 					if (form && window.jQuery?.fn?.wc_variation_form) {
+						/* YITH inyecta width:75% !important inline tanto en .options
+						   como en el select. Un stylesheet no puede prevalecer:
+						   normalizar solo los dos nodos dentro de ESTE modal. */
+						const alignFormatFields = () => {
+							if (!form.isConnected) return;
+							form.querySelectorAll('.yith-wapo-addon-type-select .options, .yith-wapo-addon-type-select select.yith-wapo-option-value').forEach(field => {
+								field.style.setProperty('width', '100%', 'important');
+								field.style.setProperty('max-width', '100%', 'important');
+							});
+						};
+
 						const hasYithTotal = Boolean(form.querySelector('#wapo-total-price-table .wapo-total-order'));
 						dialog.classList.toggle('emo-quick-cart-yith', hasYithTotal);
 						dialog.classList.remove('emo-quick-cart-priced');
@@ -816,6 +827,8 @@ add_action(
 								.on('reset_data.emoQuickCart hide_variation.emoQuickCart', () => dialog.classList.remove('emo-quick-cart-priced'));
 						}
 						window.jQuery(form).wc_variation_form();
+						alignFormatFields();
+						window.setTimeout(alignFormatFields, 180);
 						window.jQuery(form).find('.variations select').trigger('change');
 					} else if (form) {
 						showError('No se ha podido iniciar el selector. Abre la ficha del producto.');
