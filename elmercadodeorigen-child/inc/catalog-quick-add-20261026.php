@@ -26,6 +26,53 @@ function elmercado_is_quick_add_catalog_page_20261026(): bool {
 		|| (bool) get_query_var( 'store' );
 }
 
+/**
+ * Woostify oculta/elimina los botones nativos del HTML de las tarjetas.
+ * Pintamos una acción desde el producto real, sin depender de una acción
+ * anterior que no existe en el DOM. El JavaScript la posiciona como overlay.
+ */
+add_action(
+	'woocommerce_after_shop_loop_item_title',
+	static function (): void {
+		if ( ! elmercado_is_quick_add_catalog_page_20261026() ) {
+			return;
+		}
+
+		global $product;
+		if ( ! $product instanceof WC_Product || ! $product->is_visible() || ! $product->is_in_stock() ) {
+			return;
+		}
+
+		$is_simple = $product->is_type( 'simple' ) && $product->is_purchasable();
+		if ( $product->is_type( 'simple' ) && ! $is_simple ) {
+			return;
+		}
+
+		$label = $is_simple
+			? __( 'Añadir al carrito', 'elmercadodeorigen' )
+			: __( 'Seleccionar opciones', 'elmercadodeorigen' );
+		$url = $is_simple ? $product->add_to_cart_url() : get_permalink( $product->get_id() );
+		if ( ! $url ) {
+			return;
+		}
+
+		$classes = $is_simple
+			? 'button product_type_simple add_to_cart_button ajax_add_to_cart emo-card-quick-add-source'
+			: 'button product_type_variable emo-card-quick-add-source';
+
+		printf(
+			'<a href="%1$s" class="%2$s" data-product_id="%3$d" data-product_sku="%4$s" data-quantity="1" aria-label="%5$s" rel="nofollow">%6$s</a>',
+			esc_url( $url ),
+			esc_attr( $classes ),
+			(int) $product->get_id(),
+			esc_attr( $product->get_sku() ),
+			esc_attr( sprintf( '%s: %s', $label, $product->get_name() ) ),
+			esc_html( $label )
+		);
+	},
+	999
+);
+
 /* El AJAX de WooCommerce actualiza el contador y los fragmentos del minicart. */
 add_action(
 	'wp_enqueue_scripts',
