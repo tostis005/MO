@@ -1,4 +1,4 @@
-name: Audit live quick-add deployment
+name: Audit live quick-add deployment (post production patch)
 
 on:
   pull_request:
@@ -21,7 +21,7 @@ jobs:
       STAGING_KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect exact HTML from public production
+      - name: Verify storefront and producer HTML after production patch
         shell: bash
         run: |
           set -euo pipefail
