@@ -1,0 +1,188 @@
+name: Production catalog quick-add (scoped, rollback)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-catalog-quick-add-20261026.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate narrowly scoped release
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODULE=elmercadodeorigen-child/inc/catalog-quick-add-20261026.php
+          test -f "$MODULE"
+          php -l "$MODULE"
+          grep -Fq "'inc/catalog-quick-add-20261026.php'" elmercadodeorigen-child/functions.php
+          grep -Fq 'emo-catalog-quick-add-js-20261026' "$MODULE"
+          grep -Fq 'emo-catalog-quick-add-20261026' "$MODULE"
+          : "${STAGING_HOST:?Missing STAGING_HOST}"
+          : "${STAGING_PORT:?Missing STAGING_PORT}"
+          : "${STAGING_USER:?Missing STAGING_USER}"
+          : "${STAGING_PASSWORD:?Missing STAGING_PASSWORD}"
+          : "${STAGING_REMOTE_PATH:?Missing STAGING_REMOTE_PATH}"
+          [[ "$STAGING_PORT" =~ ^[0-9]{1,5}$ ]]
+          [[ "$STAGING_REMOTE_PATH" =~ ^/[A-Za-z0-9._/-]+/?$ ]]
+
+      - name: Install SSH tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass
+
+      - name: Verify server host key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          if [ -n "${{ secrets.STAGING_KNOWN_HOSTS }}" ]; then
+            printf '%s\n' "${{ secrets.STAGING_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          else
+            echo 'STAGING_KNOWN_HOSTS is required for verified production SSH.' >&2
+            exit 1
+          fi
+          chmod 600 ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+
+      - name: Stage only the quick-add PHP module
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          SSH_OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $STAGING_PORT"
+          REMOTE_TMP="/tmp/emo-quick-add-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "REMOTE_TMP=$REMOTE_TMP" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_TMP'"
+          sshpass -e scp -P "$STAGING_PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes \
+            elmercadodeorigen-child/inc/catalog-quick-add-20261026.php \
+            "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/catalog-quick-add-20261026.php"
+
+      - name: Backup, install, verify storefront and producer, or roll back
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          SSH_OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $STAGING_PORT"
+          sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$REMOTE_TMP' '$GITHUB_SHA'" <<'REMOTE_SCRIPT'
+          set -eu
+          raw="${1%/}"; incoming="$2"; commit="$3"
+          case "$raw" in
+            */wp-content/*) dev="${raw%%/wp-content/*}" ;;
+            */wp-content) dev="$(dirname "$raw")" ;;
+            *) dev="$raw" ;;
+          esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n 1 || true)"
+            [ -n "$cfg" ] || { echo 'Cannot resolve staging root safely'; exit 1; }
+            dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] && [ -d "$prod/wp-content/themes" ] || { echo 'Invalid production WP path'; exit 1; }
+
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"
+          wp_bin="$(command -v wp || true)"
+          [ -x "$php_bin" ] && [ -n "$wp_bin" ] || { echo 'Missing PHP or WP-CLI'; exit 1; }
+
+          siteurl="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --allow-root 2>/dev/null || true)"
+          case "$siteurl" in
+            https://elmercadodeorigen.com*|http://elmercadodeorigen.com*|https://www.elmercadodeorigen.com*|http://www.elmercadodeorigen.com*) ;;
+            *) echo 'Site URL does not match production; refusing mutation'; exit 1 ;;
+          esac
+
+          active="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root)"
+          [ "$active" = 'elmercadodeorigen-child' ] || { echo 'Different active theme; refusing mutation'; exit 1; }
+
+          theme="$prod/wp-content/themes/elmercadodeorigen-child"
+          functions="$theme/functions.php"
+          module="$theme/inc/catalog-quick-add-20261026.php"
+          test -f "$functions" && test -d "$theme/inc"
+          test -f "$incoming/catalog-quick-add-20261026.php"
+          "$php_bin" -l "$incoming/catalog-quick-add-20261026.php" >/dev/null
+
+          backup="$HOME/.elmercado-rollbacks/elmercadodeorigen.com/quick-add-$(date -u +%Y%m%dT%H%M%SZ)-$(printf '%.10s' "$commit")"
+          mkdir -p "$backup"
+          cp -p "$functions" "$backup/functions.php"
+          had_module=no
+          if [ -f "$module" ]; then
+            cp -p "$module" "$backup/catalog-quick-add-20261026.php"
+            had_module=yes
+          fi
+          changed=no
+          rollback() {
+            status=$?
+            trap - EXIT HUP INT TERM
+            if [ "$status" -ne 0 ] && [ "$changed" = yes ]; then
+              echo 'Production verification failed: restoring exactly the previous two files' >&2
+              cp -p "$backup/functions.php" "$functions"
+              if [ "$had_module" = yes ]; then
+                cp -p "$backup/catalog-quick-add-20261026.php" "$module"
+              else
+                rm -f "$module"
+              fi
+              "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
+            fi
+            rm -rf "$incoming"
+            exit "$status"
+          }
+          trap rollback EXIT HUP INT TERM
+
+          # Do not replace the complete live theme or unrelated files.
+          cp "$incoming/catalog-quick-add-20261026.php" "$module"
+          chmod 0644 "$module"
+          changed=yes
+          if ! grep -Fq 'inc/catalog-quick-add-20261026.php' "$functions"; then
+            cat >> "$functions" <<'PHP_BLOCK'
+
+/* Compra rápida del catálogo: incorporación puntual en producción.
+ * La versión completa del tema registra el mismo módulo mediante require_once. */
+$emo_quick_add_file = get_stylesheet_directory() . '/inc/catalog-quick-add-20261026.php';
+if ( is_readable( $emo_quick_add_file ) ) {
+    require_once $emo_quick_add_file;
+}
+PHP_BLOCK
+          fi
+          "$php_bin" -l "$module" >/dev/null
+          "$php_bin" -l "$functions" >/dev/null
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
+
+          base="${siteurl%/}"
+          for path in /tienda/ /tienda/1957/; do
+            html="$incoming/verification.html"
+            status="$(curl -ksSL --max-time 40 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -A 'Mozilla/5.0' -o "$html" -w '%{http_code}' "$base$path?quick-add-release=$commit" || true)"
+            [ "$status" = 200 ] || { echo "$path HTTP $status"; exit 1; }
+            grep -Fq 'emo-catalog-quick-add-js-20261026' "$html" || { echo "Missing quick-add JavaScript from $path"; exit 1; }
+            grep -Fq 'emo-catalog-quick-add-20261026' "$html" || { echo "Missing quick-add styles from $path"; exit 1; }
+            ! grep -Eqi 'Fatal error:|Parse error:|Uncaught Error:|There has been a critical error on this website' "$html" || { echo "PHP fatal on $path"; exit 1; }
+            echo "VERIFIED $path HTTP 200, quick-add script and CSS present"
+          done
+
+          changed=no
+          trap - EXIT HUP INT TERM
+          rm -rf "$incoming"
+          echo "PRODUCTION_QUICK_ADD_OK backup=$backup url=$siteurl"
+          REMOTE_SCRIPT
