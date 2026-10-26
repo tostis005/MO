@@ -465,6 +465,7 @@ final class MDO_Reviews {
 			'author_name' => sanitize_text_field( (string) ( $data['author_name'] ?? '' ) ) ?: null,
 			'author_email' => sanitize_email( (string) ( $data['author_email'] ?? '' ) ) ?: null,
 			'author_avatar_url' => esc_url_raw( (string) ( $data['author_avatar_url'] ?? '' ) ) ?: null,
+			'review_images' => wp_json_encode( array_values( (array) ( $data['review_images'] ?? array() ) ), JSON_UNESCAPED_SLASHES ),
 			'rating' => ! empty( $data['rating'] ) ? max( 1, min( 5, (int) $data['rating'] ) ) : null,
 			'review_title' => sanitize_text_field( (string) ( $data['review_title'] ?? '' ) ) ?: null,
 			'review_text' => wp_kses_post( (string) ( $data['review_text'] ?? '' ) ),
@@ -485,6 +486,10 @@ final class MDO_Reviews {
 			'updated_at' => $now,
 		);
 		if ( $existing ) {
+			// A transient source outage must not erase photos already verified.
+			if ( '[]' === $row['review_images'] && ! empty( $existing->review_images ) ) {
+				$row['review_images'] = (string) $existing->review_images;
+			}
 			if ( in_array( (string) $existing->validation_method, array( 'manual', 'ai_suggestion' ), true ) || 'rejected' === (string) $existing->status ) {
 				unset( $row['vendor_user_id'], $row['suggested_vendor_user_id'], $row['status'], $row['validation_method'], $row['assignment_type'], $row['assignment_confidence'], $row['assignment_reason'] );
 			}
@@ -803,6 +808,9 @@ final class MDO_Reviews {
 			echo '<h4>' . esc_html( $row->review_title ) . '</h4>';
 		}
 		echo '<div class="mdo-store-review-text">' . wpautop( wp_kses_post( $row->review_text ) ) . '</div>';
+		if ( class_exists( 'MDO_Reviews_Public' ) ) {
+			echo MDO_Reviews_Public::media_gallery( $row ); // Escaped by media_gallery().
+		}
 		if ( $product_title && (int) $row->wc_product_id > 0 ) {
 			echo '<p class="mdo-store-review-product">Sobre: <a href="' . esc_url( get_permalink( (int) $row->wc_product_id ) ) . '">' . esc_html( $product_title ) . '</a></p>';
 		}
