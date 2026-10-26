@@ -1,4 +1,4 @@
-name: Verify quick cart selector widths
+name: Diagnose YITH format width constraint
 on:
   pull_request:
     paths:
@@ -84,7 +84,8 @@ jobs:
                       yithVisible:visible(yith),wooPriceVisible:visible(wcPrice),
                       weightFormatGap:sr&&fr?Math.round(fr.top-sr.bottom):null,
                       pricedClass:root?.classList.contains('emo-quick-cart-priced'),
-                      formatWidthRatio: sr && root?.querySelector('.yith-wapo-addon-type-select select') ? Math.round(100*root.querySelector('.yith-wapo-addon-type-select select').getBoundingClientRect().width/sr.width)/100:null};
+                      formatWidthRatio: sr && root?.querySelector('.yith-wapo-addon-type-select select') ? Math.round(100*root.querySelector('.yith-wapo-addon-type-select select').getBoundingClientRect().width/sr.width)/100:null,
+                      formatAncestors:(()=>{const select=root?.querySelector('.yith-wapo-addon-type-select select'),a=[];for(let el=select,i=0;el&&i<8;el=el.parentElement,i++){const st=getComputedStyle(el);a.push({tag:el.tagName,cls:el.className,w:Math.round(el.getBoundingClientRect().width),parentW:Math.round(el.parentElement?.getBoundingClientRect().width||0),width:st.width,maxWidth:st.maxWidth,flexBasis:st.flexBasis,display:st.display,inline:el.getAttribute('style')});}return a;})()};
                   });
                   console.log('DESIGN_QA_'+type+' '+JSON.stringify(check));
                   if(check.aligned === null || check.aligned > 4 || check.iconMargin !== '0px' || check.iconBg !== 'rgba(23, 63, 50, 0.94)' || check.titleBorder !== '0px' || !check.yithVisible || check.wooPriceVisible || check.weightFormatGap > 30 || !check.pricedClass || (check.formatWidthRatio !== null && check.formatWidthRatio < .96)) {
