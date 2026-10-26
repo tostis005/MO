@@ -209,7 +209,7 @@ foreach($check as $id=>$x){
   || abs((float)$new->get_regular_price('edit')-(float)$conf['pvp'])>.001
   || !get_option('emdo_musee_mentta_review_hold')
   || !in_array($id,emdo_mentta_exclusive_ids(),true)) {
-  fwrite(STDERR,"PUBLISH_AND_MENTTA_GUARD_FAILED ".$id."\n");exit(12);
+  fwrite(STDERR,"PUBLISH_AND_MENTTA_GUARD_FAILED ".wp_json_encode(["id"=>$id,"new_img"=>$new?$new->get_image_id():null,"expected"=>$attachment,"status"=>$new?$new->get_status():null,"price"=>$new?$new->get_regular_price("edit"):null,"expected_price"=>$conf["pvp"],"hold"=>get_option("emdo_musee_mentta_review_hold"),"excluded"=>in_array($id,emdo_mentta_exclusive_ids(),true)],JSON_UNESCAPED_UNICODE)."\n");exit(12);
  }
  foreach($x['sources'] as $i=>$s) {
   if(hash_file('sha256',$x['files'][$i])!==$s['original_hash']) {
