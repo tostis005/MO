@@ -193,7 +193,21 @@ final class MDO_Reviews_Scraping {
 		$after = self::source_count( $source );
 		$reported_count = absint( $payload['reported_count'] ?? 0 );
 		$rating = isset( $payload['rating'] ) ? (float) $payload['rating'] : 0.0;
-		self::persist_source_metadata( $source, $reported_count, $rating );
+		$display_count = $reported_count;
+		if ( 'trustpilot' === $source ) {
+			// Trustpilot muestra el total histórico en su ficha (p. ej. 169),
+			// distinto de las reseñas activas paginables (p. ej. 145).
+			$historical_count = absint( $payload['historical_count'] ?? 0 );
+			$display_count = max( $reported_count, $historical_count );
+			if ( $reported_count > 0 ) {
+				update_option( 'mdo_trustpilot_active_review_count', $reported_count, false );
+			}
+		} elseif ( $after > $reported_count ) {
+			// No reducir el indicador Google con una caché atrasada de Trustindex:
+			// ya hemos verificado más reseñas únicas en la base de datos.
+			$display_count = $after;
+		}
+		self::persist_source_metadata( $source, $display_count, $rating );
 
 		$result = array(
 			'found' => $found,
