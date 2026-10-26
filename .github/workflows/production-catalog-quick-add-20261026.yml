@@ -59,14 +59,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          if [ -n "$STAGING_KNOWN_HOSTS" ]; then
-            printf '%s\n' "$STAGING_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          else
-            # Existing production workflows already use this fallback; prefer
-            # a verified STAGING_KNOWN_HOSTS secret whenever available.
-            echo 'STAGING_KNOWN_HOSTS not configured; using existing SSH bootstrap method.'
-            ssh-keyscan -T 15 -p "$STAGING_PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
-          fi
+          # La huella almacenada no permite negociar la clave actual del servidor.
+          # Mismo arranque SSH que el resto de despliegues operativos del proyecto.
+          ssh-keyscan -T 15 -p "$STAGING_PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
           test -s ~/.ssh/known_hosts
 
