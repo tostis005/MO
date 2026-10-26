@@ -128,7 +128,30 @@ jobs:
                     host:(()=>{try{return new URL(img.currentSrc||img.src).hostname;}catch{return '';}})(),
                     width:img.naturalWidth||0,height:img.naturalHeight||0,
                   }));
-                  return {images:imgs,image_count:imgs.length,has_media_buttons:Array.from(card.querySelectorAll('button')).filter(btn=>/foto|photo|image/i.test(btn.getAttribute('aria-label')||'')).length};
+                  const photoButtons=Array.from(card.querySelectorAll('button')).filter(btn=>/foto|photo|image/i.test(btn.getAttribute('aria-label')||''));
+                  const parseHost=(v)=>{try{const m=String(v||'').match(/url\\(["']?(https?:[^"')]+)/i);return m?new URL(m[1]).hostname:'';}catch{return '';}};
+                  const info=photoButtons.map(btn=>{
+                    const nodes=[btn,...Array.from(btn.querySelectorAll('*')).slice(0,30)];
+                    const styled=nodes.filter(el=>getComputedStyle(el).backgroundImage!=='none');
+                    return {
+                      label:String(btn.getAttribute('aria-label')||'').slice(0,70),
+                      class_name:String(btn.className||'').slice(0,70),
+                      parent_class:String(btn.parentElement?.className||'').slice(0,70),
+                      has_background_image:styled.length>0,
+                      background_hosts:[...new Set(styled.map(el=>parseHost(getComputedStyle(el).backgroundImage)).filter(Boolean))],
+                      inline_style_has_image:!!btn.querySelector('[style*="background-image"],[style*="background:"]'),
+                      nested_img_count:btn.querySelectorAll('img').length,
+                      accessible_id:!!btn.getAttribute('data-photo-id'),
+                    };
+                  });
+                  const allStyled=Array.from(card.querySelectorAll('*')).filter(el=>getComputedStyle(el).backgroundImage!=='none');
+                  const mediaHosts=[...new Set(allStyled.map(el=>parseHost(getComputedStyle(el).backgroundImage)).filter(Boolean))];
+                  return {images:imgs,image_count:imgs.length,has_media_buttons:photoButtons.length,
+                    photo_buttons:info.slice(0,12),styled_background_elements:allStyled.length,styled_background_hosts:mediaHosts,
+                    review_id_present:!!card.getAttribute('data-review-id'),author_element:!!card.querySelector('.d4r55'),
+                    text_element:!!card.querySelector('.wiI7pd,.MyEned,.review-full-text'),
+                    review_id_prefix:(card.getAttribute('data-review-id')||'').slice(0,7)};
+                
                 }).slice(0,12),
                 all_review_card_image_count:cards.reduce((n,c)=>n+c.querySelectorAll('img').length,0),
               };
