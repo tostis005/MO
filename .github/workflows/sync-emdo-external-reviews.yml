@@ -307,6 +307,23 @@ jobs:
           if [ "$trustpilot_active_expected" -gt 0 ]; then test "$trustpilot_count" -ge "$trustpilot_active_expected"; fi
           test "$trustpilot_public_total" -ge "$trustpilot_count"
 
+          # Comprobar el HTML que genera WordPress para la home (independiente
+          # de proxies/CDN y de cualquier latencia de la página pública).
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            $g = (int) get_option( "mdo_google_review_count", 0 );
+            $t = (int) get_option( "mdo_trustpilot_review_count", 0 );
+            if ( ! function_exists( "mdo_home_external_reviews_markup_20260819" ) ) {
+              fwrite( STDERR, "HOME_MARKUP_HANDLER_MISSING\\n" );
+              exit(41);
+            }
+            $markup = mdo_home_external_reviews_markup_20260819();
+            if ( false === strpos( $markup, "data-google-reviews=\\\"" . $g . "\\\"" ) || false === strpos( $markup, "data-trustpilot-reviews=\\\"" . $t . "\\\"" ) ) {
+              fwrite( STDERR, "HOME_MARKUP_COUNTS_MISMATCH\\n" );
+              exit(42);
+            }
+            echo "HOME_MARKUP_OK google={$g} trustpilot={$t}\\n";
+          ' --path="$PROD_PATH" --allow-root
+
           top_vendor=$("$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT r.vendor_user_id,u.user_nicename,COUNT(*) c FROM ${prefix}mdo_reviews r INNER JOIN ${prefix}users u ON u.ID=r.vendor_user_id WHERE r.status='validated' AND r.vendor_user_id IS NOT NULL GROUP BY r.vendor_user_id,u.user_nicename ORDER BY c DESC LIMIT 1" --skip-column-names --path="$PROD_PATH" --allow-root | head -n1)
           test -n "$top_vendor"
           vendor_slug=$(printf '%s' "$top_vendor" | awk '{print $2}')
