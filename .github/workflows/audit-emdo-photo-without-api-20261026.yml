@@ -189,13 +189,16 @@ jobs:
           fs.mkdirSync("diagnostics",{recursive:true});
           fs.writeFileSync("diagnostics/emdo-review-photos-no-api-diagnostic-20261026.json",JSON.stringify(report,null,2)+"\n");
           JS
+          node --check mdo-supplier-sync/scripts/scrape-google-review-photos.mjs
+          node mdo-supplier-sync/scripts/scrape-google-reviews.mjs --mode full --output /tmp/emdo-google-review-photos-input.json
+          node mdo-supplier-sync/scripts/scrape-google-review-photos.mjs --input /tmp/emdo-google-review-photos-input.json --output /tmp/emdo-google-review-photos-enriched.json --audit diagnostics/emdo-google-review-image-match-audit-20261026.json
       - name: Persist anonymized audit diagnostics
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add diagnostics/emdo-review-photos-no-api-diagnostic-20261026.json
+          git add diagnostics/emdo-review-photos-no-api-diagnostic-20261026.json diagnostics/emdo-google-review-image-match-audit-20261026.json
           git commit -m 'Document direct Google Maps and Trustindex photo extraction diagnostic' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
