@@ -1,0 +1,88 @@
+name: Verify no double cart additions after quick-variation fix
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/audit-quick-cart-design-20261026.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert actual cart quantities in desktop and mobile Chrome
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --silent --prefix /tmp/emdo-dupe playwright@1.56.1
+          cat > /tmp/emdo-assert.cjs <<'JAVASCRIPT'
+          const {chromium}=require('/tmp/emdo-dupe/node_modules/playwright');
+          const testCases=[
+            {mode:'modal',product:1056,qty:1,device:'desktop'},
+            {mode:'modal',product:1056,qty:2,device:'desktop'},
+            {mode:'modal',product:1056,qty:1,device:'mobile'},
+            {mode:'modal',product:1350,qty:1,device:'desktop'},
+            {mode:'simple',product:16432,qty:1,device:'desktop'},
+            {mode:'detail-variable',product:1056,qty:1,device:'desktop'}
+          ];
+          (async()=>{
+            const browser=await chromium.launch({headless:true,channel:'chrome'});
+            let failed=0;
+            for(const t of testCases){
+              const viewport=t.device==='mobile'?{width:390,height:844}:{width:1440,height:900};
+              const ctx=await browser.newContext({viewport,locale:'es-ES'});
+              const page=await ctx.newPage();
+              const posts=[];
+              page.on('request',r=>{
+                if(r.method()==='POST'&&/admin-ajax.php|wc-ajax=add_to_cart/.test(r.url())&&/emo_quick_add_variation|product_id=16432/.test(r.postData()||'')){
+                  const data=r.postData()||'';
+                  posts.push({url:r.url(),action:data.includes('emo_quick_add_variation')?'variation':'simple',hasRawAddToCart:data.includes('name="add-to-cart"')||data.includes('add-to-cart%5D')});
+                }
+              });
+              try{
+                const productUrl=t.product===1056?'https://www.elmercadodeorigen.com/producto/aceite-de-oliva-virgen-extra-5l/':null;
+                await page.goto(t.mode==='detail-variable'?productUrl:'https://www.elmercadodeorigen.com/tienda/?emdo-qa='+Date.now(),{waitUntil:'domcontentloaded',timeout:60000});
+                let form;
+                if(t.mode==='modal'){
+                  const button=page.locator('a.emo-card-quick-add[data-product_id="'+t.product+'"]');
+                  await button.waitFor({timeout:20000});await button.click();
+                  form=page.locator('#emo-quick-cart-modal:not([hidden]) form.variations_form');
+                  await form.waitFor({timeout:16000});
+                }else if(t.mode==='simple'){
+                  const button=page.locator('a.emo-card-quick-add[data-product_id="'+t.product+'"]');
+                  await button.waitFor({timeout:16000});await button.click();await page.waitForTimeout(1800);
+                }else {
+                  form=page.locator('form.variations_form.cart').first();await form.waitFor({timeout:15000});
+                }
+                if(form){
+                  const all=await form.locator('select').all();
+                  for(const sel of all){
+                    const opts=await sel.locator('option:not([value=""]):not([disabled])').all();
+                    if(opts.length){
+                      const value=await opts[0].getAttribute('value');
+                      if(value) await sel.selectOption(value).catch(()=>{});
+                      await page.waitForTimeout(200);
+                    }
+                  }
+                  const q=form.locator('input[name="quantity"]');await q.fill(String(t.qty));
+                  await page.waitForTimeout(1100);
+                  const selected=await form.evaluate(el=>({id:el.querySelector('input[name="variation_id"]')?.value,qty:el.querySelector('input[name="quantity"]')?.value,selects:[...el.querySelectorAll('select')].map(x=>[x.name,x.value])}));
+                  console.log('FORM '+JSON.stringify({t,selected}));
+                  if(!Number(selected.id))throw Error('No chosen variation');
+                  const submit=form.locator('.single_add_to_cart_button').first();if(await submit.isDisabled())throw Error('add button disabled');
+                  await submit.click();await page.waitForTimeout(2000);
+                }
+                await page.goto('https://www.elmercadodeorigen.com/carrito/',{waitUntil:'domcontentloaded',timeout:48000});
+                const entries=await page.locator('.woocommerce-cart-form .cart_item').evaluateAll(els=>els.map(el=>({qty:Number(el.querySelector('input.qty')?.value||0),name:el.querySelector('.product-name')?.innerText.slice(0,75)||''})));
+                const got=entries.reduce((n,x)=>n+x.qty,0);
+                const ok=got===t.qty&&entries.length===1&&(t.mode!=='modal'||posts.filter(p=>p.action==='variation').length===1);
+                console.log('QA_RESULT '+JSON.stringify({t,got,entries,posts,ok}));
+                if(!ok)failed++;
+              }catch(e){failed++;console.log('QA_ERROR '+JSON.stringify({t,error:e.message,posts}));}
+              finally{await ctx.close();}
+            }
+            await browser.close();console.log('FINAL '+JSON.stringify({count:testCases.length,failed}));if(failed)process.exitCode=1;
+          })().catch(e=>{console.error(e);process.exitCode=1;});
+          JAVASCRIPT
+          node /tmp/emdo-assert.cjs
