@@ -62,18 +62,31 @@ function emdo_mp_fontfile() {
  return '';
 }
 function emdo_mp_caption($im,$label,$cx,$baseline,$maxWidth,$maxSize,$color,$ttf) {
- $label=(string)$label;
- if($ttf){
-  $size=$maxSize;
-  while($size>13){
-   $bb=imagettfbbox($size,0,$ttf,$label);
-   if(($bb[2]-$bb[0])<=$maxWidth)break;
+ $label=trim((string)$label);
+ if(!$ttf) { imagestring($im,3,(int)($cx-$maxWidth/2),(int)$baseline-15,$label,$color);return; }
+ $words=preg_split('/\s+/u',$label);$size=$maxSize;$lines=[];
+ while($size>=13){
+   $lines=[];$current='';
+   foreach($words as $word){
+    $candidate=$current===''?$word:($current.' '.$word);
+    $bb=imagettfbbox($size,0,$ttf,$candidate);
+    if($current!=='' && ($bb[2]-$bb[0])>$maxWidth) {$lines[]=$current;$current=$word;}
+    else $current=$candidate;
+   }
+   if($current!=='')$lines[]=$current;
+   $fits=count($lines)<=2;
+   foreach($lines as $part){$bb=imagettfbbox($size,0,$ttf,$part);$fits=$fits&&($bb[2]-$bb[0])<=$maxWidth;}
+   if($fits)break;
    $size--;
-  }
-  $bb=imagettfbbox($size,0,$ttf,$label);
+ }
+ if(count($lines)>2)throw new RuntimeException("Product caption too long: ".$label);
+ $lineheight=$size+5;
+ $startY=$baseline-(count($lines)-1)*$lineheight;
+ foreach($lines as $i=>$line) {
+  $bb=imagettfbbox($size,0,$ttf,$line);
   imagettftext($im,$size,0,(int)round($cx-($bb[2]-$bb[0])/2),
-   (int)$baseline,$color,$ttf,$label);
- } else imagestring($im,4,(int)($cx-100),(int)$baseline-14,$label,$color);
+   (int)($startY+$i*$lineheight),$color,$ttf,$line);
+ }
 }
 $check=[];$allImageHashes=[];
 foreach($packs as $id=>$conf){
@@ -148,14 +161,20 @@ foreach($check as $id=>$x){
  imagecopyresampled($canvas,$approvedHeader,0,0,0,0,1254,463,
   imagesx($approvedHeader),imagesy($approvedHeader));
  imagedestroy($approvedHeader);
+ // Complete and sharpen the cropped heading, leaving scenic premium art intact.
+ emdo_mp_fill($canvas,0,408,1254,480,$white);
+ $gold=imagecolorallocate($canvas,182,143,85);
+ imageline($canvas,26,447,468,447,$gold);
+ imageline($canvas,786,447,1228,447,$gold);
+ emdo_mp_caption($canvas,'Incluye:',627,463,285,45,$black,emdo_mp_fontfile());
  $margin=16;$gap=12;
  $width=(1254-2*$margin-$gap*($cols-1))/$cols;
- $height=(1254-463-26-($rows-1)*10)/$rows;
+ $height=(1254-486-14-($rows-1)*10)/$rows;
  $font=emdo_mp_fontfile();
  foreach($x['sources'] as $i=>$source){
   $col=$i%$cols;$row=intdiv($i,$cols);
   $left=(int)round($margin+$col*($width+$gap));
-  $top=(int)round(463+3+$row*($height+10));
+  $top=(int)round(486+$row*($height+10));
   $w=(int)floor($width);$h=(int)floor($height);
   emdo_mp_fill($canvas,$left,$top,$left+$w,$top+$h,$cream);
   imagerectangle($canvas,$left,$top,$left+$w,$top+$h,$border);
@@ -165,12 +184,22 @@ foreach($check as $id=>$x){
   $photoW=$w-16;
   $photo=emdo_mp_photo($x['files'][$i]);
   $sw=imagesx($photo);$sh=imagesy($photo);
-  // Fit the COMPLETE authentic image. Never replace pixels, retouch meat, crop labels or origin.
-  $factor=min($photoW/$sw,$photoH/$sh);
-  $dw=max(1,(int)floor($sw*$factor));$dh=max(1,(int)floor($sh*$factor));
+  // Crop only the original catalogue slide's outside margins where website
+  // promotions appear, never changing pixels inside the real packaging/window.
+  $cropX=0;$cropY=0;$cropW=$sw;$cropH=$sh;
+  $key=(string)$source['key'];
+  $trimmable=['boar_tender','deer_loin','ostrich_filet','zebra_loin',
+              'ostrich_tender','croc_tender','buffalo_loin','elk_loin','boar_loin',
+              'black_angus'];
+  if(abs($sw/$sh-1.0)<0.16 && in_array($key,$trimmable,true)) {
+   $cropX=(int)round($sw*.17);$cropY=(int)round($sh*.08);
+   $cropW=(int)round($sw*.68);$cropH=(int)round($sh*.76);
+  }
+  $factor=min($photoW/$cropW,$photoH/$cropH);
+  $dw=max(1,(int)floor($cropW*$factor));$dh=max(1,(int)floor($cropH*$factor));
   $tx=$left+8+(int)floor(($photoW-$dw)/2);
   $ty=$imageTop+(int)floor(($photoH-$dh)/2);
-  imagecopyresampled($canvas,$photo,$tx,$ty,0,0,$dw,$dh,$sw,$sh);
+  imagecopyresampled($canvas,$photo,$tx,$ty,$cropX,$cropY,$dw,$dh,$cropW,$cropH);
   imagedestroy($photo);
   $lab=trim(preg_replace('/[—–]\s*\d+.*$/u','',$source['label']));
   if(str_contains($lab,'—'))$lab=trim(explode('—',$lab,2)[0]);
@@ -182,7 +211,7 @@ foreach($check as $id=>$x){
  $imageHash=hash_file('sha256',$x['header']);
  foreach($x['sources'] as $s)$imageHash.=substr($s['original_hash'],0,16);
  $imageHash=substr(hash('sha256',$imageHash),0,17);
- $path="$target/{$conf['key']}-portada-premium-fotos-reales-$imageHash-v1.jpg";
+ $path="$target/{$conf['key']}-portada-premium-fotos-reales-$imageHash-v2.jpg";
  if(!imagejpeg($canvas,$path,92))throw new RuntimeException('Could not write image');
  imagedestroy($canvas);
  $attachment=wp_insert_attachment(['post_mime_type'=>'image/jpeg','post_title'=>$x['product']->get_name().' – portada premium fotos reales',
