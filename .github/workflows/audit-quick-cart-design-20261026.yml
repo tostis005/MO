@@ -47,6 +47,18 @@ jobs:
                   return {title:root.querySelector('.emo-quick-cart-title')?.textContent,form:fmt(root.querySelector('form')),dialog:fmt(root.querySelector('.emo-quick-cart-dialog')),body:fmt(root.querySelector('.emo-quick-cart-body')),sections:[...root.querySelectorAll('.price,.woocommerce-variation-price,.single_variation,.woocommerce-variation,.variations,.variations tr,.variations select,.wapo-product-price,.yith-wapo-container,.yith-wapo-block,.yith-wapo-addon,.yith-wapo-addon-type-select,.yith-wapo-addon-type-radio,.quantity,.single_add_to_cart_button,.single_variation_wrap')].slice(0,45).map(fmt),titles:[...root.querySelectorAll('label,th,legend')].slice(0,20).map(fmt),html:root.querySelector('.emo-quick-cart-body')?.innerHTML.slice(0,9500)};
                 });
                 console.log('MODAL_DESIGN_'+type+' '+JSON.stringify(modal));
+                const select = page.locator('#emo-quick-cart-modal select[name^="attribute_"]').first();
+                if (await select.count()) {
+                  const opts = await select.locator('option').evaluateAll(els=>els.map(e=>e.value).filter(Boolean));
+                  if(opts.length) await select.selectOption(opts[0]);
+                  await page.waitForTimeout(1800);
+                  const after=await page.evaluate(()=>{
+                    const root=document.querySelector('#emo-quick-cart-modal');
+                    const rect=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return {tag:e.tagName,cls:e.className,txt:e.textContent?.replace(/\\s+/g,' ').trim().slice(0,110),visible:r.width>0&&r.height>0&&s.visibility!=='hidden',top:Math.round(r.top),h:Math.round(r.height),margin:s.margin,padding:s.padding,border:s.border,display:s.display}};
+                    return [...root.querySelectorAll('.price,.woocommerce-variation-price,.woocommerce-variation,.single_variation,.yith-wapo-container,.yith-wapo-block,.yith-wapo-addon,.yith-wapo-addon-type-select,.yith-wapo-totals-container,.yith-wapo-totals,.wapo-product-price,.wapo-total-price,.wapo-total-options-price,.single_variation_wrap,.woocommerce-variation-add-to-cart,.variations select')].slice(0,60).map(rect);
+                  });
+                  console.log('MODAL_SELECTED_'+type+' '+JSON.stringify(after));
+                }
                 await page.screenshot({path:'/tmp/quick-'+type+'.png',fullPage:false});
               }
               await page.close();
