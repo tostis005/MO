@@ -140,8 +140,8 @@ function mdo_paint($pack,$lines,$pid) {
   imageline($im,0,$y,$width,$y,imagecolorallocate($im,max(0,$r),max(0,$g),max(0,$b)));
  }
  $mount=mdo_fcolor($im,'#BEAF92');$hill=mdo_fcolor($im,'#A08B6A');
- imagefilledpolygon($im,[0,315,100,280,214,328,365,254,491,335,614,289,758,341,881,267,1056,310,1196,253,1400,310,1400,478,0,478],15,$mount);
- imagefilledpolygon($im,[0,390,170,338,322,399,500,337,610,386,772,333,984,377,1170,350,1400,406,1400,478,0,478],12,$hill);
+ imagefilledpolygon($im,[0,315,100,280,214,328,365,254,491,335,614,289,758,341,881,267,1056,310,1196,253,1400,310,1400,478,0,478],13,$mount);
+ imagefilledpolygon($im,[0,390,170,338,322,399,500,337,610,386,772,333,984,377,1170,350,1400,406,1400,478,0,478],11,$hill);
  // Minimal botanical silhouettes, part of header decoration only.
  $tree=mdo_fcolor($im,'#5D5141');
  foreach([165,1160] as $x){
