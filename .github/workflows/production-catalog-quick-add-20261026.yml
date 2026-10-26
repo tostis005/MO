@@ -162,13 +162,13 @@ jobs:
           if ! grep -Fq 'inc/catalog-quick-add-20261026.php' "$functions"; then
             cat >> "$functions" <<'PHP_BLOCK'
 
-/* Compra rápida del catálogo: incorporación puntual en producción.
- * La versión completa del tema registra el mismo módulo mediante require_once. */
-$emo_quick_add_file = get_stylesheet_directory() . '/inc/catalog-quick-add-20261026.php';
-if ( is_readable( $emo_quick_add_file ) ) {
-    require_once $emo_quick_add_file;
-}
-PHP_BLOCK
+          /* Compra rápida del catálogo: incorporación puntual en producción.
+           * La versión completa del tema registra el mismo módulo mediante require_once. */
+          $emo_quick_add_file = get_stylesheet_directory() . '/inc/catalog-quick-add-20261026.php';
+          if ( is_readable( $emo_quick_add_file ) ) {
+              require_once $emo_quick_add_file;
+          }
+          PHP_BLOCK
           fi
           "$php_bin" -l "$module" >/dev/null
           "$php_bin" -l "$functions" >/dev/null
