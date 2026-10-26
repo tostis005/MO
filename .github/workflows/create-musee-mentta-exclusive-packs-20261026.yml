@@ -31,6 +31,7 @@ jobs:
           php -l .github/scripts/create-musee-mentta-exclusive-packs-20261026.php
           php -l .github/scripts/verify-musee-mentta-api-20261026.php
           php -l mu-plugins/emdo-mentta-musee-pack-stock-20261026.php
+          php -l mu-plugins/emdo-mentta-storefront-reinforcement.php
           python3 - <<'PY'
           import json
           p=json.load(open('.github/data/mentta-latitudes-packs-20261026.json'))
@@ -72,6 +73,7 @@ jobs:
           sshpass -e scp "${SCP[@]}" .github/scripts/verify-musee-mentta-api-20261026.php "$TARGET:/tmp/musee-mentta-verify-$ID.php"
           sshpass -e scp "${SCP[@]}" .github/data/mentta-latitudes-packs-20261026.json "$TARGET:/tmp/mentta-latitudes-packs-20261026.json"
           sshpass -e scp "${SCP[@]}" mu-plugins/emdo-mentta-musee-pack-stock-20261026.php "$TARGET:/tmp/musee-mentta-stock-$ID.php"
+          sshpass -e scp "${SCP[@]}" mu-plugins/emdo-mentta-storefront-reinforcement.php "$TARGET:/tmp/musee-mentta-guard-$ID.php"
           sshpass -e ssh "${SSH[@]}" "$TARGET" "bash -s -- '$PROD_PATH' '$ID'" <<'REMOTE'
           set -euo pipefail
           SITE="$1"; RUN="$2"
@@ -79,6 +81,7 @@ jobs:
           [ -n "$PHP_BIN" ] || PHP_BIN="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
           WP_BIN="$(command -v wp)"
           export MDO_MENTTA_PACK_DATA=/tmp/mentta-latitudes-packs-20261026.json
+          install -m 0644 "/tmp/musee-mentta-guard-$RUN.php" "$SITE/wp-content/mu-plugins/emdo-mentta-storefront-reinforcement.php"
           install -m 0644 "/tmp/musee-mentta-stock-$RUN.php" "$SITE/wp-content/mu-plugins/emdo-mentta-musee-pack-stock-20261026.php"
           export MDO_MENTTA_PACK_MODE=inspect
           "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "/tmp/musee-mentta-$RUN.php" --path="$SITE" --allow-root
