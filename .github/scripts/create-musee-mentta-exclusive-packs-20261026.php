@@ -110,7 +110,7 @@ function mdo_mp_col($im,$hex) {
 }
 function mdo_mp_text($im,$str,$font,$size,$y,$color,$center=600) {
  $b=imagettfbbox($size,0,$font,$str);$width=$b[2]-$b[0];
- imagettftext($im,$size,0,(int)($center-$width/2),$y,$color,$font);
+ imagettftext($im,$size,0,(int)($center-$width/2),$y,$color,$font,$str);
 }
 function mdo_mp_wrap($str,$font,$size,$maxWidth,$maxLines=2) {
  $words=preg_split('/\s+/u',(string)$str);$lines=[];$cur='';
