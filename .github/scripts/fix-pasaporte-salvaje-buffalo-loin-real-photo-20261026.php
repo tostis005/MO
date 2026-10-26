@@ -32,7 +32,7 @@ $names=[
  'elk_cadera'=>'filete 1ª de alce cadera / babilla',
  'boar_tender'=>'solomillo de jabalí (ración de 200',
  'croc_filet'=>'solomillo de cocodrilo (ración de 200',
- 'buffalo_loin'=>'lomo de búfalo (ración de 200
+ 'buffalo_loin'=>'lomo de búfalo (ración de 200'
 ];
 $source=[];$errors=[];
 foreach($names as $k=>$needle){
