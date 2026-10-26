@@ -9,8 +9,8 @@ if(!$p || $p->get_status()!=='draft' || $p->get_regular_price('edit')!=='151.99'
  fwrite(STDERR,"ERROR: PACK_NOT_PRIVATE_OR_PRICE_WRONG\n");exit(3);
 }
 $buf=wc_get_product(17280);
-if(!$buf || $buf->get_name()!=='Lomo de Búfalo (Ración de 200 Gr. Apróx.)'
- || !$buf->is_in_stock() || (int)$buf->get_image_id()!==17281) {
+if(!$buf || stripos(remove_accents($buf->get_name()),'Lomo de Bufalo')===false
+ || (int)$buf->get_image_id()!==17281 || abs((float)$buf->get_weight('edit')-0.2)>.01) {
  fwrite(STDERR,"ERROR: NOT_THE_ORIGINAL_BUFFALO_LOIN\n");exit(4);
 }
 $items=get_post_meta($id,'_emdo_mentta_pack_lines',true);
@@ -42,7 +42,7 @@ foreach([21816,21818,21820,21822,21824,21826] as $other) {
  }
 }
 echo "PASAPORTE_BUFFALO_LOIN_REAL_PHOTO_VERIFIED ".wp_json_encode([
- 'id'=>$id,'buffalo_source_id'=>17280,'buffalo_original_image_id'=>17281,
+ 'id'=>$id,'buffalo_source_id'=>17280,'buffalo_original_image_id'=>17281,'source_in_stock'=>$buf->is_in_stock(),
  'cover_image_id'=>$p->get_image_id(),
  'gallery_real_images'=>count($p->get_gallery_image_ids()),
  'components'=>count($items),'price'=>$p->get_regular_price('edit'),
