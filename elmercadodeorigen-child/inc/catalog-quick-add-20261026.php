@@ -436,10 +436,27 @@ add_action(
 				border:0 !important;background:none !important;box-shadow:none !important;
 			}
 			#emo-quick-cart-modal .yith-wapo-addon .option-description:empty {display:none !important;}
+
+			/* La acción contiene también las opciones YITH. La línea superior
+			   antes de todas las opciones creaba un hueco de 30px; separar
+			   exclusivamente cantidad y botón mediante un margen propio. */
+			#emo-quick-cart-modal table.variations td.value { position:relative !important; }
+			#emo-quick-cart-modal table.variations .reset_variations {
+				position:absolute !important;
+				top:-25px !important;right:0 !important;
+				margin:0 !important;padding:0 !important;
+				height:auto !important;min-height:0 !important;
+			}
+			#emo-quick-cart-modal form.variations_form table.variations {
+				margin-bottom:4px !important;
+			}
+			#emo-quick-cart-modal form.variations_form table.variations tr {
+				margin-bottom:5px !important;
+			}
 #emo-quick-cart-modal .woocommerce-variation-add-to-cart {
 				display:flex !important;align-items:center !important;
-				gap:10px !important;margin:14px 0 0 !important;
-				padding:14px 0 0 !important;border-top:1px solid #e8ede8 !important;
+				gap:10px !important;margin:0 !important;
+				padding:0 !important;border-top:0 !important;
 				flex-wrap:wrap !important;
 			}
 			#emo-quick-cart-modal .woocommerce-variation-add-to-cart .quantity {
@@ -614,6 +631,12 @@ add_action(
 				   Un estilo inline important cancela ese margen y alinea el icono
 				   con la pastilla «Selección EMDO» en todos los tamaños. */
 				control.style.setProperty('margin', '0px', 'important');
+				control.classList.remove('button'); // La clase genérica impone min-height:46px en Woostify.
+				control.style.setProperty('height', '32px', 'important');
+				control.style.setProperty('min-height', '32px', 'important');
+				control.style.setProperty('max-height', '32px', 'important');
+				control.style.setProperty('padding', '0px', 'important');
+				control.style.setProperty('line-height', '0px', 'important');
 				control.dataset.emoQuickAction = options ? 'options' : 'add';
 				if (!options && control.matches('.product_type_simple') && control.dataset.product_id && window.wc_add_to_cart_params) {
 					control.classList.add('ajax_add_to_cart');
