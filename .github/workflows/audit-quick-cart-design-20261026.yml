@@ -20,9 +20,10 @@ jobs:
           const {chromium}=require('/tmp/emo-inspect/node_modules/playwright');
           (async()=>{
             const browser=await chromium.launch({headless:true,channel:'chrome'});
+            let layoutFailures=0;
             for(const [type,viewport] of [['desktop',{width:1440,height:900}],['mobile',{width:390,height:844}]]){
               const page=await browser.newPage({viewport,locale:'es-ES'});
-              await page.goto('https://www.elmercadodeorigen.com/tienda/?emo-design-audit=20261026',{waitUntil:'domcontentloaded',timeout:60000});
+              await page.goto('https://www.elmercadodeorigen.com/tienda/?emo-design-audit='+process.env.GITHUB_SHA,{waitUntil:'domcontentloaded',timeout:60000});
               await page.waitForSelector('li.product > a.emo-card-quick-add',{timeout:20000});
               const report=await page.evaluate(()=>{
                 const rect=e=>{if(!e)return null;const x=e.getBoundingClientRect();return {top:Math.round(x.top),right:Math.round(x.right),left:Math.round(x.left),width:Math.round(x.width),height:Math.round(x.height)};};
@@ -86,7 +87,8 @@ jobs:
                   });
                   console.log('DESIGN_QA_'+type+' '+JSON.stringify(check));
                   if(check.aligned === null || check.aligned > 4 || check.iconMargin !== '0px' || check.iconBg !== 'rgba(23, 63, 50, 0.94)' || check.titleBorder !== '0px' || !check.yithVisible || check.wooPriceVisible || check.weightFormatGap > 30 || !check.pricedClass) {
-                    throw new Error('Visual layout acceptance failed: '+JSON.stringify(check));
+                    layoutFailures++;
+                    console.error('DESIGN_QA_FAILURE '+type+' '+JSON.stringify(check));
                   }
 
                 }
@@ -95,6 +97,7 @@ jobs:
               await page.close();
             }
             await browser.close();
+            if (layoutFailures) process.exitCode=1;
           })().catch(e=>{console.error(e);process.exitCode=1});
           JS
           node /tmp/emo-inspect.cjs
