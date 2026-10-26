@@ -12,6 +12,9 @@ function emdo_mentta_exclusive_ids() {
 }
 
 function emdo_mentta_exclusive_public_request() {
+    // Allow WordPress admin to preview only the seven paused Musée Gourmet packs.
+    // Everyone else (including public visitors) retains the normal 404 exclusions.
+    if ( function_exists( 'emdo_musee_review_preview_allowed' ) && emdo_musee_review_preview_allowed() ) { return false; }
     if ( defined( 'WP_CLI' ) && WP_CLI ) { return false; }
     if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) { return false; }
     if ( is_admin() ) {
