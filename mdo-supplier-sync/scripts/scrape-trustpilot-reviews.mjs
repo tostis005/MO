@@ -36,6 +36,29 @@ async function clickConsent(page) {
   }
 }
 
+// Only photos explicitly attached to this review, never consumer avatars or page artwork.
+function extractReviewPhotos(raw) {
+  const candidates = [
+    raw.images, raw.reviewImages, raw.photos, raw.reviewPhotos,
+    raw.attachments, raw.media, raw.mediaItems,
+  ].filter(Array.isArray).flat();
+  const urls = [];
+  for (const item of candidates) {
+    if (typeof item === 'object' && item && /video/i.test(String(item.type || item.mediaType || ''))) continue;
+    const value = typeof item === 'string' ? item :
+      item && typeof item === 'object' ?
+        (item.url || item.imageUrl || item.fullSizeUrl || item.fullsizeUrl || item.originalUrl || item.src || item.thumbnailUrl || item.image?.url || '') : '';
+    if (typeof value !== 'string') continue;
+    try {
+      const url = new URL(value, 'https://es.trustpilot.com');
+      if (!['https:', 'http:'].includes(url.protocol)) continue;
+      if (/avatar|profilephoto|consumer\/image/i.test(url.pathname)) continue;
+      if (!urls.includes(url.href)) urls.push(url.href);
+    } catch {}
+  }
+  return urls.slice(0, 10);
+}
+
 function normalizeReview(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const id = String(raw.id || '').trim();
@@ -49,6 +72,7 @@ function normalizeReview(raw) {
     id,
     author_name: String(consumer.displayName || consumer.name || '').trim(),
     author_avatar_url: String(consumer.imageUrl || consumer.image || '').trim(),
+    review_images: extractReviewPhotos(raw),
     rating,
     title: String(raw.title || '').trim(),
     text: String(raw.text || '').trim(),
