@@ -1,4 +1,4 @@
-name: Install three premium Museo pack cover photos approved by owner
+name: Finish Musee premium cover installation for La Vuelta al Mundo
 on:
   push:
     branches: [main]
@@ -70,8 +70,8 @@ jobs:
           [ -n "$PHP_BIN" ] || PHP_BIN="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
           WP_BIN="$(command -v wp)"
           export MDO_MUSEE_PREMIUM_HDR_DIR="/tmp/musee-approved-headers-$RUN"
-          "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "/tmp/install-musee-approved-$RUN.php" --path="$SITE" --allow-root
-          MDO_MUSEE_PREMIUM_APPLY=1 "$PHP_BIN" -d memory_limit=1024M "$WP_BIN" eval-file "/tmp/install-musee-approved-$RUN.php" --path="$SITE" --allow-root
+          MDO_MUSEE_PREMIUM_KEYS=vuelta-al-mundo "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "/tmp/install-musee-approved-$RUN.php" --path="$SITE" --allow-root
+          MDO_MUSEE_PREMIUM_KEYS=vuelta-al-mundo MDO_MUSEE_PREMIUM_APPLY=1 "$PHP_BIN" -d memory_limit=1024M "$WP_BIN" eval-file "/tmp/install-musee-approved-$RUN.php" --path="$SITE" --allow-root
           REMOTE
       - name: Confirm all three public product permalinks still return 404
         run: |
