@@ -39,7 +39,7 @@ const stats={
   maps_loaded:false,cards_inspected:0,cards_with_customer_photos:0,photos_detected:0,
   uniquely_matched_reviews:0,matched_photo_urls:0,author_missing_from_trustindex:0,
   author_ambiguous:0,review_text_not_confirmed:0,not_assigned_or_guessed:0,google_review_panel_opened:false,
-  image_hosts:{},notes:[]
+  image_hosts:{},notes:[],maps_reported_count:0,maps_count_verified:false
 };
 const photosByTrustindexId=new Map();
 const discoveredCardIds=new Set();
@@ -54,6 +54,21 @@ try {
   if(response&&response.status()>=400) throw new Error('Google Maps HTTP '+response.status());
   stats.maps_loaded=true;
   await page.waitForTimeout(2400);
+  // Extract the public Google Maps count independently of Trustindex. The exact
+  // label ("305 reseñas") is distinct from review-keyword chips ("jamón 67").
+  const mapsCount = await page.evaluate(() => {
+    const labels=Array.from(document.querySelectorAll('button,[role="button"]'))
+      .map(el=>(el.getAttribute('aria-label')||el.textContent||'').replace(/\\s+/g,' ').trim());
+    for (const label of labels) {
+      const match=label.match(/^([\\d.,\\s]+)\\s+(?:reseñas|opiniones|reviews?)$/i);
+      if(!match)continue;
+      const number=Number.parseInt(match[1].replace(/[^0-9]/g,''),10);
+      if(Number.isInteger(number)&&number>0&&number<100000) return number;
+    }
+    return 0;
+  });
+  stats.maps_reported_count=mapsCount;
+  stats.maps_count_verified=mapsCount>0;
   async function collectCards(){
     const cards=await page.evaluate(()=>{
       const result=[];
@@ -154,6 +169,11 @@ if(output){
     if(!newPhotos.length)continue;
     review.review_images=[...new Set([...(Array.isArray(review.review_images)?review.review_images:[]),...newPhotos])].slice(0,10);
     review.review_images_source='google_maps_public_review_card';
+  }
+  if (stats.maps_count_verified && stats.maps_reported_count>=Number(payload.reported_count||0)) {
+    // Public source total may move ahead of Trustindex's cached review rows.
+    payload.maps_reported_count=stats.maps_reported_count;
+    payload.maps_count_checked_at=new Date().toISOString();
   }
   fs.writeFileSync(output,JSON.stringify(payload,null,2)+'\n','utf8');
 }
