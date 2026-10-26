@@ -2,14 +2,14 @@
 /**
  * Plugin Name: MDO - Home External Reviews 2026-08-19
  * Description: Añade una franja ligera de prueba social con las valoraciones verificadas de Google y Trustpilot en la Home renovada.
- * Version: 1.0.3
+ * Version: 1.0.4
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-const MDO_HOME_EXTERNAL_REVIEWS_VERSION = '1.0.3';
+const MDO_HOME_EXTERNAL_REVIEWS_VERSION = '1.0.4';
 
 /**
  * Invalida la caché de Home una sola vez cuando cambia esta pieza.
@@ -79,14 +79,16 @@ function mdo_home_external_reviews_markup_20260819(): string {
 	$intro         = $is_english ? 'Trusted by customers who have already ordered' : 'La confianza de quienes ya han comprado';
 	$review_word   = $is_english ? 'reviews' : 'reseñas';
 	$opinion_word  = $is_english ? 'reviews' : 'opiniones';
-	$google_score  = $is_english ? '4.9' : '4,9';
-	$trust_score   = $is_english ? '4.6' : '4,6';
+	$google_rating = (float) get_option( 'mdo_google_rating', 4.9 );
+	$trust_rating  = (float) get_option( 'mdo_trustpilot_rating', 4.6 );
+	$google_score  = number_format( $google_rating > 0 && $google_rating <= 5 ? $google_rating : 4.9, 1, $is_english ? '.' : ',', '' );
+	$trust_score   = number_format( $trust_rating > 0 && $trust_rating <= 5 ? $trust_rating : 4.6, 1, $is_english ? '.' : ',', '' );
 	$google_aria   = $is_english
-		? sprintf( 'Google: 4.9 out of 5, %d reviews', $google_count )
-		: sprintf( 'Google: 4,9 de 5, %d reseñas', $google_count );
+		? sprintf( 'Google: %s out of 5, %d reviews', $google_score, $google_count )
+		: sprintf( 'Google: %s de 5, %d reseñas', $google_score, $google_count );
 	$trust_aria = $is_english
-		? sprintf( 'Trustpilot: 4.6 out of 5, %d reviews', $trust_count )
-		: sprintf( 'Trustpilot: 4,6 de 5, %d opiniones', $trust_count );
+		? sprintf( 'Trustpilot: %s out of 5, %d reviews', $trust_score, $trust_count )
+		: sprintf( 'Trustpilot: %s de 5, %d opiniones', $trust_score, $trust_count );
 
 	return '<section class="mdo-review-proof" aria-label="' . esc_attr( $section_label ) . '" data-google-reviews="' . esc_attr( (string) $google_count ) . '" data-trustpilot-reviews="' . esc_attr( (string) $trust_count ) . '">'
 		. '<div class="emo-shell mdo-review-proof__inner">'
