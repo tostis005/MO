@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/install-three-musee-premium-covers-20261027.yml'
+      - '.github/scripts/install-mentta-three-approved-premium-covers-20261027.php'
   workflow_dispatch:
 permissions:
   contents: read
