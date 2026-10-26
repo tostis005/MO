@@ -42,22 +42,23 @@ jobs:
         run: |
           set -euo pipefail
           npm install --silent --prefix /tmp/emo-browser playwright@1.56.1
-          npx --prefix /tmp/emo-browser playwright install chromium --with-deps > /tmp/emo-chromium-install.log 2>&1 || { tail -n 60 /tmp/emo-chromium-install.log; exit 1; }
+          if command -v google-chrome >/dev/null 2>&1; then echo 'Using runner Chrome'; else npx --prefix /tmp/emo-browser playwright install chromium > /tmp/emo-chromium-install.log 2>&1; fi
           cat > /tmp/emo-browser-check.cjs <<'CHECK_JS'
           const { chromium } = require('/tmp/emo-browser/node_modules/playwright');
           (async () => {
-            const browser = await chromium.launch({ headless: true });
+            const browser = await chromium.launch({ headless: true, ...(process.env.CHROME_AVAILABLE === 'yes' ? { channel: 'chrome' } : {}) });
             let failures = 0;
             try {
               for (const [pageName, path] of [['Tienda', '/tienda/'], ['1957', '/tienda/1957/']]) {
                 for (const [device, viewport] of [['desktop', { width: 1440, height: 900 }], ['mobile', { width: 390, height: 844 }]]) {
                   const page = await browser.newPage({ viewport, locale: 'es-ES' });
+                  page.on('pageerror', error => console.log('BROWSER_PAGE_ERROR ' + pageName + ' ' + device + ': ' + error.message));
                   const url = 'https://www.elmercadodeorigen.com' + path + '?quick-add-browser-check=20261026';
                   try {
                     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
                     await page.waitForSelector('ul.products li.product', { timeout: 25000 });
                     try {
-                      await page.waitForSelector('ul.products li.product > a.emo-card-quick-add', { timeout: 18000 });
+                      await page.waitForSelector('ul.products li.product > a.emo-card-quick-add', { timeout: 4500 });
                     } catch (_) {}
                     const data = await page.evaluate(() => {
                       const cards = [...document.querySelectorAll('ul.products li.product')];
@@ -73,7 +74,11 @@ jobs:
                         options: buttons.filter(el => el.classList.contains('product_type_variable')).length,
                         positioned: visible.filter(el => getComputedStyle(el).position === 'absolute').length,
                         icons: visible.filter(el => Boolean(el.querySelector('.emo-card-quick-add__symbol'))).length,
-                        pageClasses: document.body.className
+                        pageClasses: document.body.className,
+                        sourceAdd: document.querySelectorAll('ul.products li.product a.add_to_cart_button').length,
+                        sourceVariable: document.querySelectorAll('ul.products li.product a.product_type_variable').length,
+                        sourceAnchorClasses: [...document.querySelectorAll('ul.products li.product a')].slice(0,16).map(a => ({className:a.className,href:a.getAttribute('href')?.slice(0,70)})),
+                        scriptPresent: Boolean(document.querySelector('script#emo-catalog-quick-add-js-20261026'))
                       };
                     });
                     console.log('RENDER_CHECK ' + JSON.stringify({ page: pageName, device, ...data }));
@@ -95,6 +100,7 @@ jobs:
             if (failures > 0) process.exitCode = 1;
           })().catch(err => { console.error(err); process.exitCode = 1; });
           CHECK_JS
+          if command -v google-chrome >/dev/null 2>&1; then export CHROME_AVAILABLE=yes; else export CHROME_AVAILABLE=no; fi
           node /tmp/emo-browser-check.cjs
       - name: Read production file status over existing SSH connection
         shell: bash
