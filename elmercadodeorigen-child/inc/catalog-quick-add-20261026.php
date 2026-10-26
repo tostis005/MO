@@ -195,8 +195,8 @@ add_action(
 			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add {
 				box-sizing:border-box !important;
 				position:absolute !important;
-				top:0 !important;
-				right:0 !important;
+				top:-1px !important;
+				right:-1px !important;
 				left:auto !important;
 				bottom:auto !important;
 				z-index:12 !important;
@@ -236,8 +236,8 @@ add_action(
 				display:flex !important;
 				align-items:center !important;
 				justify-content:center !important;
-				width:20px !important;
-				height:20px !important;
+				width:22px !important;
+				height:22px !important;
 				margin:0 !important;
 				color:inherit !important;
 				font-size:0 !important;
@@ -259,7 +259,7 @@ add_action(
 			body.elmercado-child-theme ul.products li.product a.added_to_cart.wc-forward { display:none !important; }
 			@media (max-width:767px) {
 				body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add {
-					top:0 !important;right:0 !important;
+					top:-1px !important;right:-1px !important;
 					width:46px !important;min-width:46px !important;max-width:46px !important;
 					height:42px !important;min-height:42px !important;max-height:42px !important;
 					padding:0 !important;
