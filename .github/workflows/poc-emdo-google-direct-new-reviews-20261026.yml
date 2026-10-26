@@ -1,0 +1,100 @@
+name: POC Google Maps direct recent reviews without intermediary
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/poc-emdo-google-direct-new-reviews-20261026.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  poc:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up real browser
+        run: |
+          npm init -y >/dev/null
+          npm install --no-save playwright@1.55.0 >/dev/null
+          test -x /usr/bin/google-chrome || test -x /usr/bin/google-chrome-stable || npx playwright install chromium >/dev/null
+      - name: Inspect latest-sort and cards on Google Maps without API
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import crypto from 'node:crypto';
+          import {chromium} from 'playwright';
+          const chromePath=['/usr/bin/google-chrome','/usr/bin/google-chrome-stable','/usr/bin/chromium'].find(fs.existsSync);
+          const browser=await chromium.launch(chromePath?{headless:true,executablePath:chromePath,args:['--no-sandbox','--disable-dev-shm-usage']}:{headless:true});
+          const ctx=await browser.newContext({locale:'es-ES',viewport:{width:1440,height:1100},userAgent:'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36'});
+          const page=await ctx.newPage();
+          const report={time:new Date().toISOString(),source:'Google Maps (direct browser)',success:false,events:[]};
+          const snap=async(stage)=>{
+            const d=await page.evaluate(()=>{
+              const all=Array.from(document.querySelectorAll('.jftiEf'));
+              const cards=all.slice(0,12).map(x=>({
+                id:x.getAttribute('data-review-id')||'',
+                author:(x.querySelector('.d4r55')?.textContent||'').trim(),
+                text:(x.querySelector('.wiI7pd,.MyEned')?.textContent||'').trim(),
+                rating_label:x.querySelector('.kvMYJc')?.getAttribute('aria-label')||'',
+                date:x.querySelector('.rsqaWe,.xRkPPb,.DU9Pgb')?.textContent?.trim()||'',
+                pictures:Array.from(x.querySelectorAll('button.Tya61d')).filter(y=>/foto\\s*\\d+\\s+de\\s+la\\s+reseña/i.test(y.getAttribute('aria-label')||'')).length,
+              }));
+              const elements=Array.from(document.querySelectorAll('button,[role=button],[role=option],[role=menuitem],[role=radio]')).filter(el=>{
+                const s=(el.getAttribute('aria-label')||'')+' '+(el.textContent||'');
+                return /Ordenar|Sort|Recientes|Newest|Más recientes|Relevantes|Relevant|reseñas|Reviews/i.test(s)&&s.trim().length<140;
+              }).map(el=>({role:el.getAttribute('role')||'',tag:el.tagName,label:(el.getAttribute('aria-label')||'').slice(0,90),text:(el.textContent||'').replace(/\\s+/g,' ').slice(0,90)})).slice(0,25);
+              return {cards,elements,cardCount:all.length,bodyLength:document.body?.innerText?.length||0};
+            });
+            const hashed=d.cards.map(c=>({idHash:c.id?crypto.createHash('sha256').update(c.id).digest('hex').slice(0,12):'',authorPresent:!!c.author,textLength:c.text.length,rating:c.rating_label,dateLabel:c.date.slice(0,36),photos:c.pictures})); 
+            report.events.push({stage,cardCount:d.cardCount,hashedCards:hashed,controls:d.elements,bodyLength:d.bodyLength});
+            console.log('GOOGLE_DIRECT_POC '+JSON.stringify(report.events.at(-1)));
+          };
+          const clickFirst=async label=>{
+            for(const sel of [
+              page.getByRole('button',{name:label}).first(),
+              page.locator('[role="button"]').filter({hasText:label}).first(),
+              page.getByText(label).first()
+            ]){
+              try{
+                if(await sel.count()&&await sel.isVisible()){
+                  await sel.click({timeout:3500});
+                  await page.waitForTimeout(1100);
+                  return true;
+                }
+              }catch{}
+            }
+            return false;
+          };
+          try{
+            const res=await page.goto('https://www.google.com/maps/place/?q=place_id:ChIJbbIJi58nQg0RgJroXR8DG_U&hl=es',{waitUntil:'domcontentloaded',timeout:60000});
+            report.httpStatus=res?.status()||0;
+            await page.waitForTimeout(2200);
+            await snap('initial');
+            report.reviewButtonClicked=await clickFirst(/305\\s*reseñas|\\d+\\s*reseñas/i);
+            await snap('after_reviews_button');
+            report.sortButtonClicked=await clickFirst(/Ordenar reseñas|Sort reviews/i);
+            await snap('after_sort_button');
+            report.newestClicked=await clickFirst(/Más recientes|Newest|Más nuevas|Más reciente/i);
+            await snap('after_newest_button');
+            for(let i=0;i<6;i++){
+              await page.evaluate(()=>{
+                const e=document.querySelector('.jftiEf');
+                let p=e?.parentElement;
+                for(let i=0;p&&i<12;i++,p=p.parentElement){
+                  if(['auto','scroll'].includes(getComputedStyle(p).overflowY)&&p.scrollHeight>p.clientHeight+100){
+                    p.scrollTop=Math.min(p.scrollHeight,p.scrollTop+p.clientHeight*0.85);
+                    break;
+                  }
+                }
+              });
+              await page.waitForTimeout(450);
+            }
+            await snap('after_scroll');
+            report.success=true;
+          }catch(error){report.error=(error.message||String(error)).slice(0,180);}
+          await browser.close();
+          console.log('GOOGLE_DIRECT_POC_FINAL '+JSON.stringify(report));
+          JS
