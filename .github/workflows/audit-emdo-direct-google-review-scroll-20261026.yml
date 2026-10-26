@@ -1,0 +1,100 @@
+name: Audit direct Google Maps review scrolling 2026-10-26
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-emdo-direct-google-review-scroll-20261026.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install browser
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright@1.55.0 >/dev/null 2>&1
+          test -x /usr/bin/google-chrome || test -x /usr/bin/google-chrome-stable || npx playwright install chromium >/dev/null 2>&1
+      - name: Verify Maps review list access and scrollability without collecting user content
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import { chromium } from 'playwright';
+          const chromePath=['/usr/bin/google-chrome','/usr/bin/google-chrome-stable'].find(fs.existsSync);
+          const browser=await chromium.launch(chromePath?{headless:true,executablePath:chromePath,args:['--no-sandbox','--disable-dev-shm-usage']}:{headless:true});
+          const context=await browser.newContext({locale:'es-ES',viewport:{width:1440,height:1100},userAgent:'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36'});
+          const page=await context.newPage();
+          const summary={method:'Google Maps public browser, no APIs or Trustindex',navigation_status:0,consent_clicked:false,control_attempts:[],stages:[],visible_unique_review_ids:0,blocked:false};
+          const seen=new Set();
+          const snap=async(stage)=>{
+            const value=await page.evaluate(()=>{
+              const cards=Array.from(document.querySelectorAll('.jftiEf[data-review-id]'));
+              const scrolls=Array.from(document.querySelectorAll('*')).filter(e=>e.scrollHeight>e.clientHeight+180&&e.clientHeight>200&&e.clientWidth>250).map(el=>{
+                const rect=el.getBoundingClientRect();
+                return {tag:el.tagName,role:el.getAttribute('role')||'',cls:String(el.className||'').slice(0,75),height:el.clientHeight,scrollHeight:el.scrollHeight,top:el.scrollTop,visible:rect.height>0&&rect.width>0,left:Math.round(rect.left),right:Math.round(rect.right),withinReview:!!el.querySelector('.jftiEf')};
+              }).filter(x=>x.visible).sort((a,b)=>b.scrollHeight-a.scrollHeight).slice(0,12);
+              const controls=Array.from(document.querySelectorAll('button,[role=button]')).map(el=>({tag:el.tagName,label:String(el.getAttribute('aria-label')||el.innerText||'').trim().slice(0,85),cls:String(el.className||'').slice(0,45)})).filter(x=>/reseñas|opiniones|reviews|todas/i.test(x.label)).slice(0,18);
+              return {card_count:cards.length,ids:cards.map(el=>el.getAttribute('data-review-id')).filter(Boolean),scrolls,controls,headings:document.body?.innerText?.slice(0,110).replaceAll('\n',' ')||'',body_len:document.body?.innerText?.length||0};
+            });
+            for(const id of value.ids) seen.add(id);
+            delete value.ids;
+            summary.stages.push({stage,unique_review_ids:seen.size,...value});
+            console.log('SCROLL_AUDIT',JSON.stringify({stage,unique_review_ids:seen.size,...value}));
+          };
+          try {
+            const response=await page.goto('https://www.google.com/maps/place/?q=place_id:ChIJbbIJi58nQg0RgJroXR8DG_U&hl=es',{waitUntil:'domcontentloaded',timeout:65000});
+            summary.navigation_status=response?.status()||0;
+            for(const pattern of [/Aceptar todo/i,/Accept all/i,/Rechazar todo/i,/Reject all/i]){
+              try {const el=page.getByRole('button',{name:pattern}).first();if(await el.count()&&await el.isVisible()){await el.click({timeout:2500});summary.consent_clicked=true;break;}}catch{}
+            }
+            await page.waitForTimeout(2300);
+            await snap('initial');
+            for(const text of [/305\s*reseñas/i,/\d+\s*reseñas/i,/Todas las reseñas/i,/Reseñas de El Mercado/i]){
+              for(const locator of [page.getByText(text).first(),page.getByRole('button',{name:text}).first(),page.locator('[role=button]').filter({hasText:text}).first()]){
+                try{if(await locator.count()&&await locator.isVisible()){
+                  await locator.click({timeout:3500});
+                  summary.control_attempts.push({pattern:String(text),clicked:true});
+                  await page.waitForTimeout(1400);
+                  await snap('after_click');
+                  break;
+                }}catch(e){summary.control_attempts.push({pattern:String(text),error:e.name});}
+              }
+              if(summary.control_attempts.some(x=>x.clicked))break;
+            }
+            for(let i=0;i<18;i++){
+              const outcome=await page.evaluate(()=>{
+                const reviews=document.querySelector('.jftiEf[data-review-id]');
+                if(!reviews)return {error:'no_review_card'};
+                const scrollParents=[];
+                for(let p=reviews.parentElement;p;p=p.parentElement){
+                  if(p.scrollHeight>p.clientHeight+100&&p.clientHeight>160){
+                    const style=getComputedStyle(p);
+                    const v={tag:p.tagName,cls:String(p.className||'').slice(0,60),overflowY:style.overflowY,top:p.scrollTop,height:p.clientHeight,total:p.scrollHeight};
+                    scrollParents.push(v);
+                    if(['auto','scroll','overlay'].includes(style.overflowY)){
+                      const before=p.scrollTop;
+                      p.scrollTop=Math.min(p.scrollHeight,p.scrollTop+p.clientHeight*0.88);
+                      return {target:v,before,after:p.scrollTop,scrollParents};
+                    }
+                  }
+                }
+                return {scrollParents,error:'no_scrollable_ancestor'};
+              });
+              if(outcome.error){
+                await page.locator('.jftiEf').last().scrollIntoViewIfNeeded({timeout:2400}).catch(()=>{});
+                await page.mouse.wheel(0,900);
+              }
+              await page.waitForTimeout(550);
+              if(i===2||i===6||i===12||i===17){await snap('scroll_'+i);console.log('SCROLL_OUTCOME',JSON.stringify(outcome));}
+            }
+            summary.visible_unique_review_ids=seen.size;
+          }catch(e){summary.error_type=e.name;summary.error=String(e.message||e).slice(0,180);}
+          await browser.close();
+          console.log('FINAL_DIRECT_GOOGLE_SCROLL_AUDIT',JSON.stringify(summary));
+          JS
