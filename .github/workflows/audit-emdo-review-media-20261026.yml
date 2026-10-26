@@ -1,0 +1,88 @@
+name: Audit EMDO customer review photos 2026-10-26
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-emdo-review-media-20261026.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: audit-emdo-review-media
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare browser and validate scrapers
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check mdo-supplier-sync/scripts/scrape-google-reviews.mjs
+          node --check mdo-supplier-sync/scripts/scrape-trustpilot-reviews.mjs
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright@1.55.0 >/dev/null 2>&1
+          test -x /usr/bin/google-chrome || test -x /usr/bin/google-chrome-stable || npx playwright install chromium >/dev/null 2>&1
+      - name: Full source photo audit (no WordPress writes)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node mdo-supplier-sync/scripts/scrape-google-reviews.mjs --mode full --output /tmp/google-media.json
+          node mdo-supplier-sync/scripts/scrape-trustpilot-reviews.mjs --mode full --output /tmp/trustpilot-media.json
+          mkdir -p diagnostics
+          python3 - <<'PY'
+          import json,datetime,collections,urllib.parse,urllib.request,ssl,os
+          report={"audit_utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),"source_counts":{}}
+          for source in ("google","trustpilot"):
+              p=json.load(open("/tmp/"+source+"-media.json",encoding="utf-8"))
+              reviews=p.get("reviews") or []
+              valid=[]; invalid=[]; photo_reviews=[]
+              for review in reviews:
+                  urls=review.get("review_images") or []
+                  if urls:
+                      photo_reviews.append({"review_id":review.get("id"),"photo_count":len(urls)})
+                  for u in urls:
+                      parsed=urllib.parse.urlparse(u)
+                      if parsed.scheme not in ("http","https") or not parsed.hostname:
+                          invalid.append(u)
+                      else: valid.append(u)
+              checks=[]
+              for u in list(dict.fromkeys(valid))[:6]:
+                  try:
+                      req=urllib.request.Request(u,method="GET",headers={"User-Agent":"Mozilla/5.0","Range":"bytes=0-1024"})
+                      with urllib.request.urlopen(req,timeout=9) as response:
+                          checks.append({"host":urllib.parse.urlparse(u).hostname,"status":response.status,"content_type":response.headers.get("Content-Type","").split(";")[0]})
+                  except Exception as error:
+                      checks.append({"host":urllib.parse.urlparse(u).hostname,"error_type":type(error).__name__})
+              report["source_counts"][source]={
+                  "reviews_checked":len(reviews),
+                  "provider_reported_count":p.get("reported_count"),
+                  "review_photos_found":len(valid),
+                  "reviews_with_photos":len(photo_reviews),
+                  "unique_image_urls":len(set(valid)),
+                  "invalid_url_count":len(invalid),
+                  "image_hosts":dict(collections.Counter(urllib.parse.urlparse(x).hostname for x in valid)),
+                  "image_response_checks":checks,
+                  "review_ids_with_photos":photo_reviews[:40],
+                  "no_customer_photo_detected":not bool(photo_reviews),
+              }
+          path="diagnostics/emdo-review-media-audit-20261026.json"
+          with open(path,"w",encoding="utf-8") as f: json.dump(report,f,indent=2,ensure_ascii=False)
+          print(json.dumps(report,indent=2,ensure_ascii=False))
+          PY
+      - name: Persist privacy-safe photo audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add diagnostics/emdo-review-media-audit-20261026.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record review-photo availability audit without private image URLs'
+          git pull --rebase origin main
+          git push origin HEAD:main
