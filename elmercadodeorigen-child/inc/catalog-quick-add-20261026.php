@@ -342,109 +342,306 @@ add_action(
 		<script id="emo-catalog-quick-add-js-20261026">
 		(() => {
 			'use strict';
-			if (!document.body.matches('.woocommerce-shop,.post-type-archive-product,.tax-product_cat,.tax-product_tag,.wcfmmp-store-page')) return;
+			const body = document.body;
+			if (!body.matches('.woocommerce-shop,.post-type-archive-product,.tax-product_cat,.tax-product_tag,.wcfmmp-store-page')) return;
 
+			const config = <?php echo wp_json_encode( array(
+				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+				'nonce'   => wp_create_nonce( 'emo_quick_cart_20261026' ),
+			) ); ?>;
 			const sourceSelector = [
-				'a.add_to_cart_button',
-				'a.product_type_variable.button',
-				'a.product_type_grouped.button',
+				'a.emo-card-quick-add-source', 'a.add_to_cart_button',
+				'a.product_type_variable.button', 'a.product_type_grouped.button',
 				'a.product_type_external.button'
 			].join(',');
+			const cartSvg = '<svg viewBox="0 0 24 24" width="20" height="20" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="9" cy="20" r="1"/><circle cx="19" cy="20" r="1"/><path d="M2 3h2l2.4 11.2a2 2 0 0 0 2 1.6h10a2 2 0 0 0 2-1.6L22 7H5"/></svg>';
+			const checkSvg = '<svg viewBox="0 0 24 24" width="20" height="20" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m5 12 4 4L19 6"/></svg>';
+
+			const cardType = (card) => {
+				const className = card.className || '';
+				if (/product-type-variable/.test(className)) return 'variable';
+				if (/product-type-simple/.test(className)) return 'simple';
+				return '';
+			};
+
+			/* Segunda vía para productos de paginaciones cacheadas o HTML dinámico
+			   que no incluye los hooks de WooCommerce. Nunca ofrecer compra de
+			   productos agotados, ocultos o sin precio. */
+			const fallbackControl = (card) => {
+				const type = cardType(card);
+				const id = (card.className.match(/(?:^|\s)post-(\d+)(?:\s|$)/) || [])[1];
+				if (!id || !type || !card.classList.contains('instock') || card.classList.contains('outofstock')) return null;
+				if (!card.querySelector('.price')) return null;
+
+				const link = card.querySelector('a.woocommerce-LoopProduct-link[href],a[href*="/producto/"]');
+				if (!link) return null;
+				const control = document.createElement('a');
+				const simple = type === 'simple';
+				control.className = 'button emo-card-quick-add-source ' + (simple
+					? 'product_type_simple add_to_cart_button ajax_add_to_cart'
+					: 'product_type_variable');
+				control.href = simple ? '?add-to-cart=' + encodeURIComponent(id) : link.href;
+				control.dataset.product_id = id;
+				control.dataset.quantity = '1';
+				control.textContent = simple ? 'Añadir al carrito' : 'Seleccionar opciones';
+				card.append(control);
+				return control;
+			};
 
 			const enhanceCard = (card) => {
 				if (card.querySelector(':scope > a.emo-card-quick-add')) return;
 
 				const controls = [...card.querySelectorAll(sourceSelector)]
-					.filter((anchor) => !anchor.matches('.emo-card-quick-add,.added_to_cart,.wc-forward') && anchor.getAttribute('href'));
-				const control = controls.find((anchor) => anchor.classList.contains('add_to_cart_button')) || controls[0];
+					.filter(anchor => !anchor.classList.contains('emo-card-quick-add')
+						&& !anchor.matches('.added_to_cart,.wc-forward') && anchor.getAttribute('href'));
+				const control = controls.find(anchor => anchor.classList.contains('emo-card-quick-add-source'))
+					|| controls.find(anchor => anchor.classList.contains('add_to_cart_button'))
+					|| controls[0] || fallbackControl(card);
 				if (!control) return;
 
-				const label = (control.getAttribute('aria-label') || control.textContent || '').replace(/\s+/g, ' ').trim();
-				if (!label) return;
-				const productName = (card.querySelector('.woocommerce-loop-product__title,.product-title,h2,h3')?.textContent || '').replace(/\s+/g, ' ').trim();
-				if (!control.getAttribute('aria-label')) {
-					control.setAttribute('aria-label', productName ? label + ': ' + productName : label);
-				}
-
+				const name = (card.querySelector('.woocommerce-loop-product__title,.product-title,h2,h3')?.textContent || '').trim();
 				const options = control.matches('.product_type_variable,.product_type_grouped,.product_type_external');
-				/* Producto simple + ID nativo: WooCommerce gestiona el AJAX y el stock. */
-				if (!options && control.matches('.product_type_simple.add_to_cart_button') &&
-					control.dataset.product_id && window.wc_add_to_cart_params) {
-					control.classList.add('ajax_add_to_cart');
-				}
-
+				const label = options ? 'Seleccionar opciones' : 'Añadir al carrito';
+				control.setAttribute('aria-label', name ? label + ': ' + name : label);
+				control.setAttribute('title', label);
 				control.classList.add('emo-card-quick-add');
 				control.dataset.emoQuickAction = options ? 'options' : 'add';
-				control.setAttribute('title', control.getAttribute('aria-label'));
-
+				if (!options && control.matches('.product_type_simple') && control.dataset.product_id && window.wc_add_to_cart_params) {
+					control.classList.add('ajax_add_to_cart');
+				}
 				const symbol = document.createElement('span');
 				symbol.className = 'emo-card-quick-add__symbol';
-				symbol.setAttribute('aria-hidden', 'true');
-				symbol.textContent = options ? '›' : '+';
+				symbol.setAttribute('aria-hidden','true');
+				symbol.innerHTML = cartSvg;
 				control.prepend(symbol);
-
-				/* Mover, no clonar: conserva el enlace nativo y evita compras duplicadas.
-				   Fuera de la imagen enlazada, el clic no abre la ficha accidentalmente. */
+				/* Mover el nodo real: no crear dos add_to_cart_button con un mismo ID. */
 				card.append(control);
 			};
 
-			const enhance = () => {
-				document.querySelectorAll('ul.products li.product').forEach(enhanceCard);
+			const enhance = () => document.querySelectorAll('ul.products li.product').forEach(enhanceCard);
+			let scheduled = false;
+			const scheduleEnhance = () => {
+				if (scheduled) return;
+				scheduled = true;
+				requestAnimationFrame(() => {
+					scheduled = false;
+					enhance();
+				});
 			};
 
+			let announcement;
+			const announce = (message) => {
+				if (!announcement) return;
+				announcement.textContent = '';
+				requestAnimationFrame(() => { announcement.textContent = message; });
+			};
+			const markAdded = (control) => {
+				if (!control?.classList?.contains('emo-card-quick-add')) return;
+				const symbol = control.querySelector('.emo-card-quick-add__symbol');
+				if (!symbol) return;
+				symbol.innerHTML = checkSvg;
+				control.classList.add('emo-card-quick-add--confirmed');
+				announce('Producto añadido al carrito');
+				window.setTimeout(() => {
+					if (!control.isConnected) return;
+					symbol.innerHTML = cartSvg;
+					control.classList.remove('emo-card-quick-add--confirmed');
+				}, 1500);
+			};
+
+			let modal = null;
+			let opener = null;
+			let currentProductUrl = '';
+			let currentControl = null;
+
+			const closeModal = () => {
+				if (!modal || modal.hidden) return;
+				modal.hidden = true;
+				modal.querySelector('.emo-quick-cart-body').replaceChildren();
+				body.classList.remove('emo-quick-cart-open');
+				if (opener?.isConnected) opener.focus({ preventScroll: true });
+				opener = null;
+				currentControl = null;
+			};
+
+			const makeModal = () => {
+				if (modal) return modal;
+				modal = document.createElement('div');
+				modal.id = 'emo-quick-cart-modal';
+				modal.hidden = true;
+				modal.innerHTML = '<section class="emo-quick-cart-dialog" role="dialog" aria-modal="true" aria-labelledby="emo-quick-cart-title">'
+					+ '<header class="emo-quick-cart-head"><h2 id="emo-quick-cart-title" class="emo-quick-cart-title">Seleccionar opciones</h2>'
+					+ '<button type="button" class="emo-quick-cart-close" aria-label="Cerrar">×</button></header>'
+					+ '<div class="emo-quick-cart-body"></div></section>';
+				body.append(modal);
+				modal.querySelector('.emo-quick-cart-close').addEventListener('click', closeModal);
+				modal.addEventListener('click', (event) => { if (event.target === modal) closeModal(); });
+				modal.addEventListener('submit', submitVariation, true);
+				document.addEventListener('keydown', (event) => {
+					if (modal.hidden) return;
+					if (event.key === 'Escape') { event.preventDefault(); closeModal(); return; }
+					if (event.key !== 'Tab') return;
+					const focusables = [...modal.querySelectorAll('button:not([disabled]),a[href],select:not([disabled]),input:not([disabled]),textarea:not([disabled])')]
+						.filter(el => getComputedStyle(el).display !== 'none' && el.getClientRects().length > 0);
+					if (!focusables.length) return;
+					if (event.shiftKey && document.activeElement === focusables[0]) {
+						event.preventDefault(); focusables[focusables.length - 1].focus();
+					} else if (!event.shiftKey && document.activeElement === focusables[focusables.length - 1]) {
+						event.preventDefault(); focusables[0].focus();
+					}
+				});
+				return modal;
+			};
+
+			const showError = (message) => {
+				const target = modal?.querySelector('.emo-quick-cart-error');
+				if (target) { target.textContent = message; target.setAttribute('role','alert'); }
+			};
+			const productLink = () => {
+				const link = document.createElement('a');
+				link.className = 'emo-quick-cart-view-product';
+				link.href = currentProductUrl;
+				link.textContent = 'Ver ficha completa del producto';
+				return link;
+			};
+			const ajax = async (formData) => {
+				const response = await fetch(config.ajaxUrl, { method:'POST', body:formData, credentials:'same-origin', headers:{'Accept':'application/json'} });
+				const result = await response.json();
+				if (!response.ok || result.success === false) {
+					throw new Error(result.data?.message || 'No se ha podido completar la operación.');
+				}
+				return result;
+			};
+
+			const openVariations = async (control) => {
+				const id = control.dataset.product_id;
+				if (!id) { window.location.href = control.href; return; }
+				const dialog = makeModal();
+				opener = control;
+				currentControl = control;
+				currentProductUrl = control.href;
+				const title = dialog.querySelector('.emo-quick-cart-title');
+				const content = dialog.querySelector('.emo-quick-cart-body');
+				title.textContent = 'Seleccionar opciones';
+				content.textContent = 'Cargando opciones…';
+				dialog.hidden = false;
+				body.classList.add('emo-quick-cart-open');
+				dialog.querySelector('.emo-quick-cart-close').focus();
+				const payload = new FormData();
+				payload.set('action', 'emo_quick_variations_20261026');
+				payload.set('nonce', config.nonce);
+				payload.set('product_id', id);
+				try {
+					const answer = await ajax(payload);
+					if (dialog.hidden || currentControl !== control) return;
+					title.textContent = answer.data.title || 'Seleccionar opciones';
+					content.innerHTML = answer.data.html;
+					const error = document.createElement('div');
+					error.className = 'emo-quick-cart-error';
+					content.prepend(error);
+					content.append(productLink());
+
+					const form = content.querySelector('form.variations_form');
+					if (form && window.jQuery?.fn?.wc_variation_form) {
+						window.jQuery(form).wc_variation_form();
+						window.jQuery(form).find('.variations select').trigger('change');
+					} else if (form) {
+						showError('No se ha podido iniciar el selector. Abre la ficha del producto.');
+						form.querySelectorAll('button[type="submit"],.single_add_to_cart_button').forEach(btn => btn.disabled = true);
+					} else {
+						showError('Las opciones de este producto requieren abrir su ficha.');
+					}
+				} catch (error) {
+					if (dialog.hidden || currentControl !== control) return;
+					content.replaceChildren();
+					const notice = document.createElement('p');
+					notice.className = 'emo-quick-cart-error';
+					notice.setAttribute('role','alert');
+					notice.textContent = error.message;
+					content.append(notice, productLink());
+				}
+			};
+
+			async function submitVariation(event) {
+				const form = event.target;
+				if (!form.matches('form.variations_form')) return;
+				event.preventDefault();
+				event.stopPropagation();
+				const variation = Number(form.querySelector('input[name="variation_id"]')?.value || 0);
+				if (!variation) {
+					showError('Selecciona todas las opciones para poder añadir este producto.');
+					return;
+				}
+				const button = form.querySelector('.single_add_to_cart_button');
+				if (button?.disabled) return;
+				if (button) button.disabled = true;
+				showError('');
+				const payload = new FormData(form);
+				payload.set('action', 'emo_quick_add_variation_20261026');
+				payload.set('nonce', config.nonce);
+				payload.set('product_id', form.dataset.product_id || currentControl?.dataset.product_id || '');
+				payload.set('variation_id', String(variation));
+				try {
+					const response = await ajax(payload);
+					if (!modal || modal.hidden) return;
+					const buttonControl = currentControl;
+					/* Evento de WooCommerce: actualiza icono, fragmentos y mini-cart. */
+					if (window.jQuery) {
+						window.jQuery(document.body).trigger('added_to_cart', [
+							response.fragments || {}, response.cart_hash || '', window.jQuery(buttonControl)
+						]);
+					}
+					markAdded(buttonControl);
+					closeModal();
+				} catch (error) {
+					showError(error.message);
+				} finally {
+					if (button && button.isConnected) button.disabled = false;
+				}
+			}
+
 			const start = () => {
+				announcement = document.createElement('span');
+				announcement.className = 'emo-card-quick-add__announcer';
+				announcement.setAttribute('role','status');
+				announcement.setAttribute('aria-live','polite');
+				body.append(announcement);
+
 				enhance();
-				let scheduled = false;
-				const schedule = () => {
-					if (scheduled) return;
-					scheduled = true;
-					requestAnimationFrame(() => {
-						scheduled = false;
-						enhance();
-					});
-				};
-
-				/* La carga continua y los filtros insertan tarjetas sin recargar la página. */
-				new MutationObserver((mutations) => {
-					const addedProducts = mutations.some((mutation) =>
-						[...mutation.addedNodes].some((node) =>
-							node.nodeType === 1 &&
-							(node.matches?.('li.product,ul.products') || node.querySelector?.('li.product'))
+				new MutationObserver(mutations => {
+					/* También se ejecuta al añadir tarjetas desde un DocumentFragment,
+					   reemplazar resultados por filtros o cargar el siguiente lote. */
+					const found = mutations.some(m => [...m.addedNodes].some(node =>
+						node.nodeType === 1 && (
+							node.matches?.('li.product,ul.products,.products')
+							|| node.querySelector?.('li.product,a.emo-card-quick-add-source')
 						)
-					);
-					if (addedProducts) schedule();
-				}).observe(document.body, { childList: true, subtree: true });
+					));
+					if (found) scheduleEnhance();
+				}).observe(document.body, { childList:true, subtree:true });
+				document.addEventListener('emo:catalog:products-added', scheduleEnhance);
 
-				const announce = document.createElement('span');
-				announce.className = 'emo-card-quick-add__announcer';
-				announce.setAttribute('role', 'status');
-				announce.setAttribute('aria-live', 'polite');
-				document.body.append(announce);
+				document.addEventListener('click', event => {
+					const control = event.target.closest?.('a.emo-card-quick-add[data-emo-quick-action="options"]');
+					if (!control || !document.body.contains(control)) return;
+					if (!control.matches('.product_type_variable')) return; // grouped/external conservan su ficha
+					event.preventDefault();
+					event.stopPropagation();
+					openVariations(control);
+				}, true);
 
 				if (window.jQuery) {
 					window.jQuery(document.body).on('added_to_cart', (_event, _fragments, _hash, $button) => {
 						const control = $button?.[0];
-						if (!control?.classList?.contains('emo-card-quick-add')) return;
-						const symbol = control.querySelector('.emo-card-quick-add__symbol');
-						if (!symbol) return;
-						symbol.textContent = '✓';
-						control.classList.add('emo-card-quick-add--confirmed');
-						announce.textContent = document.documentElement.lang.startsWith('en')
-							? 'Added to cart' : 'Producto añadido al carrito';
-						window.setTimeout(() => {
-							if (!control.isConnected) return;
-							symbol.textContent = '+';
-							control.classList.remove('emo-card-quick-add--confirmed');
-						}, 1600);
+						if (control && control.dataset.emoQuickAction !== 'options') markAdded(control);
 					});
 				}
+				/* Carga incremental: los elementos se introducen en el documento
+				   después del HTML inicial. El observer los procesa sin reiniciar. */
+				scheduleEnhance();
 			};
-
-			if (document.readyState === 'loading') {
-				document.addEventListener('DOMContentLoaded', start, { once: true });
-			} else {
-				start();
-			}
+			if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once:true });
+			else start();
 		})();
 		</script>
 		<?php
