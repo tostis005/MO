@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class MDO_Reviews_Schema {
-	private const VERSION = '1.0.0';
+	private const VERSION = '1.0.1';
 
 	public static function maybe_install(): void {
 		if ( self::VERSION !== (string) get_option( 'mdo_reviews_db_version', '' ) ) {
@@ -28,6 +28,7 @@ final class MDO_Reviews_Schema {
 			author_name varchar(191) DEFAULT NULL,
 			author_email varchar(191) DEFAULT NULL,
 			author_avatar_url text DEFAULT NULL,
+			review_images longtext DEFAULT NULL,
 			rating tinyint(3) unsigned DEFAULT NULL,
 			review_title text DEFAULT NULL,
 			review_text longtext NOT NULL,
