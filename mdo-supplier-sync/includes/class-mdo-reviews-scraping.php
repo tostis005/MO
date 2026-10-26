@@ -202,10 +202,18 @@ final class MDO_Reviews_Scraping {
 			if ( $reported_count > 0 ) {
 				update_option( 'mdo_trustpilot_active_review_count', $reported_count, false );
 			}
-		} elseif ( $after > $reported_count ) {
-			// No reducir el indicador Google con una caché atrasada de Trustindex:
-			// ya hemos verificado más reseñas únicas en la base de datos.
-			$display_count = $after;
+		} elseif ( 'google' === $source ) {
+			// El total público de Google Maps se obtiene de su página con
+			// Playwright, sin API. Trustindex puede retrasar las filas nuevas.
+			// No presentar un total decreciente por culpa de una caché atrasada.
+			$maps_count = absint( $payload['maps_reported_count'] ?? 0 );
+			$existing_display = absint( get_option( 'mdo_google_review_count', 0 ) );
+			$display_count = max( $reported_count, $after, $existing_display );
+			if ( $maps_count >= $reported_count && $maps_count < 100000 ) {
+				$display_count = max( $display_count, $maps_count );
+				update_option( 'mdo_google_maps_review_count', $maps_count, false );
+				update_option( 'mdo_google_maps_review_count_checked_at', time(), false );
+			}
 		}
 		self::persist_source_metadata( $source, $display_count, $rating );
 
@@ -216,6 +224,8 @@ final class MDO_Reviews_Scraping {
 			'skipped' => $skipped,
 			'total' => $after,
 			'expected' => $reported_count,
+			'google_maps_public_count' => 'google' === $source ? absint( $payload['maps_reported_count'] ?? 0 ) : null,
+			'pending_source_gap' => 'google' === $source ? max( 0, absint( $payload['maps_reported_count'] ?? 0 ) - $after ) : null,
 			'complete' => 'full' !== $mode || 0 === $reported_count ? null : $found >= $reported_count,
 			'provider' => 'playwright_scraper',
 			'mode' => $mode,
