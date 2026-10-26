@@ -119,6 +119,28 @@ add_action( 'wp_ajax_emo_quick_variations_20261026', 'elmercado_quick_variations
 add_action( 'wp_ajax_nopriv_emo_quick_variations_20261026', 'elmercado_quick_variations_form_20261026' );
 
 /**
+ * WC_Form_Handler inspecciona $_REQUEST['add-to-cart'] durante wp_loaded,
+ * también en admin-ajax.php. El formulario de variantes de Woo contiene ese
+ * campo oculto; si llega en una compra rápida, WooCommerce añade una unidad
+ * ANTES de que nuestro endpoint invoque WC_Cart::add_to_cart, duplicando
+ * la cantidad solicitada. Neutralizarlo solo para nuestra acción AJAX.
+ *
+ * También se elimina en JavaScript, pero este cortafuegos cubre envíos
+ * manuales, navegadores cacheados y formularios construidos por add-ons.
+ */
+add_action(
+	'init',
+	static function (): void {
+		if ( ! wp_doing_ajax() || ! isset( $_REQUEST['action'] ) || ! is_scalar( $_REQUEST['action'] )
+			|| 'emo_quick_add_variation_20261026' !== sanitize_key( wp_unslash( $_REQUEST['action'] ) ) ) {
+			return;
+		}
+		unset( $_POST['add-to-cart'], $_GET['add-to-cart'], $_REQUEST['add-to-cart'] );
+	},
+	0
+);
+
+/**
  * Registrar la variación real en el carrito; no crear una compra provisional.
  * Usar WC_Cart garantiza las comprobaciones de atributos, existencias y
  * validaciones de plugins, y devolver fragmentos nativos sincroniza el mini-cart.
@@ -885,6 +907,9 @@ add_action(
 				if (button) button.disabled = true;
 				showError('');
 				const payload = new FormData(form);
+				/* WooCommerce interpreta add-to-cart como una SEGUNDA compra en wp_loaded,
+				   antes de nuestra propia inserción AJAX. Solo enviar la selección real. */
+				payload.delete('add-to-cart');
 				payload.set('action', 'emo_quick_add_variation_20261026');
 				payload.set('nonce', config.nonce);
 				payload.set('product_id', form.dataset.product_id || currentControl?.dataset.product_id || '');
