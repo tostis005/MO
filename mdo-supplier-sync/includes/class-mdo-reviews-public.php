@@ -172,7 +172,45 @@ final class MDO_Reviews_Public {
 			echo '<h4>' . esc_html( $row->review_title ) . '</h4>';
 		}
 		echo '<div class="mdo-store-review-text">' . wpautop( wp_kses_post( $row->review_text ) ) . '</div>';
+		echo self::media_gallery( $row );
 		echo '</div></article>';
+	}
+
+	/**
+	 * Render photos belonging to this particular review, never its author avatar.
+	 * Every visible photo has source/author attribution and opens at full size.
+	 */
+	public static function media_gallery( $row ): string {
+		if ( ! in_array( (string) ( $row->source ?? '' ), array( 'google', 'trustpilot' ), true ) ) {
+			return '';
+		}
+		$photos = json_decode( (string) ( $row->review_images ?? '' ), true );
+		if ( ! is_array( $photos ) || ! $photos ) {
+			return '';
+		}
+		$name = trim( (string) ( $row->author_name ?? '' ) ) ?: 'cliente';
+		$label = 'google' === $row->source ? 'Google' : 'Trustpilot';
+		$source_url = esc_url( (string) ( $row->source_url ?? '' ) );
+		$out = '<figure class="mdo-review-media"><div class="mdo-review-media__grid">';
+		$count = 0;
+		foreach ( array_slice( $photos, 0, 10 ) as $photo ) {
+			$url = esc_url( is_string( $photo ) ? $photo : '' );
+			if ( ! $url || ! preg_match( '~^https?://~i', $url ) ) {
+				continue;
+			}
+			++$count;
+			$alt = sprintf( 'Foto %d adjunta a la reseña de %s', $count, $name );
+			$out .= '<a class="mdo-review-media__link" href="' . esc_url( $url ) . '" target="_blank" rel="noopener noreferrer" aria-label="' . esc_attr( 'Ampliar ' . $alt ) . '">';
+			$out .= '<img loading="lazy" decoding="async" src="' . esc_url( $url ) . '" alt="' . esc_attr( $alt ) . '">';
+			$out .= '</a>';
+		}
+		if ( 0 === $count ) {
+			return '';
+		}
+		$out .= '</div><figcaption>Fotografía de ' . esc_html( $name ) . ' · ';
+		$out .= $source_url ? '<a href="' . $source_url . '" target="_blank" rel="noopener noreferrer">' . esc_html( $label ) . '</a>' : esc_html( $label );
+		$out .= '</figcaption></figure>';
+		return $out;
 	}
 
 	private static function source_badge( $row ): string {
