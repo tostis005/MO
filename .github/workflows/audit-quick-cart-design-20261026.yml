@@ -1,4 +1,4 @@
-name: Verify compact rectangular cart design in production
+name: Verify flush-corner cart design in production
 on:
   pull_request:
     paths:
@@ -37,7 +37,8 @@ jobs:
                       const badge=button.closest('li.product')?.querySelector('.mdo-emdo-selection-badge');
                       const br=badge?.getBoundingClientRect();
                       return {
-                        width:Math.round(r.width),height:Math.round(r.height),radius:Math.round(parseFloat(css.borderTopLeftRadius)),
+                        width:Math.round(r.width),height:Math.round(r.height),radius:Math.round(parseFloat(css.borderBottomLeftRadius)),
+                        topLeftRadius:Math.round(parseFloat(css.borderTopLeftRadius)),edgeTopDelta:Math.abs(r.top-button.closest('li.product').getBoundingClientRect().top),edgeRightDelta:Math.abs(r.right-button.closest('li.product').getBoundingClientRect().right),
                         iconSize:svg?Math.round(svg.getBoundingClientRect().width):0,
                         background:css.backgroundColor,color:css.color,
                         badgeCenterDelta:br?Math.abs((br.top+br.height/2)-(r.top+r.height/2)):null,
@@ -47,7 +48,7 @@ jobs:
                     return {cards:cards.length,buttons:buttons.length,shapes};
                   });
                   const first=result.shapes[0];
-                  const ok=result.buttons>0&&result.shapes.every(s=>s.width===40&&s.height===34&&s.radius===9&&s.iconSize===19&&s.visible&&s.background==='rgba(23, 63, 50, 0.94)'&&(s.badgeCenterDelta===null||s.badgeCenterDelta<3));
+                  const ok=result.buttons>0&&result.shapes.every(s=>s.width===46&&s.height===42&&s.radius===13&&s.topLeftRadius===0&&s.iconSize===21&&s.visible&&s.background==='rgb(23, 63, 50)'&&s.edgeTopDelta<1&&s.edgeRightDelta<1);
                   console.log('BUTTON_SHAPE '+JSON.stringify({page:pageName,device,cards:result.cards,buttons:result.buttons,first,ok}));
                   if(!ok){failures++;console.error('SHAPE_FAILURE '+pageName+' '+device);}
                   if(pageName==='Tienda'){
