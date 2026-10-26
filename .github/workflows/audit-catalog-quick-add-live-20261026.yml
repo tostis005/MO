@@ -1,0 +1,82 @@
+name: Audit live quick-add deployment
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/audit-catalog-quick-add-live-20261026.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      STAGING_KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect exact HTML from public production
+        shell: bash
+        run: |
+          set -euo pipefail
+          for page in tienda/ tienda/1957/; do
+            url="https://www.elmercadodeorigen.com/$page?emo-audit=${GITHUB_SHA}"
+            status="$(curl -ksSL --max-time 40 -H 'Cache-Control: no-cache' -A 'Mozilla/5.0' -o /tmp/emo-live.html -w '%{http_code}' "$url")"
+            echo "LIVE_URL=$url HTTP_STATUS=$status HTML_BYTES=$(wc -c < /tmp/emo-live.html)"
+            for needle in emo-catalog-quick-add-js-20261026 emo-catalog-quick-add-20261026 'ul class="products' 'add_to_cart_button'; do
+              if grep -Fq "$needle" /tmp/emo-live.html; then
+                echo "PRESENT $needle"
+              else
+                echo "MISSING $needle"
+              fi
+            done
+          done
+      - name: Read production file status over existing SSH connection
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$STAGING_HOST" ] || [ -z "$STAGING_USER" ] || [ -z "$STAGING_PASSWORD" ] || [ -z "$STAGING_REMOTE_PATH" ]; then
+            echo "MISSING_CONNECTION_SECRETS"
+            exit 0
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          if [ -n "$STAGING_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$STAGING_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -T 15 -p "${STAGING_PORT:-22}" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          fi
+          chmod 600 ~/.ssh/known_hosts
+          export SSHPASS="$STAGING_PASSWORD"
+          port="${STAGING_PORT:-22}"
+          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$port" "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH'" <<'AUDIT_REMOTE'
+          set -eu
+          raw="${1%/}"
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}";; */wp-content) dev="$(dirname "$raw")";; *) dev="$raw";; esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n 1 || true)"
+            [ -n "$cfg" ] || { echo "STAGING_ROOT_UNRESOLVED"; exit 0; }
+            dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] || { echo "PRODUCTION_ROOT_UNRESOLVED"; exit 0; }
+          theme="$prod/wp-content/themes/elmercadodeorigen-child"
+          if [ -f "$theme/inc/catalog-quick-add-20261026.php" ]; then
+            echo "PRODUCTION_MODULE_PRESENT"
+            grep -Fq 'emo-catalog-quick-add-js-20261026' "$theme/inc/catalog-quick-add-20261026.php" && echo "PRODUCTION_MODULE_VALID_MARKER"
+          else
+            echo "PRODUCTION_MODULE_MISSING"
+          fi
+          if grep -Fq 'catalog-quick-add-20261026.php' "$theme/functions.php"; then
+            echo "PRODUCTION_MODULE_REGISTERED"
+          else
+            echo "PRODUCTION_MODULE_NOT_REGISTERED"
+          fi
+          AUDIT_REMOTE
