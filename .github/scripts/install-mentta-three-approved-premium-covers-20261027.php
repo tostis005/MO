@@ -82,8 +82,8 @@ foreach($packs as $id=>$conf){
  }
  $headerFile="$dir/{$conf['banner']}.jpg";
  $h=emdo_mp_photo($headerFile);
- if(imagesx($h)!==1254 || imagesy($h)!==463) {
-  fwrite(STDERR,"WRONG_APPROVED_HEADER_SIZE {$conf['banner']}\n");exit(7);
+ if(imagesx($h)<500 || imagesy($h)<180 || abs((imagesx($h)/imagesy($h))-(1254/463))>.025) {
+  fwrite(STDERR,"WRONG_APPROVED_HEADER_ASPECT_RATIO {$conf['banner']}\n");exit(7);
  }
  imagedestroy($h);
  $lines=get_post_meta($id,'_emdo_mentta_pack_lines',true);
@@ -139,7 +139,8 @@ foreach($check as $id=>$x){
  $black=imagecolorallocate($canvas,28,23,17);
  emdo_mp_fill($canvas,0,0,1254,1254,$white);
  $approvedHeader=emdo_mp_photo($x['header']);
- imagecopy($canvas,$approvedHeader,0,0,0,0,1254,463);
+ imagecopyresampled($canvas,$approvedHeader,0,0,0,0,1254,463,
+  imagesx($approvedHeader),imagesy($approvedHeader));
  imagedestroy($approvedHeader);
  $margin=16;$gap=12;
  $width=(1254-2*$margin-$gap*($cols-1))/$cols;
