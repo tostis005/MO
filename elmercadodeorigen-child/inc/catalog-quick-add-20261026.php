@@ -203,17 +203,17 @@ add_action(
 				display:flex !important;
 				align-items:center !important;
 				justify-content:center !important;
-				width:46px !important;
-				min-width:46px !important;
-				max-width:46px !important;
-				height:42px !important;
-				min-height:42px !important;
-				max-height:42px !important;
+				width:69px !important;
+				min-width:69px !important;
+				max-width:69px !important;
+				height:63px !important;
+				min-height:63px !important;
+				max-height:63px !important;
 				padding:0 !important;
 				margin:0 !important;
 				gap:0 !important;
 				border:0 !important;
-				border-radius:0 0 0 13px !important;
+				border-radius:0 0 0 20px !important;
 				background:#173f32 !important;
 				color:#fff !important;
 				box-shadow:-2px 3px 9px rgba(13,38,30,.14) !important;
@@ -236,16 +236,16 @@ add_action(
 				display:flex !important;
 				align-items:center !important;
 				justify-content:center !important;
-				width:22px !important;
-				height:22px !important;
+				width:34px !important;
+				height:34px !important;
 				margin:0 !important;
 				color:inherit !important;
 				font-size:0 !important;
 			}
 			body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add .emo-card-quick-add__symbol svg {
 				display:block !important;
-				width:21px !important;
-				height:21px !important;
+				width:32px !important;
+				height:32px !important;
 				stroke:currentColor !important;
 				fill:none !important;
 			}
@@ -260,8 +260,8 @@ add_action(
 			@media (max-width:767px) {
 				body.elmercado-child-theme ul.products li.product > a.emo-card-quick-add {
 					top:-1px !important;right:-1px !important;
-					width:46px !important;min-width:46px !important;max-width:46px !important;
-					height:42px !important;min-height:42px !important;max-height:42px !important;
+					width:69px !important;min-width:69px !important;max-width:69px !important;
+					height:63px !important;min-height:63px !important;max-height:63px !important;
 					padding:0 !important;
 				}
 			}
@@ -647,9 +647,9 @@ add_action(
 				   con la pastilla «Selección EMDO» en todos los tamaños. */
 				control.style.setProperty('margin', '0px', 'important');
 				control.classList.remove('button'); // La clase genérica impone min-height:46px en Woostify.
-				control.style.setProperty('height', '42px', 'important');
-				control.style.setProperty('min-height', '42px', 'important');
-				control.style.setProperty('max-height', '42px', 'important');
+				control.style.setProperty('height', '63px', 'important');
+				control.style.setProperty('min-height', '63px', 'important');
+				control.style.setProperty('max-height', '63px', 'important');
 				control.style.setProperty('padding', '0px', 'important');
 				control.style.setProperty('line-height', '0px', 'important');
 				control.dataset.emoQuickAction = options ? 'options' : 'add';
