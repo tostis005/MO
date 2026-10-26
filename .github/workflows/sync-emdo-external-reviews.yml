@@ -12,10 +12,9 @@ on:
       - 'mdo-supplier-sync/mdo-supplier-sync.php'
       - '.github/workflows/sync-emdo-external-reviews.yml'
   schedule:
-    # Google: diario. En horario de verano español equivale a 02:15; en invierno, 01:15.
+    # Google y Trustpilot: todos los días a las 00:15 UTC.
+    # El domingo se hace reconciliación completa; el resto, incremental.
     - cron: '15 0 * * *'
-    # Trustpilot: semanal, domingo. En verano español equivale a 02:30.
-    - cron: '30 0 * * 0'
   workflow_dispatch:
     inputs:
       source:
@@ -64,12 +63,12 @@ jobs:
             echo 'MDO_SOURCES=google trustpilot' >> "$GITHUB_ENV"
             echo 'MDO_MODE=full' >> "$GITHUB_ENV"
           elif [ "${GITHUB_EVENT_NAME}" = 'schedule' ]; then
-            if [ "${{ github.event.schedule }}" = '30 0 * * 0' ]; then
-              echo 'MDO_SOURCES=trustpilot' >> "$GITHUB_ENV"
+            echo 'MDO_SOURCES=google trustpilot' >> "$GITHUB_ENV"
+            if [ "$(date -u +%u)" = '7' ]; then
+              echo 'MDO_MODE=full' >> "$GITHUB_ENV"
             else
-              echo 'MDO_SOURCES=google' >> "$GITHUB_ENV"
+              echo 'MDO_MODE=incremental' >> "$GITHUB_ENV"
             fi
-            echo 'MDO_MODE=incremental' >> "$GITHUB_ENV"
           else
             case '${{ inputs.source }}' in
               google) echo 'MDO_SOURCES=google' >> "$GITHUB_ENV" ;;
@@ -133,7 +132,9 @@ jobs:
             rest="${state#*|}"
             remote_bridge_sha="${rest%%|*}"
             deployed_sha="${rest#*|}"
-            if [ "$deployed" = "$EXPECTED_VERSION" ] && [ "$remote_bridge_sha" = "$LOCAL_BRIDGE_SHA" ] && [ "$deployed_sha" = "$GITHUB_SHA" ]; then
+            # La revisión es recurrente y el SHA de main puede avanzar por cambios
+            # ajenos al plugin. Solo esperamos a que el puente PHP esté desplegado.
+            if [ "$deployed" = "$EXPECTED_VERSION" ] && [ "$remote_bridge_sha" = "$LOCAL_BRIDGE_SHA" ]; then
               break
             fi
             echo "WAIT_DEPLOY attempt=$attempt version=${deployed:-none} marker=${deployed_sha:-none} expected=$GITHUB_SHA"
@@ -141,7 +142,6 @@ jobs:
           done
           test "$deployed" = "$EXPECTED_VERSION"
           test "$remote_bridge_sha" = "$LOCAL_BRIDGE_SHA"
-          test "$deployed_sha" = "$GITHUB_SHA"
           echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
           echo "SSH_OPTIONS=$SSH_OPTIONS" >> "$GITHUB_ENV"
           echo "SCP_OPTIONS=$SCP_OPTIONS" >> "$GITHUB_ENV"
@@ -176,6 +176,7 @@ jobs:
           reviews=data.get('reviews') or []
           found=len(reviews)
           reported=int(data.get('reported_count') or 0)
+          if reported < 1: raise SystemExit(f'{source}: missing provider review count; refusing to leave homepage with stale counters')
           available=int(data.get('available_count') or reported or 0)
           historical=int(data.get('historical_count') or reported or 0)
           ids=[str(x.get('id') or '') for x in reviews]
