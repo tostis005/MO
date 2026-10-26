@@ -1,4 +1,4 @@
-name: Audit live quick-add deployment (rendered button verification)
+name: Audit live quick-add deployment (variant submit verification)
 
 on:
   pull_request:
@@ -116,7 +116,34 @@ jobs:
                       try {
                         await page.waitForSelector('#emo-quick-cart-modal:not([hidden]) form.variations_form', {timeout:14000});
                         console.log('VARIANT_MODAL_OK ' + pageName + ' ' + device);
-                        await page.locator('#emo-quick-cart-modal .emo-quick-cart-close').click();
+                        if (pageName === '1957' && device === 'desktop') {
+                          /* Carrito de invitado efímero: no se crea un pedido ni se paga nada. */
+                          await page.evaluate(() => {
+                            window.__emoCartTestEvents = 0;
+                            if (window.jQuery) window.jQuery(document.body).on('added_to_cart.emoTest', () => window.__emoCartTestEvents++);
+                          });
+                          const values = await page.locator('#emo-quick-cart-modal form.variations_form').evaluate(form => {
+                            const raw = form.getAttribute('data-product_variations');
+                            let variation = null;
+                            try { const variants = JSON.parse(raw || '[]'); variation = variants.find(v => v.is_in_stock && v.is_purchasable); } catch (_) {}
+                            return variation?.attributes || {};
+                          });
+                          for (const select of await page.locator('#emo-quick-cart-modal select[name^="attribute_"]').all()) {
+                            const name = await select.getAttribute('name');
+                            const preferred = values[name];
+                            const options = await select.locator('option').evaluateAll(nodes => nodes.map(n => n.value).filter(Boolean));
+                            const selected = preferred && options.includes(preferred) ? preferred : options[0];
+                            if (selected) await select.selectOption(selected);
+                          }
+                          await page.waitForFunction(() => Number(document.querySelector('#emo-quick-cart-modal input[name="variation_id"]')?.value || 0) > 0, {timeout:10000});
+                          await page.locator('#emo-quick-cart-modal .single_add_to_cart_button').click({timeout:10000});
+                          await page.waitForSelector('#emo-quick-cart-modal[hidden]', {timeout:15000});
+                          const events = await page.evaluate(() => window.__emoCartTestEvents || 0);
+                          console.log('VARIANT_ADD_TO_CART_TEST ' + JSON.stringify({events, modalClosed:true}));
+                          if (!events) { failures++; console.error('VARIANT_CART_EVENT_MISSING'); }
+                        } else {
+                          await page.locator('#emo-quick-cart-modal .emo-quick-cart-close').click();
+                        }
                       } catch(err) {
                         failures++;
                         console.error('VARIANT_MODAL_FAILURE ' + pageName + ' ' + device + ': ' + err.message);
