@@ -1,4 +1,4 @@
-name: Final flush-corner cart visual acceptance
+name: Verify +50 percent larger cart corner in production
 on:
   pull_request:
     paths:
@@ -48,7 +48,7 @@ jobs:
                     return {cards:cards.length,buttons:buttons.length,shapes};
                   });
                   const first=result.shapes[0];
-                  const ok=result.buttons>0&&result.shapes.every(s=>s.width===46&&s.height===42&&s.radius===13&&s.topLeftRadius===0&&s.iconSize===21&&s.visible&&s.background==='rgb(23, 63, 50)'&&s.edgeTopDelta<1&&s.edgeRightDelta<1);
+                  const ok=result.buttons>0&&result.shapes.every(s=>s.width===69&&s.height===63&&s.radius===20&&s.topLeftRadius===0&&s.iconSize===32&&s.visible&&s.background==='rgb(23, 63, 50)'&&s.edgeTopDelta<1&&s.edgeRightDelta<1);
                   console.log('BUTTON_SHAPE '+JSON.stringify({page:pageName,device,cards:result.cards,buttons:result.buttons,first,ok}));
                   if(!ok){failures++;console.error('SHAPE_FAILURE '+pageName+' '+device);}
                   if(pageName==='Tienda'){
