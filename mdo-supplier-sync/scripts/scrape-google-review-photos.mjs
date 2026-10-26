@@ -58,9 +58,9 @@ try {
   // label ("305 reseñas") is distinct from review-keyword chips ("jamón 67").
   const mapsCount = await page.evaluate(() => {
     const labels=Array.from(document.querySelectorAll('button,[role="button"]'))
-      .map(el=>(el.getAttribute('aria-label')||el.textContent||'').replace(/\\s+/g,' ').trim());
+      .map(el=>(el.getAttribute('aria-label')||el.textContent||'').replace(/\s+/g,' ').trim());
     for (const label of labels) {
-      const match=label.match(/^([\\d.,\\s]+)\\s+(?:reseñas|opiniones|reviews?)$/i);
+      const match=label.match(/^([\d.,\s]+)\s+(?:reseñas|opiniones|reviews?)$/i);
       if(!match)continue;
       const number=Number.parseInt(match[1].replace(/[^0-9]/g,''),10);
       if(Number.isInteger(number)&&number>0&&number<100000) return number;
