@@ -90,7 +90,7 @@ jobs:
             await consent();
             report.sources.google_maps.initial=await domSnapshot();
             const attempts=[];
-            for(const pattern of [/^Reseñas$/i,/^Reviews$/i,/Ver todas las reseñas/i,/See all reviews/i,/opiniones/i]){
+            for(const pattern of [/305\\s*reseñas/i,/Todas las reseñas/i,/Reseñas de El Mercado de Origen/i,/^Reseñas$/i,/^Reviews$/i,/Ver todas las reseñas/i,/See all reviews/i,/opiniones/i]){
               try{
                 const buttons=page.getByRole("button",{name:pattern});
                 if(await buttons.count()){
@@ -116,6 +116,23 @@ jobs:
             }
             report.sources.google_maps.button_attempts=attempts;
             report.sources.google_maps.after_reviews_and_scroll=await domSnapshot();
+            report.sources.google_maps.card_media_structure=await page.evaluate(()=>{
+              const cards=Array.from(document.querySelectorAll('.jftiEf')).slice(0,25);
+              return {
+                visible_card_count:cards.length,
+                each_card:cards.map(card=>{
+                  const imgs=Array.from(card.querySelectorAll('img')).map(img=>({
+                    alt:(img.getAttribute('alt')||'').slice(0,80),
+                    classes:img.className?.baseVal||img.className||'',
+                    nearest_classes:img.parentElement?.parentElement?.className?.baseVal||img.parentElement?.parentElement?.className||'',
+                    host:(()=>{try{return new URL(img.currentSrc||img.src).hostname;}catch{return '';}})(),
+                    width:img.naturalWidth||0,height:img.naturalHeight||0,
+                  }));
+                  return {images:imgs,image_count:imgs.length,has_media_buttons:Array.from(card.querySelectorAll('button')).filter(btn=>/foto|photo|image/i.test(btn.getAttribute('aria-label')||'')).length};
+                }).slice(0,12),
+                all_review_card_image_count:cards.reduce((n,c)=>n+c.querySelectorAll('img').length,0),
+              };
+            });
             console.log("GOOGLE_MAPS_DIRECT_PHOTO_AUDIT",JSON.stringify(report.sources.google_maps));
           }catch(e){report.sources.google_maps.error_type=e.name;report.sources.google_maps.error_excerpt=String(e.message||e).slice(0,180);}
           try{
