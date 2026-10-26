@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - 'mdo-supplier-sync/includes/class-mdo-reviews-scraping.php'
+      - 'mdo-supplier-sync/includes/class-mdo-reviews-schema.php'
+      - 'mdo-supplier-sync/includes/class-mdo-reviews.php'
+      - 'mdo-supplier-sync/includes/class-mdo-reviews-public.php'
+      - 'mdo-supplier-sync/assets/reviews.css'
       - 'mdo-supplier-sync/includes/class-mdo-reviews-trustpilot-scraper.php'
       - 'mdo-supplier-sync/scripts/scrape-external-reviews.mjs'
       - 'mdo-supplier-sync/scripts/scrape-google-reviews.mjs'
@@ -87,6 +91,9 @@ jobs:
         run: |
           set -euo pipefail
           php -l mdo-supplier-sync/includes/class-mdo-reviews-scraping.php
+          php -l mdo-supplier-sync/includes/class-mdo-reviews-schema.php
+          php -l mdo-supplier-sync/includes/class-mdo-reviews.php
+          php -l mdo-supplier-sync/includes/class-mdo-reviews-public.php
           php -l mdo-supplier-sync/includes/class-mdo-reviews-trustpilot-scraper.php
           node --check mdo-supplier-sync/scripts/scrape-external-reviews.mjs
           node --check mdo-supplier-sync/scripts/scrape-google-reviews.mjs
@@ -199,6 +206,12 @@ jobs:
                   if found < 100: raise SystemExit(f'trustpilot: full scrape too small ({found})')
                   if available and found < available: raise SystemExit(f'trustpilot: full scrape incomplete ({found}/{available}, historical={historical})')
               expected=available
+          attached=[x for x in reviews if x.get("review_images")]
+          if any(not isinstance(x.get("review_images", []),list) for x in reviews):
+              raise SystemExit(f'{source}: review_images must be an array')
+          if any(any(not isinstance(u,str) or not u.startswith(('https://','http://')) for u in x.get("review_images",[])) for x in attached):
+              raise SystemExit(f'{source}: invalid attached photo URL')
+          print(f'PHOTO_AUDIT source={source} reviews_with_photos={len(attached)} photos={sum(len(x["review_images"]) for x in attached)}')
           print(f'SCRAPER_ACCEPT source={source} mode={mode} found={found} expected={expected} historical={historical} rating={data.get("rating")}')
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env:
               if source == 'google':
@@ -270,6 +283,22 @@ jobs:
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
           prefix=$("$php_bin" -d memory_limit=512M "$wp_bin" db prefix --path="$PROD_PATH" --allow-root)
           echo '=== EMDO REVIEW ACCEPTANCE ==='
+          photo_col=$("$php_bin" -d memory_limit=512M "$wp_bin" db query "SHOW COLUMNS FROM ${prefix}mdo_reviews LIKE 'review_images'" --skip-column-names --path="$PROD_PATH" --allow-root | head -n1)
+          test -n "$photo_col"
+          echo "REVIEW_PHOTO_COLUMN_OK"
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            global $wpdb;
+            $table = MDO_Database::table( "reviews" );
+            $rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$table} WHERE source IN (%s,%s) AND status=%s AND review_images IS NOT NULL AND review_images<>%s LIMIT 10", "google", "trustpilot", "validated", "[]" ) );
+            foreach ( $rows as $row ) {
+              $html = MDO_Reviews_Public::media_gallery( $row );
+              if ( false === strpos( $html, "mdo-review-media__grid" ) ) {
+                fwrite( STDERR, "PHOTO_GALLERY_RENDER_FAIL\\n" );
+                exit(43);
+              }
+            }
+            echo "VALIDATED_PHOTO_RENDER_OK count=" . count( $rows ) . "\\n";
+          ' --path="$PROD_PATH" --allow-root
           "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT source,COALESCE(NULLIF(TRIM(status),''),'EMPTY') status,COUNT(*) total FROM ${prefix}mdo_reviews GROUP BY source,status ORDER BY source,status" --skip-column-names --path="$PROD_PATH" --allow-root
           "$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT COALESCE(NULLIF(validation_method,''),'NONE') method,status,COUNT(*) total FROM ${prefix}mdo_reviews GROUP BY method,status ORDER BY method,status" --skip-column-names --path="$PROD_PATH" --allow-root
           empty_status=$("$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT COUNT(*) FROM ${prefix}mdo_reviews WHERE status IS NULL OR TRIM(status)=''" --skip-column-names --path="$PROD_PATH" --allow-root | tr -d '[:space:]')
