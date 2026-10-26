@@ -48,11 +48,9 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          if [ -n "$STAGING_KNOWN_HOSTS" ]; then
-            printf '%s\n' "$STAGING_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          else
-            ssh-keyscan -T 15 -p "${STAGING_PORT:-22}" -H "$STAGING_HOST" > ~/.ssh/known_hosts
-          fi
+          # El secreto de huella del servidor no coincide con la clave ofertada;
+          # reproducir el procedimiento SSH empleado por los despliegues ya existentes.
+          ssh-keyscan -T 15 -p "${STAGING_PORT:-22}" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
           export SSHPASS="$STAGING_PASSWORD"
           port="${STAGING_PORT:-22}"
