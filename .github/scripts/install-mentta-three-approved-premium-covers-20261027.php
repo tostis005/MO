@@ -205,7 +205,7 @@ foreach($check as $id=>$x){
  if(function_exists('mdo_product_early_cache_purge_product_20261002'))
     mdo_product_early_cache_purge_product_20261002($id);
  $new=wc_get_product($id);
- if(!$new || $new->get_status()!=='draft' || $new->get_image_id()!==(int)$attachment
+ if(!$new || $new->get_status()!=='draft' || (int)$new->get_image_id()!==(int)$attachment
   || abs((float)$new->get_regular_price('edit')-(float)$conf['pvp'])>.001
   || !get_option('emdo_musee_mentta_review_hold')
   || !in_array($id,emdo_mentta_exclusive_ids(),true)) {
