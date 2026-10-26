@@ -58,6 +58,14 @@ jobs:
                     return [...root.querySelectorAll('.price,.woocommerce-variation-price,.woocommerce-variation,.single_variation,.yith-wapo-container,.yith-wapo-block,.yith-wapo-addon,.yith-wapo-addon-type-select,.yith-wapo-totals-container,.yith-wapo-totals,.wapo-product-price,.wapo-total-price,.wapo-total-options-price,.single_variation_wrap,.woocommerce-variation-add-to-cart,.variations select')].slice(0,60).map(rect);
                   });
                   console.log('MODAL_SELECTED_'+type+' '+JSON.stringify(after));
+                  const yith=await page.evaluate(()=>{
+                    const root=document.querySelector('#emo-quick-cart-modal .yith-wapo-container');
+                    if(!root)return {found:false};
+                    const els=[...root.querySelectorAll('*')].filter(e=>e.children.length<4 && /precio|opciones totales|total del pedido|€|formato/i.test(e.textContent||'')).slice(0,28);
+                    return {markup:root.innerHTML.slice(-6500),prices:els.map(e=>({tag:e.tagName,cl:e.className,txt:e.textContent?.trim().slice(0,100),vis:e.getBoundingClientRect().height>0}))};
+                  });
+                  console.log('YITH_PRICE_'+type+' '+JSON.stringify(yith));
+
                 }
                 await page.screenshot({path:'/tmp/quick-'+type+'.png',fullPage:false});
               }
