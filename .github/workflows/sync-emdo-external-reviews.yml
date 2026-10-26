@@ -317,11 +317,11 @@ jobs:
               exit(41);
             }
             $markup = mdo_home_external_reviews_markup_20260819();
-            if ( false === strpos( $markup, "data-google-reviews=\\\"" . $g . "\\\"" ) || false === strpos( $markup, "data-trustpilot-reviews=\\\"" . $t . "\\\"" ) ) {
+            if ( false === strpos( $markup, "data-google-reviews=" . chr(34) . $g . chr(34) ) || false === strpos( $markup, "data-trustpilot-reviews=" . chr(34) . $t . chr(34) ) ) {
               fwrite( STDERR, "HOME_MARKUP_COUNTS_MISMATCH\\n" );
               exit(42);
             }
-            echo "HOME_MARKUP_OK google={$g} trustpilot={$t}\\n";
+            echo "HOME_MARKUP_OK google={$g} trustpilot={$t}\n";
           ' --path="$PROD_PATH" --allow-root
 
           top_vendor=$("$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT r.vendor_user_id,u.user_nicename,COUNT(*) c FROM ${prefix}mdo_reviews r INNER JOIN ${prefix}users u ON u.ID=r.vendor_user_id WHERE r.status='validated' AND r.vendor_user_id IS NOT NULL GROUP BY r.vendor_user_id,u.user_nicename ORDER BY c DESC LIMIT 1" --skip-column-names --path="$PROD_PATH" --allow-root | head -n1)
