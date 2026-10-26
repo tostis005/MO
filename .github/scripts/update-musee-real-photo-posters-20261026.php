@@ -178,7 +178,9 @@ function mdo_paint($pack,$lines,$pid) {
   $x=$left+$col*($tileW+$gap);$y=$header+88+$row*$rowH;
   imagefilledrectangle($im,$x,$y,$x+$tileW,$y+$rowH-12,$muted);
   imagefilledrectangle($im,$x+6,$y+7,$x+$tileW-6,$y+$rowH-88,$cream);
-  mdo_drawphoto($im,$line['file'],$x+12,$y+12,$tileW-24,$rowH-115);
+  if($line['file']) mdo_drawphoto($im,$line['file'],$x+12,$y+12,$tileW-24,$rowH-115);
+  else { mdo_fittext($im,'FOTO ORIGINAL',$bold,22,$tileW-24,$y+125,$brown,$x+$tileW/2);
+         mdo_fittext($im,'PENDIENTE',$bold,22,$tileW-24,$y+163,$brown,$x+$tileW/2); }
   $short=preg_replace('/\s+[—–]\s*.*$/u','',$line['label']);
   mdo_fittext($im,$short,$bold,$cols===5?19:25,$tileW-22,$y+$rowH-38,$black,$x+$tileW/2);
  }
@@ -206,31 +208,40 @@ foreach($manifest as $key=>$pack) {
  }
  $resolved=[];$missing=[];
  foreach($pack['contents'] as [$src,$qty,$label]){
-  if(!isset($source[$src])){$missing[]=['source'=>$src,'why'=>$errors[$src]??'unknown'];continue;}
+  if(!isset($source[$src])){
+    $missing[]=['source'=>$src,'why'=>$errors[$src]??'unknown'];
+    if($src==='buffalo_entrecot' && $key==='pasaporte-salvaje'){
+       $resolved[]=['key'=>$src,'id'=>0,'qty'=>$qty,'label'=>$label,'image'=>0,'file'=>'','available'=>false];
+    }
+    continue;
+  }
   $s=$source[$src];$resolved[]=['key'=>$src,'id'=>$s['id'],'qty'=>$qty,'label'=>$label,'image'=>$s['photo'],
    'file'=>$s['file'],'available'=>$s['product']->is_in_stock()];
  }
  $entry=['id'=>$id,'key'=>$key,'price'=>$pack['price'],'weight_kg'=>$pack['weight'],
-   'original_images'=>count($resolved),'total_items'=>count($pack['contents']),'missing'=>$missing,
+   'original_images'=>count(array_filter(array_column($resolved,'image'))),'total_items'=>count($pack['contents']),'missing'=>$missing,
    'matched_photo_ids'=>array_column($resolved,'image')];
  $report[]=$entry;
- if($missing) {
+ if($missing && !($key==='pasaporte-salvaje' && count($missing)===1 && $missing[0]['source']==='buffalo_entrecot')) {
   echo 'PACK_NOT_MODIFIED_ORIGINAL_IMAGE_NOT_AVAILABLE '.wp_json_encode($entry,JSON_UNESCAPED_UNICODE)."\n";
   continue;
  }
+ if($missing) echo 'PASAPORTE_BUFFALO_PHOTO_PENDING_SOURCE_MISSING '.wp_json_encode($entry,JSON_UNESCAPED_UNICODE)."\n";
  if($mode!=='apply') continue;
  $product=wc_get_product($id);
  $product->set_name($pack['name']);
  $product->set_regular_price((string)$pack['price']);$product->set_sale_price('');
  $product->set_weight((string)$pack['weight']);
- $product->set_short_description('<p>'.esc_html($pack['teaser']).'</p>');
+ $product->set_short_description('<p>'.esc_html($pack['teaser']).($missing?' Pendiente de confirmar la referencia Entrecot de búfalo y su fotografía original.':'').'</p>');
  $html='<p>'.esc_html($pack['intro']).'</p><h2>Contenido exacto del pack</h2><ul>';
  foreach($resolved as $row)$html.='<li>'.esc_html($row['label']).'</li>';
- $html.='</ul><p>Producto refrigerado. Conservar según las indicaciones del fabricante. Las fotografías muestran los artículos originales incluidos. Cantidades y pesos indicados en cada referencia.</p>';
+ $html.='</ul><p>Producto refrigerado. Conservar según las indicaciones del fabricante. Las fotografías disponibles muestran los artículos originales incluidos. Cantidades y pesos indicados en cada referencia.</p>';
+ if($missing)$html.='<p><strong>Revisión pendiente:</strong> no se ha localizado el entrecot de búfalo de 200 g ni su fotografía original en el catálogo de este proveedor. Esta ficha continúa como borrador, no disponible para Menta.</p>';
  $product->set_description($html);
- $product->set_gallery_image_ids(array_column($resolved,'image'));
+ $product->set_gallery_image_ids(array_values(array_filter(array_column($resolved,'image'))));
+ if($missing)$product->set_stock_status('outofstock');
  $product->update_meta_data('_emdo_mentta_pack_lines',array_map(static function($x){unset($x['file']);return $x;},$resolved));
- $product->update_meta_data('_emdo_mentta_photos_100_percent_real','yes');
+ $product->update_meta_data('_emdo_mentta_photos_100_percent_real',$missing?'8_real_1_pending':'yes');
  $product->update_meta_data('_yoast_wpseo_title',$pack['name'].' | Musée Gourmet');
  $product->update_meta_data('_yoast_wpseo_metadesc',mb_substr($pack['teaser'],0,155));
  $product->set_status('draft');
@@ -242,10 +253,10 @@ foreach($manifest as $key=>$pack) {
  clean_post_cache($id);wc_delete_product_transients($id);
  $verify=wc_get_product($id);
  if($verify->get_status()!=='draft'||abs((float)$verify->get_regular_price('edit')-$pack['price'])>0.001||
-   count($verify->get_gallery_image_ids())!==count($pack['contents'])||
+   count($verify->get_gallery_image_ids())!==(count($pack['contents'])-count($missing))||
    (int)$verify->get_image_id()!==(int)$poster||
    !get_attached_file($poster)) {fwrite(STDERR,"POST_UPDATE_VERIFICATION_FAILED $id\n");exit(6);}
  echo 'PACK_REAL_PHOTOGRAPHS_UPDATED '.wp_json_encode(['id'=>$id,'name'=>$pack['name'],'price'=>$verify->get_regular_price('edit'),
- 'original_photos'=>count($resolved),'hero_attachment_id'=>$poster,'mentta_blocked'=>true,'status'=>'draft'],JSON_UNESCAPED_UNICODE)."\n";
+ 'original_photos'=>count($resolved)-count($missing),'pending_photo_count'=>count($missing),'hero_attachment_id'=>$poster,'mentta_blocked'=>true,'status'=>'draft'],JSON_UNESCAPED_UNICODE)."\n";
 }
 echo 'REVISION_SUMMARY '.wp_json_encode(['mode'=>$mode,'packs'=>$report],JSON_UNESCAPED_UNICODE)."\n";
