@@ -40,7 +40,7 @@ $sources=[];$errors=[];
 foreach($data['sources'] as $key=>$src) {
  $needle=mdo_mp_norm($src[0]);$matches=[];
  foreach($catalog as $id=>$entry) {if (str_starts_with($entry['norm'],$needle)) $matches[]=$id;}
- if(count($matches)!==1) {$errors[]="SOURCE_MATCH ".$key." count=".count($matches);continue;}
+ if(count($matches)!==1) { $hints=[]; $tokens=explode(" ",strtolower(remove_accents($src[0]))); $first=(stripos($key,"ostrich")!==false?"avestruz":(stripos($key,"wagyu")!==false||stripos($key,"aussie")!==false?"wagyu":"")); foreach($catalog as $candidateId=>$entry) { if($first && str_contains($entry["norm"],$first)) $hints[]=$candidateId.":".$entry["p"]->get_name(); } $errors[]="SOURCE_MATCH ".$key." count=".count($matches)." candidates=".implode(" | ",array_slice($hints,0,35));continue;}
  $id=$matches[0];$p=$catalog[$id]['p'];
  $image=(int)$p->get_image_id();
  if(!$image) { $gallery=$p->get_gallery_image_ids();$image=(int)($gallery[0]??0); }
