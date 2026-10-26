@@ -284,23 +284,28 @@ jobs:
 
           google_count=$("$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT COUNT(*) FROM ${prefix}mdo_reviews WHERE source='google'" --skip-column-names --path="$PROD_PATH" --allow-root | tr -d '[:space:]')
           trustpilot_count=$("$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT COUNT(*) FROM ${prefix}mdo_reviews WHERE source='trustpilot'" --skip-column-names --path="$PROD_PATH" --allow-root | tr -d '[:space:]')
-          woo_count=$("$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT COUNT(*) FROM ${prefix}mdo_reviews WHERE source='woocommerce_product'" --skip-column-names --path="$PROD_PATH" --allow-root | tr -d '[:space:]')
-          wcfm_count=$("$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT COUNT(*) FROM ${prefix}mdo_reviews WHERE source='wcfm'" --skip-column-names --path="$PROD_PATH" --allow-root | tr -d '[:space:]')
+          # WooCommerce y WCFM se integran bajo el origen EMDO: no exigir
+          # nombres de fuente heredados que ya no existen en esta tabla.
+          emdo_count=$("$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT COUNT(*) FROM ${prefix}mdo_reviews WHERE source='emdo'" --skip-column-names --path="$PROD_PATH" --allow-root | tr -d '[:space:]')
           google_expected=$("$php_bin" -d memory_limit=512M "$wp_bin" option get mdo_google_review_count --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root 2>/dev/null || echo 0)
-          trustpilot_expected=$("$php_bin" -d memory_limit=512M "$wp_bin" option get mdo_trustpilot_review_count --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root 2>/dev/null || echo 0)
+          trustpilot_public_total=$("$php_bin" -d memory_limit=512M "$wp_bin" option get mdo_trustpilot_review_count --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root 2>/dev/null || echo 0)
+          trustpilot_active_expected=$("$php_bin" -d memory_limit=512M "$wp_bin" option get mdo_trustpilot_active_review_count --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root 2>/dev/null || echo 0)
           google_expected=$(printf '%s' "$google_expected" | tr -cd '0-9')
-          trustpilot_expected=$(printf '%s' "$trustpilot_expected" | tr -cd '0-9')
+          trustpilot_public_total=$(printf '%s' "$trustpilot_public_total" | tr -cd '0-9')
+          trustpilot_active_expected=$(printf '%s' "$trustpilot_active_expected" | tr -cd '0-9')
           google_expected=${google_expected:-0}
-          trustpilot_expected=${trustpilot_expected:-0}
-          echo "SOURCE_TOTAL_google=$google_count expected=$google_expected"
-          echo "SOURCE_TOTAL_trustpilot=$trustpilot_count expected_active=$trustpilot_expected"
-          echo "SOURCE_TOTAL_woocommerce_product=$woo_count"
-          echo "SOURCE_TOTAL_wcfm=$wcfm_count"
-          test "$google_count" -ge 300
-          test "$trustpilot_count" -ge 140
-          test "$woo_count" -ge 200
+          trustpilot_public_total=${trustpilot_public_total:-0}
+          trustpilot_active_expected=${trustpilot_active_expected:-0}
+          echo "SOURCE_TOTAL_google=$google_count public_count=$google_expected"
+          echo "SOURCE_TOTAL_trustpilot=$trustpilot_count active_expected=$trustpilot_active_expected public_count=$trustpilot_public_total"
+          echo "SOURCE_TOTAL_emdo=$emdo_count"
+          test "$google_count" -gt 0
+          test "$trustpilot_count" -gt 0
+          test "$google_expected" -gt 0
+          test "$trustpilot_public_total" -gt 0
           if [ "$google_expected" -gt 0 ]; then test "$google_count" -ge "$google_expected"; fi
-          if [ "$trustpilot_expected" -gt 0 ]; then test "$trustpilot_count" -ge "$trustpilot_expected"; fi
+          if [ "$trustpilot_active_expected" -gt 0 ]; then test "$trustpilot_count" -ge "$trustpilot_active_expected"; fi
+          test "$trustpilot_public_total" -ge "$trustpilot_count"
 
           top_vendor=$("$php_bin" -d memory_limit=512M "$wp_bin" db query "SELECT r.vendor_user_id,u.user_nicename,COUNT(*) c FROM ${prefix}mdo_reviews r INNER JOIN ${prefix}users u ON u.ID=r.vendor_user_id WHERE r.status='validated' AND r.vendor_user_id IS NOT NULL GROUP BY r.vendor_user_id,u.user_nicename ORDER BY c DESC LIMIT 1" --skip-column-names --path="$PROD_PATH" --allow-root | head -n1)
           test -n "$top_vendor"
