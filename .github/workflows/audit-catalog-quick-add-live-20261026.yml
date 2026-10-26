@@ -1,0 +1,228 @@
+name: Verify quick-add variation submit after WAPO fix
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/audit-catalog-quick-add-live-20261026.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      STAGING_KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify storefront and producer HTML after production patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          # La publicación puede arrancar a la vez que esta auditoría.
+          # Esperar a que aparezca el enlace renderizado por WooCommerce.
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            curl -ksSL --max-time 30 -H 'Cache-Control: no-cache' "https://www.elmercadodeorigen.com/tienda/?quick-add-deploy-check=${GITHUB_SHA}-$attempt" -o /tmp/emo-ready.html
+            if grep -Fq 'emo-card-quick-add-source' /tmp/emo-ready.html; then
+              echo 'QUICK_ADD_SOURCE_RENDERED in shop HTML'
+              break
+            fi
+            echo "Quick-add source not yet visible; retry $attempt"
+            sleep 5
+          done
+          grep -Fq 'emo-card-quick-add-source' /tmp/emo-ready.html || { echo 'QUICK_ADD_SOURCE_MISSING'; exit 1; }
+          for page in tienda/ tienda/1957/; do
+            url="https://www.elmercadodeorigen.com/$page?emo-audit=${GITHUB_SHA}"
+            status="$(curl -ksSL --max-time 40 -H 'Cache-Control: no-cache' -A 'Mozilla/5.0' -o /tmp/emo-live.html -w '%{http_code}' "$url")"
+            echo "LIVE_URL=$url HTTP_STATUS=$status HTML_BYTES=$(wc -c < /tmp/emo-live.html)"
+            for needle in emo-catalog-quick-add-js-20261026 emo-catalog-quick-add-20261026 'ul class="products' 'add_to_cart_button'; do
+              if grep -Fq "$needle" /tmp/emo-live.html; then
+                echo "PRESENT $needle"
+              else
+                echo "MISSING $needle"
+              fi
+            done
+          done
+      - name: Validate rendered desktop and mobile quick add buttons
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --silent --prefix /tmp/emo-browser playwright@1.56.1
+          if command -v google-chrome >/dev/null 2>&1; then echo 'Using runner Chrome'; else npx --prefix /tmp/emo-browser playwright install chromium > /tmp/emo-chromium-install.log 2>&1; fi
+          cat > /tmp/emo-browser-check.cjs <<'CHECK_JS'
+          const { chromium } = require('/tmp/emo-browser/node_modules/playwright');
+          (async () => {
+            const browser = await chromium.launch({ headless: true, ...(process.env.CHROME_AVAILABLE === 'yes' ? { channel: 'chrome' } : {}) });
+            let failures = 0;
+            try {
+              for (const [pageName, path] of [['1957', '/tienda/1957/']]) {
+                for (const [device, viewport] of [['desktop', { width: 1440, height: 900 }]]) {
+                  const page = await browser.newPage({ viewport, locale: 'es-ES' });
+                  page.on('pageerror', error => console.log('BROWSER_PAGE_ERROR ' + pageName + ' ' + device + ': ' + error.message));
+                  page.on('response', async response => {
+                    if (response.url().includes('admin-ajax.php') && response.request().method() === 'POST') {
+                      try { const text = await response.text(); console.log('AJAX_DEBUG ' + JSON.stringify({status:response.status(),body:text.slice(0,450)})); }
+                      catch(err) { console.log('AJAX_DEBUG_ERROR ' + err.message); }
+                    }
+                  });
+                  const url = 'https://www.elmercadodeorigen.com' + path + '?quick-add-browser-check=20261026';
+                  try {
+                    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+                    await page.waitForSelector('ul.products li.product', { timeout: 25000 });
+                    try {
+                      await page.waitForSelector('ul.products li.product > a.emo-card-quick-add', { timeout: 4500 });
+                    } catch (_) {}
+                    const data = await page.evaluate(() => {
+                      const cards = [...document.querySelectorAll('ul.products li.product')];
+                      const buttons = [...document.querySelectorAll('ul.products li.product > a.emo-card-quick-add')];
+                      const visible = buttons.filter(el => {
+                        const style = getComputedStyle(el);
+                        const rect = el.getBoundingClientRect();
+                        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0' && rect.width >= 35 && rect.height >= 35;
+                      });
+                      return {
+                        cards: cards.length, buttons: buttons.length, visible: visible.length,
+                        simple: buttons.filter(el => el.classList.contains('product_type_simple')).length,
+                        options: buttons.filter(el => el.classList.contains('product_type_variable')).length,
+                        positioned: visible.filter(el => getComputedStyle(el).position === 'absolute').length,
+                        icons: visible.filter(el => Boolean(el.querySelector('.emo-card-quick-add__symbol'))).length,
+                        pageClasses: document.body.className,
+                        sourceAdd: document.querySelectorAll('ul.products li.product a.add_to_cart_button').length,
+                        sourceVariable: document.querySelectorAll('ul.products li.product a.product_type_variable').length,
+                        sourceAnchorClasses: [...document.querySelectorAll('ul.products li.product a')].slice(0,16).map(a => ({className:a.className,href:a.getAttribute('href')?.slice(0,70)})),
+                        scriptPresent: Boolean(document.querySelector('script#emo-catalog-quick-add-js-20261026'))
+                      };
+                    });
+                    console.log('RENDER_CHECK ' + JSON.stringify({ page: pageName, device, ...data }));
+                    /* Comprobar que las tarjetas que llegan por scroll también
+                       reciben un carrito. No realizar ninguna compra real. */
+                    if (pageName === 'Tienda') {
+                      const beforeCount = data.cards;
+                      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+                      await page.waitForTimeout(3500);
+                      const after = await page.evaluate(() => {
+                        const cards = [...document.querySelectorAll('ul.products li.product')];
+                        const missing = cards.filter(c => c.classList.contains('instock')
+                          && (c.classList.contains('product-type-simple') || c.classList.contains('product-type-variable'))
+                          && c.querySelector('.price') && !c.querySelector(':scope > a.emo-card-quick-add'));
+                        return { total:cards.length, missing:missing.length, lastHasCart:Boolean(cards[cards.length-1]?.querySelector(':scope > a.emo-card-quick-add')) };
+                      });
+                      console.log('SCROLL_CHECK ' + JSON.stringify({device, before:beforeCount,...after}));
+                      if (after.missing > 0) { failures++; console.error('SCROLL_FAILURE ' + device); }
+                    }
+                    const variant = page.locator('ul.products li.product > a.emo-card-quick-add.product_type_variable').first();
+                    if (await variant.count()) {
+                      await variant.click({timeout:8000});
+                      try {
+                        await page.waitForSelector('#emo-quick-cart-modal:not([hidden]) form.variations_form', {timeout:14000});
+                        console.log('VARIANT_MODAL_OK ' + pageName + ' ' + device);
+                        if (pageName === '1957' && device === 'desktop') {
+                          /* Carrito de invitado efímero: no se crea un pedido ni se paga nada. */
+                          await page.evaluate(() => {
+                            window.__emoCartTestEvents = 0;
+                            if (window.jQuery) window.jQuery(document.body).on('added_to_cart.emoTest', () => window.__emoCartTestEvents++);
+                          });
+                          const values = await page.locator('#emo-quick-cart-modal form.variations_form').evaluate(form => {
+                            const raw = form.getAttribute('data-product_variations');
+                            let variation = null;
+                            try { const variants = JSON.parse(raw || '[]'); variation = variants.find(v => v.is_in_stock && v.is_purchasable); } catch (_) {}
+                            return variation?.attributes || {};
+                          });
+                          for (const select of await page.locator('#emo-quick-cart-modal select[name^="attribute_"]').all()) {
+                            const name = await select.getAttribute('name');
+                            const preferred = values[name];
+                            const options = await select.locator('option').evaluateAll(nodes => nodes.map(n => n.value).filter(Boolean));
+                            const selected = preferred && options.includes(preferred) ? preferred : options[0];
+                            if (selected) await select.selectOption(selected);
+                          }
+                          await page.waitForFunction(() => Number(document.querySelector('#emo-quick-cart-modal input[name="variation_id"]')?.value || 0) > 0, {timeout:10000});
+                          await page.locator('#emo-quick-cart-modal .single_add_to_cart_button').click({timeout:10000});
+                          await page.waitForTimeout(2600);
+                          console.log('VARIANT_SUBMIT_STATE ' + JSON.stringify(await page.evaluate(() => ({
+                            hidden: document.querySelector('#emo-quick-cart-modal')?.hidden,
+                            error: document.querySelector('#emo-quick-cart-modal .emo-quick-cart-error')?.textContent,
+                            variation: document.querySelector('#emo-quick-cart-modal input[name="variation_id"]')?.value,
+                            buttonDisabled: document.querySelector('#emo-quick-cart-modal .single_add_to_cart_button')?.disabled,
+                            bodyNotices: [...document.querySelectorAll('.woocommerce-message,.woocommerce-error')].slice(0,3).map(x=>x.textContent.slice(0,100))
+                          }))));
+                          await page.waitForSelector('#emo-quick-cart-modal[hidden]', {timeout:1500});
+                          const events = await page.evaluate(() => window.__emoCartTestEvents || 0);
+                          console.log('VARIANT_ADD_TO_CART_TEST ' + JSON.stringify({events, modalClosed:true}));
+                          if (!events) { failures++; console.error('VARIANT_CART_EVENT_MISSING'); }
+                        } else {
+                          await page.locator('#emo-quick-cart-modal .emo-quick-cart-close').click();
+                        }
+                      } catch(err) {
+                        failures++;
+                        console.error('VARIANT_MODAL_FAILURE ' + pageName + ' ' + device + ': ' + err.message);
+                      }
+                    } else {
+                      console.log('VARIANT_MODAL_SKIPPED no variable product in ' + pageName + ' ' + device);
+                    }
+                    if (data.cards < 1 || data.buttons < 1 || data.visible < 1 || data.icons < 1 || data.positioned < 1) {
+                      failures++;
+                      console.error('RENDER_FAILURE ' + pageName + ' ' + device);
+                    }
+                  } catch (error) {
+                    failures++;
+                    console.error('RENDER_ERROR ' + pageName + ' ' + device + ' ' + error.message);
+                  } finally {
+                    await page.close();
+                  }
+                }
+              }
+            } finally {
+              await browser.close();
+            }
+            if (failures > 0) process.exitCode = 1;
+          })().catch(err => { console.error(err); process.exitCode = 1; });
+          CHECK_JS
+          if command -v google-chrome >/dev/null 2>&1; then export CHROME_AVAILABLE=yes; else export CHROME_AVAILABLE=no; fi
+          node /tmp/emo-browser-check.cjs
+      - name: Read production file status over existing SSH connection
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$STAGING_HOST" ] || [ -z "$STAGING_USER" ] || [ -z "$STAGING_PASSWORD" ] || [ -z "$STAGING_REMOTE_PATH" ]; then
+            echo "MISSING_CONNECTION_SECRETS"
+            exit 0
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          # El secreto de huella del servidor no coincide con la clave ofertada;
+          # reproducir el procedimiento SSH empleado por los despliegues ya existentes.
+          ssh-keyscan -T 15 -p "${STAGING_PORT:-22}" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          export SSHPASS="$STAGING_PASSWORD"
+          port="${STAGING_PORT:-22}"
+          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$port" "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH'" <<'AUDIT_REMOTE'
+          set -eu
+          raw="${1%/}"
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}";; */wp-content) dev="$(dirname "$raw")";; *) dev="$raw";; esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n 1 || true)"
+            [ -n "$cfg" ] || { echo "STAGING_ROOT_UNRESOLVED"; exit 0; }
+            dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] || { echo "PRODUCTION_ROOT_UNRESOLVED"; exit 0; }
+          theme="$prod/wp-content/themes/elmercadodeorigen-child"
+          if [ -f "$theme/inc/catalog-quick-add-20261026.php" ]; then
+            echo "PRODUCTION_MODULE_PRESENT"
+            grep -Fq 'emo-catalog-quick-add-js-20261026' "$theme/inc/catalog-quick-add-20261026.php" && echo "PRODUCTION_MODULE_VALID_MARKER"
+          else
+            echo "PRODUCTION_MODULE_MISSING"
+          fi
+          if grep -Fq 'catalog-quick-add-20261026.php' "$theme/functions.php"; then
+            echo "PRODUCTION_MODULE_REGISTERED"
+          else
+            echo "PRODUCTION_MODULE_NOT_REGISTERED"
+          fi
+          AUDIT_REMOTE
