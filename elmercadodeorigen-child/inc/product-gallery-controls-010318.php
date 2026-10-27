@@ -67,6 +67,47 @@ add_action(
 			}
 		}());
 		</script>
+		<script id="elmercado-product-gallery-resize-20261027">
+		(function () {
+			'use strict';
+			var frame = 0;
+			function resizeCarousels() {
+				frame = 0;
+				var galleries = document.querySelectorAll(
+					'.product-images-container.flickity-enabled, .product-thumbnail-images-container.flickity-enabled'
+				);
+				galleries.forEach(function (gallery) {
+					var instance = window.Flickity && typeof window.Flickity.data === 'function'
+						? window.Flickity.data(gallery) : null;
+					if (!instance && window.jQuery) {
+						instance = window.jQuery(gallery).data('flickity');
+					}
+					if (instance && typeof instance.resize === 'function') {
+						instance.resize();
+					}
+				});
+			}
+			function scheduleResize() {
+				if (frame || typeof window.requestAnimationFrame !== 'function') { return; }
+				frame = window.requestAnimationFrame(resizeCarousels);
+			}
+			// Images may arrive after Flickity measures the initial viewport.
+			// A load listener in capture phase also covers native lazy loading.
+			document.addEventListener('load', function (event) {
+				var target = event.target;
+				if (target && target.tagName === 'IMG' && target.closest &&
+					target.closest('.product-gallery')) {
+					scheduleResize();
+				}
+			}, true);
+			window.addEventListener('load', scheduleResize, { once: true });
+			if (document.readyState === 'loading') {
+				document.addEventListener('DOMContentLoaded', scheduleResize, { once: true });
+			} else {
+				scheduleResize();
+			}
+		}());
+		</script>
 		<?php
 	},
 	99

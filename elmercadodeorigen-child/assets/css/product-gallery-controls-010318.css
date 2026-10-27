@@ -59,3 +59,71 @@ body.single-product .pswp .pswp__top-bar > .pswp__button:focus-visible {
     min-width:80px!important;padding:0 9px!important;font-size:13px!important;
   }
 }
+
+/*
+ * Woostify/Flickity gallery: stable, complete thumbnails without focus rings
+ * around the entire strip. The active thumbnail gets the only selection border.
+ * Keeping thumbnail geometry explicit also avoids Flickity measuring a
+ * collapsed viewport while lazy-loaded images are still arriving.
+ */
+body.single-product .product-thumbnail-images-container .thumbnail-item {
+  width: 76px;
+  max-width: 76px;
+  height: 76px;
+  margin-right: 10px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-sizing: border-box;
+  background: #f7f6f2;
+}
+body.single-product .product-thumbnail-images-container .thumbnail-item img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+  object-position: center;
+  box-sizing: border-box;
+  background: #f7f6f2;
+  border: 2px solid transparent;
+  border-radius: 12px;
+}
+body.single-product .product-thumbnail-images-container .thumbnail-item.is-selected.is-nav-selected img {
+  border-color: #236a54;
+}
+body.single-product .product-thumbnail-images-container.flickity-enabled .flickity-viewport {
+  min-height: 76px;
+}
+/* A tap focuses the Flickity strip itself: do not draw a large outline on it.
+   Keyboard focus on the actual thumbnail remains visible. */
+body.single-product .product-thumbnail-images:focus:not(:focus-visible),
+body.single-product .product-thumbnail-images-container:focus:not(:focus-visible),
+body.single-product .product-thumbnail-images-container .flickity-viewport:focus:not(:focus-visible) {
+  outline: none !important;
+  box-shadow: none !important;
+}
+body.single-product .product-thumbnail-images-container .thumbnail-item:focus-visible,
+body.single-product .product-thumbnail-images-container .thumbnail-item a:focus-visible {
+  outline: 2px solid #236a54 !important;
+  outline-offset: 2px;
+}
+
+/* A tall 4:5 frame creates extra empty space around square product images on
+   phones. Use a stable square canvas with contain so nothing is cropped. */
+@media (max-width: 767px) {
+  body.single-product.elmercado-child-theme .product-images-container .image-item > a {
+    width: 100%;
+    min-height: 0 !important;
+    aspect-ratio: 1 / 1 !important;
+    padding: 0 !important;
+    overflow: hidden;
+    place-items: center;
+  }
+  body.single-product.elmercado-child-theme .product-images-container .image-item img {
+    width: 100% !important;
+    height: 100% !important;
+    max-height: none !important;
+    object-fit: contain !important;
+    object-position: center !important;
+  }
+}
