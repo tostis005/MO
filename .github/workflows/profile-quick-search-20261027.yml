@@ -16,9 +16,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          home="$(curl -sSL --max-time 30 'https://www.elmercadodeorigen.com/?search_asset_probe=20261027')"
-          printf '%s' "$home" | grep -Eo 'quick-search-20261021[.](js|css)[^"< ]{0,130}' | head -n 4 || true
-          printf '%s' "$home" | grep -Eq 'quick-search-20261021[.]js[^"< ]*20261027[.]3' || { echo 'LIVE_SEARCH_JS_VERSION_MISMATCH'; exit 2; }
+          curl -fsSL --max-time 30 'https://www.elmercadodeorigen.com/?search_asset_probe=20261027' -o /tmp/emdo-search-assets-home.html
+          grep -Eo 'quick-search-20261021[.](js|css)[^"< ]{0,130}' /tmp/emdo-search-assets-home.html | head -n 4 || true
+          grep -Eq 'quick-search-20261021[.]js[^"< ]*20261027[.]3' /tmp/emdo-search-assets-home.html || { echo 'LIVE_SEARCH_JS_VERSION_MISMATCH'; exit 2; }
           echo 'LIVE_SEARCH_JS_VERSION_OK'
           site='https://www.elmercadodeorigen.com/wp-json/elmercado/v1/quick-search'
           for term in ca cafe jamon aceite mango queso; do
