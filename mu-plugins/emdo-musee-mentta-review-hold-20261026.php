@@ -1,12 +1,17 @@
 <?php
 /**
  * Plugin Name: EMDO - Musée packs in admin review
- * Description: Blocks these seven packs from Mentta and grants a true frontend preview only to WordPress administrators.
- * Version: 1.0.0
+ * Description: Protects the four unapproved Musée packs; three approved packs are exported to Mentta only, with public exclusion enforced independently.
+ * Version: 1.1.0
  */
 if (!defined('ABSPATH')) exit;
+/* Owner approved 21814, 21818 and 21820 for Mentta on 2026-10-27.
+   Only the four NOT approved are blocked from the Mentta endpoint. */
 function emdo_musee_review_ids() {
-    return array(21814,21816,21818,21820,21822,21824,21826);
+    return array(21816,21822,21824,21826);
+}
+function emdo_musee_approved_mentta_ids() {
+    return array(21814,21818,21820);
 }
 function emdo_musee_review_preview_allowed() {
     if (is_admin() || !is_user_logged_in() || !current_user_can('manage_options')) return false;
@@ -31,7 +36,7 @@ add_filter('rest_pre_dispatch',static function($value,$server,$request){
         return new WP_Error('emdo_musee_review_pending','Pack pendiente de revisión; exportación a Mentta detenida.',array('status'=>404));
     return $value;
 },9,3);
-/* Strip all seven IDs from full or paginated Mentta exports, regardless of serializer's IsVisible flag. */
+/* Strip only the four remaining unapproved IDs from paginated Mentta exports. */
 add_filter('rest_post_dispatch',static function($response,$server,$request) {
     if(!($response instanceof WP_REST_Response) || !($request instanceof WP_REST_Request)
         || rtrim($request->get_route(),'/')!=='/mentta_marketplace/products') return $response;
