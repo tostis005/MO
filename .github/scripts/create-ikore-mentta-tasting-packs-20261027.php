@@ -210,6 +210,18 @@ if ($mode==='apply') {
    $p->update_meta_data('_emdo_ikore_packs_component_gross_pvp',number_format($pack['sum'],2,'.',''));
    $p->update_meta_data('_emdo_ikore_packs_extra_gross_pvp','6.00');
    $p->update_meta_data('_emdo_ikore_packs_vendor_base_gross_estimate',number_format($pack['sum']*.85,2,'.',''));
+   // A 15% vendor share on the increased pack PVP would cancel out the Mentta commission.
+   // Preserve Ikore's agreed 85% share of the standalone coffees, NOT the extra EUR 6.
+   global $WCFMmp;
+   if (!isset($WCFMmp) || !isset($WCFMmp->wcfmmp_product) || !isset($WCFMmp->wcfmmp_commission)) throw new RuntimeException('WCFM commission engine missing');
+   $target_vendor_net=round(($pack['sum']/1.10)*.85,2);
+   $pack_net=$pack['price']/1.10;
+   $admin_fee_mode=(bool)apply_filters('wcfm_is_admin_fee_mode',false);
+   $commission_fixed=$admin_fee_mode?round($pack_net-$target_vendor_net,2):$target_vendor_net;
+   $p->update_meta_data('_wcfmmp_commission',[
+     'commission_mode'=>'fixed','commission_percent'=>'','commission_fixed'=>number_format($commission_fixed,2,'.','')
+   ]);
+   $p->update_meta_data('_emdo_ikore_expected_vendor_payout_ex_vat',number_format($target_vendor_net,2,'.',''));
    $p->update_meta_data('_yoast_wpseo_meta-robots-noindex','1');
    $p->update_meta_data('_yoast_wpseo_title',$pack['name']);
    $p->update_meta_data('_yoast_wpseo_metadesc',mb_substr($pack['intro'],0,155));
@@ -217,6 +229,11 @@ if ($mode==='apply') {
    if(!$pid)throw new RuntimeException('Product save failed '.$key);
    if(!$pack['pid'])$created[]=$pid;
    wp_update_post(['ID'=>$pid,'post_author'=>$vid]);
+   $commission_rule=$WCFMmp->wcfmmp_product->wcfmmp_get_product_commission_rule($pid,0,$vid);
+   $item_net=(float)wc_get_price_excluding_tax(wc_get_product($pid));
+   $computed_payout=(float)$WCFMmp->wcfmmp_commission->wcfmmp_generate_commission_cost($item_net,$commission_rule);
+   if(($commission_rule['mode']??'')!=='fixed' || abs($computed_payout-$target_vendor_net)>.035)
+     throw new RuntimeException('WCFM vendor payout mismatch '.$key.' expected '.$target_vendor_net.' actual '.$computed_payout.' mode '.($commission_rule['mode']??'?'));
    $ids=emdo_mentta_exclusive_ids();if(!in_array($pid,$ids,true)){$ids[]=$pid;update_option('emdo_mentta_exclusive_ids',array_values(array_unique($ids)),false);}
    if(!in_array($pid,emdo_mentta_exclusive_ids(),true))throw new RuntimeException('Mentta public guard save failed '.$pid);
    $cover=ikore_pack_cover($key,$pack,$pid,$sources);
@@ -258,7 +275,9 @@ if ($mode==='apply' || $mode==='verify') {
   }
   echo 'IKORE_PACK_VERIFIED '.wp_json_encode(['id'=>$id,'name'=>$p->get_name(),'pvp_inc_vat'=>round(wc_get_price_including_tax($p),2),
    'mentor_visible'=>$entry['IsVisible'],'public_guard'=>true,'photo_count'=>count($pack['items']),'category_ids'=>$entry['Categories'],
-   'source_available'=>$pack['available']],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+   'source_available'=>$pack['available'],
+   'expected_vendor_payout_net'=>(float)get_post_meta($id,'_emdo_ikore_expected_vendor_payout_ex_vat',true)],
+   JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
  }
  echo 'IKORE_THREE_MENTTA_PACKS_VALIDATED'."\n";
 }
