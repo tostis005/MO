@@ -231,7 +231,7 @@ if($mode==='apply'){
     wp_update_post(['ID'=>$variationId,'post_author'=>$GLOBALS['mdo_ikore_var_vendor_id']]);
    }
    WC_Product_Variable::sync($pid);
-   $cover=ikore_var_cover($key,$pack,$pid,$GLOBALS['mdo_ikore_var_source_records']);
+   $cover=ikore_var_cover($key,$pack,$GLOBALS['mdo_ikore_var_source_records'],$pid);
    $p=wc_get_product($pid);$p->set_image_id($cover);$p->save();
    wc_delete_product_transients($pid);clean_post_cache($pid);
    echo 'IKORE_VAR_APPLIED '.wp_json_encode(['id'=>$pid,'price'=>$pack['gross'],'variations'=>count($grinds),'cover_id'=>$cover],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
