@@ -3,8 +3,8 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/workflows/upgrade-ikore-mentta-variations-variations-20261027.yml'
-      - '.github/scripts/upgrade-ikore-mentta-variations-variations-20261027.php'
+      - '.github/workflows/upgrade-ikore-mentta-packs-variations-20261027.yml'
+      - '.github/scripts/upgrade-ikore-mentta-packs-variations-20261027.php'
   workflow_dispatch:
 permissions:
   contents: read
@@ -25,7 +25,7 @@ jobs:
       - name: Lint publication script
         run: |
           set -euo pipefail
-          php -l .github/scripts/upgrade-ikore-mentta-variations-variations-20261027.php
+          php -l .github/scripts/upgrade-ikore-mentta-packs-variations-20261027.php
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
       - name: Convert 3 production IDs to seven grind variations and verify Mentta feed
         env:
@@ -52,7 +52,7 @@ jobs:
           ')"
           : "${PROD_PATH:?production path not found}"
           RUN="$GITHUB_RUN_ID"
-          sshpass -e scp "${SCP[@]}" .github/scripts/upgrade-ikore-mentta-variations-variations-20261027.php "$TARGET:/tmp/ikore-mentta-variations-$RUN.php"
+          sshpass -e scp "${SCP[@]}" .github/scripts/upgrade-ikore-mentta-packs-variations-20261027.php "$TARGET:/tmp/ikore-mentta-variations-$RUN.php"
           sshpass -e ssh "${SSH[@]}" "$TARGET" "bash -s -- '$PROD_PATH' '$RUN'" <<'REMOTE'
           set -euo pipefail
           SITE="$1"; RUN="$2"
