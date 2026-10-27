@@ -72,6 +72,8 @@ jobs:
               echo 'ROLLBACK: restoring production Nginx, PHP cache, and removing new service'
               cp -p "$BACKUP/vhost_nginx.conf" "$VHOST"
               cp -p "$BACKUP/advanced-cache.php" "$CACHE"
+              nginx -t && systemctl reload nginx || true
+              sleep 4
               systemctl stop emdo-filter-gate.service >/dev/null 2>&1 || true
               systemctl disable emdo-filter-gate.service >/dev/null 2>&1 || true
               rm -f "$SERVICE" "$BINARY" "$GLOBAL"
@@ -140,8 +142,7 @@ jobs:
           s=open(p,encoding='utf8').read()
           before='if ($emdo_geofacet_reject) { return 429; }'
           assert s.count(before)==1
-          s=s.replace(before,'if ($emdo_geo_reject_outside_gate) { return 458; }',1)
-          s=s.replace('if ($emdo_vendor_facet_bot_20261027) { return 429; }','if ($emdo_vendor_facet_bot_20261027) { return 459; }')
+          s=s.replace(before,'if ($emdo_geo_reject_outside_gate) { return 429; }',1)
           routes=[
            '/tienda/hidalgo-de-la-jara/', '/en/tienda/hidalgo-de-la-jara/',
            '/en/store/hidalgo-de-la-jara/', '/tienda/montjam/',
@@ -224,11 +225,17 @@ jobs:
           echo '=== VALIDATE BEFORE RELOAD ==='
           nginx -t
           systemctl reload nginx
+          sleep 4
           echo '=== VERIFY INVALID DIRECT VISIT REDIRECTS TO UNFILTERED PRODUCER ==='
           BASE=https://www.elmercadodeorigen.com
           FILTER='/tienda/hidalgo-de-la-jara/?emo_vendor_cat=jamones-paletas&filter_calidad=bellota-100-iberico&filter_preparacion=deshuesado'
           STATUS=$(curl -ksS --connect-timeout 3 --max-time 8 -D /tmp/emdo-filter-direct-h -o /dev/null -w '%{http_code}' "$BASE$FILTER")
           echo "DIRECT_HTTP=$STATUS"
+          if [ "$STATUS" != 302 ]; then
+            sleep 3
+            STATUS=$(curl -ksS --connect-timeout 3 --max-time 8 -D /tmp/emdo-filter-direct-h -o /dev/null -w '%{http_code}' "$BASE$FILTER")
+            echo "DIRECT_HTTP_AFTER_RETRY=$STATUS"
+          fi
           sed -n '1,25p' /tmp/emdo-filter-direct-h
           if [ "$STATUS" != 302 ]; then
             echo '=== GATE ROUTING TRACE ==='; tail -n 12 /tmp/emdo-filtergate-debug.log || true
