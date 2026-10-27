@@ -205,6 +205,7 @@ if ($mode==='apply') {
    $p->set_gallery_image_ids(array_values(array_column($pack['lines'],'image')));
    $p->update_meta_data('_emdo_mentta_only','yes');
    $p->update_meta_data('_emdo_ikore_mentta_pack_key',$key);
+   $p->update_meta_data('_emdo_mentta_pack_key','ikore-'.$key); // Existing Mentta component stock guard
    $p->update_meta_data('_emdo_mentta_pack_lines',$pack['lines']);
    $p->update_meta_data('_emdo_ikore_packs_component_gross_pvp',number_format($pack['sum'],2,'.',''));
    $p->update_meta_data('_emdo_ikore_packs_extra_gross_pvp','6.00');
