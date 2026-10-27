@@ -1,12 +1,7 @@
 name: Pause Musée Gourmet Mentta imports and enable admin previews
+# Emergency re-pause remains manually available; it must never re-draft
+# three approved packs automatically when review policy is edited.
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/pause-musee-mentta-admin-preview-20261026.yml'
-      - '.github/scripts/pause-musee-mentta-packs-admin-preview-20261026.php'
-      - 'mu-plugins/emdo-musee-mentta-review-hold-20261026.php'
-      - 'mu-plugins/emdo-mentta-exclusive-products.php'
   workflow_dispatch:
 permissions:
   contents: read
