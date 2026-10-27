@@ -4,6 +4,9 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/audit-quick-search-browser-20261027.yml'
+      - 'elmercadodeorigen-child/assets/css/quick-search-20261021.css'
+      - 'elmercadodeorigen-child/assets/js/quick-search-20261021.js'
+      - 'mu-plugins/mdo-quick-search-20261021.php'
   workflow_dispatch:
 
 permissions:

@@ -1,3 +1,9 @@
+/* Mantener el diálogo activo por encima del aviso flotante de cookies en móvil.
+   Al cerrar la búsqueda, el aviso de consentimiento permanece disponible. */
+body.elmercado-child-theme .site-dialog-search.woostify-search-wrap {
+  z-index: 2147483000 !important;
+}
+
 /* Sugerencias del buscador nativo de Woostify · 2026-10-21 */
 body.elmercado-child-theme .site-dialog-search .dialog-search-content .search-form,
 body.elmercado-child-theme .site-dialog-search .dialog-search-content .woocommerce-product-search {

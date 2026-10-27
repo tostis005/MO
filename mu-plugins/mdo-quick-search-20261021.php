@@ -257,7 +257,7 @@ add_action(
 			'elmercado-quick-search-20261021',
 			$base . '/assets/css/quick-search-20261021.css',
 			array(),
-			'20261027.1'
+			'20261027.2'
 		);
 		wp_enqueue_script(
 			'elmercado-quick-search-20261021',
