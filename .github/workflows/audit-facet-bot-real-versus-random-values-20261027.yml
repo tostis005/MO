@@ -1,0 +1,123 @@
+name: Audit bot facet parameter realism and mitigation effect 2026-10-27
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/audit-facet-bot-real-versus-random-values-20261027.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install SSH
+        run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Read-only analysis of existing filter requests against real Woo taxonomy values
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set +e
+          echo "=== HOST CURRENT ==="
+          date -u
+          uptime
+          echo "=== FACET TAXONOMY VALIDITY + ATTACK PARAMETER COMBINATIONS ==="
+          python3 - <<'PY'
+          import os,re,datetime,collections,json,subprocess,urllib.parse,hashlib,statistics
+          root='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          command=['wp','--path='+root,'db','query',"SELECT tt.taxonomy,t.slug FROM wp_terms AS t JOIN wp_term_taxonomy AS tt ON t.term_id=tt.term_id WHERE tt.taxonomy LIKE 'pa_%' OR tt.taxonomy='product_cat'",'--skip-column-names']
+          try:
+            result=subprocess.run(command,capture_output=True,text=True,timeout=40)
+            print('TAXONOMY_DB',json.dumps({'status':result.returncode,'number_of_rows':len(result.stdout.splitlines()),'error_type':re.sub(r'[^\w -]','',result.stderr[:90])},ensure_ascii=False))
+            slug_sets=collections.defaultdict(set)
+            for line in result.stdout.splitlines():
+              fields=line.split('\t')
+              if len(fields)>=2:slug_sets[fields[0]].add(fields[1].lower())
+            print('TAXONOMIES',json.dumps({k:len(v) for k,v in sorted(slug_sets.items())},ensure_ascii=False))
+          except Exception as e:
+            slug_sets=collections.defaultdict(set)
+            print('TAXONOMY_DB_ERROR',type(e).__name__)
+          path='/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log'
+          utc=datetime.timezone.utc
+          now=datetime.datetime.now(utc)
+          groups=collections.defaultdict(lambda:dict(n=0,ips=collections.Counter(),methods=collections.Counter(),statuses=collections.Counter(),params=collections.Counter(),values=collections.Counter(),valid=collections.Counter(),distinct=set(),categories=collections.Counter(),category_values=collections.Counter(),ref=collections.Counter(),filtercount=collections.Counter(),ua=collections.Counter(),requests_with_args=0))
+          per_minute=collections.Counter()
+          with open(path,'rb') as f:
+            f.seek(max(0,os.path.getsize(path)-32000000))
+            for raw in f:
+              m=re.search(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"([^"]+)"\s+(\d{3})\s+\S+\s+"([^"]*)"\s+"([^"]*)"',raw.decode('utf8','replace'))
+              if not m:continue
+              ip,ds,req,status,referer,ua=m.groups()
+              try:t=datetime.datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(utc)
+              except:continue
+              if t<datetime.datetime(2026,10,27,7,45,tzinfo=utc):continue
+              if t>now:continue
+              rp=req.split()
+              if len(rp)<2:continue
+              method,url=rp[:2]
+              p=url.partition('?')[0]
+              if 'hidalgo-de-la-jara' not in p and 'montjam' not in p:continue
+              if '/reviews' in p:continue
+              grp='before' if t<datetime.datetime(2026,10,27,8,21,36,tzinfo=utc) else 'after'
+              vendor='hidalgo' if 'hidalgo-de-la-jara' in p else 'montjam'
+              bucket=groups[(grp,vendor)]
+              bucket['n']+=1;bucket['statuses'][status]+=1
+              bucket['ips'][hashlib.sha256(ip.encode()).hexdigest()[:10]]+=1
+              bucket['methods'][method]+=1
+              bucket['ref']['internal' if 'elmercadodeorigen.com' in referer else ('none' if referer=='-' else 'external')]+=1
+              if re.search('bot|spider|crawler|curl|python|semrush|ahrefs',ua,re.I): bucket['ua']['namedbot']+=1
+              elif 'Mozilla/5.0' in ua: bucket['ua']['browser_style']+=1
+              else:bucket['ua']['other']+=1
+              key_q=url.partition('?')[2]
+              if key_q:bucket['requests_with_args']+=1;bucket['distinct'].add(hashlib.sha256(key_q.encode()).hexdigest())
+              q=urllib.parse.parse_qsl(key_q,keep_blank_values=True)
+              count=sum(1 for k,v in q if k.startswith('filter_'))
+              bucket['filtercount'][count]+=1
+              for key,v in q:
+                if key=='emo_vendor_cat':
+                  bucket['categories'][v[:70]]+=1
+                  continue
+                if not key.startswith('filter_'):continue
+                bucket['params'][key]+=1
+                tax='pa_'+key[7:]
+                for value in v.split(','):
+                  value=urllib.parse.unquote(value).strip().lower()
+                  if len(value)>90: value=value[:90]
+                  if not value:continue
+                  bucket['values'][(key,value)]+=1
+                  if not slug_sets:bucket['valid']['not_verified']+=1
+                  elif tax not in slug_sets:bucket['valid']['taxonomy_missing']+=1
+                  elif value in slug_sets[tax]:bucket['valid']['valid_slug']+=1
+                  else:bucket['valid']['invalid_slug']+=1
+              per_minute[(grp,t.strftime('%H:%M'))]+=1
+          report={}
+          for (grp,vendor),a in groups.items():
+            report[grp+'_'+vendor]={
+              'requests':a['n'],
+              'ip_count':len(a['ips']),
+              'max_requests_one_ip':max(a['ips'].values()) if a['ips'] else 0,
+              'statuses':a['statuses'],
+              'user_agent_claims':a['ua'],
+              'referer_types':a['ref'],
+              'query_requests':a['requests_with_args'],
+              'unique_query_strings':len(a['distinct']),
+              'filter_argument_count_per_request':a['filtercount'],
+              'filter_arguments':a['params'].most_common(16),
+              'term_validity':a['valid'],
+              'sample_most_requested_key_values':[(k,v,num) for (k,v),num in a['values'].most_common(25)],
+              'vendor_category_values':a['categories'].most_common(12),
+            }
+          print('FACET_REPORT',json.dumps(report,ensure_ascii=False))
+          print('REQUESTS_BY_MINUTE',json.dumps([(k[0],k[1],v) for k,v in sorted(per_minute.items())[-65:]]))
+          PY
+          echo "=== PHP CURRENT ==="
+          ps -eo stat=,args= | awk '/php-fpm: pool elmercadodeorigen.com/ {n++;if($1~/R/) r++} END {print "FPM_WORKERS="n,"RUNNING="r}'
+          echo "=== NGINX UP ==="
+          nginx -t 2>&1 | tail -n 2
+          REMOTE
