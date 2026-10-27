@@ -1,0 +1,44 @@
+name: Inspect Nginx live vhost and anti-facet routing 2026-10-27
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/inspect-nginx-guard-live-routing-20261027.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Inspect generated nginx vhosts, map, and TLS routing (read-only)
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o ConnectTimeout=12 -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set +e
+          VHOST=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          GENERATED=/var/www/vhosts/system/elmercadodeorigen.com/conf/last_nginx.conf
+          echo === TIME STATUS ===
+          date -u;uptime
+          echo === ORIGINAL VHOST ROUTING CONTENT ===
+          grep -nE 'EMDO|if |return |location |limit_req|include |hot_|proxy_pass|rate|map |try_files' "$VHOST" | tail -n 120
+          echo === GENERATED INCLUDES ===
+          grep -nE 'server_name|listen |include |vhost_nginx|location |proxy_pass|return ' "$GENERATED" | head -n 140 | sed -E 's@https://[^/"]+:7081@https://[backend]:7081@g'
+          echo === GLOBAL GUARD DIRECTIVES ===
+          for c in /etc/nginx/conf.d/*emdo*.conf; do [ -f "$c" ] || continue; echo "$c"; grep -nE '^map |^limit_req_zone|^    ~|^    default ' "$c" | head -n 25; done
+          echo === DNS ===
+          getent ahostsv4 www.elmercadodeorigen.com | head -n 3
+          echo === TEST STATIC EXISTING EARLY LIMIT BEHAVIOR ===
+          for u in \
+            'https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/?filter_alimentacion=bellota&filter_preparacion=test&filter_calidad=test' \
+            'https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/' \
+            'https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/'; do
+            curl -sSk --connect-timeout 2 --max-time 5 -o /dev/null -w 'probe_http=%{http_code} ttfb=%{time_starttransfer}s\n' "$u" || true
+          done
+          echo === END ===
+          REMOTE
