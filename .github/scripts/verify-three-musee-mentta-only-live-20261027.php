@@ -22,6 +22,18 @@ foreach($approved as $id=>$expectedPrice){
     get_post_meta($id,'_emdo_musee_awaiting_admin_approval',true)!=='no'||!$p->get_image_id()){
   fwrite(STDERR,"APPROVED_PACK_BAD_STATE $id\n");exit(6);
  }
+ // In WooCommerce "Visible en la tienda" must be explicitly VISIBLE, not hidden,
+ // catalog-only, or search-only. Woo persists this in the product_visibility taxonomy.
+ $display=$p->get_catalog_visibility('edit');
+ $allVisTerms=wp_get_object_terms($id,'product_visibility',['fields'=>'slugs']);
+ if(is_wp_error($allVisTerms)){fwrite(STDERR,"VISIBILITY_TERMS_UNREADABLE $id\n");exit(14);}
+ $exclusions=array_values(array_intersect((array)$allVisTerms,['exclude-from-catalog','exclude-from-search']));
+ if($display!=='visible' || $exclusions){
+  fwrite(STDERR,'WOO_VISIBILITY_NOT_FULLY_VISIBLE '.wp_json_encode([
+   'id'=>$id,'get_catalog_visibility'=>$display,'visibility_terms'=>$allVisTerms,
+   'excluded_taxonomy_terms'=>$exclusions],JSON_UNESCAPED_UNICODE)."\n");
+  exit(15);
+ }
  $cats=array_map('intval',$p->get_category_ids());
  if(!in_array((int)$root->term_id,$cats,true)||!in_array((int)$child->term_id,$cats,true)){
   fwrite(STDERR,"CATEGORIES_MISSING $id\n");exit(7);
@@ -47,6 +59,8 @@ foreach($approved as $id=>$expectedPrice){
   fwrite(STDERR,"MENTTA_EXPORT_INCOMPLETE $id\n");exit(11);
  }
  $report[]=['id'=>$id,'title'=>$p->get_name(),'price'=>$p->get_regular_price('edit'),
+  'woocommerce_catalog_visibility'=>$display,
+  'woocommerce_visibility_exclusions'=>$exclusions,
   'mentta_visible'=>true,'mentta_categories'=>array_map('intval',$e['Categories']),
   'public_store_api'=>'blocked_404','public_shop_exclusion_option'=>true,
   'gallery_images'=>count($p->get_gallery_image_ids()),'cover_attachment_id'=>$p->get_image_id()];
