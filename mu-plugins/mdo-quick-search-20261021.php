@@ -139,6 +139,73 @@ function elmercado_quick_search_query_args_20261021( string $term, array $tax_qu
 	);
 }
 
+
+/**
+ * Respuesta anónima con invalidación de catálogo. Almacena como máximo
+ * 4096 buckets para que las consultas aleatorias no llenen el disco.
+ * El lector de advanced-cache.php solo acepta cookies no personales.
+ */
+function elmercado_quick_search_early_store_20261027( string $term, string $lang, array $products ): void {
+	if ( is_user_logged_in() || count( $products ) > 6 ) {
+		return;
+	}
+
+	// Usar solo términos cuyos bytes significan lo mismo antes/después del sanitizado REST.
+	if ( 1 !== preg_match( '/^[\p{L}\p{N} \x27\-]{2,50}$/u', $term ) ) {
+		return;
+	}
+
+	$dir = WP_CONTENT_DIR . '/uploads/elmercado-quick-search-cache-v1';
+	if ( ! is_dir( $dir ) && ! wp_mkdir_p( $dir ) ) {
+		return;
+	}
+	$epoch_file = $dir . '/epoch.txt';
+	if ( ! is_file( $epoch_file ) ) {
+		@file_put_contents( $epoch_file, '1', LOCK_EX );
+	}
+	$epoch = trim( (string) @file_get_contents( $epoch_file ) );
+	if ( '' === $epoch ) {
+		return;
+	}
+
+	$normalized = function_exists( 'mb_strtolower' ) ? mb_strtolower( $term, 'UTF-8' ) : strtolower( $term );
+	$key = hash( 'sha256', $lang . '|' . $normalized );
+	$json = wp_json_encode(
+		array(
+			'key'      => $key,
+			'epoch'    => $epoch,
+			'products' => $products,
+		),
+		JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+	);
+	if ( ! is_string( $json ) || strlen( $json ) > 45000 ) {
+		return;
+	}
+	$file = $dir . '/b-' . substr( $key, 0, 3 ) . '.json';
+	$tmp  = $file . '.' . getmypid() . '.tmp';
+	if ( strlen( $json ) === @file_put_contents( $tmp, $json, LOCK_EX ) ) {
+		@chmod( $tmp, 0644 );
+		@rename( $tmp, $file );
+	} else {
+		@unlink( $tmp );
+	}
+}
+
+/** Cuando cambian productos, invalidar las sugerencias sin recorrer ficheros. */
+function elmercado_quick_search_early_invalidate_20261027(): void {
+	$dir = WP_CONTENT_DIR . '/uploads/elmercado-quick-search-cache-v1';
+	if ( is_dir( $dir ) ) {
+		@file_put_contents( $dir . '/epoch.txt', sprintf( '%.6F', microtime( true ) ), LOCK_EX );
+	}
+}
+add_action( 'save_post_product', 'elmercado_quick_search_early_invalidate_20261027', 10 );
+add_action( 'save_post_product_variation', 'elmercado_quick_search_early_invalidate_20261027', 10 );
+add_action( 'woocommerce_product_set_stock', 'elmercado_quick_search_early_invalidate_20261027', 10 );
+add_action( 'woocommerce_variation_set_stock', 'elmercado_quick_search_early_invalidate_20261027', 10 );
+add_action( 'woocommerce_product_set_stock_status', 'elmercado_quick_search_early_invalidate_20261027', 10 );
+add_action( 'woocommerce_variation_set_stock_status', 'elmercado_quick_search_early_invalidate_20261027', 10 );
+add_action( 'woocommerce_update_product', 'elmercado_quick_search_early_invalidate_20261027', 10 );
+
 /**
  * Responde exclusivamente con productos visibles, publicados y con existencias.
  * Cachea únicamente IDs para no congelar precios ni disponibilidad.
@@ -237,8 +304,11 @@ function elmercado_quick_search_20261021( WP_REST_Request $request ): WP_REST_Re
 		}
 	}
 
+	elmercado_quick_search_early_store_20261027( $term, $lang, $products );
+
 	$response = rest_ensure_response( array( 'products' => $products ) );
 	$response->header( 'X-Robots-Tag', 'noindex, nofollow' );
+	$response->header( 'X-EMDO-Quick-Search-Early-Cache', 'ORIGIN' );
 	return $response;
 }
 

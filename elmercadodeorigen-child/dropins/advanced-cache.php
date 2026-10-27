@@ -27,9 +27,6 @@ if ( 'GET' !== $method ) {
 }
 
 $query = isset( $_SERVER['QUERY_STRING'] ) ? (string) $_SERVER['QUERY_STRING'] : '';
-if ( '' !== $query ) {
-	return;
-}
 
 // Cookies analíticas/consentimiento observadas no cambian el HTML editorial.
 // Cualquier cookie desconocida o de estado real mantiene el bypass seguro.
@@ -83,6 +80,78 @@ $request_uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI
 $path        = parse_url( $request_uri, PHP_URL_PATH );
 $path        = is_string( $path ) && '' !== $path ? '/' . ltrim( $path, '/' ) : '/';
 $path        = '/' !== $path ? rtrim( $path, '/' ) . '/' : '/';
+
+
+/**
+ * Cache temprana y limitada para sugerencias anónimas de productos.
+ *
+ * El REST completo arranca WordPress y WooCommerce, incluso cuando los IDs
+ * ya están cacheados. Las respuestas recién verificadas (máximo 25 segundos)
+ * se guardan en ficheros con invalidación de cambios de catálogo.
+ *
+ * Los controles de método, cookies y host se han ejecutado antes de llegar
+ * aquí. Cualquier búsqueda fuera del contrato vuelve al REST original.
+ * Máximo 4096 buckets para impedir crecimiento ilimitado frente a bots.
+ */
+if ( '' !== $query && '/wp-json/elmercado/v1/quick-search/' === $path ) {
+	$quick_params = array();
+	parse_str( $query, $quick_params );
+	$quick_allowed = is_array( $quick_params )
+		&& isset( $quick_params['q'] )
+		&& is_string( $quick_params['q'] )
+		&& count( array_diff( array_keys( $quick_params ), array( 'q', 'lang' ) ) ) === 0
+		&& ( ! isset( $quick_params['lang'] ) || is_string( $quick_params['lang'] ) );
+
+	if ( $quick_allowed ) {
+		$quick_term = trim( (string) preg_replace( '/\s+/u', ' ', $quick_params['q'] ) );
+		$quick_lang = isset( $quick_params['lang'] ) && 'en' === $quick_params['lang'] ? 'en' : 'es';
+		// No normalizar HTML/códigos de control antes de que WordPress los sanee.
+		if ( 1 === preg_match( '/^[\p{L}\p{N} \x27\-]{2,50}$/u', $quick_term ) ) {
+			$quick_lower = function_exists( 'mb_strtolower' ) ? mb_strtolower( $quick_term, 'UTF-8' ) : strtolower( $quick_term );
+			$quick_key   = hash( 'sha256', $quick_lang . '|' . $quick_lower );
+			$quick_dir   = __DIR__ . '/uploads/elmercado-quick-search-cache-v1';
+			$quick_file  = $quick_dir . '/b-' . substr( $quick_key, 0, 3 ) . '.json';
+			$quick_epoch = $quick_dir . '/epoch.txt';
+			$quick_time  = @filemtime( $quick_file );
+			$quick_age   = false === $quick_time ? PHP_INT_MAX : max( 0, time() - (int) $quick_time );
+
+			if ( $quick_age < 25 && is_readable( $quick_epoch ) && is_readable( $quick_file ) ) {
+				$quick_epoch_value = trim( (string) @file_get_contents( $quick_epoch ) );
+				$quick_raw = @file_get_contents( $quick_file );
+				$quick_saved = is_string( $quick_raw ) && strlen( $quick_raw ) < 45000
+					? json_decode( $quick_raw, true )
+					: null;
+				if ( is_array( $quick_saved )
+					&& ( $quick_saved['key'] ?? '' ) === $quick_key
+					&& '' !== $quick_epoch_value
+					&& ( $quick_saved['epoch'] ?? '' ) === $quick_epoch_value
+					&& isset( $quick_saved['products'] )
+					&& is_array( $quick_saved['products'] )
+					&& count( $quick_saved['products'] ) <= 6
+				) {
+					$quick_payload = json_encode(
+						array( 'products' => $quick_saved['products'] ),
+						JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+					);
+					if ( is_string( $quick_payload ) ) {
+						header( 'Content-Type: application/json; charset=UTF-8' );
+						header( 'Cache-Control: private, no-store, max-age=0' );
+						header( 'X-Robots-Tag: noindex, nofollow' );
+						header( 'Vary: Cookie', false );
+						header( 'X-EMDO-Quick-Search-Early-Cache: HIT' );
+						echo $quick_payload;
+						exit;
+					}
+				}
+			}
+		}
+	}
+}
+
+// No hacer caché de otros endpoints, filtros, categorías ni búsquedas completas.
+if ( '' !== $query ) {
+	return;
+}
 
 /**
  * Hot commerce cache.

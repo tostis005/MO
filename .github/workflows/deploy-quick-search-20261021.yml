@@ -7,6 +7,7 @@ on:
       - 'mu-plugins/mdo-quick-search-20261021.php'
       - 'elmercadodeorigen-child/assets/js/quick-search-20261021.js'
       - 'elmercadodeorigen-child/assets/css/quick-search-20261021.css'
+      - 'elmercadodeorigen-child/dropins/advanced-cache.php'
 permissions:
   contents: read
 concurrency:
@@ -30,6 +31,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           php -l mu-plugins/mdo-quick-search-20261021.php
+          php -l elmercadodeorigen-child/dropins/advanced-cache.php
           php tests/quick-search-price-20261021.php
           php tests/quick-search-relevance-20261021.php
           node --check elmercadodeorigen-child/assets/js/quick-search-20261021.js
@@ -65,6 +67,7 @@ jobs:
             mu-plugins/mdo-quick-search-20261021.php \
             elmercadodeorigen-child/assets/js/quick-search-20261021.js \
             elmercadodeorigen-child/assets/css/quick-search-20261021.css \
+            elmercadodeorigen-child/dropins/advanced-cache.php \
             "$STAGING_USER@$STAGING_HOST:$STAGE/"
 
       - name: Apply minimal production release with rollback and live smoke
@@ -108,6 +111,9 @@ jobs:
           "$php_bin" -l "$stage/mu-plugins/mdo-quick-search-20261021.php" >/dev/null
           test -s "$stage/elmercadodeorigen-child/assets/js/quick-search-20261021.js"
           test -s "$stage/elmercadodeorigen-child/assets/css/quick-search-20261021.css"
+          test -f "$prod/wp-content/advanced-cache.php" || { echo 'No existing early cache: refusing replacement' >&2; exit 1; }
+          grep -q 'El Mercado de Origen early cache drop-in' "$prod/wp-content/advanced-cache.php" || { echo 'Cache file is not owned by project' >&2; exit 1; }
+          "$php_bin" -l "$stage/elmercadodeorigen-child/dropins/advanced-cache.php" >/dev/null
 
           backup="$HOME/.elmercado-rollbacks/quick-search-$runid"
           mkdir -p "$backup"
@@ -115,6 +121,7 @@ jobs:
             'mu-plugins/mdo-quick-search-20261021.php'
             'themes/elmercadodeorigen-child/assets/js/quick-search-20261021.js'
             'themes/elmercadodeorigen-child/assets/css/quick-search-20261021.css'
+            'advanced-cache.php'
           )
           changed=0
           rollback() {
@@ -149,6 +156,7 @@ jobs:
           changed=1
           install -m 0644 "$stage/elmercadodeorigen-child/assets/js/quick-search-20261021.js" "$theme/assets/js/quick-search-20261021.js"
           install -m 0644 "$stage/elmercadodeorigen-child/assets/css/quick-search-20261021.css" "$theme/assets/css/quick-search-20261021.css"
+          install -m 0644 "$stage/elmercadodeorigen-child/dropins/advanced-cache.php" "$prod/wp-content/advanced-cache.php"
           "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
 
           site="https://www.elmercadodeorigen.com"
@@ -182,6 +190,16 @@ jobs:
           grep -Eiq 'woocommerce|product|producto' /tmp/emdo-qs-product-$runid.html
           echo "QUICK_SEARCH_NAVIGATION_OK full_search=200 product=200"
           rm -f /tmp/emdo-qs-response-$runid.json /tmp/emdo-qs-script-$runid.js /tmp/emdo-qs-home-$runid.html /tmp/emdo-qs-all-$runid.html /tmp/emdo-qs-product-$runid.html
+          # Segunda consulta debe evitar el arranque WordPress; las cookies
+          # de sesión deben continuar obligando a pasar por el origen.
+          curl -fsSL --max-time 30 "$site/wp-json/elmercado/v1/quick-search?q=cafe&lang=es" -o /tmp/emdo-qs-warm-$runid.json
+          curl -fsSL --max-time 30 -D /tmp/emdo-qs-warm-$runid.headers "$site/wp-json/elmercado/v1/quick-search?q=cafe&lang=es" -o /tmp/emdo-qs-warm-$runid.json
+          grep -Eiq '^X-EMDO-Quick-Search-Early-Cache:[[:space:]]*HIT' /tmp/emdo-qs-warm-$runid.headers
+          origin_cookie_status="$(curl -sSL --max-time 30 -H 'Cookie: wordpress_logged_in_test=1' -D /tmp/emdo-qs-cookie-$runid.headers -o /tmp/emdo-qs-cookie-$runid.json -w '%{http_code}' "$site/wp-json/elmercado/v1/quick-search?q=cafe&lang=es")"
+          [ "$origin_cookie_status" = 200 ]
+          ! grep -Eiq '^X-EMDO-Quick-Search-Early-Cache:[[:space:]]*HIT' /tmp/emdo-qs-cookie-$runid.headers
+          "$php_bin" -r '$d=json_decode(file_get_contents($argv[1]),true);if(!is_array($d)||!isset($d["products"])||!is_array($d["products"]))exit(1);' /tmp/emdo-qs-warm-$runid.json
+          echo 'QUICK_SEARCH_EARLY_CACHE_OK public_hit=1 session_bypass=1'
           echo "PRODUCTION_QUICK_SEARCH_OK run=$runid backup=$backup"
           changed=0
           trap - EXIT
