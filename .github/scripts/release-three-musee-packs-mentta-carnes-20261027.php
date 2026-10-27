@@ -40,10 +40,10 @@ $before=[];
 foreach($approved as $id=>$cfg) {
  $p=wc_get_product($id);
  if(!$p || !$p->is_type('simple') ||
-  $p->get_status()!==($mode==='preflight'?'draft':'publish') ||
+  $p->get_status()!==($mode==='verify'?'publish':'draft') ||
   (string)get_post_meta($id,'_emdo_mentta_pack_key',true)!==$cfg['key'] ||
   (string)get_post_meta($id,'_emdo_mentta_only',true)!=='yes' ||
-  (string)get_post_meta($id,'_emdo_musee_awaiting_admin_approval',true)!==($mode==='preflight'?'yes':'no') ||
+  (string)get_post_meta($id,'_emdo_musee_awaiting_admin_approval',true)!==($mode==='verify'?'no':'yes') ||
   (int)get_post_field('post_author',$id)!==4949 ||
   abs((float)$p->get_regular_price('edit')-(float)$cfg['price'])>.001 ||
   abs((float)$p->get_weight('edit')-(float)$cfg['weight'])>.01 ||
