@@ -163,9 +163,11 @@ jobs:
           label='# BEGIN EMDO SIGNED FILTER ADMISSION 20261027'
           block=[
             label,
+            'add_header X-EMDO-Facet-Diag "$emdo_geofacet_reject:$emdo_gate_vendor_path:$emdo_gate_has_filters:$emdo_geo_reject_outside_gate:$emdo_vendor_facet_bot_20261027" always;',
             'location @emdo_signed_filter_gate {',
             '    limit_req zone=emdo_signed_gate_entry_ip burst=15 nodelay;',
             '    proxy_pass http://127.0.0.1:18427;',
+            '    add_header X-EMDO-Admission-Route "go" always;',
             '    proxy_http_version 1.1;',
             '    proxy_set_header Host $host;',
             '    proxy_set_header X-Real-IP $remote_addr;',
@@ -224,7 +226,10 @@ jobs:
           FILTER='/tienda/hidalgo-de-la-jara/?emo_vendor_cat=jamones-paletas&filter_calidad=bellota-100-iberico&filter_preparacion=deshuesado'
           STATUS=$(curl -ksS --connect-timeout 3 --max-time 8 -D /tmp/emdo-filter-direct-h -o /dev/null -w '%{http_code}' "$BASE$FILTER")
           echo "DIRECT_HTTP=$STATUS"
-          grep -i '^location:' /tmp/emdo-filter-direct-h
+          sed -n '1,25p' /tmp/emdo-filter-direct-h
+          if [ "$STATUS" != 302 ]; then
+            tail -n 25 /var/log/nginx/error.log || true
+          fi
           test "$STATUS" = 302
           grep -qi '^location: /tienda/hidalgo-de-la-jara/' /tmp/emdo-filter-direct-h
           echo '=== VERIFY FIRST-PARTY FILTER NAVIGATION RECEIVES SIGNED JS CHALLENGE ==='
@@ -260,6 +265,15 @@ jobs:
              echo "QUOTA_TEST_$n=$H"
              if [ "$n" = 5 ]; then test "$H" = 429; else test "$H" = 200; fi
           done
+          python3 - "$VHOST" <<'PY'
+          import sys
+          p=sys.argv[1]
+          s=open(p,encoding='utf8').read()
+          s=s.replace('add_header X-EMDO-Facet-Diag "$emdo_geofacet_reject:$emdo_gate_vendor_path:$emdo_gate_has_filters:$emdo_geo_reject_outside_gate:$emdo_vendor_facet_bot_20261027" always;\n','')
+          s=s.replace('    add_header X-EMDO-Admission-Route "go" always;\n','')
+          open(p,'w',encoding='utf8').write(s)
+          PY
+          nginx -t && systemctl reload nginx
           echo '=== POST-DEPLOY PROCESS STATUS ==='
           uptime
           systemctl --no-pager -l status emdo-filter-gate.service | head -n 12
