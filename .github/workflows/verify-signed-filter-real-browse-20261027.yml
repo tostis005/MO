@@ -1,0 +1,78 @@
+name: Verify signed filter gate real browsing and WooCommerce 20261027
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/verify-signed-filter-real-browse-20261027.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Browser challenge and cached-vendor cart-safe smoke tests (read-only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          B=https://www.elmercadodeorigen.com
+          U=/tienda/hidalgo-de-la-jara/
+          F="?emo_vendor_cat=jamones-paletas&filter_preparacion=deshuesado&filter_calidad=bellota-100-iberico"
+          UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/130.0 EMDO-Real-Flow"
+          COOKIEFILE=$(mktemp)
+          trap 'rm -f "$COOKIEFILE" /tmp/emdo-signed-flow-challenge.html /tmp/emdo-signed-flow-filtered.html' EXIT
+          echo '=== DIRECT URL MUST REDIRECT TO CLEAN PRODUCER ==='
+          direct=$(curl -ksS --connect-timeout 3 --max-time 8 -o /dev/null -D /tmp/emdo-real-direct-h -w '%{http_code}' -A "$UA" "$B$U$F")
+          echo "DIRECT=$direct"
+          grep -i '^location:' /tmp/emdo-real-direct-h
+          test "$direct" = 302
+          echo '=== REAL BROWSER PAGE REFERRER MUST GET A CHALLENGE ==='
+          initial=$(curl -ksS --connect-timeout 3 --max-time 8 -o /tmp/emdo-signed-flow-challenge.html -w '%{http_code}' -A "$UA" -H "Referer: $B$U" "$B$U$F")
+          echo "CHALLENGE=$initial"
+          grep -q 'Verificando acceso a los filtros' /tmp/emdo-signed-flow-challenge.html
+          test "$initial" = 200
+          # Do not print signed challenges or browser cookies.
+          challenge=$(python3 - <<'PY'
+          import re
+          s=open('/tmp/emdo-signed-flow-challenge.html',encoding='utf8').read()
+          m=re.search(r'/__emdo_filtergate/verify\?c=([a-zA-Z0-9._-]+)',s)
+          print(m.group(1) if m else '')
+          PY
+          )
+          test -n "$challenge"
+          echo '=== VALIDATE ONE SIGNED SESSION OVER HTTPS ==='
+          verified=$(curl -ksS --connect-timeout 3 --max-time 8 -A "$UA" -c "$COOKIEFILE" -b "$COOKIEFILE" -o /dev/null -w '%{http_code}' "$B/__emdo_filtergate/verify?c=$challenge")
+          echo "VERIFIED=$verified"
+          test "$verified" = 200
+          echo '=== REAL SQL FILTER REQUEST WITH VERIFIED SESSION ==='
+          result=$(curl -ksS --connect-timeout 4 --max-time 35 -A "$UA" -b "$COOKIEFILE" -H "Referer: $B$U" -o /tmp/emdo-signed-flow-filtered.html -w '%{http_code} ttfb=%{time_starttransfer} total=%{time_total}' "$B$U$F" || true)
+          echo "FILTERED=$result"
+          grep -q '^200 ' <<< "$result"
+          if ! grep -q 'wcfmmp-store' /tmp/emdo-signed-flow-filtered.html; then
+            echo 'WARN: HTML lacks producer wrapper; validating WooCommerce markup'
+            grep -q 'woocommerce' /tmp/emdo-signed-flow-filtered.html
+          fi
+          echo '=== CHECK ENGLISH NGINX STATIC CACHE WITH SIGNED COOKIE ==='
+          cached=$(curl -ksS --connect-timeout 3 --max-time 8 -A "$UA" -b "$COOKIEFILE" -D /tmp/emdo-real-cached-h -o /dev/null -w '%{http_code}' "$B/en/store/hidalgo-de-la-jara/")
+          echo "CACHED_EN=$cached"
+          grep -i '^x-emdo-nginx-hot-cache:' /tmp/emdo-real-cached-h
+          test "$cached" = 200
+          grep -qi '^x-emdo-nginx-hot-cache: HIT' /tmp/emdo-real-cached-h
+          echo '=== MONTJAM DIRECT REDIRECT ==='
+          c=$(curl -ksS --connect-timeout 3 --max-time 8 -A "$UA" -D /tmp/emdo-real-montjam-h -o /dev/null -w '%{http_code}' "$B/tienda/montjam/?emo_vendor_cat=jamones-paletas&filter_rango-peso=65-75-kg&filter_preparacion=loncheado")
+          echo "MONTJAM_DIRECT=$c"
+          grep -i '^location:' /tmp/emdo-real-montjam-h
+          test "$c" = 302
+          echo '=== VERIFY HEALTH ==='
+          systemctl is-active emdo-filter-gate.service
+          nginx -t 2>&1 | tail -n 2
+          uptime
+          echo 'REAL_NAVIGATION_PROTECTION_VERIFIED'
+          REMOTE
