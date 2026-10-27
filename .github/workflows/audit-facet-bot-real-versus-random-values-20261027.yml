@@ -1,4 +1,4 @@
-name: Diagnose facet crawler countries and real source IPs 2026-10-27
+name: Audit Nginx source-IP trust and native challenge options 2026-10-27
 on:
   push:
     branches: [main]
@@ -6,95 +6,43 @@ on:
 permissions:
   contents: read
 jobs:
-  geo:
+  audit:
     runs-on: ubuntu-24.04
-    timeout-minutes: 7
+    timeout-minutes: 4
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
       STAGING_USER: ${{ secrets.STAGING_USER }}
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Prepare local GeoIP lookup
-        shell: bash
+      - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Check safe server-native challenge support and IP trust settings without changes
         run: |
           set -Eeuo pipefail
-          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
-          python3 -m venv /tmp/emdo-geo-env
-          /tmp/emdo-geo-env/bin/pip install --disable-pip-version-check -q maxminddb
-      - name: Retrieve minimum necessary data from production for read-only forensics
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' > /tmp/emdo-geo-requests.tsv <<'REMOTE'
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set +e
+          echo === SERVER_LOAD ===
+          uptime; date -u
+          echo === NGINX_COMPILATION ===
+          nginx -V 2>&1 | tr ' ' '\n' | grep -E 'http_auth_request|http_realip|http_js_module|http_geoip2_module|http_limit_req_module' | head -n 15
+          echo === KNOWN_MODULES ===
+          ls /usr/share/nginx/modules/*js* /usr/lib/nginx/modules/*js* /usr/share/nginx/modules/*geoip* 2>/dev/null | sed -E 's@.*/@@' | head -n 15
+          echo === NGINX_DIRECT_IP_TRUST ===
           python3 - <<'PY'
-          import re,os,datetime,collections
-          base='/var/www/vhosts/system/elmercadodeorigen.com/logs'
-          cutoff=datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(minutes=65)
-          for name in ['access_ssl_log','proxy_access_ssl_log','proxy_access_log','access_log']:
-            path=base+'/'+name
-            if not os.path.isfile(path):continue
-            with open(path,'rb') as f:
-              f.seek(max(0,os.path.getsize(path)-27000000))
-              for raw in f:
-                m=re.search(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"([^"]+)"\s+(\d{3})',raw.decode('utf8','replace'))
-                if not m:continue
-                ip,dt,req,status=m.groups()
-                if ':' in ip:continue
-                try:t=datetime.datetime.strptime(dt,'%d/%b/%Y:%H:%M:%S %z').astimezone(datetime.timezone.utc)
-                except:continue
-                if t<cutoff:continue
-                rp=req.split()
-                if len(rp)<2:continue
-                url=rp[1]
-                if '/hidalgo-de-la-jara' not in url and '/montjam' not in url:continue
-                if '?' not in url:continue
-                args=url.partition('?')[2]
-                if 'filter_' not in args:continue
-                cat='H' if 'hidalgo-de-la-jara' in url else 'M'
-                hour='pre' if t<datetime.datetime(2026,10,27,8,21,36,tzinfo=datetime.timezone.utc) else 'post'
-                print(name,ip,status,cat,hour,t.strftime('%H:%M'),sep='\t')
+          import os,re,glob,collections
+          pats=['/etc/nginx/nginx.conf']+glob.glob('/etc/nginx/conf.d/*.conf')+glob.glob('/var/www/vhosts/system/elmercadodeorigen.com/conf/*nginx*.conf')+glob.glob('/etc/nginx/plesk.conf.d/*.conf')
+          x=collections.Counter()
+          for p in pats:
+            try:
+              for line in open(p,errors='replace'):
+                s=line.strip().split('#',1)[0].strip()
+                for directive in ('real_ip_header','set_real_ip_from','real_ip_recursive','proxy_set_header X-Forwarded-For','load_module'):
+                  if s.startswith(directive):
+                    x[(os.path.basename(p),directive)]+=1
+                    # Do not print addresses or proxy trust list
+            except:pass
+          print('IP_TRUST_DIRECTIVE_COUNTS',list((k[0],k[1],v) for k,v in x.items()))
           PY
+          echo === SUPPORTED_NGINX_MODULE_SYNTAX ===
+          nginx -t 2>&1 | tail -n 2
           REMOTE
-          sshpass -e scp -q -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -P "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST:/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wordfence/lib/geoip.mmdb" /tmp/emdo-wordfence-country.mmdb
-          echo 'DATA_ACQUIRED_LOCAL_ONLY'
-      - name: Aggregate country and cross-compare Apache with actual Nginx proxy client address
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          /tmp/emdo-geo-env/bin/python - <<'PY'
-          import maxminddb,collections,os
-          p='/tmp/emdo-geo-requests.tsv'
-          mm='/tmp/emdo-wordfence-country.mmdb'
-          print('MINIMAL_RECORDS',sum(1 for x in open(p)))
-          print('GEO_DB_SIZE',os.path.getsize(mm))
-          raw=collections.defaultdict(list)
-          with open(p) as f:
-            for line in f:
-              a=line.strip().split('\t')
-              if len(a)!=6:continue
-              logfile,ip,status,category,period,time=a
-              raw[(logfile,period,category)].append((ip,status,time))
-          with maxminddb.open_database(mm) as db:
-            country={}
-            def iso(ip):
-              if ip in country:return country[ip]
-              try:
-                v=db.get(ip) or {}
-                x=(v.get('country') or {}).get('iso_code') or (v.get('registered_country') or {}).get('iso_code') or 'UNKNOWN'
-              except Exception:x='UNKNOWN'
-              country[ip]=x
-              return x
-            for (log,period,category),rows in sorted(raw.items()):
-              totals=collections.Counter(iso(ip) for ip,_,_ in rows)
-              codes=collections.Counter(code for _,code,_ in rows)
-              permin=collections.Counter(tm for _,_,tm in rows)
-              ipset=set(ip for ip,_,_ in rows)
-              print('GEO_GROUP',{ 'source_log':log,'period':period,'store':category,'requests':len(rows),
-                'unique_ips':len(ipset),'status_counts':dict(codes),'top_countries':totals.most_common(16),'minutely':sorted(permin.items())[-8:]})
-          for period in ('pre','post'):
-            groups={log:set(ip for (name,p,c),rows in raw.items() if p==period and name==log for ip,code,t in rows) for log in ['access_ssl_log','proxy_access_ssl_log']}
-            if all(groups.values()):
-              print('SOURCE_IP_LOG_COMPARISON',{'period':period,'apache_unique':len(groups['access_ssl_log']),'nginx_unique':len(groups['proxy_access_ssl_log']),'ip_overlap':len(groups['access_ssl_log'] & groups['proxy_access_ssl_log'])})
-          PY
-          rm -f /tmp/emdo-wordfence-country.mmdb /tmp/emdo-geo-requests.tsv
