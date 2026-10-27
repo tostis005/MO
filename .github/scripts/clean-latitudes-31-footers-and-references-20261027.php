@@ -4,8 +4,9 @@
  *
  * - Original attachments NEVER modified or deleted.
  * - Prefer SAME-PHOTO clean duplicate only on very high similarity.
- * - Else losslessly crop exclusively the final 9.8% footer of a vendor JPEG,
- *   in PNG to preserve all remaining decoded original pixels.
+ * - Else remove exclusively the final 9.8% footer and re-encode to high-quality
+ *   JPEG 97 (required because production Smush plugin cannot process PNG).
+ *   The source image remains untouched.
  * - Replace featured/gallery/map references for ALL WooCommerce products,
  *   including the seven private Musée bundles and their stock component photo lines.
  * - Keep 8 package-imprinted museegourmet.com photos unchanged.
@@ -156,11 +157,13 @@ foreach($footerIds as $origId){
  imagealphablending($dst,false);imagesavealpha($dst,true);
  imagecopy($dst,$im,0,0,0,0,$w,$newH);
  imagedestroy($im);
- $out=$directory.'/latitudes-'.$origId.'-sin-pie-'.substr($src['sha256'],0,12).'.png';
+ $out=$directory.'/latitudes-'.$origId.'-sin-pie-'.substr($src['sha256'],0,12).'.jpg';
  if(!is_file($out)){
-  if(!imagepng($dst,$out,7)){imagedestroy($dst);throw new RuntimeException("WRITE_FAILED $origId");}
+  if(!imagejpeg($dst,$out,97)){imagedestroy($dst);throw new RuntimeException("WRITE_FAILED $origId");}
  }
  imagedestroy($dst);
+ $test=@imagecreatefromjpeg($out);
+ if(!$test)throw new RuntimeException("CROPPED_FILE_DECODE_FAILED $origId");imagedestroy($test);
  $dims=getimagesize($out);
  if(!$dims||$dims[0]!==$w||$dims[1]!==$newH)throw new RuntimeException("CROPPED_IMAGE_INVALID $origId");
  $productId=(int)array_key_first($originalImageLinks[$origId]??[]);
@@ -169,7 +172,7 @@ foreach($footerIds as $origId){
   $productId=(int)get_post_field('post_parent',$origId);
  }
  $attachment=wp_insert_attachment([
-  'post_mime_type'=>'image/png','post_title'=>get_the_title($origId).' - sin pie web externo',
+  'post_mime_type'=>'image/jpeg','post_title'=>get_the_title($origId).' - sin pie web externo',
   'post_status'=>'inherit','post_content'=>'Versión de fotografía original de producto sin la franja inferior de URL externa; archivo original conservado para auditoría.'
  ],$out,$productId,true);
  if(is_wp_error($attachment)||!$attachment)throw new RuntimeException("WP_MEDIA_CREATE_FAILED $origId");
@@ -184,7 +187,7 @@ foreach($footerIds as $origId){
  if($sourceUrl)update_post_meta($attachment,'_source_url',$sourceUrl);
  $replacements[$origId]=(int)$attachment;
  echo "PHOTO_CLEANED $origId=>$attachment\n";
- $report[]=['original'=>$origId,'new'=>(int)$attachment,'method'=>'LOSSLESS_9_8_PERCENT_FOOTER_CROP','old_dimensions'=>[$w,$h],'new_dimensions'=>[$w,$newH],
+ $report[]=['original'=>$origId,'new'=>(int)$attachment,'method'=>'VISUALLY_IDENTICAL_HIGH_QUALITY_JPEG_FOOTER_CROP','old_dimensions'=>[$w,$h],'new_dimensions'=>[$w,$newH],
   'original_media_sha256'=>$src['sha256'],'sanitized_file'=>basename($out)];
 }
 if(in_array($batchValue,['0','1','2','3','4'],true)){
@@ -244,7 +247,7 @@ foreach($targetProductIds as $pid){
 }
 echo "LATITUDES_31_IMAGES_AND_REUSED_PACK_GALLERIES_CORRECTED ".wp_json_encode([
  'photos_corrected'=>count($replacements),'exact_clean_duplicates'=>count(array_filter($report,fn($r)=>$r['method']==='EXISTING_CLEAN_EXACT_MATCH')),
- 'new_clean_photos'=>count(array_filter($report,fn($r)=>$r['method']==='LOSSLESS_9_8_PERCENT_FOOTER_CROP')),
+ 'new_clean_photos'=>count(array_filter($report,fn($r)=>$r['method']==='VISUALLY_IDENTICAL_HIGH_QUALITY_JPEG_FOOTER_CROP')),
  'affected_woo_products'=>count($changeProducts),
  'packs_with_updated_image_references'=>array_values(array_map(fn($r)=>$r['id'],array_filter($changeProducts,fn($r)=>$r['pack']))),
  'photos'=>$report,'product_changes'=>$changeProducts,
