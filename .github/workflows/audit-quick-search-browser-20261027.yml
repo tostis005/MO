@@ -71,6 +71,18 @@ jobs:
 
                       load_home()
                       form, inp = open_dialog()
+                      # Cambios rápidos: actualizar el texto y el enlace sin esperar la API.
+                      inp.fill('ca')
+                      footer = page.locator('.site-dialog-search .emo-quick-search__all').first
+                      footer.wait_for(state='visible', timeout=5000)
+                      check('«ca»' in footer.inner_text() and parse_qs(urlsplit(footer.get_attribute('href')).query).get('s') == ['ca'], f'{tag}: stale footer ca')
+                      inp.fill('cafe')
+                      check('«cafe»' in footer.inner_text() and parse_qs(urlsplit(footer.get_attribute('href')).query).get('s') == ['cafe'], f'{tag}: stale footer cafe')
+                      inp.fill('cafe con leche')
+                      check('«cafe con leche»' in footer.inner_text() and parse_qs(urlsplit(footer.get_attribute('href')).query).get('s') == ['cafe con leche'], f'{tag}: stale footer phrase')
+                      inp.evaluate("(el) => { el.value = 'aceite'; el.dispatchEvent(new Event('change', {bubbles:true})); }")
+                      check('«aceite»' in footer.inner_text(), f'{tag}: change did not refresh footer')
+                      print('LIVE_FOOTER_TYPING_OK', tag, flush=True)
                       inp.fill('man')
                       region = wait_suggestions()
                       suggestions = region.locator('.emo-quick-search__link')

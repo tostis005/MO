@@ -263,7 +263,7 @@ add_action(
 			'elmercado-quick-search-20261021',
 			$base . '/assets/js/quick-search-20261021.js',
 			array(),
-			'20261027.1',
+			'20261027.3',
 			true
 		);
 		wp_add_inline_script(

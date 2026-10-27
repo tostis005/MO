@@ -24,7 +24,8 @@
   const cached = new Map();
   const CACHE_MS = 45000;
   const LIMIT = 25;
-  const REQUEST_TIMEOUT_MS = 9000;
+  const REQUEST_TIMEOUT_MS = 8000;
+  const INPUT_DEBOUNCE_MS = 180;
 
   function create(tag, className, text) {
     const element = document.createElement(tag);
@@ -61,9 +62,13 @@
     let sequence = 0;
     let options = [];
     let active = -1;
+    let lastTerm = null;
+
+    const readTerm = () => input.value.trim().replace(/\s+/g, ' ');
 
     const reset = () => {
       region.hidden = true;
+      delete region.dataset.term;
       region.setAttribute('aria-busy', 'false');
       region.replaceChildren();
       options = [];
@@ -118,6 +123,12 @@
     };
 
     const render = (term, products, message) => {
+      // Nunca mostrar enlaces ni sugerencias de un término anterior.
+      if (readTerm() !== term) {
+        onInput({ force: true });
+        return;
+      }
+      region.dataset.term = term;
       region.setAttribute('aria-busy', 'false');
       region.replaceChildren();
       options = [];
@@ -183,6 +194,7 @@
     };
 
     const showLoading = (term) => {
+      region.dataset.term = term;
       region.replaceChildren();
       options = [];
       active = -1;
@@ -223,6 +235,11 @@
     };
 
     const search = async (term, requestId) => {
+      if (requestId !== sequence) return;
+      if (readTerm() !== term) {
+        onInput({ force: true });
+        return;
+      }
       const key = lang + ':' + term.toLocaleLowerCase();
       const hit = cached.get(key);
       if (hit && Date.now() - hit.time < CACHE_MS) {
@@ -249,13 +266,21 @@
         });
         if (!response.ok) throw new Error('Search unavailable');
         const result = await response.json();
-        if (requestId !== sequence || input.value.trim().replace(/\s+/g, ' ') !== term) return;
+        if (requestId !== sequence) return;
+        if (readTerm() !== term) {
+          onInput({ force: true });
+          return;
+        }
         const products = Array.isArray(result.products) ? result.products.slice(0, 6) : [];
         cached.set(key, { products, time: Date.now() });
         if (cached.size > LIMIT) cached.delete(cached.keys().next().value);
         render(term, products);
       } catch (error) {
         if (requestId !== sequence) return;
+        if (readTerm() !== term) {
+          onInput({ force: true });
+          return;
+        }
         if (error.name === 'AbortError' && !timedOut) return;
         // Mostrar salida alternativa: nunca dejar la animación bloqueada.
         render(term, [], copy.error);
@@ -265,12 +290,17 @@
       }
     };
 
-    const onInput = (event) => {
-      if (event.isComposing) return;
+    const onInput = (event = {}) => {
+      const term = readTerm();
+      // Los eventos change, keyup y search cubren también autocompletados de teclado.
+      if (term === lastTerm && !region.hidden && !event.force && !event.isComposing) return;
+      lastTerm = term;
       stop();
       reset();
-      const term = input.value.trim().replace(/\s+/g, ' ');
       if (Array.from(term).length < 2 || Array.from(term).length > 50) return;
+      // Este pie siempre se actualiza al instante, no espera al servidor.
+      showLoading(term);
+      if (event.isComposing) return;
       const current = sequence;
       const key = lang + ':' + term.toLocaleLowerCase();
       const hit = cached.get(key);
@@ -278,9 +308,7 @@
         render(term, hit.products);
         return;
       }
-      // Indicador inmediato durante debounce y consulta HTTP.
-      showLoading(term);
-      timer = setTimeout(() => search(term, current), 280);
+      timer = setTimeout(() => search(term, current), INPUT_DEBOUNCE_MS);
     };
 
     // Los enlaces deben navegar aunque el tema intercepte clicks dentro del modal.
@@ -290,10 +318,23 @@
       if (link.target && link.target !== '_self') return;
       event.preventDefault();
       event.stopPropagation();
-      navigate(link.href);
+      if (link.classList.contains('emo-quick-search__all')) {
+        const actualTerm = readTerm();
+        if (actualTerm) navigate(fullSearchUrl(actualTerm));
+      } else if (region.dataset.term !== readTerm()) {
+        onInput({ force: true });
+      } else {
+        navigate(link.href);
+      }
     }, true);
 
     input.addEventListener('input', onInput);
+    input.addEventListener('change', onInput);
+    input.addEventListener('search', onInput);
+    input.addEventListener('compositionend', () => onInput({ force: true }));
+    input.addEventListener('keyup', (event) => {
+      if (!['ArrowDown', 'ArrowUp', 'Escape', 'Enter', 'Tab'].includes(event.key)) onInput(event);
+    });
     input.addEventListener('focus', () => {
       if (input.value.trim().length >= 2 && region.hidden) onInput({});
     });
@@ -312,11 +353,11 @@
         markActive(active <= 0 ? options.length - 1 : active - 1);
       } else if (event.key === 'Enter' && active >= 0) {
         event.preventDefault();
-        location.assign(options[active].href);
+        navigate(options[active].href);
       }
     });
     form.addEventListener('submit', (event) => {
-      const term = input.value.trim().replace(/\s+/g, ' ');
+      const term = readTerm();
       if (!term) return;
       event.preventDefault();
       event.stopPropagation();
