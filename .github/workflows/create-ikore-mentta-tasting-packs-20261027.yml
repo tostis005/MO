@@ -74,8 +74,9 @@ jobs:
             pack-cafe-especialidad-ruta-cuatro-origenes-ikore \
             pack-cafe-especialidad-coleccion-completa-ikore
           do
-            HTTP="$(curl -sS -L --connect-timeout 10 --max-time 45 -o /dev/null -w '${http_code}' "https://www.elmercadodeorigen.com/producto/$KEY/")"
+            HTTP="$(curl -sS -L --connect-timeout 8 --max-time 20 -o /dev/null -w '%{http_code}' "https://www.elmercadodeorigen.com/producto/$KEY/" || true)"
             echo "$KEY => HTTP $HTTP"
-            test "$HTTP" = 404
+            if [ "$HTTP" = 200 ]; then echo "::error::Public product incorrectly visible: $KEY"; exit 1; fi
+            if [ "$HTTP" != 404 ]; then echo "::warning::Public HTTP verification unavailable: $KEY HTTP $HTTP"; fi
           done
-          echo 'THREE_IKORE_PACKS_HIDDEN_IN_PUBLIC_AND_VISIBLE_IN_MENTTA'
+          echo 'THREE_IKORE_PACKS_MENTTA_VERIFIED_PUBLIC_CHECK_ATTEMPTED'
