@@ -18,6 +18,9 @@ if(!in_array($host,['elmercadodeorigen.com','www.elmercadodeorigen.com'],true))e
 if(!class_exists('MDO_Database')||!get_option('emdo_musee_mentta_review_hold')||!function_exists('emdo_musee_review_ids')){fwrite(STDERR,"SUPPLIER_OR_MENTTA_SAFETY_MISSING\n");exit(4);}
 $footerIds=[17177,17179,17183,17185,17199,17201,17205,17271,17275,17279,17283,17287,17289,17291,17293,17295,17297,17307,17313,17327,17333,17335,17337,17344,17348,17357,17359,17361,17363,17383,18168];
 $packageIds=[21249,21255,21256,21257,21260,21261,21284,21287];
+$batchValue=(string)(getenv('EMDO_LATITUDES_FOOTER_BATCH')?:'all');
+if(!($batchValue==='all'||$batchValue==='final'||in_array($batchValue,['0','1','2','3','4'],true)))throw new RuntimeException('BAD_BATCH');
+$batchIds=in_array($batchValue,['0','1','2','3','4'],true)?array_slice($footerIds,((int)$batchValue)*7,7):$footerIds;
 $sup=MDO_Database::table('suppliers');$sources=MDO_Database::table('source_products');
 $supId=(int)$wpdb->get_var($wpdb->prepare("SELECT id FROM $sup WHERE code=%s LIMIT 1",'latitudes'));
 if(!$supId)exit(5);
@@ -112,6 +115,7 @@ function emdo_latitudes_foot_clean_similarity($original,$candidate) {
 }
 $replacements=[];$report=[];
 foreach($footerIds as $origId){
+ if(!in_array($origId,$batchIds,true))continue;
  $src=$sourceIntegrity[$origId];
  // Resumable: a previous SSH break must never generate duplicate clean media.
  $existingClean=(int)get_post_meta($origId,'_emdo_latitudes_clean_replacement_id',true);
@@ -121,6 +125,7 @@ foreach($footerIds as $origId){
   echo "RESUME_EXISTING_CLEAN_MEDIA $origId->$existingClean\n";
   continue;
  }
+ if($batchValue==='final')throw new RuntimeException("MISSING_CLEAN_IMAGE_IN_FINAL_BATCH $origId");
  echo "START_PHOTO $origId\n";
  // A clean alternative is valid ONLY if it depicts the SAME PHOTO, not merely the same meat cut.
  $candidateIds=[];
@@ -181,6 +186,10 @@ foreach($footerIds as $origId){
  echo "PHOTO_CLEANED $origId=>$attachment\n";
  $report[]=['original'=>$origId,'new'=>(int)$attachment,'method'=>'LOSSLESS_9_8_PERCENT_FOOTER_CROP','old_dimensions'=>[$w,$h],'new_dimensions'=>[$w,$newH],
   'original_media_sha256'=>$src['sha256'],'sanitized_file'=>basename($out)];
+}
+if(in_array($batchValue,['0','1','2','3','4'],true)){
+ echo 'LATITUDES_BATCH_COMPLETED '.wp_json_encode(['batch'=>$batchValue,'photos_done'=>count($replacements),'originals_remain_unmodified'=>true])."\n";
+ exit(0);
 }
 if(count($replacements)!==31)throw new RuntimeException('INCOMPLETE_REPLACEMENT_SET');
 $changeProducts=[];
