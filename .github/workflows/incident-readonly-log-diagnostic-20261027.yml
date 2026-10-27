@@ -1,4 +1,4 @@
-name: Incident deep read-only PHP and traffic diagnostic 2026-10-27
+name: Incident post-reboot performance diagnosis 2026-10-27
 on:
   push:
     branches: [main]
@@ -137,5 +137,76 @@ jobs:
           echo "=== EXTERNAL HEALTH PROBE FROM SERVER ==="
           for url in 'https://www.elmercadodeorigen.com/' 'https://www.elmercadodeorigen.com/tienda/'; do
             curl -k -L -sS -o /dev/null -w 'HTTP %{http_code} DNS=%{time_namelookup} connect=%{time_connect} TTFB=%{time_starttransfer} total=%{time_total}\n' --connect-timeout 4 --max-time 16 "$url" || true
+          done
+
+          echo "=== POST REBOOT SPECIFIC CPU BOT DB ANALYSIS ==="
+          date -u '+UTC %Y-%m-%dT%H:%M:%SZ'
+          uptime -s; uptime
+          echo "=== RUNNING PHP WORKERS CPU ==="
+          ps -eo pid=,stat=,%cpu=,rss=,etime=,args= --sort=-%cpu | grep -E 'php-fpm: pool elmercadodeorigen.com|mariadbd|mysqld' | head -n 25 | sed -E 's/([0-9]{1,3}\\.){3}[0-9]{1,3}/[IP]/g'
+          echo "=== DATABASE LIVE STATES ==="
+          mysql -N -e "SELECT COALESCE(STATE,'none'),COUNT(*),MAX(TIME) FROM information_schema.PROCESSLIST GROUP BY COALESCE(STATE,'none') ORDER BY COUNT(*) DESC LIMIT 15" 2>/dev/null || echo DB_STATUS_NOT_AVAILABLE
+          mysql -N -e "SHOW GLOBAL STATUS WHERE Variable_name IN ('Slow_queries','Threads_running','Threads_connected','Questions','Max_used_connections')" 2>/dev/null || true
+          echo "=== MEMORY CPU SNAPSHOT ==="
+          vmstat 1 3 | tail -n 3
+          echo "=== CURRENT PHP POOL LIMIT ==="
+          grep -R --include='*.conf' -lF '[elmercadodeorigen.com]' /opt/plesk/php/8.2/etc/php-fpm.d /etc/php 2>/dev/null | head -n 3 | while read -r cfg; do echo POOL_FILE="$(basename "$cfg")"; sed -n '/^\\[elmercadodeorigen.com\\]/,/^\\[/p' "$cfg" | grep -E '^(pm|request_slowlog_timeout|request_terminate_timeout)[. ]' | head -n 16; done
+          echo "=== RECENT URL DISTRIBUTION AND EXPENSIVE STACKS ==="
+          python3 - <<'PY2'
+          import os,re,json,collections,datetime
+          base='/var/www/vhosts/system/elmercadodeorigen.com/logs'
+          now=datetime.datetime.now(datetime.timezone.utc)
+          rx=re.compile(r'^(\\S+)\\s+\\S+\\s+\\S+\\s+\\[([^\\]]+)\\]\\s+"(\\S+)\\s+([^"]*?)"\\s+(\\d{3})\\s+\\S+(?:\\s+"[^"]*"\\s+"([^"]*)")?')
+          stats=collections.Counter(); statuses=collections.Counter(); hot=collections.Counter(); errors=collections.Counter(); bots=collections.Counter(); codesbyroute=collections.Counter(); byip=collections.Counter(); recent=0
+          p=base+'/access_ssl_log'
+          with open(p,'rb') as f:
+            f.seek(max(0,os.path.getsize(p)-15000000))
+            for b in f:
+              m=rx.match(b.decode('utf-8','replace'))
+              if not m:continue
+              ip,ds,method,url,status,ua=m.groups()
+              try: t=datetime.datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(datetime.timezone.utc)
+              except:continue
+              if t<now-datetime.timedelta(minutes=18):continue
+              recent+=1;statuses[status]+=1; byip[ip]+=1
+              route=url.split('?',1)[0]
+              prefix='/'.join(route.split('/')[:4])
+              if route.startswith('/wp-json/'):prefix='/wp-json/'
+              if route.startswith('/wp-admin/admin-ajax.php'):prefix='/wp-admin/admin-ajax.php'
+              hot[prefix[:120]]+=1
+              if status in ('429','500','502','503','504'):codesbyroute[(status,prefix[:90])]+=1
+              agent=ua or ''
+              if re.search(r'bot|crawler|spider|semrush|ahrefs|bing|bytespider|facebook|google|python|curl|headless|scrap|uptime|monitor',agent,re.I): bots['named_automated']+=1
+              elif 'Mozilla/5.0' in agent: bots['browser_like']+=1
+              else:bots['other']+=1
+          print('POST_RESTART_TRAFFIC',json.dumps({'sample_mins':18,'requests':recent,'http_codes':statuses,'user_agent_groups':bots,'top_routes':hot.most_common(14),'429_or_5xx_route_groups':[(str(x),v) for x,v in codesbyroute.most_common(12)],'largest_ip_requests':max(byip.values()) if byip else 0,'top_10_ip_share':round(sum(v for _,v in byip.most_common(10))/max(1,recent),3)},ensure_ascii=False))
+          p=base+'/php-fpm_slow.log'
+          s=''
+          if os.path.isfile(p):
+            with open(p,'rb') as f:
+              f.seek(max(0,os.path.getsize(p)-6500000))
+              s=f.read().decode('utf-8','replace')
+          c=collections.Counter(); front=collections.Counter(); paths=collections.Counter(); frames=collections.Counter(); n=0
+          blocks=re.split(r'(?=\\[\\d{2}-[A-Za-z]{3}-\\d{4} \\d{2}:\\d{2}:\\d{2}\\])',s)
+          for block in blocks:
+            m=re.match(r'\\[(\\d{2}-[A-Za-z]{3}-\\d{4} \\d{2}:\\d{2}:\\d{2})\\]',block)
+            if not m:continue
+            try: t=datetime.datetime.strptime(m.group(1),'%d-%b-%Y %H:%M:%S').replace(tzinfo=datetime.timezone.utc)
+            except:continue
+            if t<now-datetime.timedelta(minutes=18):continue
+            n+=1
+            plugins=set(re.findall(r'/wp-content/(?:plugins|themes)/([^/\\s]+)',block))
+            for comp in plugins:c[comp]+=1
+            funcs=re.findall(r'\\] ([a-zA-Z_][a-zA-Z0-9_:>]+)\\(\\)',block)
+            if funcs:front[funcs[0]]+=1
+            for line in block.splitlines()[1:8]:
+              pp=re.search(r'/wp-content/(?:plugins|themes|mu-plugins)/([^/\\s]+)',line)
+              if pp: paths[pp.group(1)]+=1
+            if 'mysqli_query' in block:frames['mysql_stack']+=1
+          print('POST_RESTART_SLOW',json.dumps({'count_18m':n,'components':c.most_common(15),'top_stack_functions':front.most_common(10),'top_first_7_frames':paths.most_common(15),'mysql_stack_count':frames['mysql_stack']},ensure_ascii=False))
+          PY2
+          echo "=== PUBLIC URL REAL RESPONSE TIMES ==="
+          for url in 'https://www.elmercadodeorigen.com/' 'https://www.elmercadodeorigen.com/tienda/' 'https://www.elmercadodeorigen.com/wp-json/'; do
+            curl -sSkL -o /dev/null --connect-timeout 4 --max-time 12 -w 'HTTP %{http_code} conn=%{time_connect} TTFB=%{time_starttransfer} total=%{time_total}\\n' "$url" || true
           done
           REMOTE
