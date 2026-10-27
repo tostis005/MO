@@ -1,0 +1,81 @@
+name: Publish Ikore Kofi Mentta-only tasting packs 2026-10-27
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/create-ikore-mentta-tasting-packs-20261027.yml'
+      - '.github/scripts/create-ikore-mentta-tasting-packs-20261027.php'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ikore-mentta-tasting-packs-production
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${ secrets.STAGING_HOST }}
+      STAGING_PORT: ${ secrets.STAGING_PORT }}
+      STAGING_USER: ${ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint publication script
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/create-ikore-mentta-tasting-packs-20261027.php
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+      - name: Publish packs from authentic product photographs and verify Mentta serializer
+        env:
+          SSHPASS: ${ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$PORT")
+          SCP=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P "$PORT")
+          TARGET="$STAGING_USER@$STAGING_HOST"
+          PROD_PATH="$(sshpass -e ssh "${SSH[@]}" "$TARGET" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          RUN="$GITHUB_RUN_ID"
+          sshpass -e scp "${SCP[@]}" .github/scripts/create-ikore-mentta-tasting-packs-20261027.php "$TARGET:/tmp/ikore-mentta-packs-$RUN.php"
+          sshpass -e ssh "${SSH[@]}" "$TARGET" "bash -s -- '$PROD_PATH' '$RUN'" <<'REMOTE'
+          set -euo pipefail
+          SITE="$1"; RUN="$2"
+          PHP_BIN="$(command -v php || true)"
+          [ -n "$PHP_BIN" ] || PHP_BIN="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          WP_BIN="$(command -v wp)"
+          export MDO_IKORE_PACK_MODE=preflight
+          "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "/tmp/ikore-mentta-packs-$RUN.php" --path="$SITE" --allow-root
+          export MDO_IKORE_PACK_MODE=apply
+          "$PHP_BIN" -d memory_limit=1024M "$WP_BIN" eval-file "/tmp/ikore-mentta-packs-$RUN.php" --path="$SITE" --allow-root
+          export MDO_IKORE_PACK_MODE=verify
+          "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "/tmp/ikore-mentta-packs-$RUN.php" --path="$SITE" --allow-root
+          REMOTE
+      - name: Assert all three packs return 404 on public shop
+        run: |
+          set -euo pipefail
+          for KEY in \
+            pack-cafe-especialidad-esencia-costa-rica-ikore \
+            pack-cafe-especialidad-ruta-cuatro-origenes-ikore \
+            pack-cafe-especialidad-coleccion-completa-ikore
+          do
+            HTTP="$(curl -sS -L --connect-timeout 10 --max-time 45 -o /dev/null -w '${http_code}' "https://www.elmercadodeorigen.com/producto/$KEY/")"
+            echo "$KEY => HTTP $HTTP"
+            test "$HTTP" = 404
+          done
+          echo 'THREE_IKORE_PACKS_HIDDEN_IN_PUBLIC_AND_VISIBLE_IN_MENTTA'
