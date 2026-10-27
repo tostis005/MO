@@ -13,7 +13,7 @@ jobs:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
       STAGING_USER: ${{ secrets.STAGING_USER }}
-      S${{ secrets.STAGING_HOST }}PASS: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
       - name: Read probe diagnostics without cookies or tokens
