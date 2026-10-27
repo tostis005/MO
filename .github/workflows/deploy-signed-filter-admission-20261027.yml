@@ -139,7 +139,8 @@ jobs:
           s=open(p,encoding='utf8').read()
           before='if ($emdo_geofacet_reject) { return 429; }'
           assert s.count(before)==1
-          s=s.replace(before,'if ($emdo_geo_reject_outside_gate) { return 429; }',1)
+          s=s.replace(before,'if ($emdo_geo_reject_outside_gate) { return 458; }',1)
+          s=s.replace('if ($emdo_vendor_facet_bot_20261027) { return 429; }','if ($emdo_vendor_facet_bot_20261027) { return 459; }')
           routes=[
            '/tienda/hidalgo-de-la-jara/', '/en/tienda/hidalgo-de-la-jara/',
            '/en/store/hidalgo-de-la-jara/', '/tienda/montjam/',
