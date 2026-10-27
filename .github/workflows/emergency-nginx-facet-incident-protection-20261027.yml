@@ -1,0 +1,96 @@
+name: Emergency producer multi-filter flood Nginx protection 2026-10-27
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/emergency-nginx-facet-incident-protection-20261027.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  protect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Connect securely to Plesk
+        run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Deploy narrow early Nginx filter protection with automatic rollback
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          test "$(id -u)" = 0
+          VHOST=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          RULE=/etc/nginx/conf.d/96-emdo-producer-facet-multifilter-20261027.conf
+          LABEL='# BEGIN EMDO PRODUCER MULTIFILTER 20261027'
+          test -s "$VHOST"
+          nginx -t
+          if grep -Fq "$LABEL" "$VHOST"; then
+            echo ALREADY_INSTALLED
+          else
+            test ! -e "$RULE"
+            BACKUP="$VHOST.bak-producer-multifilter-$(date -u +%Y%m%dT%H%M%SZ)"
+            cp -p "$VHOST" "$BACKUP"
+            echo "BACKUP=$BACKUP"
+            changes=0
+            rollback() {
+              rc=$?
+              trap - EXIT
+              if test "$rc" != 0 && test "$changes" = 1; then
+                cp -p "$BACKUP" "$VHOST"
+                rm -f "$RULE"
+                nginx -t && systemctl reload nginx || true
+                echo ROLLBACK_COMPLETED
+              fi
+              exit "$rc"
+            }
+            trap rollback EXIT
+            cat > "$RULE" <<'CONF'
+          # Only producer shops impacted by distributed multi-facet crawler.
+          map $uri $emdo_20261027_affected_store {
+              default 0;
+              ~*^/(?:tienda|en/tienda|en/store)/(?:hidalgo-de-la-jara|montjam)(?:/page/[1-9][0-9]*)?/?$ 1;
+          }
+          # Vendor facet and at least three filter attributes in any order.
+          map $args $emdo_20261027_deep_facet {
+              default 0;
+              ~*^(?=.*(?:^|&)emo_vendor_cat=)(?=.*(?:^|&)filter_[^=&]+=[^&]*(?:&[^&]*)*&filter_[^=&]+=[^&]*(?:&[^&]*)*&filter_[^=&]+=) 1;
+          }
+          map "$request_method:$emdo_20261027_affected_store:$emdo_20261027_deep_facet" $emdo_20261027_early_reject {
+              default 0;
+              "GET:1:1" 1;
+              "HEAD:1:1" 1;
+          }
+          CONF
+            chmod 0644 "$RULE"
+            printf '\n%s\nif ($emdo_20261027_early_reject) { return 429; }\n# END EMDO PRODUCER MULTIFILTER 20261027\n' "$LABEL" >> "$VHOST"
+            changes=1
+            nginx -t
+            systemctl reload nginx
+            test "$(systemctl is-active nginx)" = active
+            echo ACTIVE_NGINX_FILTER_GUARD
+          fi
+          echo === EARLY DENY CHECK ===
+          BASE=https://www.elmercadodeorigen.com
+          for p in \
+            '/tienda/hidalgo-de-la-jara/?emo_vendor_cat=emdo_test&filter_calidad=x&filter_preparacion=x&filter_rango-peso=x' \
+            '/en/tienda/hidalgo-de-la-jara/?filter_calidad=x&emo_vendor_cat=emdo_test&filter_preparacion=x&filter_rango-peso=x' \
+            '/en/store/hidalgo-de-la-jara/?filter_calidad=x&filter_preparacion=x&filter_rango-peso=x&emo_vendor_cat=emdo_test' \
+            '/tienda/montjam/?emo_vendor_cat=emdo_test&filter_calidad=x&filter_preparacion=x&filter_rango-peso=x'; do
+            code="$(curl -k -sS -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 6 "$BASE$p")"
+            echo "TARGET_HTTP=$code"
+            test "$code" = 429
+          done
+          echo === NORMAL PAGE CHECK ===
+          for p in '/' '/tienda/hidalgo-de-la-jara/' '/tienda/montjam/'; do
+            code="$(curl -ksS --connect-timeout 2 --max-time 5 -o /dev/null -w '%{http_code}' "$BASE$p" || true)"
+            echo "$p HTTP=$code"
+          done
+          echo === FINAL SNAPSHOT ===
+          uptime
+          REMOTE
