@@ -93,7 +93,7 @@ jobs:
               metrics['ref_filter_has']+=('filter_' in refq)
               metrics['ref_same_store']+=('hidalgo-de-la-jara' in refpath)
             else:metrics['ref_missing']+=1
-            history=[x for x in per_client[key] if x[0]<t and (t-x[0]).total_seconds()<=1800 and x[2]=='access_ssl_log']
+            history=[x for x in per_client[key] if x[0]<t and (t-x[0]).total_seconds()<=1800 and x[2] in ('access_ssl_log','proxy_access_ssl_log') and x[5] in ('200','301')]
             strict=[x for x in history if x[3]==path or x[3].split('/page/')[0].rstrip('/')==path.split('/page/')[0].rstrip('/')]
             prim=[x for x in history if x[8]=='hidalgo' and not x[4]]
             if history:
