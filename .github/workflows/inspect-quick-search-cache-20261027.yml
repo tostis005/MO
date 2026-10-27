@@ -30,9 +30,17 @@ jobs:
           sshpass -e ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "${STAGING_PORT:-22}" "${STAGING_USER}@${STAGING_HOST}" "bash -s -- '${STAGING_REMOTE_PATH}'" <<'REMOTE'
           set -euo pipefail
           raw="${1%/}"
-          dev="${raw%%/wp-content/*}"
+          case "$raw" in
+            */wp-content/*) dev="${raw%%/wp-content/*}" ;;
+            *) dev="$raw" ;;
+          esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || { echo 'Cannot resolve development WordPress root'; exit 1; }
+            dev="$(dirname "$cfg")"
+          fi
           prod="$(dirname "$dev")/httpdocs"
-          test -f "$prod/wp-config.php"
+          test -f "$prod/wp-config.php" || { echo 'Production root not found'; exit 1; }
           file="$prod/wp-content/advanced-cache.php"
           echo "CACHE_FILE_EXISTS=$([ -f "$file" ] && echo yes || echo no)"
           if [ -f "$file" ]; then
