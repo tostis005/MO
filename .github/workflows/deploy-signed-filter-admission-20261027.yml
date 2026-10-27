@@ -131,6 +131,7 @@ jobs:
           limit_req_zone $binary_remote_addr zone=emdo_signed_gate_entry_ip:10m rate=40r/m;
           limit_req_zone $cookie_emdo_filter_pass zone=emdo_signed_gate_session:10m rate=12r/m;
           limit_conn_zone $server_name zone=emdo_signed_facet_backend:1m;
+          log_format emdo_filter_debug 'http=$status gate=$emdo_gate_has_filters route=$emdo_gate_vendor_path geo=$emdo_geofacet_reject safe=$emdo_geo_reject_outside_gate legacy=$emdo_vendor_facet_bot_20261027 rate=$limit_req_status uri=$uri';
           CONF
           chmod 0644 "$GLOBAL"
           python3 - "$VHOST" <<'PY'
@@ -164,6 +165,7 @@ jobs:
           label='# BEGIN EMDO SIGNED FILTER ADMISSION 20261027'
           block=[
             label,
+            'access_log /tmp/emdo-filtergate-debug.log emdo_filter_debug;',
             'add_header X-EMDO-Facet-Diag "$emdo_geofacet_reject:$emdo_gate_vendor_path:$emdo_gate_has_filters:$emdo_geo_reject_outside_gate:$emdo_vendor_facet_bot_20261027" always;',
             'location @emdo_signed_filter_gate {',
             '    limit_req zone=emdo_signed_gate_entry_ip burst=15 nodelay;',
@@ -229,6 +231,7 @@ jobs:
           echo "DIRECT_HTTP=$STATUS"
           sed -n '1,25p' /tmp/emdo-filter-direct-h
           if [ "$STATUS" != 302 ]; then
+            echo '=== GATE ROUTING TRACE ==='; tail -n 12 /tmp/emdo-filtergate-debug.log || true
             tail -n 25 /var/log/nginx/error.log || true
           fi
           test "$STATUS" = 302
@@ -270,6 +273,7 @@ jobs:
           import sys
           p=sys.argv[1]
           s=open(p,encoding='utf8').read()
+          s=s.replace('access_log /tmp/emdo-filtergate-debug.log emdo_filter_debug;\n','')
           s=s.replace('add_header X-EMDO-Facet-Diag "$emdo_geofacet_reject:$emdo_gate_vendor_path:$emdo_gate_has_filters:$emdo_geo_reject_outside_gate:$emdo_vendor_facet_bot_20261027" always;\n','')
           s=s.replace('    add_header X-EMDO-Admission-Route "go" always;\n','')
           open(p,'w',encoding='utf8').write(s)
