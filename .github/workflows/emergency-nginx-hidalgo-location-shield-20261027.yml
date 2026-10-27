@@ -1,0 +1,125 @@
+name: Emergency Nginx Hidalgo and Montjam faceted bot shield 2026-10-27
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/emergency-nginx-hidalgo-location-shield-20261027.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: emdo-nginx-hidalgo-facet-shield
+  cancel-in-progress: false
+jobs:
+  shield:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Prevent automated filtered vendor shop URLs before PHP without disrupting cached store
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          test "$(id -u)" = 0
+          VHOST=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          RULE=/etc/nginx/conf.d/96-emdo-producer-facet-shield-20261027.conf
+          TAG='# BEGIN EMDO VENDOR BOT SHIELD 20261027'
+          test -s "$VHOST"
+          grep -q 'location @emdo_hot_static_origin' "$VHOST"
+          nginx -t
+          if ! grep -Fq "$TAG" "$VHOST"; then
+            test ! -e "$RULE"
+            BK="$VHOST.before-vendor-bot-shield-$(date -u +%Y%m%dT%H%M%SZ)"
+            cp -p "$VHOST" "$BK"
+            changed=0
+            rollback() {
+              rc=$?
+              trap - EXIT
+              if [ "$rc" != 0 ] && [ "$changed" = 1 ]; then
+                cp -p "$BK" "$VHOST"
+                rm -f "$RULE"
+                nginx -t && systemctl reload nginx || true
+                echo ROLLBACK_RESTORED_ORIGINAL
+              fi
+              exit "$rc"
+            }
+            trap rollback EXIT
+            # Reuse existing verified GeoIP2 facet key maps already installed in nginx
+            # at http scope; one 1:1 match identifies vendor-cat + two real filter attributes.
+            cat > "$RULE" <<'RULES'
+          map "$emdo_facet_vendor_cat:$emdo_facet_two_attributes" $emdo_vendor_facet_bot_20261027 {
+              default 0;
+              "1:1" 1;
+          }
+          RULES
+            chmod 0644 "$RULE"
+            python3 - "$VHOST" <<'PY'
+          import sys
+          p=sys.argv[1]
+          with open(p,encoding='utf-8') as f: s=f.read()
+          start='# BEGIN EMDO VENDOR BOT SHIELD 20261027'
+          end='# END EMDO VENDOR BOT SHIELD 20261027'
+          assert start not in s and end not in s
+          # These Spanish and old English routes currently use the default Plesk proxy.
+          # @emdo_hot_static_origin is the existing guarded Plesk Apache origin fallback.
+          block=[
+            start,
+            '# Only these vendor store URLs; normal site, products, cart, REST unchanged.',
+          ]
+          for path in (
+            '/tienda/hidalgo-de-la-jara/',
+            '/en/tienda/hidalgo-de-la-jara/',
+            '/tienda/montjam/',
+            '/en/tienda/montjam/',
+          ):
+            assert ('location = '+path+' {') not in s
+            block.extend([
+              'location = '+path+' {',
+              '    error_page 418 = @emdo_hot_static_origin;',
+              '    if ($emdo_vendor_facet_bot_20261027) { return 429; }',
+              '    return 418;',
+              '}',
+            ])
+          # The English canonical producer pages have Nginx static cache location.
+          # Inject one early guard line before existing cache/bypass logic.
+          for path in ('/en/store/hidalgo-de-la-jara/','/en/store/montjam/'):
+            needle='location = '+path+' {\n'
+            assert s.count(needle)==1, 'Unexpected Nginx hot cache location '+path
+            s=s.replace(needle,needle+'    if ($emdo_vendor_facet_bot_20261027) { return 429; }\n')
+          block.append(end)
+          with open(p,'w',encoding='utf-8') as f:
+            f.write(s.rstrip()+'\n\n'+'\n'.join(block)+'\n')
+          PY
+            changed=1
+            nginx -t
+            systemctl reload nginx
+            test "$(systemctl is-active nginx)" = active
+            echo "NGINX_SHIELD_ACTIVE"
+          else
+            echo "SHIELD_ALREADY_INSTALLED"
+          fi
+          echo === ATTACK TARGET SMOKE ===
+          for spec in \
+            '/tienda/hidalgo-de-la-jara/?emo_vendor_cat=emdo_probe&filter_preparacion=a&filter_rango-peso=b' \
+            '/en/tienda/hidalgo-de-la-jara/?emo_vendor_cat=emdo_probe&filter_preparacion=a&filter_rango-peso=b' \
+            '/en/store/hidalgo-de-la-jara/?emo_vendor_cat=emdo_probe&filter_preparacion=a&filter_rango-peso=b' \
+            '/tienda/montjam/?emo_vendor_cat=emdo_probe&filter_preparacion=a&filter_rango-peso=b'; do
+            code="$(curl -ksS --connect-timeout 3 --max-time 6 -o /dev/null -w '%{http_code}' "https://www.elmercadodeorigen.com$spec")"
+            echo "flood_guard HTTP=$code"
+            test "$code" = 429
+          done
+          echo === CLEAN STATIC SAFETY ===
+          code="$(curl -ksS --connect-timeout 3 --max-time 6 -D /tmp/emdo-shield-h -o /dev/null -w '%{http_code}' 'https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/' || true)"
+          echo "en_canonical_clean HTTP=$code"
+          grep -i 'x-emdo-nginx-hot-cache' /tmp/emdo-shield-h || true
+          test "$code" = 200
+          echo "=== SERVER LOAD ==="
+          uptime
+          echo "ROLLBACK_BACKUP=$BK"
+          REMOTE
