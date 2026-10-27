@@ -47,6 +47,7 @@ if ( ! empty( $_COOKIE ) ) {
 		'CookieLawInfoConsent',
 		'viewed_cookie_policy',
 		'total_page',
+		'emdo_filter_pass', // Token firmado del filtro: no personaliza el HTML en caché.
 	);
 
 	foreach ( array_keys( $_COOKIE ) as $cookie_name ) {
