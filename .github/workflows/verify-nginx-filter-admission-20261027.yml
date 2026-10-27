@@ -1,4 +1,4 @@
-name: Diagnose production Nginx 429 source and faceted rate guard
+name: Inspect final signed filter gate probe artifacts 20261027
 on:
   push:
     branches: [main]
@@ -13,26 +13,18 @@ jobs:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
       STAGING_USER: ${{ secrets.STAGING_USER }}
-      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+      S${{ secrets.STAGING_HOST }}PASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
-      - name: Read Nginx 429 limits and actual error log (no changes)
+      - name: Read probe diagnostics without cookies or tokens
         run: |
           set -Eeuo pipefail
           sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
-          set +e
-          echo === CURRENT_RATE_LIMIT_VARIABLES ===
-          cat /etc/nginx/conf.d/emdo_filter_rate_limit.conf
-          echo === OTHER_NGINX_LIMITS ===
-          grep -R -nE 'limit_req(_zone|_status)? |limit_conn(_zone|_status)? ' /etc/nginx/conf.d/ /var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf | head -n 40
-          echo === NGINX_LAST_ERROR_LOGS ===
-          for f in /var/www/vhosts/system/elmercadodeorigen.com/logs/proxy_error_log /var/www/vhosts/system/elmercadodeorigen.com/logs/error_log /var/log/nginx/error.log; do
-            echo "--- $f"
-            test -r "$f" && tail -n 30 "$f" | grep -E 'limiting requests|limit_req|limit_conn|excess|upstream|emerg|error' | tail -n 12 | cut -c 1-260
-          done
-          echo === PRE_EXISTING_DIRECT_TEST ===
-          curl -k -sS --connect-timeout 2 --max-time 5 -D /tmp/emdo-429-head -o /dev/null -w 'direct_complex_http=%{http_code}\n' 'https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/?emo_vendor_cat=jamones-paletas&filter_calidad=bellota-100-iberico&filter_preparacion=deshuesado' || true
-          head -n 12 /tmp/emdo-429-head
-          echo === NGINX_REMOTE_STATUS ===
-          nginx -t 2>&1 | tail -n 2
+          python3 - <<'PY'
+          import os,re
+          for p in ('/tmp/emdo-filter-challenge','/tmp/emdo-gate-local-challenge','/tmp/emdo-filter-cookie','/tmp/emdo-local-verify','/tmp/emdo-filter-direct-h'):
+            if not os.path.exists(p):print(os.path.basename(p),'missing');continue
+            s=open(p,'rb').read()
+            print(os.path.basename(p),'bytes',len(s),'looks_challenge',b'Verificando acceso' in s,'looks_redirect',b'Found' in s,'has_expected_challenge_parameter',bool(re.search(rb'/__emdo_filtergate/verify\?c=[a-zA-Z0-9._-]+',s)),'cookie_name_present',b'emdo_filter_pass' in s)
+          PY
           REMOTE
