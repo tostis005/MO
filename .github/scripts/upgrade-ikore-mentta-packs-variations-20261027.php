@@ -73,6 +73,9 @@ foreach($packs as $key=>&$pack){
 }
 unset($pack);
 if($grinds!==['En grano','Italiana','Espresso','Prensa francesa','Cold brew','Aeropress','Filtro y V60'])$errors[]='UNEXPECTED_SOURCE_MOLIENDA_VALUES';
+$GLOBALS['mdo_ikore_var_vendor_id']=4970;
+$GLOBALS['mdo_ikore_var_source_names']=$sourceNames;
+$GLOBALS['mdo_ikore_var_source_records']=$src;
 echo 'IKORE_VAR_PREFLIGHT '.wp_json_encode([
  'mode'=>$mode,'sources'=>count($src),'grinds'=>$grinds,'pack_ids'=>array_column($packs,'id'),
  'types'=>array_map(static fn($p)=>$p['previousType']??'not_verified',$packs),
@@ -99,7 +102,7 @@ function ikore_var_lines($items,$src,$grind){
   'id'=>(int)$src[$key]['versions'][$grind],
   'source_product_id'=>(int)$src[$key]['id'],
   'qty'=>1,'image'=>(int)$src[$key]['image'],
-  'label'=>$GLOBALS['sourceNames'][$key].', 250 g, '.$grind
+  'label'=>$GLOBALS['mdo_ikore_var_source_names'][$key].', 250 g, '.$grind
  ];return $lines;
 }
 function ikore_var_center($canvas,$text,$size,$y,$c,$font){
@@ -145,7 +148,7 @@ function ikore_var_cover($key,$conf,$src,$pid){
   imagecopyresampled($im,$photo,$x+12+(int)(($photoWidth-$tw)/2),$y+12+(int)(($photoHeight-$th)/2),0,0,$tw,$th,$sw,$sh);
   imagedestroy($photo);
   $country=str_starts_with($item,'villa')||in_array($item,['typica','geisha'])?'Costa Rica':($item==='colombia'?'Colombia':($item==='kenia'?'Kenia':'Panamá'));
-  $display=str_replace(['Costa Rica ','Colombia ','Kenia ','Panamá '],'',$GLOBALS['sourceNames'][$item]);
+  $display=str_replace(['Costa Rica ','Colombia ','Kenia ','Panamá '],'',$GLOBALS['mdo_ikore_var_source_names'][$item]);
   $textY=$y+$photoHeight+48;
   imagettftext($im,$labelSize,0,$x+16,$textY,$ink,$bold,$country);
   imagettftext($im,$labelSize,0,$x+16,$textY+26,$ink,$bold,$display);
@@ -196,13 +199,13 @@ if($mode==='apply'){
    $p->set_short_description('<p>Pack de degustación de '.count($pack['items']).' cafés de especialidad de 250 g cada uno. <strong>Elige cómo quieres recibirlos: en grano o molidos para tu cafetera.</strong> Una única molienda para todas las bolsas, sin cambio de precio.</p>');
    $description='<p>Descubre una selección de cafés 100 % arábica de especialidad tostados por Ikore Kofi. '.$pack['subtitle'].'.</p>';
    $description.='<h2>¿Qué cafés incluye este pack?</h2><ul>';
-   foreach($pack['items'] as $item)$description.='<li>'.esc_html($GLOBALS['sourceNames'][$item]).' — 250 g.</li>';
+   foreach($pack['items'] as $item)$description.='<li>'.esc_html($GLOBALS['mdo_ikore_var_source_names'][$item]).' — 250 g.</li>';
    $description.='</ul><h2>Elige la molienda para tu cafetera</h2><p><strong>Selecciona cómo quieres recibir tus cafés: en grano o molidos para tu cafetera.</strong> Puedes elegir En grano, Italiana, Espresso, Prensa francesa, Cold brew, Aeropress o Filtro y V60. La opción elegida se aplica a todas las bolsas del pack y <strong>no modifica el precio</strong>.</p>';
    $description.='<p>Se entregan '.count($pack['items']).' bolsas originales de 250 g de Ikore Kofi, sin molinillo ni cafetera. Para comparar los perfiles, utiliza una misma receta y temperatura en cada café. Guarda los envases cerrados, protegidos de la luz, humedad y olores. Consulta fecha y lote en cada bolsa. Las notas de cata son descriptores sensoriales, no ingredientes añadidos.</p>';
    $p->set_description(wp_kses_post($description));
-   $p->set_gallery_image_ids(array_values(array_map(static fn($k)=>(int)$src[$k]['image'],$pack['items'])));
+   $p->set_gallery_image_ids(array_values(array_map(static fn($k)=>(int)$GLOBALS['mdo_ikore_var_source_records'][$k]['image'],$pack['items'])));
    $p->update_meta_data('_emdo_mentta_only','yes');$p->update_meta_data('_yoast_wpseo_meta-robots-noindex','1');
-   $p->update_meta_data('_emdo_mentta_pack_lines',ikore_var_lines($pack['items'],$src,'En grano'));
+   $p->update_meta_data('_emdo_mentta_pack_lines',ikore_var_lines($pack['items'],$GLOBALS['mdo_ikore_var_source_records'],'En grano'));
    $p->save();
    foreach($grinds as $n=>$grind){
     $sku=$pack['sku'].'-M'.($n+1);
@@ -222,13 +225,13 @@ if($mode==='apply'){
     $v->set_manage_stock(false);$v->set_stock_status('instock');
     $v->update_meta_data('_emdo_mentta_only','yes');
     $v->update_meta_data('_emdo_mentta_pack_key','ikore-'.$key);
-    $v->update_meta_data('_emdo_mentta_pack_lines',ikore_var_lines($pack['items'],$src,$grind));
+    $v->update_meta_data('_emdo_mentta_pack_lines',ikore_var_lines($pack['items'],$GLOBALS['mdo_ikore_var_source_records'],$grind));
     $v->update_meta_data('_emdo_ikore_grind',$grind);
     $variationId=$v->save();
-    wp_update_post(['ID'=>$variationId,'post_author'=>$GLOBALS['vid']]);
+    wp_update_post(['ID'=>$variationId,'post_author'=>$GLOBALS['mdo_ikore_var_vendor_id']]);
    }
    WC_Product_Variable::sync($pid);
-   $cover=ikore_var_cover($key,$pack,$pid,$src);
+   $cover=ikore_var_cover($key,$pack,$pid,$GLOBALS['mdo_ikore_var_source_records']);
    $p=wc_get_product($pid);$p->set_image_id($cover);$p->save();
    wc_delete_product_transients($pid);clean_post_cache($pid);
    echo 'IKORE_VAR_APPLIED '.wp_json_encode(['id'=>$pid,'price'=>$pack['gross'],'variations'=>count($grinds),'cover_id'=>$cover],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
