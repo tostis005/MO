@@ -113,6 +113,15 @@ function emdo_latitudes_foot_clean_similarity($original,$candidate) {
 $replacements=[];$report=[];
 foreach($footerIds as $origId){
  $src=$sourceIntegrity[$origId];
+ // Resumable: a previous SSH break must never generate duplicate clean media.
+ $existingClean=(int)get_post_meta($origId,'_emdo_latitudes_clean_replacement_id',true);
+ if($existingClean && get_post_type($existingClean)==='attachment' && is_readable((string)get_attached_file($existingClean))){
+  $replacements[$origId]=$existingClean;
+  $report[]=['original'=>$origId,'new'=>$existingClean,'method'=>'RESUMED_PREVIOUS_CLEAN_MEDIA'];
+  echo "RESUME_EXISTING_CLEAN_MEDIA $origId->$existingClean\n";
+  continue;
+ }
+ echo "START_PHOTO $origId\n";
  // A clean alternative is valid ONLY if it depicts the SAME PHOTO, not merely the same meat cut.
  $candidateIds=[];
  foreach(array_keys($originalImageLinks[$origId]??[]) as $pid){
@@ -169,6 +178,7 @@ foreach($footerIds as $origId){
  $sourceUrl=get_post_meta($origId,'_source_url',true);
  if($sourceUrl)update_post_meta($attachment,'_source_url',$sourceUrl);
  $replacements[$origId]=(int)$attachment;
+ echo "PHOTO_CLEANED $origId=>$attachment\n";
  $report[]=['original'=>$origId,'new'=>(int)$attachment,'method'=>'LOSSLESS_9_8_PERCENT_FOOTER_CROP','old_dimensions'=>[$w,$h],'new_dimensions'=>[$w,$newH],
   'original_media_sha256'=>$src['sha256'],'sanitized_file'=>basename($out)];
 }
