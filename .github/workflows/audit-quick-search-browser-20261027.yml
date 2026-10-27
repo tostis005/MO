@@ -1,0 +1,127 @@
+name: Audit quick search end-to-end in browser 20261027
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-quick-search-browser-20261027.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Chromium for read-only UI checks
+        run: |
+          python -m pip install --quiet playwright
+          python -m playwright install --with-deps chromium >/dev/null
+
+      - name: Test desktop and mobile autocomplete, product click, all-results and Enter
+        shell: bash
+        run: |
+          python - <<'PY'
+          from playwright.sync_api import sync_playwright
+          from urllib.parse import urlsplit, parse_qs
+          import json, os, traceback
+
+          SITE = 'https://www.elmercadodeorigen.com/'
+          os.makedirs('/tmp/emdo-search-browser', exist_ok=True)
+
+          def check(value, message):
+              if not value:
+                  raise AssertionError(message)
+
+          with sync_playwright() as pw:
+              browser = pw.chromium.launch(headless=True)
+              for width, height in [(1440, 900), (390, 844)]:
+                  context = browser.new_context(viewport={'width': width, 'height': height}, locale='es-ES', ignore_https_errors=False)
+                  page = context.new_page()
+                  page.set_default_timeout(15000)
+                  tag = str(width)
+                  try:
+                      def load_home():
+                          response = page.goto(SITE, wait_until='domcontentloaded', timeout=60000)
+                          check(response and response.status == 200, f'{tag}: homepage not HTTP 200')
+
+                      def open_dialog():
+                          triggers = page.locator('.site-header .header-search-icon, .site-header .search-icon, .site-header .site-search-toggle')
+                          choices = [(i, triggers.nth(i).get_attribute('class')) for i in range(triggers.count()) if triggers.nth(i).is_visible()]
+                          print('SEARCH_OPENERS', tag, json.dumps(choices), flush=True)
+                          check(choices, f'{tag}: visible search button not found')
+                          triggers.nth(choices[0][0]).click(timeout=15000)
+                          form = page.locator('.site-dialog-search form').first
+                          form.wait_for(state='visible', timeout=12000)
+                          inp = form.locator('input[type=search],input.search-field').first
+                          inp.wait_for(state='visible', timeout=10000)
+                          return form, inp
+
+                      def wait_suggestions():
+                          region = page.locator('.site-dialog-search .emo-quick-search-20261021').first
+                          region.wait_for(state='visible', timeout=12000)
+                          page.wait_for_function("() => { const r = document.querySelector('.site-dialog-search .emo-quick-search-20261021'); return r && r.getAttribute('aria-busy') === 'false' && !r.hidden; }", timeout=15500)
+                          return region
+
+                      load_home()
+                      form, inp = open_dialog()
+                      inp.fill('man')
+                      region = wait_suggestions()
+                      suggestions = region.locator('.emo-quick-search__link')
+                      n = suggestions.count()
+                      check(n > 0, f'{tag}: no suggestions for man: {region.inner_text()}')
+                      href = suggestions.first.get_attribute('href')
+                      print('AUTOCOMPLETE_OK', tag, 'count=', n, 'first=', href, flush=True)
+                      check(href and 'elmercadodeorigen.com' in href, f'{tag}: invalid product URL')
+                      with page.expect_navigation(wait_until='domcontentloaded', timeout=60000):
+                          suggestions.first.click(timeout=15000)
+                      check(page.locator('body.single-product, body.woocommerce-page').count() > 0, f'{tag}: suggestion did not open product')
+                      check(urlsplit(page.url).path not in ('/', '/en/'), f'{tag}: suggestion stayed on homepage')
+                      print('SUGGESTION_CLICK_OK', tag, page.url, flush=True)
+
+                      load_home()
+                      form, inp = open_dialog()
+                      inp.fill('man')
+                      region = wait_suggestions()
+                      with page.expect_navigation(wait_until='domcontentloaded', timeout=60000):
+                          region.locator('.emo-quick-search__all').click(timeout=15000)
+                      params = parse_qs(urlsplit(page.url).query)
+                      check(params.get('s', [''])[0].lower() == 'man', f'{tag}: all-results lost query {page.url}')
+                      check(params.get('post_type', [''])[0] == 'product', f'{tag}: all-results did not target products {page.url}')
+                      print('ALL_RESULTS_CLICK_OK', tag, page.url, flush=True)
+
+                      load_home()
+                      form, inp = open_dialog()
+                      inp.fill('zzzxxyq')
+                      region = wait_suggestions()
+                      check(region.locator('.emo-quick-search__loading').count() == 0, f'{tag}: permanent loading indicator')
+                      check(region.locator('.emo-quick-search__all').count() == 1, f'{tag}: missing all-results fallback')
+                      print('NO_RESULTS_OK', tag, region.inner_text()[:100], flush=True)
+
+                      inp.fill('mango')
+                      with page.expect_navigation(wait_until='domcontentloaded', timeout=60000):
+                          inp.press('Enter')
+                      params = parse_qs(urlsplit(page.url).query)
+                      check(params.get('post_type', [''])[0] == 'product' and params.get('s', [''])[0] == 'mango', f'{tag}: Enter search broken {page.url}')
+                      print('ENTER_SEARCH_OK', tag, page.url, flush=True)
+                  except Exception:
+                      page.screenshot(path=f'/tmp/emdo-search-browser/fail-{tag}.png', full_page=True, timeout=10000)
+                      print('BROWSER_AUDIT_FAILURE', tag, 'url=', page.url, flush=True)
+                      traceback.print_exc()
+                      raise
+                  finally:
+                      context.close()
+              browser.close()
+          print('QUICK_SEARCH_BROWSER_E2E_OK desktops=1 mobiles=1')
+          PY
+
+      - name: Preserve failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quick-search-browser-failure
+          path: /tmp/emdo-search-browser/
+          if-no-files-found: ignore
