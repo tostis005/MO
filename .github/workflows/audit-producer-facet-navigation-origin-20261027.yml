@@ -1,0 +1,128 @@
+name: Audit producer facet requests navigation chain 20261027
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-producer-facet-navigation-origin-20261027.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install SSH helper
+        run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Correlate vendor filter requests and preceding pageviews read-only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=14 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import os,re,datetime,collections,urllib.parse,json,hashlib,glob,subprocess
+          base='/var/www/vhosts/system/elmercadodeorigen.com/logs/'
+          files=[base+x for x in ('access_ssl_log','proxy_access_ssl_log')]
+          for f in files:
+            print('LOG_FILE',os.path.basename(f), 'bytes',os.path.getsize(f) if os.path.exists(f) else -1)
+          start=datetime.datetime(2026,10,27,7,45,tzinfo=datetime.timezone.utc)
+          attack_end=datetime.datetime(2026,10,27,8,21,36,tzinfo=datetime.timezone.utc)
+          now=datetime.datetime.now(datetime.timezone.utc)
+          pat=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"([^"]+)"\s+(\d{3})\s+\S+\s+"([^"]*)"\s+"([^"]*)"')
+          all_events=[]; counts=collections.Counter()
+          # Analysis in bounded window, bytes capped to avoid memory pressure from the bot flood.
+          for f in files:
+            if not os.path.exists(f):continue
+            with open(f,'rb') as src:
+              n=os.path.getsize(f)
+              src.seek(max(0,n-125000000))
+              if n>125000000:src.readline()
+              for line in src:
+                match=pat.match(line.decode('utf8','replace'))
+                if not match:counts['unparsed_'+os.path.basename(f)]+=1;continue
+                ip,when,request,status,ref,ua=match.groups()
+                try:t=datetime.datetime.strptime(when,'%d/%b/%Y:%H:%M:%S %z').astimezone(datetime.timezone.utc)
+                except:continue
+                if not (start<=t<=now):continue
+                parts=request.split()
+                if len(parts)<2:continue
+                method,url=parts[:2]
+                path=url.split('?',1)[0]
+                if url.startswith('http'):
+                  u=urllib.parse.urlsplit(url);path=u.path;query=u.query
+                else:query=url.partition('?')[2]
+                if method not in ('GET','HEAD'):continue
+                if path.startswith('/wp-content/') or path.startswith('/wp-includes/') or path.startswith('/favicon'):continue
+                refu=urllib.parse.urlsplit(ref) if ref!='-' else None
+                refpath=refu.path if refu else ''
+                refquery=refu.query if refu else ''
+                if path.startswith('/wp-') or path.startswith('/?'):continue
+                filterkeys=re.findall(r'(?:^|&)filter_[^=&]+=',query,re.I)
+                vendor= 'hidalgo' if 'hidalgo-de-la-jara' in path else ('montjam' if 'montjam' in path else '')
+                key=(ip,ua)
+                ev=(t,key,os.path.basename(f),path,query,status,refpath,refquery,vendor,len(filterkeys),method)
+                all_events.append(ev)
+                counts[os.path.basename(f)]+=1
+          print('PARSED_COUNTS',dict(counts),'TOTAL',len(all_events))
+          all_events.sort(key=lambda e:e[0])
+          per_client=collections.defaultdict(list)
+          for e in all_events:
+            per_client[e[1]].append(e)
+          # Relevant to pre-guard incident: faceted request with parameters on producer store path.
+          def is_target(e):
+            return e[8]=='hidalgo' and e[4] and ('filter_' in e[4] or 'emo_vendor_cat=' in e[4])
+          targets=[e for e in all_events if is_target(e) and e[2]=='access_ssl_log' and e[0]<attack_end]
+          metrics=collections.Counter(); referers=collections.Counter()
+          gap=collections.Counter(); case_examples=collections.Counter(); status=collections.Counter(); before_uniq=set(); parentpaths=collections.Counter()
+          before_count=collections.Counter()
+          for e in targets:before_count[e[1]]+=1
+          for e in targets:
+            t,key,lf,path,q,st,refpath,refq,vendor,nfilters,method=e
+            metrics['total']+=1;status[st]+=1;before_uniq.add(key)
+            metrics['uniq_queries_with_filters']+=(nfilters>0)
+            metrics['one_request_client']+=(before_count[key]==1)
+            if refpath:
+              referers[refpath]+=1
+              metrics['ref_set']+=1
+              metrics['ref_filter_has']+=('filter_' in refq)
+              metrics['ref_same_store']+=('hidalgo-de-la-jara' in refpath)
+            else:metrics['ref_missing']+=1
+            history=[x for x in per_client[key] if x[0]<t and (t-x[0]).total_seconds()<=1800 and x[2]=='access_ssl_log']
+            strict=[x for x in history if x[3]==path or x[3].split('/page/')[0].rstrip('/')==path.split('/page/')[0].rstrip('/')]
+            prim=[x for x in history if x[8]=='hidalgo' and not x[4]]
+            if history:
+              metrics['prior_any_page_30m']+=1
+              parentpaths[history[-1][3]]+=1
+              lag=(t-history[-1][0]).total_seconds()
+              gap['under2s']+=(lag<=2)
+              gap['2to10s']+=(2<lag<=10)
+              gap['10to60s']+=(10<lag<=60)
+              gap['over60s']+=(lag>60)
+            if strict:metrics['prior_same_path_30m']+=1
+            if prim:metrics['prior_clean_producer_page_30m']+=1
+            if not history:case_examples['no_prior_request_in_30m']+=1
+            if refpath and 'hidalgo-de-la-jara' in refpath and not strict:case_examples['claimed_ref_vendor_without_prior_same_vendor']+=1
+          print('BEFORE_HIDALGO_NAVIGATION',json.dumps({'metrics':metrics,'statuses':status,'distinct_client_ip_ua':len(before_uniq),'referer_paths_top':referers.most_common(12),'previous_actual_paths_top':parentpaths.most_common(12),'lag_distribution':gap,'suspicious_cases':case_examples},ensure_ascii=False))
+          # New protective edge 429 records: how many had an actual previous base visit?
+          blocked=[e for e in all_events if e[2]=='proxy_access_ssl_log' and e[8]=='hidalgo' and e[9]>=2 and e[0]>=attack_end and e[5]=='429']
+          met2=collections.Counter()
+          for e in blocked:
+            t,key,*_=e
+            met2['total']+=1
+            if e[6]:met2['ref_set']+=1
+            if 'hidalgo-de-la-jara' in e[6]:met2['ref_vendor']+=1
+            hist=[x for x in per_client[key] if x[0]<t and (t-x[0]).total_seconds()<1800 and x[2] in ('proxy_access_ssl_log','access_ssl_log') and x[8]=='hidalgo' and not x[4]]
+            if hist:met2['prior_clean_vendor_30m']+=1
+          print('AFTER_BLOCKED_HIDALGO_NAVIGATION',json.dumps(met2,ensure_ascii=False))
+          print('DATE_RANGE',start.isoformat(),attack_end.isoformat(),now.isoformat())
+          echo_output=subprocess.run(['nginx','-V'],capture_output=True,text=True,timeout=3)
+          build=echo_output.stderr
+          print('NGINX_BUILD_CAPABILITIES',dict(secure_link='--with-http_secure_link_module' in build,auth_request='--with-http_auth_request_module' in build,realip='--with-http_realip_module' in build))
+          PY
+          REMOTE
