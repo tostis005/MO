@@ -1,4 +1,4 @@
-name: Incident read-only web server log diagnostic 2026-10-27
+name: Incident deep read-only PHP and traffic diagnostic 2026-10-27
 on:
   push:
     branches: [main]
@@ -7,16 +7,16 @@ on:
 permissions:
   contents: read
 jobs:
-  diagnose:
+  deep:
     runs-on: ubuntu-24.04
-    timeout-minutes: 6
+    timeout-minutes: 7
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
       STAGING_USER: ${{ secrets.STAGING_USER }}
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Inspect production health and recent server logs (no changes)
+      - name: Identify primary saturation source using recent sanitized logs
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -26,89 +26,116 @@ jobs:
           sshpass -e ssh -o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
           set +e
           export LC_ALL=C
-          echo "=== INCIDENT SERVER TIME AND HEALTH ==="
-          date -u '+UTC=%Y-%m-%dT%H:%M:%SZ'; uptime; free -m | head -n 3; df -h / | tail -n 1
-          echo "=== SERVICE STATUS ==="
-          for svc in nginx apache2 httpd mariadb mysql plesk-php82-fpm plesk-php83-fpm; do printf '%s=' "$svc"; systemctl is-active "$svc" 2>/dev/null || true; done
-          echo "=== WORKER AND CPU SUMMARY ==="
-          ps -eo comm= | awk '/php-fpm/{a++} /apache|httpd/{b++} /nginx/{c++} /mariadb|mysqld/{d++} END {printf "php_fpm=%d apache=%d nginx=%d database=%d\n",a,b,c,d}'
-          ps -eo comm=,%cpu=,%mem=,rss= --sort=-%cpu | awk 'NR<=15 {printf "%s cpu=%s mem=%s rssKB=%s\n",$1,$2,$3,$4}'
-          echo "=== TCP CONNECTION SUMMARY ==="
-          ss -s 2>/dev/null | head -n 8
-          echo "=== NGINX CONFIG TEST ==="
-          nginx -t 2>&1 | tail -n 3
-          echo "=== SERVER LOG DIAGNOSIS ==="
+          echo "=== TIME CPU PHP POOL ==="
+          date -u; echo cpu_cores=$(nproc); uptime; free -m | head -n 3
+          ps -eo stat=,comm=,args= | awk '/php-fpm: pool elmercadodeorigen.com/ {n++;state[substr($1,1,1)]++} END {print "PROD_FPM_WORKERS",n,"states", "R="state["R"],"S="state["S"],"D="state["D"]}'
+          for f in /opt/plesk/php/8.2/etc/php-fpm.d/*elmercadodeorigen* /opt/plesk/php/8.2/etc/php-fpm.d/*; do [ -f "$f" ] || continue; grep -q 'elmercadodeorigen.com' "$f" || continue; echo FPM_POOL_CONFIG; grep -E '^[[:space:]]*(pm[.]max_children|pm[.]max_requests|pm[.]process_idle_timeout|pm[.]start_servers|pm[.]min_spare_servers|pm[.]max_spare_servers|request_slowlog_timeout|request_terminate_timeout)[[:space:]]*=' "$f" | head -n 12; break; done
+          echo "=== LOG SOURCES ==="
           python3 - <<'PY'
           import os,re,json,glob,gzip
           from collections import Counter,defaultdict
           from datetime import datetime,timezone,timedelta
-          now=datetime.now(timezone.utc); cut=now-timedelta(hours=3)
+          now=datetime.now(timezone.utc);cut=now-timedelta(minutes=70)
           base='/var/www/vhosts/system/elmercadodeorigen.com/logs'
-          paths=sorted(set(glob.glob(base+'/*error*')+glob.glob(base+'/*slow*')+glob.glob('/var/log/nginx/error.log')+glob.glob('/var/log/plesk-php*-fpm/error.log')))
-          patterns={
-            'upstream_timeout':r'upstream timed out|proxy_read_timeout|timed out.*upstream',
-            'upstream_connection':r'connect\(\) failed|upstream prematurely closed|no live upstream|connection refused',
-            'gateway_error':r'\b(?:502|503|504)\b|bad gateway|service unavailable',
-            'php_fatal':r'PHP Fatal|Fatal error|Uncaught (?:Error|Exception)|Allowed memory size',
-            'fpm_worker_limit':r'max_children|server reached|pool seems busy|pool.*exhaust',
-            'mysql_error':r'too many connections|mysql server has gone away|deadlock|database connection',
-            'memory_kill':r'out of memory|oom-kill|killed process|cannot allocate memory',
-            'other_php_warning':r'PHP Warning|PHP Parse error',
-            'permission_error':r'Permission denied|access forbidden|open_basedir restriction',
-            'security_rate_limit':r'limiting requests|limiting connections|rate limit|client denied',
+          def printj(name,x): print(name,json.dumps(x,ensure_ascii=False))
+          for p in sorted(glob.glob(base+'/*')):
+            n=os.path.basename(p)
+            if n in ('error_log','proxy_error_log','php-fpm_slow.log','access_ssl_log','access_log') or ('error.log' in n and not n.endswith('.gz')):
+              print('LOG_FILE',n,'bytes',os.path.getsize(p),'modified',datetime.fromtimestamp(os.path.getmtime(p),timezone.utc).isoformat())
+          access=base+'/access_ssl_log'
+          counters=Counter();route=Counter();http429=Counter();method=Counter();agents=Counter();hourly=defaultdict(Counter);top_ip=Counter();response_times={}
+          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)"\s+(\d{3})\s+\S+(?:\s+"[^"]*"\s+"([^"]*)")?')
+          with open(access,'rb') as f:
+            f.seek(max(0,os.path.getsize(access)-35000000))
+            for b in f:
+              m=rx.match(b.decode('utf8','replace'))
+              if not m:continue
+              ip,stamp,verb,target,code,agent=m.groups()
+              try:dt=datetime.strptime(stamp,'%d/%b/%Y:%H:%M:%S %z').astimezone(timezone.utc)
+              except:continue
+              if dt<cut:continue
+              counters[code]+=1;method[verb]+=1
+              p=(target or '/').split('?',1)[0]
+              if re.search(r'\.(png|jpg|webp|css|js|woff2?|svg|ico)$',p,re.I): cat='static_asset'
+              elif '/wp-json/' in p:cat='wp_rest'
+              elif '/wp-admin/admin-ajax.php' in p:cat='admin_ajax'
+              elif '/wp-cron.php' in p:cat='wp_cron'
+              elif '/xmlrpc.php' in p:cat='xmlrpc'
+              elif '/'==p:cat='homepage'
+              elif '/tienda/'==p:cat='shop'
+              elif '/wp-login.php' in p:cat='login'
+              elif '/product' in p or '/producto/' in p:cat='product'
+              elif '/en/' in p:cat='english'
+              else:cat='other_dynamic'
+              route[cat]+=1
+              if code=='429':http429[cat]+=1
+              bucket=dt.strftime('%Y-%m-%dT%H:%M')[:-1]+'0Z'
+              hourly[bucket]['total']+=1
+              hourly[bucket]['429']+=code=='429';hourly[bucket]['5xx']+=code[0]=='5'
+              top_ip[ip]+=1
+              a=(agent or '')
+              ac='named_bot' if re.search(r'bot|crawl|spider|semrush|ahrefs|go-http-client|python-requests|curl/|wget/',a,re.I) else ('browser' if 'Mozilla/5.0' in a else 'other_agent')
+              agents[ac]+=1
+          printj('LAST_70M_TRAFFIC',{'statuses':counters,'methods':method,'route_categories':route,'429_categories':http429,'user_agent_classes':agents,'largest_single_ip_request_count':top_ip.most_common(1)[0][1] if top_ip else 0,'largest10_ip_share':round(sum(x for _,x in top_ip.most_common(10))/max(1,sum(counters.values())),3)})
+          for k,v in sorted(hourly.items()):printj('TRAFFIC_10MIN',{k:v})
+          types={
+            'fpm_exhaust':r'max_children|pool seems busy|server reached',
+            'upstream_timeout':r'upstream timed out|timed out.*upstream',
+            'connection':r'upstream prematurely closed|connect\(\) failed|connection refused|AH01079|AH01075',
+            'php_fatal':r'PHP Fatal|Fatal error|Uncaught .*Error|Allowed memory',
+            'php_warning':r'PHP Warning',
+            'db_failure':r'MySQL server has gone away|Too many connections|Error establishing a database connection'
           }
-          for path in paths[:35]:
-            try:
-              size=os.path.getsize(path)
-              with open(path,'rb') as f:
-                f.seek(max(0,size-4500000)); data=f.read().decode('utf-8','replace')
-              lines=data.splitlines()
-              relevant=[s for s in lines if any(re.search(p,s,re.I) for p in patterns.values())]
-              counts=Counter(k for s in relevant for k,rx in patterns.items() if re.search(rx,s,re.I))
-              def clean(s):
-                s=re.sub(r'\b(?:\d{1,3}\.){3}\d{1,3}\b','[IP]',s)
-                s=re.sub(r'https?://[^\s"\x27]+','[URL]',s)
-                s=re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b','[EMAIL]',s)
-                s=re.sub(r'(/var/www/|/home/|/tmp/)[^\s:()]+','[SERVER_PATH]',s)
-                s=re.sub(r'(?i)(password|token|secret|key)=[^\s&]+',r'\1=[REDACTED]',s)
-                return s[:370]
-              print('ERROR_LOG',json.dumps({'file':os.path.basename(path),'bytes':size,'mtime_utc':datetime.fromtimestamp(os.path.getmtime(path),timezone.utc).isoformat(),'tail_lines':len(lines),'patterns':counts,'last_examples':[clean(x) for x in relevant[-9:]]},ensure_ascii=False))
-            except Exception as e: print('ERROR_LOG_UNAVAILABLE',os.path.basename(path),type(e).__name__)
-          acc=base+'/access_ssl_log'
-          totals=Counter(); minutes=defaultdict(Counter); routes=Counter(); uas=Counter(); counted=0
-          rx=re.compile(r'^\S+\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)"\s+(\d{3})\b')
-          if os.path.isfile(acc):
-            try:
-              with open(acc,'rb') as f:
-                size=os.path.getsize(acc)
-                f.seek(max(0,size-20000000))
-                for b in f:
-                  s=b.decode('utf-8','replace');m=rx.match(s)
-                  if not m: continue
-                  stamp,method,target,status=m.groups()
-                  try: dt=datetime.strptime(stamp,'%d/%b/%Y:%H:%M:%S %z').astimezone(timezone.utc)
-                  except ValueError: continue
-                  if dt<cut:continue
-                  counted+=1;totals[status]+=1;minutes[dt.strftime('%H:%M')[:4]+'0'][status]+=1
-                  route=(target.split('?',1)[0] if target else '/')
-                  if status[0]=='5':routes[route[:120]]+=1
-              print('ACCESS_3H',json.dumps({'from_utc':cut.isoformat(),'to_utc':now.isoformat(),'requests':counted,'status_counts':totals,'5xx_route_top10':routes.most_common(10)},ensure_ascii=False))
-              for minute,c in sorted(minutes.items()):
-                print('ACCESS_BUCKET_10MIN',minute,json.dumps({'requests':sum(c.values()),'errors_5xx':sum(v for k,v in c.items() if k.startswith('5')),'errors_429':c['429']}))
-            except Exception as e:print('ACCESS_LOG_UNAVAILABLE',type(e).__name__,str(e)[:120])
-          else:print('ACCESS_LOG_MISSING')
-          for p in glob.glob(base+'/php-fpm*slow*')[:4]:
+          for p in [base+'/error_log',base+'/proxy_error_log','/var/log/plesk-php82-fpm/error.log','/var/log/nginx/error.log']:
+            if not os.path.isfile(p):continue
             try:
               with open(p,'rb') as f:
-                f.seek(max(0,os.path.getsize(p)-4000000))
-                s=f.read().decode('utf8','replace')
-              sources=Counter(re.findall(r'/wp-content/(?:plugins|themes)/([^/]+)/',s))
-              print('FPM_SLOW',os.path.basename(p),'bytes',os.path.getsize(p),'common_sources',sources.most_common(12),'latest_marker',re.findall(r'\[\d\d-[A-Za-z]{3}-\d{4} [^\]]+\]',s)[-3:])
-            except Exception as e: print('FPM_SLOW_UNAVAILABLE',type(e).__name__)
+                f.seek(max(0,os.path.getsize(p)-5000000));s=f.read().decode('utf8','replace')
+              lines=s.splitlines()
+              matching=[x for x in lines if any(re.search(v,x,re.I) for v in types.values())]
+              cc=Counter(n for x in matching for n,r in types.items() if re.search(r,x,re.I))
+              fp=Counter()
+              for x in matching:
+                m=re.search(r'/wp-content/(?:plugins|themes|mu-plugins)/([^/\s]+)',x)
+                if m:fp[m.group(1)]+=1
+              warnings=Counter()
+              for x in matching:
+                if 'PHP Warning:' in x:
+                  w=re.search(r'PHP Warning: (.*?)(?: in /| on line |[\x27"])',x)
+                  if w:warnings[w.group(1)[:120]]+=1
+              def clean(x):
+                x=re.sub(r'\b(?:\d{1,3}\.){3}\d{1,3}\b','[IP]',x)
+                x=re.sub(r'https?://[^\s\x27"]+','[URL]',x)
+                x=re.sub(r'(/var/www/|/home/|/tmp/)[^\s:()]+','[PATH]',x)
+                x=re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b','[EMAIL]',x)
+                return x[:300]
+              special=[clean(x) for x in matching if any(re.search(types[k],x,re.I) for k in ('fpm_exhaust','upstream_timeout','connection','php_fatal','db_failure'))]
+              printj('ERROR_PATTERNS',{'file':p.split('/')[-1],'patterns':cc,'common_wp_components':fp.most_common(12),'warning_types':warnings.most_common(10),'critical_examples':special[-12:]})
+            except Exception as e: print('LOG_READ_FAIL',p.split('/')[-1],type(e).__name__)
+          p=base+'/php-fpm_slow.log'
+          if os.path.isfile(p):
+            with open(p,'rb') as f:
+              f.seek(max(0,os.path.getsize(p)-14000000));s=f.read().decode('utf8','replace')
+            blocks=re.split(r'(?=\[\d\d-[A-Za-z]{3}-\d{4} \d\d:\d\d:\d\d\])',s)
+            groups=Counter();functions=Counter();recent=0;current=0;examples=[]
+            for block in blocks:
+              m=re.match(r'\[(\d\d-[A-Za-z]{3}-\d{4} \d\d:\d\d:\d\d)\]',block)
+              if not m:continue
+              try:tm=datetime.strptime(m.group(1),'%d-%b-%Y %H:%M:%S').replace(tzinfo=timezone.utc)
+              except:continue
+              if tm<cut:continue
+              recent+=1
+              if tm>now-timedelta(minutes=15):current+=1
+              names=re.findall(r'/wp-content/(?:plugins|themes|mu-plugins)/([^/\s]+)',block)
+              for name in set(names):groups[name]+=1
+              fun=re.findall(r'\] ([a-zA-Z_][a-zA-Z0-9_:>]+)\(\)',block)
+              if fun:functions[fun[0]]+=1
+              if len(examples)<2:
+                examples.append({'time':tm.isoformat(),'components':list(dict.fromkeys(names))[:10],'stack_functions':fun[:6]})
+            printj('SLOW_STACK_70M',{'samples':recent,'samples_last15m':current,'common_wp_components':groups.most_common(20),'first_functions':functions.most_common(12),'examples':examples,'log_total_mb':round(os.path.getsize(p)/1e6)})
           PY
-          echo "=== CONTROLLED HTTP CHECKS (origin localhost) ==="
-          for url in 'https://www.elmercadodeorigen.com/' 'https://www.elmercadodeorigen.com/tienda/' 'https://www.elmercadodeorigen.com/wp-json/'; do
-            curl -k -L -sS -o /dev/null -w 'HTTP %{http_code} connect=%{time_connect} ttfb=%{time_starttransfer} total=%{time_total}\n' --resolve www.elmercadodeorigen.com:443:127.0.0.1 --connect-timeout 3 --max-time 10 "$url" || true
+          echo "=== EXTERNAL HEALTH PROBE FROM SERVER ==="
+          for url in 'https://www.elmercadodeorigen.com/' 'https://www.elmercadodeorigen.com/tienda/'; do
+            curl -k -L -sS -o /dev/null -w 'HTTP %{http_code} DNS=%{time_namelookup} connect=%{time_connect} TTFB=%{time_starttransfer} total=%{time_total}\n' --connect-timeout 4 --max-time 16 "$url" || true
           done
-          echo "=== END READ-ONLY INCIDENT CHECK ==="
           REMOTE
