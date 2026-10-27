@@ -1,0 +1,47 @@
+name: Inspect live quick-search early-cache prerequisites 20261027
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-quick-search-cache-20261027.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - name: Inspect production cache and writable dir without modifying files
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
+          sshpass -e ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "${STAGING_PORT:-22}" "${STAGING_USER}@${STAGING_HOST}" "bash -s -- '${STAGING_REMOTE_PATH}'" <<'REMOTE'
+          set -euo pipefail
+          raw="${1%/}"
+          dev="${raw%%/wp-content/*}"
+          prod="$(dirname "$dev")/httpdocs"
+          test -f "$prod/wp-config.php"
+          file="$prod/wp-content/advanced-cache.php"
+          echo "CACHE_FILE_EXISTS=$([ -f "$file" ] && echo yes || echo no)"
+          if [ -f "$file" ]; then
+            echo "CACHE_FILE_MANAGED_MARKER=$(grep -c 'ELMERCADO_EARLY_HOME_CACHE\|El Mercado de Origen early cache drop-in' "$file" || true)"
+            echo "CACHE_FILE_SHA=$(sha256sum "$file" | cut -d' ' -f1)"
+            echo "CACHE_FILE_INFO=$(stat -c '%U %G %a %s' "$file")"
+          fi
+          echo "WP_CACHE_MARKER=$(grep -E 'define.*WP_CACHE' "$prod/wp-config.php" | sed -E "s/(['\"])[^'\"]*\1/'REDACTED'/g" | cut -c1-140 || true)"
+          dir="$prod/wp-content/uploads"
+          echo "UPLOADS_INFO=$(stat -c '%U %G %a' "$dir")"
+          echo "HTTP_WORKER=$(ps -eo user,comm | awk '$2 ~ /php-fpm/ { print $1; exit }' || true)"
+          REMOTE
