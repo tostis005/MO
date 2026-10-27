@@ -120,6 +120,23 @@ jobs:
             hist=[x for x in per_client[key] if x[0]<t and (t-x[0]).total_seconds()<1800 and x[2] in ('proxy_access_ssl_log','access_ssl_log') and x[8]=='hidalgo' and not x[4]]
             if hist:met2['prior_clean_vendor_30m']+=1
           print('AFTER_BLOCKED_HIDALGO_NAVIGATION',json.dumps(met2,ensure_ascii=False))
+          refcounts=collections.Counter()
+          with open(base+'access_ssl_log','rb') as fp:
+            for line in fp:
+              m=pat.match(line.decode('utf8','replace'))
+              if not m:continue
+              ip,ds,req,st,ref,ua=m.groups()
+              if 'hidalgo-de-la-jara' not in req or 'filter_' not in req:continue
+              try: dt=datetime.datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(datetime.timezone.utc)
+              except:continue
+              if not(start<=dt<attack_end):continue
+              url=urllib.parse.urlsplit(ref)
+              host=url.netloc.lower()
+              if ref=='-': name='no_referrer'
+              elif host.endswith('elmercadodeorigen.com'):name='site_root_or_origin' if url.path in ('','/') else ('vendor_store' if 'hidalgo-de-la-jara' in url.path else 'other_our_page')
+              else:name='external_referrer'
+              refcounts[name]+=1
+          print('REFERRER_COUNTS',dict(refcounts))
           print('DATE_RANGE',start.isoformat(),attack_end.isoformat(),now.isoformat())
           echo_output=subprocess.run(['nginx','-V'],capture_output=True,text=True,timeout=3)
           build=echo_output.stderr
