@@ -1,0 +1,44 @@
+name: Latitudes image inventory count without modifying media
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/latitudes-image-inventory-count-20261027.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  count:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Retrieve current read-only supplier photo inventory
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P "$PORT" "$STAGING_USER@$STAGING_HOST:/tmp/musee-latitudes-photo-audit-20261027/manifest.json" latitudes-manifest.json
+          python3 - <<'PY'
+          import json
+          j=json.load(open('latitudes-manifest.json'))
+          print('LATITUDES_IMAGE_INVENTORY_COUNT',json.dumps({
+            'supplier_products':j['supplier_product_count'],
+            'unique_images':j['unique_media_count'],
+            'exported_footer_crops':j['crop_count'],
+            'missing_files':j['missing_files'],
+            'errors':j['errors'][:10]
+          },ensure_ascii=False))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: latitudes-image-inventory-current
+          path: latitudes-manifest.json
+          retention-days: 3
