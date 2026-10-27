@@ -1,0 +1,25 @@
+name: CI signed filter admission and navigation quota
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ops/emdo-filter-gate/**'
+      - '.github/workflows/ci-signed-filter-gate-20261027.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: HMAC tokens, four-per-minute quota, navigation validation
+        run: |
+          set -Eeuo pipefail
+          GO111MODULE=off go test -v ./ops/emdo-filter-gate
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o /tmp/emdo-filter-gate-verified ops/emdo-filter-gate/main.go
+          test -s /tmp/emdo-filter-gate-verified
