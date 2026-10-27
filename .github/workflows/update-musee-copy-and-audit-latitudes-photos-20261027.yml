@@ -1,0 +1,101 @@
+name: Update three Musee gourmet descriptions and audit Latitudes source images
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/update-musee-copy-and-audit-latitudes-photos-20261027.yml'
+      - '.github/scripts/update-musee-three-commercial-descriptions-20261027.php'
+      - '.github/scripts/audit-latitudes-original-images-readonly-20261027.php'
+      - '.github/scripts/analyze-latitudes-footers-20261027.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: musee-20261027-copy-original-photo-audit
+  cancel-in-progress: false
+jobs:
+  pause:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 38
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate original media and private-pack safeguards
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/update-musee-three-commercial-descriptions-20261027.php
+          php -l .github/scripts/audit-latitudes-original-images-readonly-20261027.php
+          php -l mu-plugins/emdo-musee-mentta-review-hold-20261026.php
+          php -l mu-plugins/emdo-mentta-exclusive-products.php
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+      - name: Update three private listings and extract Latitudes product photo footer samples
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass tesseract-ocr python3-pil >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$PORT")
+          SCP=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P "$PORT")
+          TARGET="$STAGING_USER@$STAGING_HOST"
+          PROD_PATH="$(sshpass -e ssh "${SSH[@]}" "$TARGET" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          ID="$GITHUB_RUN_ID"
+          sshpass -e scp "${SCP[@]}" .github/scripts/update-musee-three-commercial-descriptions-20261027.php "$TARGET:/tmp/musee-copy-$ID.php"
+          sshpass -e scp "${SCP[@]}" .github/scripts/audit-latitudes-original-images-readonly-20261027.php "$TARGET:/tmp/musee-photo-audit-$ID.php"
+          sshpass -e ssh "${SSH[@]}" "$TARGET" "bash -s -- '$PROD_PATH' '$ID'" <<'REMOTE'
+          set -euo pipefail
+          SITE="$1"; ID="$2"
+          PHP_BIN="$(command -v php || true)"
+          [ -n "$PHP_BIN" ] || PHP_BIN="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          WP_BIN="$(command -v wp)"
+          "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "/tmp/musee-copy-$ID.php" --path="$SITE" --allow-root
+          MDO_MUSEE_COPY_APPLY=1 "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "/tmp/musee-copy-$ID.php" --path="$SITE" --allow-root
+          "$PHP_BIN" -d memory_limit=1024M "$WP_BIN" eval-file "/tmp/musee-photo-audit-$ID.php" --path="$SITE" --allow-root
+          tar -czf "/tmp/musee-photo-audit-$ID.tar.gz" -C /tmp/musee-latitudes-photo-audit-20261027 .
+          REMOTE
+          sshpass -e scp "${SCP[@]}" "$TARGET:/tmp/musee-photo-audit-$ID.tar.gz" latitudes-photo-audit.tar.gz
+          mkdir -p photo_audit
+          tar -xzf latitudes-photo-audit.tar.gz -C photo_audit
+          test -s photo_audit/manifest.json
+          echo 'THREE_DESCRIPTIONS_DEPLOYED_AND_LATITUDES_IMAGES_AUDITED'
+      - name: Screen original images for Latitudes URLs and copyright footers
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/analyze-latitudes-footers-20261027.py photo_audit
+      - name: Store read-only photo audit and contact sheets
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: latitudes-footer-audit-20261027
+          path: |
+            photo_audit/manifest.json
+            photo_audit/results.json
+            photo_audit/footer-matches/
+            photo_audit/contact-sheets/
+          retention-days: 3
+
+      - name: Confirm all three public URLs remain 404
+        run: |
+          set -euo pipefail
+          for KEY in pasaporte-salvaje safari-africano vuelta-al-mundo; do
+            CODE="$(curl -sSL --connect-timeout 8 --max-time 30 -o /dev/null -w '%{http_code}' "https://www.elmercadodeorigen.com/producto/pack-musee-mentta-$KEY/")"
+            echo "PRIVATE $KEY HTTP $CODE"
+            test "$CODE" = 404
+          done
