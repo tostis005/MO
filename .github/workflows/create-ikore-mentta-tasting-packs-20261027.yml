@@ -16,10 +16,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      STAGING_HOST: ${ secrets.STAGING_HOST }}
-      STAGING_PORT: ${ secrets.STAGING_PORT }}
-      STAGING_USER: ${ secrets.STAGING_USER }}
-      STAGING_PASSWORD: ${ secrets.STAGING_PASSWORD }}
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - name: Lint publication script
@@ -29,7 +29,7 @@ jobs:
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
       - name: Publish packs from authentic product photographs and verify Mentta serializer
         env:
-          SSHPASS: ${ secrets.STAGING_PASSWORD }}
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
           sudo apt-get update -qq
