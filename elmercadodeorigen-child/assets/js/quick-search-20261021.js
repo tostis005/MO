@@ -24,6 +24,7 @@
   const cached = new Map();
   const CACHE_MS = 45000;
   const LIMIT = 25;
+  const REQUEST_TIMEOUT_MS = 9000;
 
   function create(tag, className, text) {
     const element = document.createElement(tag);
@@ -80,14 +81,26 @@
     };
 
     const fullSearchUrl = (term) => {
-      const url = new URL(form.action || location.href, location.href);
+      // Buscar siempre productos, incluso si el tema presenta un formulario genérico.
+      const action = form.getAttribute('action') || (english ? '/en/' : '/');
+      const url = new URL(action, location.href);
       try {
         new FormData(form).forEach((value, key) => {
           if (typeof value === 'string') url.searchParams.set(key, value);
         });
-      } catch (_) { /* El formulario sigue funcionando sin enlaces auxiliares. */ }
+      } catch (_) { /* Conservar el enlace de búsqueda incluso sin FormData. */ }
       url.searchParams.set(input.name || 's', term);
+      url.searchParams.set('post_type', 'product');
       return url.href;
+    };
+
+    const navigate = (href) => {
+      const target = new URL(href, location.href);
+      const hostname = (host) => host.replace(/^www\./i, '');
+      if (!/^https?:$/.test(target.protocol) || hostname(target.hostname) !== hostname(location.hostname)) return;
+      stop();
+      // Evita que los listeners del modal Woostify cancelen el click nativo.
+      window.location.assign(target.href);
     };
 
     const markActive = (index) => {
@@ -219,6 +232,11 @@
 
       controller = new AbortController();
       const activeController = controller;
+      let timedOut = false;
+      const timeout = setTimeout(() => {
+        timedOut = true;
+        activeController.abort();
+      }, REQUEST_TIMEOUT_MS);
       try {
         const url = new URL(config.endpoint, location.href);
         url.searchParams.set('q', term);
@@ -231,15 +249,18 @@
         });
         if (!response.ok) throw new Error('Search unavailable');
         const result = await response.json();
-        if (requestId !== sequence || input.value.trim().replace(/\\s+/g, ' ') !== term) return;
+        if (requestId !== sequence || input.value.trim().replace(/\s+/g, ' ') !== term) return;
         const products = Array.isArray(result.products) ? result.products.slice(0, 6) : [];
         cached.set(key, { products, time: Date.now() });
         if (cached.size > LIMIT) cached.delete(cached.keys().next().value);
         render(term, products);
       } catch (error) {
-        if (error.name === 'AbortError' || requestId !== sequence) return;
+        if (requestId !== sequence) return;
+        if (error.name === 'AbortError' && !timedOut) return;
+        // Mostrar salida alternativa: nunca dejar la animación bloqueada.
         render(term, [], copy.error);
       } finally {
+        clearTimeout(timeout);
         if (controller === activeController) controller = null;
       }
     };
@@ -261,6 +282,16 @@
       showLoading(term);
       timer = setTimeout(() => search(term, current), 280);
     };
+
+    // Los enlaces deben navegar aunque el tema intercepte clicks dentro del modal.
+    region.addEventListener('click', (event) => {
+      const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+      if (!link || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      if (link.target && link.target !== '_self') return;
+      event.preventDefault();
+      event.stopPropagation();
+      navigate(link.href);
+    }, true);
 
     input.addEventListener('input', onInput);
     input.addEventListener('focus', () => {
@@ -284,7 +315,13 @@
         location.assign(options[active].href);
       }
     });
-    form.addEventListener('submit', stop);
+    form.addEventListener('submit', (event) => {
+      const term = input.value.trim().replace(/\s+/g, ' ');
+      if (!term) return;
+      event.preventDefault();
+      event.stopPropagation();
+      navigate(fullSearchUrl(term));
+    }, true);
     root.addEventListener('click', (event) => {
       if (event.target.closest('.dialog-search-close-icon')) {
         stop();
@@ -295,21 +332,19 @@
     return true;
   }
 
-  const attach = () => init(document.querySelector('.site-dialog-search'));
+  const attach = () => {
+    const root = document.querySelector('.site-dialog-search');
+    return !!(root && (root.dataset.emoQuickSearchBound === '1' || init(root)));
+  };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', attach, { once: true });
-  } else {
-    attach();
   }
 
-  // Compatibilidad con plantillas que insertan el diálogo después del DOM inicial.
-  if (!document.querySelector('.site-dialog-search')) {
+  // Observar también cuando el diálogo existe, pero el formulario aún no.
+  if (!attach()) {
     const observer = new MutationObserver(() => {
       if (attach()) observer.disconnect();
     });
     observer.observe(document.documentElement, { childList: true, subtree: true });
-    document.addEventListener('DOMContentLoaded', () => {
-      if (document.querySelector('.site-dialog-search')) observer.disconnect();
-    }, { once: true });
   }
 })();

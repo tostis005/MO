@@ -168,7 +168,20 @@ jobs:
           grep -q 'showLoading(term)' /tmp/emdo-qs-script-$runid.js
           curl -fsSL --retry 2 --max-time 30 "$site/?quick_search_release=$runid" -o /tmp/emdo-qs-home-$runid.html
           grep -q 'quick-search-20261021.js' /tmp/emdo-qs-home-$runid.html
-          rm -f /tmp/emdo-qs-response-$runid.json /tmp/emdo-qs-script-$runid.js /tmp/emdo-qs-home-$runid.html
+          # Validar búsqueda completa y acceso real a una ficha de la API.
+          curl -fsSL --retry 1 --max-time 35 "$site/?s=jamon&post_type=product" -o /tmp/emdo-qs-all-$runid.html
+          grep -Eiq 'product|producto|jam[oó]n' /tmp/emdo-qs-all-$runid.html
+          product_url="$("$php_bin" -r '
+            $data = json_decode(file_get_contents($argv[1]), true);
+            $items = $data["products"] ?? array();
+            if (!is_array($items) || empty($items[0]["url"])) { exit(2); }
+            echo $items[0]["url"];
+          ' /tmp/emdo-qs-response-$runid.json)"
+          product_code="$(curl -sSL --max-time 35 -o /tmp/emdo-qs-product-$runid.html -w '%{http_code}' "$product_url")"
+          [ "$product_code" = 200 ]
+          grep -Eiq 'woocommerce|product|producto' /tmp/emdo-qs-product-$runid.html
+          echo "QUICK_SEARCH_NAVIGATION_OK full_search=200 product=200"
+          rm -f /tmp/emdo-qs-response-$runid.json /tmp/emdo-qs-script-$runid.js /tmp/emdo-qs-home-$runid.html /tmp/emdo-qs-all-$runid.html /tmp/emdo-qs-product-$runid.html
           echo "PRODUCTION_QUICK_SEARCH_OK run=$runid backup=$backup"
           changed=0
           trap - EXIT
