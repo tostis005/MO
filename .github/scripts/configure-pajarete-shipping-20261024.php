@@ -1,14 +1,15 @@
 <?php
 /**
- * Copy the official Quesos Pajarete shipping policy to vendor 4974 only:
- * mainland Spain EUR 5.00 below EUR 60; free >= EUR 60 (VAT inclusive);
- * no other destinations. Never modify global WC zones or other vendors.
+ * Apply El Mercado de Origen's updated commercial terms for Quesos Pajarete only:
+ * minimum EUR 50 of vendor products, EUR 5 shipping for EUR 50-75,
+ * free shipping strictly above EUR 75 (from EUR 75.01; VAT inclusive).
+ * Mainland Spain only; never modify global WC zones or other vendors.
  *
  * PAJARETE_SHIPPING_MODE=audit|apply|verify
  */
 if (!defined('ABSPATH') || !defined('WP_CLI') || !WP_CLI ||
     !class_exists('WooCommerce') || !class_exists('MDO_Database') ||
-    !class_exists('WCFMmp_Shipping_Zone')) {
+    !class_exists('WCFMmp_Shipping_Zone') || !class_exists('MDO_Minimum_Order')) {
     throw new RuntimeException('WP-CLI, WooCommerce, EMDO and WCFM zone shipping required.');
 }
 foreach (['home', 'siteurl'] as $key) {
@@ -118,7 +119,7 @@ $expected = [
     'description'=>'',
     'cost'=>'0',
     'tax_status'=>'none',
-    'min_amount'=>'60.00'
+    'min_amount'=>'75.01'
   ]
 ];
 if ($mode === 'audit') {
@@ -129,16 +130,18 @@ if ($mode === 'audit') {
       'vendor_location_overrides_before'=>count($vendor_locs),
       'vendor_shipping_type_before'=>is_array($shipping_meta)?($shipping_meta['_wcfmmp_user_shipping_type']??''):null,
       'mainland_zone_id'=>$zone_id,'mainland_zone'=>$name,
-      'desired'=>['flat_eur'=>'5.00','free_from_eur'=>'60.00','destination'=>'peninsular_spain_only'],
+      'supplier_minimum_before'=>$supplier['minimum_order_amount']??null,
+      'desired'=>['supplier_minimum_eur'=>'50.00','flat_eur'=>'5.00','free_above_eur'=>'75.00','free_from_eur'=>'75.01','destination'=>'peninsular_spain_only'],
     ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
     exit;
 }
 if ($mode === 'apply') {
-    $backup_key='_emdo_pajarete_shipping_backup_20261024';
+    $backup_key='_emdo_pajarete_commercial_backup_20261027';
     if (!metadata_exists('user',$vendor_id,$backup_key)) {
         update_user_meta($vendor_id,$backup_key,[
           'methods'=>$vendor_rows,'locations'=>$vendor_locs,'shipping_meta'=>$shipping_meta,
-          'shipping_policy_source'=>'https://quesospajarete.com/envio-y-devoluciones/'
+          'minimum_order_amount'=>$supplier['minimum_order_amount']??null,
+          'shipping_policy_source'=>'merchant_instruction_2026-10-27'
         ]);
     }
     if (false === $wpdb->query('START TRANSACTION')) {
@@ -164,11 +167,23 @@ if ($mode === 'apply') {
         if (false === update_user_meta($vendor_id,'_wcfmmp_shipping',$m) && $shipping_meta!==$m) {
             throw new RuntimeException('Could not update WCFM shipping mode.');
         }
+        $min_update=$wpdb->update($suppliers,
+            ['minimum_order_amount'=>'50.00'],['id'=>(int)$supplier['id']],['%f'],['%d']);
+        if (false === $min_update) {
+            throw new RuntimeException('Could not set Pajarete supplier minimum order.');
+        }
         $wpdb->query('COMMIT');
     } catch (Throwable $e) {
         $wpdb->query('ROLLBACK');
         throw $e;
     }
+}
+$minimum_saved=$wpdb->get_var($wpdb->prepare(
+    "SELECT minimum_order_amount FROM {$suppliers} WHERE id=%d AND vendor_user_id=%d",
+    (int)$supplier['id'],$vendor_id
+));
+if ($minimum_saved===null || abs((float)$minimum_saved-50.00)>0.0001) {
+    throw new RuntimeException('Pajarete supplier minimum was not persisted as EUR 50.');
 }
 $after=$wpdb->get_results($wpdb->prepare(
     "SELECT * FROM {$tables['vendor_methods']} WHERE vendor_id=%d ORDER BY zone_id,method_id,instance_id",
@@ -244,8 +259,9 @@ if (class_exists('MDO_Shipping_Destinations')) {
     }
 }
 echo 'PAJARETE_SHIPPING_RESULT='.wp_json_encode([
- 'mode'=>$mode,'vendor_id'=>$vendor_id,'zone'=>$name,'flat_eur'=>5.00,'free_from_eur'=>60.00,
+ 'mode'=>$mode,'vendor_id'=>$vendor_id,'zone'=>$name,'supplier_minimum_eur'=>50.00,
+ 'flat_eur'=>5.00,'free_above_eur'=>75.00,'free_from_eur'=>75.01,
  'method_settings'=>$seen,'only_mainland_zone'=>true,'vendor_location_overrides'=>0,
  'other_vendor_rows_unchanged'=>true,'destinations'=>$destination_tests,
- 'source'=>'https://quesospajarete.com/envio-y-devoluciones/'
+ 'source'=>'merchant_instruction_2026-10-27'
 ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
