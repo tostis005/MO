@@ -1,0 +1,80 @@
+name: Release three approved Musée packs exclusively to Mentta Carnes
+# Emergency re-pause remains manually available; it must never re-draft
+# three approved packs automatically when review policy is edited.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-three-musee-packs-mentta-carnes-20261027.yml'
+      - '.github/scripts/release-three-musee-packs-mentta-carnes-20261027.php'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: musee-mentta-approve-three-pack-release
+  cancel-in-progress: false
+jobs:
+  pause:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Mentta approval and public hiding guards
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/release-three-musee-packs-mentta-carnes-20261027.php
+          php -l mu-plugins/emdo-musee-mentta-review-hold-20261026.php
+          php -l mu-plugins/emdo-mentta-exclusive-products.php
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+      - name: Release exactly three packs on the Mentta-only integration
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$PORT")
+          SCP=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P "$PORT")
+          TARGET="$STAGING_USER@$STAGING_HOST"
+          PROD_PATH="$(sshpass -e ssh "${SSH[@]}" "$TARGET" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          ID="$GITHUB_RUN_ID"
+          sshpass -e scp "${SCP[@]}" mu-plugins/emdo-musee-mentta-review-hold-20261026.php "$TARGET:/tmp/emdo-musee-review-$ID.php"
+          sshpass -e scp "${SCP[@]}" .github/scripts/release-three-musee-packs-mentta-carnes-20261027.php "$TARGET:/tmp/release-three-musee-mentta-$ID.php"
+          sshpass -e ssh "${SSH[@]}" "$TARGET" "bash -s -- '$PROD_PATH' '$ID'" <<'REMOTE'
+          set -euo pipefail
+          SITE="$1"; ID="$2"
+          PHP_BIN="$(command -v php || true)"
+          [ -n "$PHP_BIN" ] || PHP_BIN="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          WP_BIN="$(command -v wp)"
+          install -m 0644 "/tmp/emdo-musee-review-$ID.php" "$SITE/wp-content/mu-plugins/emdo-musee-mentta-review-hold-20261026.php"
+          MDO_MUSEE_RELEASE_MODE=preflight "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "/tmp/release-three-musee-mentta-$ID.php" --path="$SITE" --allow-root
+          MDO_MUSEE_RELEASE_MODE=apply "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "/tmp/release-three-musee-mentta-$ID.php" --path="$SITE" --allow-root
+          MDO_MUSEE_RELEASE_MODE=verify "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "/tmp/release-three-musee-mentta-$ID.php" --path="$SITE" --allow-root
+          REMOTE
+      - name: Verify three released packs and four pending packs all remain hidden in own storefront
+        run: |
+          set -euo pipefail
+          for KEY in pasaporte-salvaje reserva-de-caza safari-africano vuelta-al-mundo parrilla-sin-fronteras-xl universo-wagyu leyendas-del-vacuno; do
+            STATUS="$(curl -sSL --connect-timeout 8 --max-time 35 -o /dev/null -w '%{http_code}' "https://www.elmercadodeorigen.com/producto/pack-musee-mentta-$KEY/")"
+            echo "HIDDEN_FROM_PUBLIC $KEY HTTP $STATUS"
+            test "$STATUS" = 404
+          done
+          echo 'THREE_MENTTA_APPROVED_OWN_STORE_STILL_PRIVATE'
