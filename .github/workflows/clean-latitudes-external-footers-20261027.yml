@@ -14,7 +14,7 @@ concurrency:
 jobs:
   pause:
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    timeout-minutes: 60
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
@@ -55,15 +55,17 @@ jobs:
           : "${PROD_PATH:?production path not found}"
           ID="$GITHUB_RUN_ID"
           sshpass -e scp "${SCP[@]}"  .github/scripts/clean-latitudes-31-footers-and-references-20261027.php "$TARGET:/tmp/latitudes-footer-repair-$ID.php"
-          sshpass -e ssh "${SSH[@]}" "$TARGET" "bash -s -- '$PROD_PATH' '$ID'" <<'REMOTE'
+          for BATCH in 0 1 2 3 4 final; do
+            echo "APPLY_LATITUDES_FOOTER_BATCH=$BATCH"
+            sshpass -e ssh "${SSH[@]}" "$TARGET" "bash -s -- '$PROD_PATH' '$ID' '$BATCH'" <<'REMOTE'
           set -euo pipefail
-          SITE="$1"; ID="$2"
+          SITE="$1"; ID="$2"; BATCH="$3"
           PHP_BIN="$(command -v php || true)"
           [ -n "$PHP_BIN" ] || PHP_BIN="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
           WP_BIN="$(command -v wp)"
-          "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "/tmp/latitudes-footer-repair-$ID.php" --path="$SITE" --allow-root
-          EMDO_LATITUDES_FOOTER_APPLY=1 "$PHP_BIN" -d memory_limit=1024M "$WP_BIN" eval-file "/tmp/latitudes-footer-repair-$ID.php" --path="$SITE" --allow-root
+          EMDO_LATITUDES_FOOTER_APPLY=1 EMDO_LATITUDES_FOOTER_BATCH="$BATCH" "$PHP_BIN" -d memory_limit=1024M "$WP_BIN" eval-file "/tmp/latitudes-footer-repair-$ID.php" --path="$SITE" --allow-root
           REMOTE
+          done
 
       - name: Verify three existing pack preview URLs remain privately blocked
         run: |
