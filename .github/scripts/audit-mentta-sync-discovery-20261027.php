@@ -45,7 +45,7 @@ foreach($ids as $id){
 echo "PACK_VS_EXISTING_CATALOG ".wp_json_encode(['categories'=>$cats,'records'=>$out],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
 if(!defined('REST_REQUEST'))define('REST_REQUEST',true);
 $_SERVER['REQUEST_URI']='/wp-json/mentta_marketplace/products';
-foreach([['sample_default',[]],['sample_page2',['page'=>2]],['sample_perpage',['page'=>1,'per_page'=>100]]] as $case){
+foreach([['sample_page10',['page'=>10]],['sample_page11',['page'=>11]],['sample_page12',['page'=>12]],['sample_page13',['page'=>13]],['sample_page_size',['page'=>1,'page_size'=>100]]] as $case){
  [$name,$params]=$case;
  $request=new WP_REST_Request('GET','/mentta_marketplace/products');
  foreach($params as $param=>$val)$request->set_param($param,$val);
