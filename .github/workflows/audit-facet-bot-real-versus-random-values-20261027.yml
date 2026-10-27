@@ -1,4 +1,4 @@
-name: Audit bot facet parameter realism and mitigation effect 2026-10-27
+name: Audit bot facets against actual Woo terms 2026-10-27
 on:
   push:
     branches: [main]
@@ -33,7 +33,9 @@ jobs:
           root='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
           command=['wp','--path='+root,'db','query',"SELECT tt.taxonomy,t.slug FROM wp_terms AS t JOIN wp_term_taxonomy AS tt ON t.term_id=tt.term_id WHERE tt.taxonomy LIKE 'pa_%' OR tt.taxonomy='product_cat'",'--skip-column-names']
           try:
-            result=subprocess.run(command,capture_output=True,text=True,timeout=40)
+            env=os.environ.copy();env['PATH']='/opt/plesk/php/8.2/bin:'+env.get('PATH','')
+            command.insert(1,'--allow-root')
+            result=subprocess.run(command,capture_output=True,text=True,timeout=40,env=env)
             print('TAXONOMY_DB',json.dumps({'status':result.returncode,'number_of_rows':len(result.stdout.splitlines()),'error_type':re.sub(r'[^\w -]','',result.stderr[:90])},ensure_ascii=False))
             slug_sets=collections.defaultdict(set)
             for line in result.stdout.splitlines():
