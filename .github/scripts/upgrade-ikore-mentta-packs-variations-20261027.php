@@ -61,7 +61,7 @@ foreach($packs as $key=>&$pack){
    (string)get_post_meta($id,'_emdo_mentta_only',true)!=='yes'||
    (string)get_post_meta($id,'_emdo_ikore_mentta_pack_key',true)!==$key ||
    (string)get_post_meta($id,'_emdo_mentta_pack_key',true)!=='ikore-'.$key ||
-   $p->get_status()!=='publish' || !$p->get_image_id() ||
+   !in_array($p->get_status(),['publish','draft'],true) || (!$p->get_image_id() && $p->get_status()==='publish') ||
    !in_array((int)$root->term_id,array_map('intval',$p->get_category_ids()),true) ||
    !in_array((int)$child->term_id,array_map('intval',$p->get_category_ids()),true)){$errors[]="PACK_PARENT_BAD $key";continue;}
  $oldLines=get_post_meta($id,'_emdo_mentta_pack_lines',true);
@@ -131,8 +131,12 @@ function ikore_var_cover($key,$conf,$src,$pid){
   $x=$margin+$col*($w+$gap);$y=$mainTop+$row*($h+15);
   imagefilledrectangle($im,$x,$y,$x+$w,$y+$h,$white);
   imagerectangle($im,$x,$y,$x+$w,$y+$h,$gold);
-  $sourcePath=get_attached_file($src[$item]['image']);
-  $photo=@imagecreatefromstring((string)file_get_contents($sourcePath));
+  $sourceId=(int)($src[$item]['image']??0);
+  $sourcePath=$sourceId?(string)get_attached_file($sourceId):'';
+  if($sourcePath==='' || !is_readable($sourcePath))throw new RuntimeException('Source photo file empty or unreadable: '.$item.' image_id='.$sourceId);
+  $sourceBytes=file_get_contents($sourcePath);
+  if(!$sourceBytes)throw new RuntimeException('Source photo bytes missing: '.$item.' image_id='.$sourceId);
+  $photo=@imagecreatefromstring($sourceBytes);
   if(!$photo)throw new RuntimeException('Cannot decode source photo '.$item);
   $sw=imagesx($photo);$sh=imagesy($photo);
   $photoWidth=$w-24;$photoHeight=$rows===1?543:275;
