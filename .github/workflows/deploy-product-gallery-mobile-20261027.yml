@@ -1,0 +1,145 @@
+name: Deploy stable mobile product gallery to production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-product-gallery-mobile-20261027.yml'
+      - 'elmercadodeorigen-child/assets/css/product-gallery-controls-010318.css'
+      - 'elmercadodeorigen-child/inc/product-gallery-controls-010318.php'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the scoped gallery patch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l elmercadodeorigen-child/inc/product-gallery-controls-010318.php
+          sed -n '/<script id="elmercado-product-gallery-resize-20261027">/,/<\/script>/p' elmercadodeorigen-child/inc/product-gallery-controls-010318.php | sed '1d;$d' > /tmp/preview-product-gallery.js
+          test -s /tmp/preview-product-gallery.js
+          node --check /tmp/preview-product-gallery.js
+          grep -q 'product-thumbnail-images-container.flickity-enabled .flickity-viewport' elmercadodeorigen-child/assets/css/product-gallery-controls-010318.css
+          grep -q 'aspect-ratio: 1 / 1' elmercadodeorigen-child/assets/css/product-gallery-controls-010318.css
+          : "${STAGING_HOST:?missing SSH host}"
+          : "${STAGING_USER:?missing SSH user}"
+          : "${STAGING_PASSWORD:?missing SSH password}"
+          : "${STAGING_REMOTE_PATH:?missing staging WordPress path}"
+          [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
+
+      - name: Stage only gallery files
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass rsync >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          test -s ~/.ssh/known_hosts && chmod 600 ~/.ssh/known_hosts
+          SSHOPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          STAGE="/tmp/emdo-gallery-${GITHUB_RUN_ID}"
+          echo "STAGE=$STAGE" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSHOPTS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$STAGE'"
+          sshpass -e rsync -azR -e "ssh $SSHOPTS" \
+            elmercadodeorigen-child/assets/css/product-gallery-controls-010318.css \
+            elmercadodeorigen-child/inc/product-gallery-controls-010318.php \
+            "$STAGING_USER@$STAGING_HOST:$STAGE/"
+
+      - name: Publish two files with rollback and product smoke check
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSHOPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSHOPTS "$STAGING_USER@$STAGING_HOST" \
+            "bash -s -- '$STAGING_REMOTE_PATH' '$STAGE' '$GITHUB_RUN_ID'" <<'REMOTE'
+          set -Eeuo pipefail
+          raw="${1%/}"
+          stage="$2"
+          runid="$3"
+          case "$raw" in
+            */wp-content/*) dev="${raw%%/wp-content/*}" ;;
+            *) echo 'Staging root is not a WordPress theme path' >&2; exit 1 ;;
+          esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            found="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n 1 || true)"
+            [ -n "$found" ] || { echo 'Development root not found' >&2; exit 1; }
+            dev="$(dirname "$found")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] || { echo 'Production WordPress root not verified' >&2; exit 1; }
+          theme="$prod/wp-content/themes/elmercadodeorigen-child"
+          [ -f "$theme/functions.php" ] || { echo 'Child theme not found' >&2; exit 1; }
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1)"
+          wp_bin="$(command -v wp || true)"
+          [ -x "$php_bin" ] && [ -n "$wp_bin" ] || { echo 'PHP or WP CLI unavailable' >&2; exit 1; }
+          siteurl="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --skip-plugins --skip-themes --allow-root)"
+          case "$siteurl" in
+            https://www.elmercadodeorigen.com*|https://elmercadodeorigen.com*|http://www.elmercadodeorigen.com*|http://elmercadodeorigen.com*) ;;
+            *) echo "Unexpected production URL: $siteurl" >&2; exit 1 ;;
+          esac
+          active="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root)"
+          [ "$active" = 'elmercadodeorigen-child' ] || { echo 'Unexpected active theme' >&2; exit 1; }
+
+          rel_css='assets/css/product-gallery-controls-010318.css'
+          rel_php='inc/product-gallery-controls-010318.php'
+          from="$stage/elmercadodeorigen-child"
+          "$php_bin" -l "$from/$rel_php" >/dev/null
+          test -s "$from/$rel_css"
+          [ -f "$theme/$rel_css" ] && [ -f "$theme/$rel_php" ]
+          backup="$HOME/.elmercado-rollbacks/product-gallery-$runid"
+          mkdir -p "$backup/assets/css" "$backup/inc"
+          cp -p "$theme/$rel_css" "$backup/$rel_css"
+          cp -p "$theme/$rel_php" "$backup/$rel_php"
+          changed=0
+          finish() {
+            status=$?
+            trap - EXIT
+            if [ "$status" -ne 0 ] && [ "$changed" -eq 1 ]; then
+              cp -p "$backup/$rel_css" "$theme/$rel_css"
+              cp -p "$backup/$rel_php" "$theme/$rel_php"
+              "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --allow-root >/dev/null 2>&1 || true
+            fi
+            rm -rf -- "$stage"
+            exit "$status"
+          }
+          trap finish EXIT
+          install -m 0644 "$from/$rel_css" "$theme/$rel_css"
+          changed=1
+          install -m 0644 "$from/$rel_php" "$theme/$rel_php"
+          cmp -s "$from/$rel_css" "$theme/$rel_css"
+          cmp -s "$from/$rel_php" "$theme/$rel_php"
+          "$php_bin" -l "$theme/$rel_php" >/dev/null
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --allow-root >/dev/null
+
+          # Cache-busting query and a real product page check.
+          curl -fsSL --retry 2 --max-time 45 \
+            "https://www.elmercadodeorigen.com/producto/paleta-de-bellota-100-iberico/?emdo_gallery_fix=$runid" \
+            -o "/tmp/emdo-gallery-$runid.html"
+          grep -q 'elmercado-product-gallery-resize-20261027' "/tmp/emdo-gallery-$runid.html"
+          rm -f "/tmp/emdo-gallery-$runid.html"
+          echo 'Production gallery patch verified.'
+          REMOTE
