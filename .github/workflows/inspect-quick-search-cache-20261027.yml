@@ -18,6 +18,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
       STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
     steps:
+      - uses: actions/checkout@v4
       - name: Inspect production cache and writable dir without modifying files
         shell: bash
         env:
@@ -27,7 +28,8 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
-          sshpass -e ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "${STAGING_PORT:-22}" "${STAGING_USER}@${STAGING_HOST}" "bash -s -- '${STAGING_REMOTE_PATH}'" <<'REMOTE'
+          expected="$(sha256sum elmercadodeorigen-child/dropins/advanced-cache.php | cut -d' ' -f1)"
+          sshpass -e ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "${STAGING_PORT:-22}" "${STAGING_USER}@${STAGING_HOST}" "bash -s -- '${STAGING_REMOTE_PATH}' '$expected'" <<'REMOTE'
           set -euo pipefail
           raw="${1%/}"
           case "$raw" in
@@ -45,7 +47,7 @@ jobs:
           echo "CACHE_FILE_EXISTS=$([ -f "$file" ] && echo yes || echo no)"
           if [ -f "$file" ]; then
             echo "CACHE_FILE_MANAGED_MARKER=$(grep -c 'ELMERCADO_EARLY_HOME_CACHE\|El Mercado de Origen early cache drop-in' "$file" || true)"
-            echo "CACHE_FILE_SHA=$(sha256sum "$file" | cut -d' ' -f1)"
+            echo "CACHE_FILE_REPO_PARITY=$([ "$(sha256sum "$file" | cut -d' ' -f1)" = "$2" ] && echo yes || echo no)"
             echo "CACHE_FILE_INFO=$(stat -c '%U %G %a %s' "$file")"
           fi
           echo "WP_CACHE_MARKER=$(grep -E 'define.*WP_CACHE' "$prod/wp-config.php" | sed -E "s/(['\"])[^'\"]*\1/'REDACTED'/g" | cut -c1-140 || true)"
