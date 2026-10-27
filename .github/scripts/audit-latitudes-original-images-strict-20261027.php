@@ -22,14 +22,25 @@ $mappedIds=array_map('intval',$wpdb->get_col($wpdb->prepare(
  "SELECT DISTINCT wc_product_id FROM {$sourceTable} WHERE supplier_id=%d AND wc_product_id>0",
  (int)$supplier['id'])));
 $products=array_values(array_unique(array_filter($mappedIds,static fn($id)=>(int)$id>0)));
-// Also include catalog items owned by the dedicated Latitudes vendor, if it exists;
-// never use an unrelated shared importer account as a filter.
+// Strong, producer-specific fallback: source URL saved by the sync must point to latitudes.es.
+// WP post authors cannot be trusted as supplier keys: many unrelated producers share that author.
+$urlMatchedIds=array_map('intval',$wpdb->get_col($wpdb->prepare(
+ "SELECT DISTINCT p.ID FROM {$wpdb->posts} p
+  JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID
+  WHERE p.post_type='product'
+    AND p.post_status IN ('publish','draft','private','pending','future')
+    AND pm.meta_key='_emdo_source_url'
+    AND (pm.meta_value LIKE %s OR pm.meta_value LIKE %s)",
+ '%://latitudes.es/%','%://www.latitudes.es/%'
+)));
+$products=array_values(array_unique(array_merge($products,$urlMatchedIds)));
 $vendor=get_userdata((int)$supplier['vendor_user_id']);
-if($vendor && strtolower($vendor->user_login)==='latitudes'){
- $own=get_posts(['post_type'=>'product','author'=>(int)$vendor->ID,
-    'post_status'=>['publish','draft','private','pending','future'],'fields'=>'ids','posts_per_page'=>-1,'suppress_filters'=>true]);
- $products=array_values(array_unique(array_merge($products,array_map('intval',$own))));
-}
+echo "LATITUDES_SOURCE_SCOPE ".wp_json_encode([
+ 'supplier_id'=>(int)$supplier['id'],'vendor_user_id'=>(int)$supplier['vendor_user_id'],
+ 'vendor_login'=>$vendor?$vendor->user_login:'missing',
+ 'mapped_product_ids'=>count($mappedIds),'latitudes_source_url_meta_ids'=>count($urlMatchedIds),
+ 'union_product_ids'=>count($products)
+],JSON_UNESCAPED_UNICODE)."\n";
 sort($products,SORT_NUMERIC);
 if(count($products)<15 || count($products)>500){fwrite(STDERR,"STRICT_SUPPLIER_PRODUCT_COUNT_IMPLAUSIBLE ".count($products)."\n");exit(7);}
 $photoMap=[];$catalogIds=[];$excludedPacks=[];
@@ -86,7 +97,7 @@ foreach($photoMap as $attachmentId=>$row){
 }
 file_put_contents($dir.'/manifest.json',wp_json_encode([
  'generated_utc'=>gmdate('c'),'supplier_code'=>'latitudes','supplier_id'=>(int)$supplier['id'],'vendor_user_id'=>(int)$supplier['vendor_user_id'],'source_product_mapping_count'=>count($mappedIds),
- 'scope'=>'ONLY products mapped to supplier code latitudes by MDO_Database source_products; plus dedicated Latitudes vendor products if vendor login is latitudes',
+ 'scope'=>'ONLY products with supplier code latitudes in source_products OR original _emdo_source_url host latitudes.es; never post author',
  'supplier_product_count'=>count($catalogIds),'excluded_exclusive_pack_ids'=>array_map('intval',$excludedPacks),
  'unique_media_count'=>count($audit),'crop_count'=>$exported,'missing_files'=>$missing,
  'errors'=>$errors,'photos'=>$audit
