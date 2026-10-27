@@ -74,7 +74,7 @@ jobs:
           # products, checkout, search, REST and other producers are out of scope.
           map $args $emdo_20261027_bad_multifacet {
               default 0;
-              ~*^(?=.*(?:^|&)emo_vendor_cat=)(?=(?:.*(?:^|&)filter_[^=&]+=){3}) 1;
+              ~*^(?=.*(?:^|&)emo_vendor_cat=)(?=.*(?:^|&)filter_[^=&]+=[^&]*(?:&[^&]*)*&filter_[^=&]+=[^&]*(?:&[^&]*)*&filter_[^=&]+=) 1;
           }
           # Exempt active Woo cart / WordPress logged-in sessions. No consent/analytics
           # cookie bypass: crawlers can trivially forge those.
