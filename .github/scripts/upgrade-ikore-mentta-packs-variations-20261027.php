@@ -202,9 +202,9 @@ if($mode==='apply'){
    $p->save();
    foreach($grinds as $n=>$grind){
     $sku=$pack['sku'].'-M'.($n+1);
-    $vid=(int)wc_get_product_id_by_sku($sku);
-    if($vid){
-     $v=wc_get_product($vid);
+    $variationExistingId=(int)wc_get_product_id_by_sku($sku);
+    if($variationExistingId){
+     $v=wc_get_product($variationExistingId);
      if(!$v||!$v->is_type('variation')||(int)$v->get_parent_id()!==$pid)throw new RuntimeException('Variation SKU collision '.$sku);
     }else{$v=new WC_Product_Variation();}
     $v->set_parent_id($pid);$v->set_sku($sku);
