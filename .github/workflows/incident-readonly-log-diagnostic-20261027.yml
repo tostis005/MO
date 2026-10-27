@@ -1,212 +1,117 @@
-name: Incident post-reboot performance diagnosis 2026-10-27
+name: Incident forensic live origins PHP and SQL 2026-10-27
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/incident-readonly-log-diagnostic-20261027.yml']
+    paths:
+      - '.github/workflows/incident-readonly-log-diagnostic-20261027.yml'
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  deep:
+  read-only-forensic:
     runs-on: ubuntu-24.04
-    timeout-minutes: 7
+    timeout-minutes: 6
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
       STAGING_USER: ${{ secrets.STAGING_USER }}
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Identify primary saturation source using recent sanitized logs
+      - name: Inspect recent actual requests SQL sessions and PHP stack
         shell: bash
         run: |
           set -Eeuo pipefail
-          sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
-          PORT="${STAGING_PORT:-22}"
-          sshpass -e ssh -o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          PORT="$STAGING_PORT"
+          sshpass -e ssh -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
           set +e
-          export LC_ALL=C
-          echo "=== TIME CPU PHP POOL ==="
-          date -u; echo cpu_cores=$(nproc); uptime; free -m | head -n 3
-          ps -eo stat=,comm=,args= | awk '/php-fpm: pool elmercadodeorigen.com/ {n++;state[substr($1,1,1)]++} END {print "PROD_FPM_WORKERS",n,"states", "R="state["R"],"S="state["S"],"D="state["D"]}'
-          for f in /opt/plesk/php/8.2/etc/php-fpm.d/*elmercadodeorigen* /opt/plesk/php/8.2/etc/php-fpm.d/*; do [ -f "$f" ] || continue; grep -q 'elmercadodeorigen.com' "$f" || continue; echo FPM_POOL_CONFIG; grep -E '^[[:space:]]*(pm[.]max_children|pm[.]max_requests|pm[.]process_idle_timeout|pm[.]start_servers|pm[.]min_spare_servers|pm[.]max_spare_servers|request_slowlog_timeout|request_terminate_timeout)[[:space:]]*=' "$f" | head -n 12; break; done
-          echo "=== LOG SOURCES ==="
+          echo "=== HOST LOAD ==="
+          date -u; uptime; nproc
+          echo "=== PHP POOL CONFIG ==="
+          grep -E '^pm[.]|^request_slowlog|^request_terminate' /opt/plesk/php/8.2/etc/php-fpm.d/elmercadodeorigen.com.conf | head -n 20
+          echo "=== SQL STATUS 3 SECOND DIFFERENCE ==="
+          mysql -N -e "SHOW GLOBAL STATUS WHERE Variable_name IN ('Questions','Com_select','Threads_running','Threads_connected','Slow_queries')" 2>/dev/null
+          sleep 3
+          mysql -N -e "SHOW GLOBAL STATUS WHERE Variable_name IN ('Questions','Com_select','Threads_running','Threads_connected','Slow_queries')" 2>/dev/null
+          echo "=== MYSQL PROCESSLIST ANONYMIZED ==="
           python3 - <<'PY'
-          import os,re,json,glob,gzip
-          from collections import Counter,defaultdict
-          from datetime import datetime,timezone,timedelta
-          now=datetime.now(timezone.utc);cut=now-timedelta(minutes=70)
-          base='/var/www/vhosts/system/elmercadodeorigen.com/logs'
-          def printj(name,x): print(name,json.dumps(x,ensure_ascii=False))
-          for p in sorted(glob.glob(base+'/*')):
-            n=os.path.basename(p)
-            if n in ('error_log','proxy_error_log','php-fpm_slow.log','access_ssl_log','access_log') or ('error.log' in n and not n.endswith('.gz')):
-              print('LOG_FILE',n,'bytes',os.path.getsize(p),'modified',datetime.fromtimestamp(os.path.getmtime(p),timezone.utc).isoformat())
-          access=base+'/access_ssl_log'
-          counters=Counter();route=Counter();http429=Counter();method=Counter();agents=Counter();hourly=defaultdict(Counter);top_ip=Counter();response_times={}
-          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)"\s+(\d{3})\s+\S+(?:\s+"[^"]*"\s+"([^"]*)")?')
-          with open(access,'rb') as f:
-            f.seek(max(0,os.path.getsize(access)-35000000))
-            for b in f:
-              m=rx.match(b.decode('utf8','replace'))
-              if not m:continue
-              ip,stamp,verb,target,code,agent=m.groups()
-              try:dt=datetime.strptime(stamp,'%d/%b/%Y:%H:%M:%S %z').astimezone(timezone.utc)
-              except:continue
-              if dt<cut:continue
-              counters[code]+=1;method[verb]+=1
-              p=(target or '/').split('?',1)[0]
-              if re.search(r'\.(png|jpg|webp|css|js|woff2?|svg|ico)$',p,re.I): cat='static_asset'
-              elif '/wp-json/' in p:cat='wp_rest'
-              elif '/wp-admin/admin-ajax.php' in p:cat='admin_ajax'
-              elif '/wp-cron.php' in p:cat='wp_cron'
-              elif '/xmlrpc.php' in p:cat='xmlrpc'
-              elif '/'==p:cat='homepage'
-              elif '/tienda/'==p:cat='shop'
-              elif '/wp-login.php' in p:cat='login'
-              elif '/product' in p or '/producto/' in p:cat='product'
-              elif '/en/' in p:cat='english'
-              else:cat='other_dynamic'
-              route[cat]+=1
-              if code=='429':http429[cat]+=1
-              bucket=dt.strftime('%Y-%m-%dT%H:%M')[:-1]+'0Z'
-              hourly[bucket]['total']+=1
-              hourly[bucket]['429']+=code=='429';hourly[bucket]['5xx']+=code[0]=='5'
-              top_ip[ip]+=1
-              a=(agent or '')
-              ac='named_bot' if re.search(r'bot|crawl|spider|semrush|ahrefs|go-http-client|python-requests|curl/|wget/',a,re.I) else ('browser' if 'Mozilla/5.0' in a else 'other_agent')
-              agents[ac]+=1
-          printj('LAST_70M_TRAFFIC',{'statuses':counters,'methods':method,'route_categories':route,'429_categories':http429,'user_agent_classes':agents,'largest_single_ip_request_count':top_ip.most_common(1)[0][1] if top_ip else 0,'largest10_ip_share':round(sum(x for _,x in top_ip.most_common(10))/max(1,sum(counters.values())),3)})
-          for k,v in sorted(hourly.items()):printj('TRAFFIC_10MIN',{k:v})
-          types={
-            'fpm_exhaust':r'max_children|pool seems busy|server reached',
-            'upstream_timeout':r'upstream timed out|timed out.*upstream',
-            'connection':r'upstream prematurely closed|connect\(\) failed|connection refused|AH01079|AH01075',
-            'php_fatal':r'PHP Fatal|Fatal error|Uncaught .*Error|Allowed memory',
-            'php_warning':r'PHP Warning',
-            'db_failure':r'MySQL server has gone away|Too many connections|Error establishing a database connection'
-          }
-          for p in [base+'/error_log',base+'/proxy_error_log','/var/log/plesk-php82-fpm/error.log','/var/log/nginx/error.log']:
-            if not os.path.isfile(p):continue
-            try:
-              with open(p,'rb') as f:
-                f.seek(max(0,os.path.getsize(p)-5000000));s=f.read().decode('utf8','replace')
-              lines=s.splitlines()
-              matching=[x for x in lines if any(re.search(v,x,re.I) for v in types.values())]
-              cc=Counter(n for x in matching for n,r in types.items() if re.search(r,x,re.I))
-              fp=Counter()
-              for x in matching:
-                m=re.search(r'/wp-content/(?:plugins|themes|mu-plugins)/([^/\s]+)',x)
-                if m:fp[m.group(1)]+=1
-              warnings=Counter()
-              for x in matching:
-                if 'PHP Warning:' in x:
-                  w=re.search(r'PHP Warning: (.*?)(?: in /| on line |[\x27"])',x)
-                  if w:warnings[w.group(1)[:120]]+=1
-              def clean(x):
-                x=re.sub(r'\b(?:\d{1,3}\.){3}\d{1,3}\b','[IP]',x)
-                x=re.sub(r'https?://[^\s\x27"]+','[URL]',x)
-                x=re.sub(r'(/var/www/|/home/|/tmp/)[^\s:()]+','[PATH]',x)
-                x=re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b','[EMAIL]',x)
-                return x[:300]
-              special=[clean(x) for x in matching if any(re.search(types[k],x,re.I) for k in ('fpm_exhaust','upstream_timeout','connection','php_fatal','db_failure'))]
-              printj('ERROR_PATTERNS',{'file':p.split('/')[-1],'patterns':cc,'common_wp_components':fp.most_common(12),'warning_types':warnings.most_common(10),'critical_examples':special[-12:]})
-            except Exception as e: print('LOG_READ_FAIL',p.split('/')[-1],type(e).__name__)
-          p=base+'/php-fpm_slow.log'
-          if os.path.isfile(p):
-            with open(p,'rb') as f:
-              f.seek(max(0,os.path.getsize(p)-14000000));s=f.read().decode('utf8','replace')
-            blocks=re.split(r'(?=\[\d\d-[A-Za-z]{3}-\d{4} \d\d:\d\d:\d\d\])',s)
-            groups=Counter();functions=Counter();recent=0;current=0;examples=[]
-            for block in blocks:
-              m=re.match(r'\[(\d\d-[A-Za-z]{3}-\d{4} \d\d:\d\d:\d\d)\]',block)
-              if not m:continue
-              try:tm=datetime.strptime(m.group(1),'%d-%b-%Y %H:%M:%S').replace(tzinfo=timezone.utc)
-              except:continue
-              if tm<cut:continue
-              recent+=1
-              if tm>now-timedelta(minutes=15):current+=1
-              names=re.findall(r'/wp-content/(?:plugins|themes|mu-plugins)/([^/\s]+)',block)
-              for name in set(names):groups[name]+=1
-              fun=re.findall(r'\] ([a-zA-Z_][a-zA-Z0-9_:>]+)\(\)',block)
-              if fun:functions[fun[0]]+=1
-              if len(examples)<2:
-                examples.append({'time':tm.isoformat(),'components':list(dict.fromkeys(names))[:10],'stack_functions':fun[:6]})
-            printj('SLOW_STACK_70M',{'samples':recent,'samples_last15m':current,'common_wp_components':groups.most_common(20),'first_functions':functions.most_common(12),'examples':examples,'log_total_mb':round(os.path.getsize(p)/1e6)})
+          import subprocess,re,collections,json
+          q=subprocess.run(['mysql','-B','-N','-e','SHOW FULL PROCESSLIST'],capture_output=True,text=True,timeout=10)
+          rows=[]
+          for line in q.stdout.splitlines():
+            parts=line.split('\t')
+            if len(parts)<8:continue
+            ident,user,host,db,command,secs,state,query=parts[:8]
+            if command=='Sleep':continue
+            query=re.sub(r"'[^']*'","'?'",query)
+            query=re.sub(r'\b[0-9]{5,}\b','?',query)
+            query=query[:260]
+            rows.append({'secs':secs,'state':state[:100],'sql':query})
+          print('LIVE_SQL',json.dumps({'total_active':len(rows),'sample':rows[:18]},ensure_ascii=False))
           PY
-          echo "=== EXTERNAL HEALTH PROBE FROM SERVER ==="
-          for url in 'https://www.elmercadodeorigen.com/' 'https://www.elmercadodeorigen.com/tienda/'; do
-            curl -k -L -sS -o /dev/null -w 'HTTP %{http_code} DNS=%{time_namelookup} connect=%{time_connect} TTFB=%{time_starttransfer} total=%{time_total}\n' --connect-timeout 4 --max-time 16 "$url" || true
-          done
-
-          echo "=== POST REBOOT SPECIFIC CPU BOT DB ANALYSIS ==="
-          date -u '+UTC %Y-%m-%dT%H:%M:%SZ'
-          uptime -s; uptime
-          echo "=== RUNNING PHP WORKERS CPU ==="
-          ps -eo pid=,stat=,%cpu=,rss=,etime=,args= --sort=-%cpu | grep -E 'php-fpm: pool elmercadodeorigen.com|mariadbd|mysqld' | head -n 25 | sed -E 's/([0-9]{1,3}\\.){3}[0-9]{1,3}/[IP]/g'
-          echo "=== DATABASE LIVE STATES ==="
-          mysql -N -e "SELECT COALESCE(STATE,'none'),COUNT(*),MAX(TIME) FROM information_schema.PROCESSLIST GROUP BY COALESCE(STATE,'none') ORDER BY COUNT(*) DESC LIMIT 15" 2>/dev/null || echo DB_STATUS_NOT_AVAILABLE
-          mysql -N -e "SHOW GLOBAL STATUS WHERE Variable_name IN ('Slow_queries','Threads_running','Threads_connected','Questions','Max_used_connections')" 2>/dev/null || true
-          echo "=== MEMORY CPU SNAPSHOT ==="
-          vmstat 1 3 | tail -n 3
-          echo "=== CURRENT PHP POOL LIMIT ==="
-          grep -R --include='*.conf' -lF '[elmercadodeorigen.com]' /opt/plesk/php/8.2/etc/php-fpm.d /etc/php 2>/dev/null | head -n 3 | while read -r cfg; do echo POOL_FILE="$(basename "$cfg")"; sed -n '/^\\[elmercadodeorigen.com\\]/,/^\\[/p' "$cfg" | grep -E '^(pm|request_slowlog_timeout|request_terminate_timeout)[. ]' | head -n 16; done
-          echo "=== RECENT URL DISTRIBUTION AND EXPENSIVE STACKS ==="
-          python3 - <<'PY2'
-          import os,re,json,collections,datetime
-          base='/var/www/vhosts/system/elmercadodeorigen.com/logs'
+          echo "=== REQUESTS REAL ACCESS LOG 20 MINUTES ==="
+          python3 - <<'PY'
+          import os,re,datetime,collections,json,hashlib
+          p='/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log'
           now=datetime.datetime.now(datetime.timezone.utc)
-          rx=re.compile(r'^(\\S+)\\s+\\S+\\s+\\S+\\s+\\[([^\\]]+)\\]\\s+"(\\S+)\\s+([^"]*?)"\\s+(\\d{3})\\s+\\S+(?:\\s+"[^"]*"\\s+"([^"]*)")?')
-          stats=collections.Counter(); statuses=collections.Counter(); hot=collections.Counter(); errors=collections.Counter(); bots=collections.Counter(); codesbyroute=collections.Counter(); byip=collections.Counter(); recent=0
-          p=base+'/access_ssl_log'
+          routes=collections.Counter();agents=collections.Counter();client=collections.Counter();client_agents=collections.defaultdict(collections.Counter);status=collections.Counter();statusroute=collections.Counter();method=collections.Counter();minutes=collections.Counter();top_query=collections.Counter();urls_by_source=collections.defaultdict(collections.Counter);referers=collections.Counter();since_reboot=collections.Counter()
+          total=0
           with open(p,'rb') as f:
-            f.seek(max(0,os.path.getsize(p)-15000000))
-            for b in f:
-              m=rx.match(b.decode('utf-8','replace'))
-              if not m:continue
-              ip,ds,method,url,status,ua=m.groups()
-              try: t=datetime.datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(datetime.timezone.utc)
+            f.seek(max(0,os.path.getsize(p)-12000000))
+            for raw in f:
+              line=raw.decode('utf-8','replace')
+              matches=re.search(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"([^"]+)"\s+(\d{3})\s+\S+\s+"([^"]*)"\s+"([^"]*)"',line)
+              if not matches:continue
+              ip,datestr,request,code,referer,agent=matches.groups()
+              try:d=datetime.datetime.strptime(datestr,'%d/%b/%Y:%H:%M:%S %z').astimezone(datetime.timezone.utc)
               except:continue
-              if t<now-datetime.timedelta(minutes=18):continue
-              recent+=1;statuses[status]+=1; byip[ip]+=1
-              route=url.split('?',1)[0]
-              prefix='/'.join(route.split('/')[:4])
-              if route.startswith('/wp-json/'):prefix='/wp-json/'
-              if route.startswith('/wp-admin/admin-ajax.php'):prefix='/wp-admin/admin-ajax.php'
-              hot[prefix[:120]]+=1
-              if status in ('429','500','502','503','504'):codesbyroute[(status,prefix[:90])]+=1
-              agent=ua or ''
-              if re.search(r'bot|crawler|spider|semrush|ahrefs|bing|bytespider|facebook|google|python|curl|headless|scrap|uptime|monitor',agent,re.I): bots['named_automated']+=1
-              elif 'Mozilla/5.0' in agent: bots['browser_like']+=1
-              else:bots['other']+=1
-          print('POST_RESTART_TRAFFIC',json.dumps({'sample_mins':18,'requests':recent,'http_codes':statuses,'user_agent_groups':bots,'top_routes':hot.most_common(14),'429_or_5xx_route_groups':[(str(x),v) for x,v in codesbyroute.most_common(12)],'largest_ip_requests':max(byip.values()) if byip else 0,'top_10_ip_share':round(sum(v for _,v in byip.most_common(10))/max(1,recent),3)},ensure_ascii=False))
-          p=base+'/php-fpm_slow.log'
-          s=''
-          if os.path.isfile(p):
-            with open(p,'rb') as f:
-              f.seek(max(0,os.path.getsize(p)-6500000))
-              s=f.read().decode('utf-8','replace')
-          c=collections.Counter(); front=collections.Counter(); paths=collections.Counter(); frames=collections.Counter(); n=0
-          blocks=re.split(r'(?=\\[\\d{2}-[A-Za-z]{3}-\\d{4} \\d{2}:\\d{2}:\\d{2}\\])',s)
-          for block in blocks:
-            m=re.match(r'\\[(\\d{2}-[A-Za-z]{3}-\\d{4} \\d{2}:\\d{2}:\\d{2})\\]',block)
+              if d<now-datetime.timedelta(minutes=20):continue
+              rp=request.split()
+              if len(rp)<2:continue
+              verb,url=rp[:2];path=url.split('?',1)[0]
+              if len(path)>150:path=path[:150]
+              if any(word in path.lower() for word in ('checkout','my-account','mi-cuenta','pedido','/cart/','carrito','/wp-admin/')):path='[private-or-admin]'
+              # One way hashes, never display addresses of users.
+              ident=hashlib.sha256(ip.encode()).hexdigest()[:8]
+              total+=1
+              status[code]+=1;routes[path]+=1;client[ident]+=1;client_agents[ident][agent[:90]]+=1;statusroute[(code,path)]+=1;method[verb]+=1
+              minutes[d.strftime('%H:%M')]+=1;urls_by_source[ident][path]+=1
+              query=url.partition('?')[2]
+              if query:top_query[tuple(sorted(k.split('=')[0][:45] for k in query.split('&')))]+=1
+              if referer=='-':referers['none']+=1
+              elif 'elmercadodeorigen.com' in referer:referers['internal']+=1
+              else:referers['external']+=1
+              if re.search(r'bot|crawl|spider|facebook|semrush|ahrefs|gptbot|googlebot|bingbot|curl|python|scrapy|headless|lighthouse',agent,re.I):atype='named-automation'
+              elif 'Mozilla/5.0' in agent:atype='browser-like'
+              else:atype='other'
+              agents[atype]+=1
+          print('RECENT_COUNTS',json.dumps({'requests':total,'http':status,'method':method,'referrers':referers,'ua_classes':agents,'top_routes':routes.most_common(24),'status_routes':[(f'{k[0]} {k[1]}',v) for k,v in statusroute.most_common(16)],'query_params':[(list(k),v) for k,v in top_query.most_common(10)],'per_minute':sorted(minutes.items())[-20:]},ensure_ascii=False))
+          print('TOP_CLIENTS',json.dumps([{'hash':k,'requests':v,'top_routes':urls_by_source[k].most_common(6),'top_user_agents':client_agents[k].most_common(2)} for k,v in client.most_common(14)],ensure_ascii=False))
+          PY
+          echo "=== PHP SLOW STACK LAST 15 MINUTES ==="
+          python3 - <<'PY'
+          import os,re,datetime,collections,json
+          p='/var/www/vhosts/system/elmercadodeorigen.com/logs/php-fpm_slow.log'
+          now=datetime.datetime.now(datetime.timezone.utc);pieces=collections.Counter();top=collections.Counter();sqlcomps=collections.Counter();hour=collections.Counter();n=0;sample=[]
+          with open(p,'rb') as f:
+            f.seek(max(0,os.path.getsize(p)-11000000))
+            dat=f.read().decode('utf-8','replace')
+          for block in re.split(r'(?=\[\d\d-[A-Za-z]{3}-\d{4} \d\d:\d\d:\d\d\])',dat):
+            m=re.match(r'\[(\d\d-[A-Za-z]{3}-\d{4} \d\d:\d\d:\d\d)\]',block)
             if not m:continue
-            try: t=datetime.datetime.strptime(m.group(1),'%d-%b-%Y %H:%M:%S').replace(tzinfo=datetime.timezone.utc)
+            try:d=datetime.datetime.strptime(m.group(1),'%d-%b-%Y %H:%M:%S').replace(tzinfo=datetime.timezone.utc)
             except:continue
-            if t<now-datetime.timedelta(minutes=18):continue
-            n+=1
-            plugins=set(re.findall(r'/wp-content/(?:plugins|themes)/([^/\\s]+)',block))
-            for comp in plugins:c[comp]+=1
-            funcs=re.findall(r'\\] ([a-zA-Z_][a-zA-Z0-9_:>]+)\\(\\)',block)
-            if funcs:front[funcs[0]]+=1
-            for line in block.splitlines()[1:8]:
-              pp=re.search(r'/wp-content/(?:plugins|themes|mu-plugins)/([^/\\s]+)',line)
-              if pp: paths[pp.group(1)]+=1
-            if 'mysqli_query' in block:frames['mysql_stack']+=1
-          print('POST_RESTART_SLOW',json.dumps({'count_18m':n,'components':c.most_common(15),'top_stack_functions':front.most_common(10),'top_first_7_frames':paths.most_common(15),'mysql_stack_count':frames['mysql_stack']},ensure_ascii=False))
-          PY2
-          echo "=== PUBLIC URL REAL RESPONSE TIMES ==="
-          for url in 'https://www.elmercadodeorigen.com/' 'https://www.elmercadodeorigen.com/tienda/' 'https://www.elmercadodeorigen.com/wp-json/'; do
-            curl -sSkL -o /dev/null --connect-timeout 4 --max-time 12 -w 'HTTP %{http_code} conn=%{time_connect} TTFB=%{time_starttransfer} total=%{time_total}\\n' "$url" || true
-          done
+            if d<now-datetime.timedelta(minutes=15):continue
+            n+=1;hour[d.strftime('%H:%M')]+=1
+            mods=set(re.findall(r'/wp-content/(?:plugins|themes)/([^/\s]+)',block))
+            for name in mods:pieces[name]+=1
+            fns=re.findall(r'\]\s+([a-zA-Z_][\w:>]+)\(',block)
+            if fns:top[fns[0]]+=1
+            if 'mysqli_query' in block:
+              for name in mods:sqlcomps[name]+=1
+            if len(sample)<4:
+              sample.append({'time':m.group(1),'start_functions':fns[:7],'components':sorted(mods)[:10]})
+          print('SLOW15',json.dumps({'count':n,'components':pieces.most_common(18),'first_functions':top.most_common(10),'sql_related':sqlcomps.most_common(12),'per_minute':sorted(hour.items())[-15:],'examples':sample},ensure_ascii=False))
+          PY
+          echo "=== FINISHED READ ONLY ==="
           REMOTE
