@@ -1,0 +1,135 @@
+name: Emergency Nginx producer filter bot guard 2026-10-27
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/emergency-producer-filter-bot-guard-20261027.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: emdo-prod-nginx-incident-guard
+  cancel-in-progress: false
+jobs:
+  protect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install remote SSH helper
+        run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Block automated multi-filter producer URL flood before WordPress (backup rollback)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="$STAGING_PORT"
+          sshpass -e ssh -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=12 -p "$PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          test "$(id -u)" = 0
+          BK=already_installed
+          VHOST=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          RULE=/etc/nginx/conf.d/96-emdo-producer-filter-flood-20261027.conf
+          BEGIN='# BEGIN EMDO PRODUCER FILTER FLOOD GUARD 20261027'
+          END='# END EMDO PRODUCER FILTER FLOOD GUARD 20261027'
+          test -s "$VHOST"
+          test -d /etc/nginx/conf.d
+          nginx -t
+          if grep -Fq "$BEGIN" "$VHOST"; then
+            echo "GUARD_ALREADY_PRESENT (no modifications)"
+          else
+            if test -e "$RULE"; then echo 'ERROR: Existing rule file without marker; refusing overwrite'; exit 11; fi
+            BK="/root/emdo-20261027-producer-facet-protection-$(date -u +%Y%m%dT%H%M%SZ)"
+            install -d -m 0700 "$BK"
+            cp -p "$VHOST" "$BK/vhost_nginx.conf"
+            echo "BACKUP_DIR=$BK"
+            applied=0
+            rollback() {
+              code=$?
+              trap - EXIT
+              if test "$applied" = 1 && test "$code" -ne 0; then
+                echo "ROLLING_BACK_NGINX_GUARD"
+                cp -p "$BK/vhost_nginx.conf" "$VHOST"
+                rm -f "$RULE"
+                nginx -t && systemctl reload nginx || true
+              fi
+              exit "$code"
+            }
+            trap rollback EXIT
+            # The normal producer landing page remains cached and open. The attack is
+            # on generated query URLs combining emo_vendor_cat plus many filter_* keys.
+            # Separate map variables in http context permit server-level early 429,
+            # before Nginx location/cache selection and before Apache/PHP/MySQL.
+            cat > "$RULE" <<'CONF'
+          # EMDO 2026-10-27: incident mitigation for distributed proxy bot filter flood.
+          # Scope: only the Hidalgo and Montjam producer shop routes (ES / legacy EN / EN).
+          map $uri $emdo_20261027_producer_route {
+              default 0;
+              ~*^/(?:tienda|en/tienda|en/store)/(?:hidalgo-de-la-jara|montjam)(?:/page/[1-9][0-9]*)?/?$ 1;
+          }
+          # Match at least 3 distinct filter_* query arguments AND emo_vendor_cat,
+          # irrespective of parameter order. Ordinary pages, zero/one/two filters,
+          # products, checkout, search, REST and other producers are out of scope.
+          map $args $emdo_20261027_bad_multifacet {
+              default 0;
+              ~*^(?=.*(?:^|&)emo_vendor_cat=)(?=(?:.*(?:^|&)filter_[^=&]+=){3}) 1;
+          }
+          # Exempt active Woo cart / WordPress logged-in sessions. No consent/analytics
+          # cookie bypass: crawlers can trivially forge those.
+          map $http_cookie $emdo_20261027_customer_session {
+              default 0;
+              ~*(?:^|;\s*)(?:wordpress_logged_in_[^=]*|wp_woocommerce_session_[^=]*|woocommerce_items_in_cart|woocommerce_cart_hash)= 1;
+          }
+          map "$request_method:$emdo_20261027_producer_route:$emdo_20261027_bad_multifacet:$emdo_20261027_customer_session" $emdo_20261027_reject_facet {
+              default 0;
+              "GET:1:1:0" 1;
+              "HEAD:1:1:0" 1;
+          }
+          CONF
+            chmod 0644 "$RULE"
+            {
+              printf '\n%s\n' "$BEGIN"
+              printf 'if ($emdo_20261027_reject_facet) { return 429; }\n'
+              printf '%s\n' "$END"
+            } >> "$VHOST"
+            applied=1
+            echo '=== NGINX CONFIG CHECK ==='
+            nginx -t
+            systemctl reload nginx
+            sleep 2
+            test "$(systemctl is-active nginx)" = active
+            echo "NGINX_GUARD_INSTALLED"
+          fi
+          BASE=https://www.elmercadodeorigen.com
+          # Every positive probe is harmless: no real product IDs or data modifications.
+          check_denied() {
+            n="$1"; p="$2"
+            code="$(curl -k -sS --connect-timeout 3 --max-time 6 -o /dev/null -w '%{http_code}' "$BASE$p")"
+            echo "$n HTTP=$code expected=429"
+            test "$code" = 429
+          }
+          echo '=== POSITIVE PROBES: REJECT BEFORE PHP ==='
+          check_denied h_es '/tienda/hidalgo-de-la-jara/?emo_vendor_cat=emdo_probe&filter_calidad=x&filter_preparacion=x&filter_rango-peso=x'
+          check_denied h_en_legacy '/en/tienda/hidalgo-de-la-jara/?filter_calidad=x&emo_vendor_cat=emdo_probe&filter_preparacion=x&filter_rango-peso=x'
+          check_denied h_en '/en/store/hidalgo-de-la-jara/?filter_calidad=x&filter_preparacion=x&filter_rango-peso=x&emo_vendor_cat=emdo_probe'
+          check_denied m_es '/tienda/montjam/?emo_vendor_cat=emdo_probe&filter_calidad=x&filter_preparacion=x&filter_rango-peso=x'
+          echo '=== NEGATIVE PROBES: NO FALSE EARLY-429 ==='
+          # May take longer while PHP drains existing stuck jobs. Only check early 429
+          # absence; non-response here is not evidence that the new guard failed.
+          for spec in \
+            'home|/' \
+            'hidalgo_clean|/tienda/hidalgo-de-la-jara/' \
+            'hidalgo_single_filter|/tienda/hidalgo-de-la-jara/?emo_vendor_cat=emdo_probe&filter_rango-peso=x' \
+            'product|/producto/foie-gras-de-pato-extra-desvenado/' \
+            'montjam_clean|/tienda/montjam/'; do
+            IFS='|' read -r n p <<< "$spec"
+            c="$(curl -k -sS --connect-timeout 3 --max-time 3 -o /dev/null -w '%{http_code}' "$BASE$p" 2>/dev/null || true)"
+            echo "$n HTTP=$c (not subject to new 429 guard)"
+          done
+          echo "=== SERVER SNAPSHOT ==="
+          uptime
+          ps -eo stat=,args= | awk '/php-fpm: pool elmercadodeorigen.com/ {n++; if ($1~/^R/)r++} END{print "PHP_PROCESSES=" n, "RUNNING=" r}'
+          echo "COMPLETE; backup=$BK"
+          REMOTE
