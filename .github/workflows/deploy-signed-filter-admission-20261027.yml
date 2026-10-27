@@ -1,0 +1,265 @@
+name: Deploy signed first-party filter admission and per-visitor quota 20261027
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/deploy-signed-filter-admission-20261027.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: emdo-signed-filter-admission-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 13
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: Compile and lint the standalone gate
+        run: |
+          set -Eeuo pipefail
+          gofmt -d ops/emdo-filter-gate/main.go | tee /tmp/emdo-gofmt.diff
+          test ! -s /tmp/emdo-gofmt.diff
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /tmp/emdo-filter-gate ops/emdo-filter-gate/main.go
+          test -s /tmp/emdo-filter-gate
+          php -l elmercadodeorigen-child/dropins/advanced-cache.php
+      - name: Stage binary and cache rule (not active)
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+          sshpass -e scp -q -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -P "$STAGING_PORT" /tmp/emdo-filter-gate "$STAGING_USER@$STAGING_HOST:/tmp/emdo-filter-gate-20261027.stage"
+          sshpass -e scp -q -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -P "$STAGING_PORT" elmercadodeorigen-child/dropins/advanced-cache.php "$STAGING_USER@$STAGING_HOST:/tmp/emdo-advanced-cache-20261027.stage"
+      - name: Configure localhost gate, Plesk Nginx routing and safe cache with automatic rollback
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          test "$(id -u)" -eq 0
+          VHOST=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          CACHE=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/advanced-cache.php
+          GLOBAL=/etc/nginx/conf.d/95-emdo-filter-signed-admission-20261027.conf
+          BINARY=/usr/local/sbin/emdo-filter-gate
+          SERVICE=/etc/systemd/system/emdo-filter-gate.service
+          STAGED=/tmp/emdo-filter-gate-20261027.stage
+          STAGED_CACHE=/tmp/emdo-advanced-cache-20261027.stage
+          test -s "$VHOST" && test -s "$CACHE" && test -s "$STAGED" && test -s "$STAGED_CACHE"
+          test ! -e "$GLOBAL"
+          test ! -e "$BINARY"
+          test ! -e "$SERVICE"
+          test ! -e /etc/emdo-filter-gate/secret
+          nginx -t
+          /opt/plesk/php/8.2/bin/php -l "$STAGED_CACHE"
+          MARK='# BEGIN EMDO SIGNED FILTER ADMISSION 20261027'
+          ! grep -Fq "$MARK" "$VHOST"
+          BACKUP=/root/emdo-signed-filter-admission-$(date -u +%Y%m%dT%H%M%SZ)
+          install -d -m 0700 "$BACKUP"
+          cp -p "$VHOST" "$BACKUP/vhost_nginx.conf"
+          cp -p "$CACHE" "$BACKUP/advanced-cache.php"
+          echo "BACKUP_DIR=$BACKUP"
+          changed=0
+          rollback() {
+            rc=$?
+            trap - EXIT
+            if [ "$rc" != 0 ] && [ "$changed" = 1 ]; then
+              echo 'ROLLBACK: restoring production Nginx, PHP cache, and removing new service'
+              cp -p "$BACKUP/vhost_nginx.conf" "$VHOST"
+              cp -p "$BACKUP/advanced-cache.php" "$CACHE"
+              systemctl stop emdo-filter-gate.service >/dev/null 2>&1 || true
+              systemctl disable emdo-filter-gate.service >/dev/null 2>&1 || true
+              rm -f "$SERVICE" "$BINARY" "$GLOBAL"
+              rm -rf /etc/emdo-filter-gate
+              systemctl daemon-reload
+              nginx -t && systemctl reload nginx || true
+              echo 'ROLLBACK_COMPLETE'
+            fi
+            rm -f "$STAGED" "$STAGED_CACHE"
+            exit "$rc"
+          }
+          trap rollback EXIT
+          changed=1
+          id emdo-filter-gate >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin emdo-filter-gate
+          install -d -m 0750 -o root -g emdo-filter-gate /etc/emdo-filter-gate
+          head -c 64 /dev/urandom > /etc/emdo-filter-gate/secret
+          chown root:emdo-filter-gate /etc/emdo-filter-gate/secret
+          chmod 0640 /etc/emdo-filter-gate/secret
+          install -m 0755 "$STAGED" "$BINARY"
+          cat > "$SERVICE" <<'UNIT'
+          [Unit]
+          Description=El Mercado de Origen local filter admission (no WordPress)
+          After=network.target
+          [Service]
+          User=emdo-filter-gate
+          Group=emdo-filter-gate
+          ExecStart=/usr/local/sbin/emdo-filter-gate
+          Restart=on-failure
+          RestartSec=2
+          NoNewPrivileges=true
+          PrivateTmp=true
+          ProtectHome=true
+          ProtectSystem=strict
+          MemoryMax=128M
+          CPUQuota=35%
+          LimitNOFILE=8192
+          [Install]
+          WantedBy=multi-user.target
+          UNIT
+          # Pass only to Nginx, never public: a signed ticket is required at origin.
+          cat > "$GLOBAL" <<'CONF'
+          # The existing GeoIP2 rule is still used for non-gated category URLs.
+          map $args $emdo_gate_has_filters {
+              default 0;
+              ~*(?:^|&)(?:filter_[^=&]+|emo_vendor_cat)= 1;
+          }
+          map $uri $emdo_gate_vendor_path {
+              default 0;
+              ~*^/(?:tienda|en/(?:tienda|store))/(?:hidalgo-de-la-jara|montjam)(?:/page/[1-9][0-9]*)?/?$ 1;
+          }
+          map "$emdo_geofacet_reject:$emdo_gate_vendor_path:$emdo_gate_has_filters" $emdo_geo_reject_outside_gate {
+              default 0;
+              ~^1: 1;
+              "1:1:1" 0;
+          }
+          # This front-door IP limit is generous: the strict quota is per signed visitor.
+          limit_req_zone $binary_remote_addr zone=emdo_signed_gate_entry_ip:10m rate=40r/m;
+          limit_req_zone $cookie_emdo_filter_pass zone=emdo_signed_gate_session:10m rate=12r/m;
+          limit_conn_zone $server_name zone=emdo_signed_facet_backend:1m;
+          CONF
+          chmod 0644 "$GLOBAL"
+          python3 - "$VHOST" <<'PY'
+          import re,sys
+          p=sys.argv[1]
+          s=open(p,encoding='utf8').read()
+          before='if ($emdo_geofacet_reject) { return 429; }'
+          assert s.count(before)==1
+          s=s.replace(before,'if ($emdo_geo_reject_outside_gate) { return 429; }',1)
+          routes=[
+           '/tienda/hidalgo-de-la-jara/', '/en/tienda/hidalgo-de-la-jara/',
+           '/en/store/hidalgo-de-la-jara/', '/tienda/montjam/',
+           '/en/tienda/montjam/', '/en/store/montjam/'
+          ]
+          for url in routes:
+            needle='location = '+url+' {\n'
+            assert s.count(needle)==1,needle
+            s=s.replace(needle,needle+
+                '    error_page 419 = @emdo_signed_filter_gate;\n'
+                '    if ($emdo_gate_has_filters) { return 419; }\n',1)
+          # Signed challenge cookie is not user personalization and must not miss
+          # the existing safe 5-minute Nginx static home/store cache.
+          old='CookieLawInfoConsent|viewed_cookie_policy|total_page)'
+          assert s.count(old)>=2
+          s=s.replace(old,'CookieLawInfoConsent|viewed_cookie_policy|total_page|emdo_filter_pass)')
+          generated=open('/var/www/vhosts/system/elmercadodeorigen.com/conf/nginx.conf',encoding='utf8').read()
+          up=re.search(r'proxy_pass\s+"(https://[^"]+:7081)"\s*;',generated)
+          assert up, 'Cannot derive actual Apache upstream from Plesk'
+          backend=up.group(1)
+          label='# BEGIN EMDO SIGNED FILTER ADMISSION 20261027'
+          block=[
+            label,
+            'location @emdo_signed_filter_gate {',
+            '    limit_req zone=emdo_signed_gate_entry_ip burst=15 nodelay;',
+            '    proxy_pass http://127.0.0.1:18427;',
+            '    proxy_http_version 1.1;',
+            '    proxy_set_header Host $host;',
+            '    proxy_set_header X-Real-IP $remote_addr;',
+            '    proxy_set_header X-Original-URI $request_uri;',
+            '    proxy_set_header X-Forwarded-Proto $scheme;',
+            '    proxy_read_timeout 12s;',
+            '}',
+            'location = /__emdo_filtergate/verify {',
+            '    limit_req zone=emdo_signed_gate_entry_ip burst=15 nodelay;',
+            '    proxy_pass http://127.0.0.1:18427;',
+            '    proxy_set_header Host $host;',
+            '    proxy_set_header X-Real-IP $remote_addr;',
+            '    proxy_read_timeout 12s;',
+            '}',
+            'location ^~ /__emdo_filtergate/upstream/ {',
+            '    internal;',
+            '    limit_req zone=emdo_signed_gate_session burst=8 nodelay;',
+            '    limit_conn emdo_signed_facet_backend 3;',
+            '    limit_conn_status 503;',
+            '    rewrite ^/__emdo_filtergate/upstream(/.*)$ $1 break;',
+            '    proxy_read_timeout 80s;',
+            '    proxy_pass "'+backend+'";',
+            '    proxy_ssl_server_name on;',
+            '    proxy_ssl_name $host;',
+            '    proxy_ssl_session_reuse off;',
+            '    proxy_set_header Host $host;',
+            '    proxy_set_header X-Real-IP $remote_addr;',
+            '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;',
+            '    proxy_set_header X-Accel-Internal /internal-nginx-static-location;',
+            '}',
+            '# Pagination with the same filters must use the same verifier.',
+            'location ~* ^/(?:tienda|en/(?:tienda|store))/(?:hidalgo-de-la-jara|montjam)/page/[1-9][0-9]*/?$ {',
+            '    error_page 419 = @emdo_signed_filter_gate;',
+            '    error_page 418 = @emdo_hot_static_origin;',
+            '    if ($emdo_gate_has_filters) { return 419; }',
+            '    return 418;',
+            '}',
+            '# END EMDO SIGNED FILTER ADMISSION 20261027'
+          ]
+          open(p,'w',encoding='utf8').write(s.rstrip()+'\n\n'+'\n'.join(block)+'\n')
+          print('Scoped Nginx routes',len(routes),'+ pagination; backend read from Plesk')
+          PY
+          # Preserve all existing cache semantics; only allow our signed cookie name.
+          install -m 0644 "$STAGED_CACHE" "$CACHE"
+          /opt/plesk/php/8.2/bin/php -l "$CACHE"
+          systemctl daemon-reload
+          systemctl enable --now emdo-filter-gate.service
+          sleep 1
+          systemctl is-active --quiet emdo-filter-gate.service
+          curl -fsS --max-time 2 -o /dev/null -w 'gate_local_http=%{http_code}\n' http://127.0.0.1:18427/__emdo_filtergate/verify || true
+          echo '=== VALIDATE BEFORE RELOAD ==='
+          nginx -t
+          systemctl reload nginx
+          echo '=== VERIFY INVALID DIRECT VISIT REDIRECTS TO UNFILTERED PRODUCER ==='
+          BASE=https://www.elmercadodeorigen.com
+          FILTER='/tienda/hidalgo-de-la-jara/?emo_vendor_cat=jamones-paletas&filter_calidad=bellota-100-iberico&filter_preparacion=deshuesado'
+          STATUS=$(curl -ksS --connect-timeout 3 --max-time 8 -D /tmp/emdo-filter-direct-h -o /dev/null -w '%{http_code}' "$BASE$FILTER")
+          echo "DIRECT_HTTP=$STATUS"
+          grep -i '^location:' /tmp/emdo-filter-direct-h
+          test "$STATUS" = 302
+          grep -qi '^location: /tienda/hidalgo-de-la-jara/' /tmp/emdo-filter-direct-h
+          echo '=== VERIFY FIRST-PARTY FILTER NAVIGATION RECEIVES SIGNED JS CHALLENGE ==='
+          CHALLENGE=$(curl -ksS --connect-timeout 3 --max-time 8 -H 'Referer: https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/' -A 'EMDO-Filter-Gate-Verify/20261027' -o /tmp/emdo-filter-challenge -w '%{http_code}' "$BASE$FILTER")
+          echo "FIRST_PARTY_HTTP=$CHALLENGE"
+          test "$CHALLENGE" = 200
+          grep -q 'Verificando acceso a los filtros' /tmp/emdo-filter-challenge
+          echo '=== VERIFY HTML STATIC CACHE STILL WORKS ==='
+          CLEAN=$(curl -ksS --connect-timeout 3 --max-time 8 -D /tmp/emdo-filter-clean-h -o /dev/null -w '%{http_code}' "$BASE/en/store/hidalgo-de-la-jara/")
+          echo "CLEAN_EN_HTTP=$CLEAN"
+          grep -i '^x-emdo-nginx-hot-cache:' /tmp/emdo-filter-clean-h
+          test "$CLEAN" = 200
+          grep -qi '^x-emdo-nginx-hot-cache: HIT' /tmp/emdo-filter-clean-h
+          echo '=== VERIFY COMPLEX FILTER COOKIE WITHOUT GO SCRIPT RETURNS DIRECT ==='
+          # Test token completion using same originating IP and UA, then the local
+          # verifier's 4/min limit without executing WooCommerce SQL.
+          TOKEN=$(python3 - <<'PY'
+          import re
+          s=open('/tmp/emdo-filter-challenge').read()
+          m=re.search(r'/__emdo_filtergate/verify\?c=([a-zA-Z0-9._-]+)',s)
+          print(m.group(1) if m else '')
+          PY
+          )
+          test -n "$TOKEN"
+          curl -ksS --connect-timeout 3 --max-time 8 -A 'EMDO-Filter-Gate-Verify/20261027' -c /tmp/emdo-filter-cookie -o /tmp/emdo-verify-response -w 'VERIFY_HTTP=%{http_code}\n' "$BASE/__emdo_filtergate/verify?c=$TOKEN" | grep -q 'VERIFY_HTTP=200'
+          COOKIE=$(awk '$6=="emdo_filter_pass"{print $7}' /tmp/emdo-filter-cookie | tail -1)
+          test -n "$COOKIE"
+          for n in 1 2 3 4 5; do
+             H=$(curl -sS --max-time 3 -o /dev/null -w '%{http_code}' -H 'Host: www.elmercadodeorigen.com' -H 'X-Real-IP: 127.0.0.1' -H "Cookie: emdo_filter_pass=$COOKIE" -H 'X-Original-URI: /tienda/hidalgo-de-la-jara/?emo_vendor_cat=jamones-paletas&filter_calidad=x&filter_preparacion=x' -A 'EMDO-Filter-Gate-Verify/20261027' http://127.0.0.1:18427/tienda/hidalgo-de-la-jara/)
+             echo "QUOTA_TEST_$n=$H"
+             if [ "$n" = 5 ]; then test "$H" = 429; else test "$H" = 200; fi
+          done
+          echo '=== POST-DEPLOY PROCESS STATUS ==='
+          uptime
+          systemctl --no-pager -l status emdo-filter-gate.service | head -n 12
+          echo "DEPLOY_VERIFIED_BACKUP=$BACKUP"
+          REMOTE
