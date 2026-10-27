@@ -1,0 +1,34 @@
+name: Profile live quick search response 20261027
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/profile-quick-search-20261027.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Measure HTTP status, TTFB, completion on cold and warm query paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          site='https://www.elmercadodeorigen.com/wp-json/elmercado/v1/quick-search'
+          for term in ca cafe jamon aceite mango queso; do
+            for pass in 1 2; do
+              url="$site?q=$term&lang=es"
+              output=$(curl --compressed --connect-timeout 10 --max-time 30 -sSL -o /tmp/search-profile.json -w 'status=%{http_code} dns=%{time_namelookup} connect=%{time_connect} tls=%{time_appconnect} ttfb=%{time_starttransfer} total=%{time_total} bytes=%{size_download}' "$url")
+              printf 'SEARCH_PROFILE term=%s pass=%s %s\n' "$term" "$pass" "$output"
+              python - <<'PY'
+          import json
+          try:
+            data=json.load(open('/tmp/search-profile.json'))
+            print('SEARCH_PRODUCTS',len(data.get('products',[])),'valid',isinstance(data.get('products'),list))
+          except Exception as e:
+            print('SEARCH_RESPONSE_INVALID',repr(e))
+          PY
+            done
+          done
