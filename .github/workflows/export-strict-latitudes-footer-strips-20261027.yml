@@ -1,0 +1,39 @@
+name: Export source-only Latitudes photo-footer strips for visual verification
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/export-strict-latitudes-footer-strips-20261027.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  count:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Retrieve current read-only supplier photo inventory
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SRC=/tmp/musee-latitudes-photo-audit-strict-20261027
+          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" "test -s $SRC/manifest.json && tar -czf /tmp/latitudes-strict-footer-strips-20261027.tar.gz -C $SRC manifest.json bottom"
+          sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P "$PORT" "$STAGING_USER@$STAGING_HOST:/tmp/latitudes-strict-footer-strips-20261027.tar.gz" latitudes-strict-footer-strips.tar.gz
+          tar -xzf latitudes-strict-footer-strips.tar.gz
+          test -d bottom
+          echo "STRICT_LATITUDES_SOURCE_FOOTER_STRIPS_READY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: latitudes-source-footer-strips-originals
+          path: latitudes-strict-footer-strips.tar.gz
+          retention-days: 3
