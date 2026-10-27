@@ -1,4 +1,4 @@
-name: Latitudes image inventory count without modifying media
+name: Strict Latitudes-only image inventory count from supplier sync
 on:
   push:
     branches: [main]
@@ -25,12 +25,14 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"
-          sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P "$PORT" "$STAGING_USER@$STAGING_HOST:/tmp/musee-latitudes-photo-audit-20261027/manifest.json" latitudes-manifest.json
+          sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P "$PORT" "$STAGING_USER@$STAGING_HOST:/tmp/musee-latitudes-photo-audit-strict-20261027/manifest.json" latitudes-manifest.json
           python3 - <<'PY'
           import json
           j=json.load(open('latitudes-manifest.json'))
-          print('LATITUDES_IMAGE_INVENTORY_COUNT',json.dumps({
+          print('LATITUDES_STRICT_IMAGE_INVENTORY_COUNT',json.dumps({
             'supplier_products':j['supplier_product_count'],
+            'supplier_code':j.get('supplier_code'),
+            'source_product_mappings':j.get('source_product_mapping_count'),
             'unique_images':j['unique_media_count'],
             'exported_footer_crops':j['crop_count'],
             'missing_files':j['missing_files'],
@@ -39,6 +41,6 @@ jobs:
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: latitudes-image-inventory-current
+          name: latitudes-image-inventory-strict-current
           path: latitudes-manifest.json
           retention-days: 3
