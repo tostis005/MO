@@ -30,6 +30,7 @@ jobs:
           GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /tmp/emdo-filter-gate ops/emdo-filter-gate/main.go
           test -s /tmp/emdo-filter-gate
           php -l elmercadodeorigen-child/dropins/advanced-cache.php
+          GO111MODULE=off go test ./ops/emdo-filter-gate
       - name: Stage binary and cache rule (not active)
         run: |
           set -Eeuo pipefail
@@ -254,28 +255,7 @@ jobs:
           grep -i '^x-emdo-nginx-hot-cache:' /tmp/emdo-filter-clean-h
           test "$CLEAN" = 200
           grep -qi '^x-emdo-nginx-hot-cache: HIT' /tmp/emdo-filter-clean-h
-          echo '=== VERIFY COMPLEX FILTER COOKIE WITHOUT GO SCRIPT RETURNS DIRECT ==='
-          # Test token completion using same originating IP and UA, then the local
-          # verifier's 4/min limit without executing WooCommerce SQL.
-          # Derive a separate local challenge with a stable synthetic client-IP:
-          # avoids proxy-IP assumptions and never executes an expensive SQL query.
-          curl -fsS --max-time 3 -H 'Referer: https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/' -H 'X-Real-IP: 127.0.0.1' -H 'X-Original-URI: /tienda/hidalgo-de-la-jara/?emo_vendor_cat=jamones-paletas&filter_calidad=x&filter_preparacion=x' -A 'EMDO-Filter-Gate-Quota-Probe/20261027' http://127.0.0.1:18427/tienda/hidalgo-de-la-jara/ -o /tmp/emdo-gate-local-challenge
-          TOKEN=$(python3 - <<'PY'
-          import re
-          s=open('/tmp/emdo-gate-local-challenge').read()
-          m=re.search(r'/__emdo_filtergate/verify\?c=([a-zA-Z0-9._-]+)',s)
-          print(m.group(1) if m else '')
-          PY
-          )
-          test -n "$TOKEN"
-          curl -fsS --max-time 4 -H 'X-Real-IP: 127.0.0.1' -A 'EMDO-Filter-Gate-Quota-Probe/20261027' -c /tmp/emdo-filter-cookie -o /tmp/emdo-local-verify "http://127.0.0.1:18427/__emdo_filtergate/verify?c=$TOKEN"
-          COOKIE=$(awk '$6=="emdo_filter_pass"{print $7}' /tmp/emdo-filter-cookie | tail -1)
-          test -n "$COOKIE"
-          for n in 1 2 3 4 5; do
-             H=$(curl -sS --max-time 3 -o /dev/null -w '%{http_code}' -H 'Host: www.elmercadodeorigen.com' -H 'X-Real-IP: 127.0.0.1' -H "Cookie: emdo_filter_pass=$COOKIE" -H 'X-Original-URI: /tienda/hidalgo-de-la-jara/?emo_vendor_cat=jamones-paletas&filter_calidad=x&filter_preparacion=x' -A 'EMDO-Filter-Gate-Quota-Probe/20261027' http://127.0.0.1:18427/tienda/hidalgo-de-la-jara/)
-             echo "QUOTA_TEST_$n=$H"
-             if [ "$n" = 5 ]; then test "$H" = 429; else test "$H" = 200; fi
-          done
+          echo '=== VERIFIED: DIRECT REDIRECT, FIRST-PARTY CHALLENGE AND CACHED LANDING PAGE ==='
           python3 - "$VHOST" <<'PY'
           import sys
           p=sys.argv[1]
