@@ -3,12 +3,12 @@
  * Change six existing imported packs to the same native WooCommerce
  * catalog='hidden' + Mentta-only IsVisible override used by Montjam.
  * Test one first, then remaining five; all changes reversible.
- * Env: MDO_HIDE_PACKS_MODE=preflight|apply_one|verify_one|apply_rest|verify_all|rollback_one
+ * Env: MDO_HIDE_PACKS_MODE=preflight|apply_one|verify_one|apply_rest|verify_all|rollback_one|rollback_rest
  */
 if(!defined('ABSPATH')||!defined('WP_CLI')||!WP_CLI||!function_exists('wc_get_product'))exit(2);
 if(!in_array(strtolower((string)wp_parse_url(home_url('/'),PHP_URL_HOST)),['www.elmercadodeorigen.com','elmercadodeorigen.com'],true))exit(2);
 $mode=(string)(getenv('MDO_HIDE_PACKS_MODE')?:'preflight');
-$states=['preflight','apply_one','verify_one','apply_rest','verify_all','rollback_one'];
+$states=['preflight','apply_one','verify_one','apply_rest','verify_all','rollback_one','rollback_rest'];
 if(!in_array($mode,$states,true))exit(2);
 $slugs=[
  21814=>'pack-degustacion-pasaporte-salvaje',
@@ -19,7 +19,7 @@ $slugs=[
  21908=>'pack-cafe-coleccion-completa'
 ];
 $selected=in_array($mode,['apply_one','verify_one','rollback_one'],true)?[21814]:
- ($mode==='apply_rest'?[21818,21820,21904,21906,21908]:array_keys($slugs));
+ (in_array($mode,['apply_rest','rollback_rest'],true)?[21818,21820,21904,21906,21908]:array_keys($slugs));
 $exclusive=emdo_mentta_exclusive_ids();
 foreach($slugs as $id=>$slug){
  $p=wc_get_product($id);
@@ -40,10 +40,10 @@ if(in_array($mode,['apply_one','apply_rest','rollback_one'],true)){
  }
  foreach($selected as $id){
   $p=wc_get_product($id);
-  $p->set_catalog_visibility($mode==='rollback_one'?'visible':'hidden');
+  $p->set_catalog_visibility(in_array($mode,['rollback_one','rollback_rest'],true)?'visible':'hidden');
   $p->save();
  }
- if($mode==='rollback_one')$new=array_values(array_unique(array_merge($exclusive,[21814])));
+ if(in_array($mode,['rollback_one','rollback_rest'],true))$new=array_values(array_unique(array_merge($exclusive,$selected)));
  else $new=array_values(array_diff($exclusive,$selected));
  update_option('emdo_mentta_exclusive_ids',$new,false);
  foreach($selected as $id){
@@ -54,7 +54,7 @@ if(in_array($mode,['apply_one','apply_rest','rollback_one'],true)){
 }
 foreach($selected as $id){
  $p=wc_get_product($id);$protected=in_array($id,emdo_mentta_exclusive_ids(),true);
- $expectedHidden=!in_array($mode,['preflight','rollback_one'],true);
+ $expectedHidden=!in_array($mode,['preflight','rollback_one','rollback_rest'],true);
  if($mode!=='preflight'&&($p->get_catalog_visibility()!==($expectedHidden?'hidden':'visible')||$protected===$expectedHidden))exit(6);
  $report=['mode'=>$mode,'id'=>$id,'slug'=>$p->get_slug(),'type'=>$p->get_type(),
   'woo_visibility'=>$p->get_catalog_visibility(),'status'=>$p->get_status(),
