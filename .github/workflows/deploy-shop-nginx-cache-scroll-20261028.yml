@@ -80,10 +80,6 @@ jobs:
               error_page 418 = @emdo_vendor_cache_origin;
               return 418;
           }
-          location ~* ^/tienda/page/[1-9][0-9]*/?$ {
-              error_page 418 = @emdo_vendor_cache_origin;
-              return 418;
-          }
           # END EMDO SPANISH SHOP CACHE 20261028
           CONFEOF
           changed=1
@@ -105,26 +101,39 @@ jobs:
           cmp /tmp/emdo-shop-2.html /tmp/emdo-shop-3.html
           grep -q 'emo-continuous-catalog' /tmp/emdo-shop-3.html
           grep -q 'emo-shop-title-block' /tmp/emdo-shop-3.html
-          echo '=== PAGE 2: FETCH AND REPEAT CACHE ==='
-          curl -ksS --connect-timeout 3 --max-time 28 -D /tmp/emdo-shop-p2a.h -o /tmp/emdo-shop-p2a.html "$BASE/tienda/page/2/"
-          curl -ksS --connect-timeout 3 --max-time 28 -D /tmp/emdo-shop-p2b.h -o /tmp/emdo-shop-p2b.html "$BASE/tienda/page/2/"
-          grep -Ei '^(HTTP/|x-emdo-vendor-cache:|set-cookie:)' /tmp/emdo-shop-p2a.h /tmp/emdo-shop-p2b.h || true
-          grep -q 'emo-continuous-catalog' /tmp/emdo-shop-p2b.html
-          grep -q 'class="products' /tmp/emdo-shop-p2b.html || grep -q 'ul class="products' /tmp/emdo-shop-p2b.html || grep -q 'products columns' /tmp/emdo-shop-p2b.html
+          echo '=== REAL INFINITE SCROLL: AJAX BATCH LOADER, NOT /PAGE/2/ ==='
           python3 - <<'PY'
-          import re,html
-          def slugs(path):
-              body=open(path,encoding='utf-8',errors='replace').read()
-              return set(re.findall(r'\bpost-(\d+)\b',body)),body
-          one,a=slugs('/tmp/emdo-shop-2.html')
-          two,b=slugs('/tmp/emdo-shop-p2b.html')
-          print('PAGE1_IDENTIFIERS',len(one),'PAGE2_IDENTIFIERS',len(two),'DIFFERENT_PRODUCT_IDS',len(one.symmetric_difference(two)))
-          print('PAGE1_LINKS_TO_NEXT',bool(re.search(r'/tienda/page/2/?',a)))
-          assert len(one)>4 and len(two)>4 and one!=two, 'Scroll pagination not independent'
-          assert re.search(r'/tienda/page/2/?',a), 'Page 1 lacks next-page URL needed by infinite scroll'
-          assert 'elmercado-continuous-catalog-loader' in a and 'elmercado-continuous-catalog-loader' in b
-          assert '</html>' in a.lower() and '</html>' in b.lower()
+          import re,json,urllib.parse
+          t=open('/tmp/emdo-shop-3.html',encoding='utf-8',errors='replace').read()
+          mark='elmercado-catalog-scroll-final-010234'
+          assert mark in t and 'IntersectionObserver' in t, 'Active JS infinite scroll script missing'
+          match=re.search(r'const orderedIds\s*=\s*(\[[^\]]+\])\.map\(String\)',t,re.S)
+          nonce=re.search(r'const nonce\s*=\s*("([^"]+)")\s*;',t)
+          assert match and nonce, 'Scroll AJAX IDs/nonce unavailable in cached HTML'
+          ordered=[str(i) for i in json.loads(match.group(1))]
+          visible=set(re.findall(r'<li\b[^>]*class=["\x27][^"\x27]*\bproduct\b[^>]*\bpost-(\d+)',t,re.I))
+          wanted=[i for i in ordered if i not in visible][:12]
+          print('SCROLL_SETUP','total_ordered',len(ordered),'first_page_products',len(visible),'next_batch',len(wanted))
+          assert len(visible)>=10 and len(wanted)>=5, 'Not enough distinct remaining products'
+          data=urllib.parse.urlencode([('action','elmercado_catalog_batch_010234'),('nonce',nonce.group(2)),('scope','catalog')]+[('ids[]',i) for i in wanted])
+          open('/tmp/emdo-shop-batch.post','w').write(data)
+          open('/tmp/emdo-shop-batch-ids.json','w').write(json.dumps(wanted))
           PY
+          curl -ksS --connect-timeout 3 --max-time 26 -A 'Mozilla/5.0 EMDO-Shop-Scroll-Verify/20261028' -e "$BASE/tienda/" -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' -X POST --data-binary @/tmp/emdo-shop-batch.post -D /tmp/emdo-shop-ajax.h -o /tmp/emdo-shop-ajax.json "$BASE/wp-admin/admin-ajax.php"
+          python3 - <<'PY'
+          import re,json
+          d=json.load(open('/tmp/emdo-shop-ajax.json',encoding='utf-8'))
+          ids=json.load(open('/tmp/emdo-shop-batch-ids.json',encoding='utf-8'))
+          assert d.get('success') is True, 'Scroll AJAX failed'
+          data=d.get('data') or {}
+          rendered=[str(v) for v in data.get('ids',[])]
+          html=data.get('html','')
+          products=len(re.findall(r'<li\b[^>]*class=["\x27][^"\x27]*\bproduct\b',html,re.I))
+          print('SCROLL_AJAX','returned_ids',len(rendered),'html_cards',products,'expected',len(ids))
+          assert len(rendered)>=3 and products>=3, 'Scroll failed to deliver products'
+          assert set(rendered).issubset(set(ids)), 'Scroll returned unexpected IDs'
+          PY
+          echo 'SCROLL_AJAX_VERIFIED: real product cards from uncached AJAX endpoint'
           echo '=== COOKIE AND URL QUERY MUST BYPASS ANONYMOUS CACHE ==='
           curl -ksS --connect-timeout 3 --max-time 28 -H 'Cookie: woocommerce_items_in_cart=1' -D /tmp/emdo-shop-cart.h -o /dev/null "$BASE/tienda/"
           curl -ksS --connect-timeout 3 --max-time 28 -H 'Cookie: wordpress_logged_in_testing=1' -D /tmp/emdo-shop-login.h -o /dev/null "$BASE/tienda/"
@@ -141,10 +150,12 @@ jobs:
           echo '=== EXISTING VENDOR CACHE AND GOOGLE ANALYTICS HTML PRESERVED ==='
           curl -ksS --connect-timeout 3 --max-time 12 -D /tmp/emdo-shop-producer.h -o /dev/null "$BASE/tienda/hidalgo-de-la-jara/"
           grep -qi '^x-emdo-vendor-cache: HIT' /tmp/emdo-shop-producer.h
+          echo '=== NO SHOP PAGE 2 STATIC CACHE RULE ==='
+          if grep -A 11 -F '# BEGIN EMDO SPANISH SHOP CACHE 20261028' "$CONF" | grep -q 'location .*page/'; then echo 'ERROR: blank HTML pagination must remain uncached'; exit 1; fi
           echo '=== RESPONSE TIMINGS ==='
           curl -ksS --connect-timeout 3 --max-time 16 -o /dev/null -w 'shop_cached_http=%{http_code} total=%{time_total}s ttfb=%{time_starttransfer}s\n' "$BASE/tienda/"
           curl -ksS --connect-timeout 3 --max-time 16 -o /dev/null -w 'page2_http=%{http_code} total=%{time_total}s ttfb=%{time_starttransfer}s\n' "$BASE/tienda/page/2/"
           nginx -t
-          echo 'DEPLOY_VERIFIED: shop edge HIT, scroll page 2, filter safety, cart/login/query bypass, producer routes'
+          echo 'DEPLOY_VERIFIED: anonymous shop edge HIT, AJAX infinite scroll, filter safety, cart/login/query bypass, producer routes'
           echo "BACKUP_DIR=$BACKUP"
           REMOTE
