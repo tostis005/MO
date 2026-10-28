@@ -54,8 +54,8 @@ jobs:
           REMOTE_SCRIPT="/tmp/native-mentta-migrate-$RUN.php"
           LIVE="$SITE/wp-content/mu-plugins/emdo-mentta-only-api-visibility-20261009.php"
           BACKUP="$LIVE.native-mentta-test-backup-$RUN"
-          NAVBACKUP="$NAVLIVE.before-rest-$RUN"
           NAVLIVE="$SITE/wp-content/mu-plugins/mdo-mentta-native-product-navigation-20261028.php"
+          NAVBACKUP="$NAVLIVE.before-rest-$RUN"
           SUCCESS=0
           rollback() {
             rc=$?
