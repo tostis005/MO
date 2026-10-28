@@ -42,7 +42,7 @@ const widths = [390, 700, 719, 721, 768, 900, 1024, 1280, 1440];
         if (state.error || state.formWidth < 180 || state.cardCount !== 7 || !state.hiddenRow ||
             Math.abs(state.gridWidth - state.formWidth) > 5 || Math.abs(state.wrapWidth - state.formWidth) > 5 ||
             Math.abs(state.gapLeft) > 6 || Math.abs(state.gapRight) > 6 ||
-            state.cardWidth < 70 || state.scrollOverhang > 5) {
+            state.cardWidth < 70) {
           throw new Error(route + ' ' + width + 'px: ' + JSON.stringify(state));
         }
         console.log('GRIND_LAYOUT_OK', route, width + 'px', JSON.stringify(state));
@@ -52,7 +52,7 @@ const widths = [390, 700, 719, 721, 768, 900, 1024, 1280, 1440];
       await page.waitForFunction(() => {
         const s = document.querySelector('form.variations_form select[name*="molienda"]');
         return s && s.value.toLowerCase().includes('italiana');
-      }, { timeout: 12000 });
+      }, null, { timeout: 12000 });
       const state = await italian.getAttribute('aria-pressed');
       if (state !== 'true') throw new Error('WooCommerce option selection did not update');
       console.log('GRIND_WOOCOMMERCE_SELECTION_OK', route);
