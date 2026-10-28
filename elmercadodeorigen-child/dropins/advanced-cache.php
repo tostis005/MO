@@ -197,9 +197,11 @@ if ( isset( $hot_cache_paths[ $path ] ) ) {
 	$hot_cache_dir  = __DIR__ . '/uploads/elmercado-hot-static-v1';
 	$hot_cache_file = $hot_cache_dir . '/' . $hot_cache_paths[ $path ] . '.html';
 	$hot_lock_file  = $hot_cache_file . '.lock';
-	$hot_ttl        = 300;
-	// Allow a brief stale response while exactly one request refreshes the page.
-	$hot_stale_ttl  = $is_new_vendor_store_hot_path ? 900 : 3600;
+	$hot_ttl        = $is_new_vendor_store_hot_path ? 60 : 300;
+	// Generic vendor pages additionally use a four-minute Nginx cache.
+	// A one-minute PHP fallback keeps the combined normal freshness at five minutes.
+	// Other existing exact-route hot caches preserve their original cadence.
+	$hot_stale_ttl  = $is_new_vendor_store_hot_path ? 180 : 3600;
 	$hot_age        = null;
 	$hot_valid      = false;
 
