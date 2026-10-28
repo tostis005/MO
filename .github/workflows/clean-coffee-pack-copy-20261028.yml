@@ -96,7 +96,7 @@ jobs:
             test "$STATUS" = 200
             grep -Fq 'Pack degustación de café de especialidad' "$FILE"
             grep -Eiq 'variations_form|attribute_molienda' "$FILE"
-            if grep -Eiq 'Pack Degustaci[oó]n de Caf[eé] de Especialidad.*(Ikore|Icore)' "$FILE"; then
+            if grep -Eio '<h1[^>]*>[^<]*</h1>' "$FILE" | grep -Eiq '(Ikore|Icore)'; then
               echo "::error::Old branded product title persists on $SLUG"; exit 1
             fi
           done
