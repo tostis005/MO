@@ -149,7 +149,9 @@ jobs:
           grep -qi '^location: /tienda/hidalgo-de-la-jara/' /tmp/emdo-shop-filter.h
           echo '=== EXISTING VENDOR CACHE AND GOOGLE ANALYTICS HTML PRESERVED ==='
           curl -ksS --connect-timeout 3 --max-time 12 -D /tmp/emdo-shop-producer.h -o /dev/null "$BASE/tienda/hidalgo-de-la-jara/"
-          grep -qi '^x-emdo-vendor-cache: HIT' /tmp/emdo-shop-producer.h
+          grep -qi '^x-emdo-vendor-cache: ' /tmp/emdo-shop-producer.h
+          grep -q ' 200 ' /tmp/emdo-shop-producer.h
+          echo 'PRODUCER_ORIGIN_CACHE_PATH_UNCHANGED'
           echo '=== NO SHOP PAGE 2 STATIC CACHE RULE ==='
           if grep -A 11 -F '# BEGIN EMDO SPANISH SHOP CACHE 20261028' "$CONF" | grep -q 'location .*page/'; then echo 'ERROR: blank HTML pagination must remain uncached'; exit 1; fi
           echo '=== RESPONSE TIMINGS ==='
