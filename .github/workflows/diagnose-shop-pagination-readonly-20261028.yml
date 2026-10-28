@@ -1,0 +1,46 @@
+name: Read-only Spanish shop pagination diagnosis 20261028
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/diagnose-shop-pagination-readonly-20261028.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Read HTML and routing
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          BASE=https://www.elmercadodeorigen.com
+          for spec in 'shop|/tienda/' 'page2|/tienda/page/2/' 'page3|/tienda/page/3/' 'paged2|/tienda/?paged=2' 'productpage2|/tienda/?product-page=2'; do
+            label="${spec%%|*}"
+            path="${spec#*|}"
+            echo "=== $label $path ==="
+            curl -ksS --connect-timeout 4 --max-time 22 -D "/tmp/emdo-shop-diag-$label.headers" -o "/tmp/emdo-shop-diag-$label.html" -w 'http=%{http_code} total=%{time_total} bytes=%{size_download}\n' "$BASE$path" || true
+            grep -Ei '^(HTTP/|location:|x-emdo-vendor-cache:|x-el-mercado-hot|set-cookie:)' "/tmp/emdo-shop-diag-$label.headers" | head -n 8 || true
+            python3 - "$label" <<'PY'
+          import sys,re,html
+          label=sys.argv[1]
+          t=open('/tmp/emdo-shop-diag-'+label+'.html',encoding='utf-8',errors='replace').read()
+          m=re.search(r'<title[^>]*>(.*?)</title>',t,re.I|re.S)
+          cards=re.findall(r'<li\b[^>]*class=["\x27][^"\x27]*\bproduct\b',t,re.I)
+          ids=set(re.findall(r'\bpost-(\d+)\b',t))
+          links=re.findall(r'href=["\x27]([^"\x27]*(?:/tienda/page/\d+|[?&](?:paged|product-page)=\d+)[^"\x27]*)',t,re.I)
+          print('HTML_SUMMARY',{'length':len(t),'title':html.unescape(m.group(1)).strip()[:100] if m else 'none','product_li':len(cards),'post_ids':len(ids),'scroll_script':'elmercado-continuous-catalog-loader' in t,'pagination_links':links[:6],'no_products':'No se encontraron productos' in t})
+          PY
+          done
+          echo '=== NGINX ROUTES ==='
+          grep -n -E 'location = /tienda/|location .*tienda/page|EMDO SPANISH SHOP CACHE|location @emdo_vendor_cache_origin' /var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf | head -n 35 || true
+          REMOTE
