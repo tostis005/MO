@@ -1,11 +1,5 @@
-name: Enable direct review URLs for six approved Mentta packs
+name: Legacy enable direct review URLs for six approved Mentta packs (manual only)
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'mu-plugins/emdo-mentta-exclusive-products.php'
-      - '.github/scripts/verify-mentta-partner-direct-urls-20261028.php'
-      - '.github/workflows/enable-mentta-partner-direct-urls-20261028.yml'
   workflow_dispatch:
 permissions:
   contents: read
