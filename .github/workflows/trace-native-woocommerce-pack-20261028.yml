@@ -50,7 +50,7 @@ jobs:
             sshpass -e ssh "${SSH[@]}" "$TARGET" "rm -f '$DST' '/tmp/mdo-native-pack-trace-${GITHUB_RUN_ID}.php' '/tmp/mdo-native-pack-trace-20261028.log'" || true
           }
           trap cleanup EXIT
-          sshpass -e ssh "${SSH[@]}" "$TARGET" "test ! -f '$DST'; rm -f /tmp/mdo-native-pack-trace-20261028.log; install -m 0644 '/tmp/mdo-native-pack-trace-${GITHUB_RUN_ID}.php' '$DST'; php -l '$DST'"
+          sshpass -e ssh "${SSH[@]}" "$TARGET" "PHP_BIN=\$(command -v php || true); [ -n \"\$PHP_BIN\" ] || PHP_BIN=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); test ! -f '$DST'; rm -f /tmp/mdo-native-pack-trace-20261028.log; install -m 0644 '/tmp/mdo-native-pack-trace-${GITHUB_RUN_ID}.php' '$DST'; \"\$PHP_BIN\" -l '$DST'"
           set +e
           curl -sSL --connect-timeout 7 --max-time 28 -o /dev/null -w 'NATIVE_TEMPLATE_PROBE_HTTP=%{http_code} TOTAL=%{time_total} TTFB=%{time_starttransfer}\n' 'https://www.elmercadodeorigen.com/producto/pack-degustacion-pasaporte-salvaje/'
           echo "NATIVE_TEMPLATE_CURL_RC=$?"
