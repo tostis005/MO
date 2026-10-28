@@ -72,6 +72,7 @@ foreach($selected as $id){
   $report['mentta_stock']=$entry['IsInStock']??null;
   $report['mentta_purchasable']=$entry['IsPurchasable']??null;
   $report['mentta_variations']=count((array)($entry['Variations']??[]));
+  if(in_array($id,[21904,21906,21908],true)&&count((array)($entry['Variations']??[]))!==7)exit(9);
   if(($entry['IsVisible']??null)!==true ||($entry['IsInStock']??null)!==true||
      ($entry['IsPurchasable']??null)!==true||(int)($entry['Id']??0)!==$id)exit(7);
  }
