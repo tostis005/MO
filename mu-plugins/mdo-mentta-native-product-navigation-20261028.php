@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO - Navegación de productos exclusivos
  * Description: Evita el recorrido masivo del catálogo en las fichas individuales de seis packs exclusivos.
- * Version: 1.0.0
+ * Version: 1.1.0
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 /**
@@ -18,3 +18,14 @@ add_action( 'wp', static function (): void {
     if ( ! in_array( $id, array( 21814, 21818, 21820, 21904, 21906, 21908 ), true ) ) { return; }
     remove_action( 'woostify_content_top', 'woostify_product_navigation', 50 );
 }, PHP_INT_MAX );
+
+/**
+ * SKU remains in WooCommerce and Mentta data for imports, but is an internal
+ * reference containing the integration name. Do not show it in customer-facing
+ * native product detail on these six products.
+ */
+add_filter( 'wc_product_sku_enabled', static function ( $enabled ) {
+    if ( ! function_exists( 'is_product' ) || ! is_product() ) { return $enabled; }
+    $id = absint( get_queried_object_id() );
+    return in_array( $id, array( 21814, 21818, 21820, 21904, 21906, 21908 ), true ) ? false : $enabled;
+}, 100, 1 );
