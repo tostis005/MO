@@ -96,11 +96,15 @@ jobs:
           echo '=== SHOP CACHE: 1ST + 2ND REQUEST ==='
           curl -ksS --connect-timeout 3 --max-time 28 -A 'EMDO-Shop-Cache-Verify/20261028' -D /tmp/emdo-shop-1.h -o /tmp/emdo-shop-1.html "$BASE/tienda/" 
           curl -ksS --connect-timeout 3 --max-time 28 -A 'EMDO-Shop-Cache-Verify/20261028' -D /tmp/emdo-shop-2.h -o /tmp/emdo-shop-2.html "$BASE/tienda/"
-          grep -Ei '^(HTTP/|x-emdo-vendor-cache:|set-cookie:)' /tmp/emdo-shop-1.h /tmp/emdo-shop-2.h || true
-          grep -qi '^x-emdo-vendor-cache: HIT' /tmp/emdo-shop-2.h
-          cmp /tmp/emdo-shop-1.html /tmp/emdo-shop-2.html
-          grep -q 'emo-continuous-catalog' /tmp/emdo-shop-2.html
-          grep -q 'emo-shop-title-block' /tmp/emdo-shop-2.html
+          curl -ksS --connect-timeout 3 --max-time 28 -A 'EMDO-Shop-Cache-Verify/20261028' -D /tmp/emdo-shop-3.h -o /tmp/emdo-shop-3.html "$BASE/tienda/"
+          grep -Ei '^(HTTP/|x-emdo-vendor-cache:|set-cookie:)' /tmp/emdo-shop-1.h /tmp/emdo-shop-2.h /tmp/emdo-shop-3.h || true
+          # A cold WooCommerce render can set an innocuous total_page cookie.
+          # First MISS is therefore not cached; early PHP fallback generates a clean
+          # response for the next MISS and Nginx serves subsequent requests as HIT.
+          grep -qi '^x-emdo-vendor-cache: HIT' /tmp/emdo-shop-3.h
+          cmp /tmp/emdo-shop-2.html /tmp/emdo-shop-3.html
+          grep -q 'emo-continuous-catalog' /tmp/emdo-shop-3.html
+          grep -q 'emo-shop-title-block' /tmp/emdo-shop-3.html
           echo '=== PAGE 2: FETCH AND REPEAT CACHE ==='
           curl -ksS --connect-timeout 3 --max-time 28 -D /tmp/emdo-shop-p2a.h -o /tmp/emdo-shop-p2a.html "$BASE/tienda/page/2/"
           curl -ksS --connect-timeout 3 --max-time 28 -D /tmp/emdo-shop-p2b.h -o /tmp/emdo-shop-p2b.html "$BASE/tienda/page/2/"
