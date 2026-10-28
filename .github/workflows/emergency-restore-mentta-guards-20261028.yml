@@ -84,9 +84,9 @@ jobs:
       - name: Check the public site without requesting heavy protected product pages
         run: |
           set +e
-          for PATH in / /tienda/ /wp-json/; do
-            STATUS="$(curl -sSL --connect-timeout 7 --max-time 22 -o /dev/null -w '%{http_code}' "https://www.elmercadodeorigen.com$PATH")"
+          for URL_PATH in / /tienda/ /producto/jamon-de-bellota-100-iberico/ /wp-json/; do
+            STATUS="$(curl -sSL --connect-timeout 7 --max-time 22 -o /dev/null -w '%{http_code}' "https://www.elmercadodeorigen.com$URL_PATH")"
             RC=$?
-            echo "HEALTH_PATH=$PATH STATUS=$STATUS CURL_EXIT=$RC"
+            echo "HEALTH_PATH=$URL_PATH STATUS=$STATUS CURL_EXIT=$RC"
           done
           echo EMERGENCY_ROLLBACK_EXECUTED
