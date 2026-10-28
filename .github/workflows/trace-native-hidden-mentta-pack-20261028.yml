@@ -1,9 +1,10 @@
-name: Diagnose native pack page lifecycle with safe rollback
+name: Profile native pack rendering and rollback safely
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/trace-native-hidden-mentta-pack-20261028.yml'
+      - '.github/scripts/temporary-native-pack-profiler-20261028.php'
   workflow_dispatch:
 permissions:
   contents: read
@@ -50,7 +51,7 @@ jobs:
           RUN="$GITHUB_RUN_ID"
           sshpass -e scp "${SCP[@]}" mu-plugins/emdo-mentta-only-api-visibility-20261009.php "$TARGET:/tmp/native-mentta-override-$RUN.php"
           sshpass -e scp "${SCP[@]}" .github/scripts/migrate-six-packs-to-native-hidden-mentta-20261028.php "$TARGET:/tmp/native-mentta-migrate-$RUN.php"
-          sshpass -e scp "${SCP[@]}" .github/scripts/temporary-native-pack-template-trace-v4-20261028.php "$TARGET:/tmp/native-pack-trace-$RUN.php"
+          sshpass -e scp "${SCP[@]}" .github/scripts/temporary-native-pack-profiler-20261028.php "$TARGET:/tmp/native-pack-trace-$RUN.php"
           REMOTE_SCRIPT="/tmp/native-mentta-migrate-$RUN.php"
           LIVE="$SITE/wp-content/mu-plugins/emdo-mentta-only-api-visibility-20261009.php"
           BACKUP="$LIVE.native-mentta-test-backup-$RUN"
@@ -58,6 +59,7 @@ jobs:
           SUCCESS=0
           rollback() {
             rc=$?
+            sshpass -e ssh "${SSH[@]}" "$TARGET" "rm -f '$SITE/wp-content/uploads/mdo-pack-native-profile-20261028.log'" || true
             sshpass -e ssh "${SSH[@]}" "$TARGET" "rm -f '$TRACE_LIVE' '/tmp/native-pack-trace-$RUN.php'" || true
             if [[ "$SUCCESS" != 1 ]]; then
               echo "::warning::Native product test unsuccessful; restoring old WooCommerce visibility and override"
@@ -84,6 +86,7 @@ jobs:
           "$PHP_BIN" -l "/tmp/native-mentta-override-$RUN.php"
           MDO_HIDE_PACKS_MODE=preflight "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "$SCRIPT" --path="$SITE" --allow-root
           test ! -f "$SITE/wp-content/mu-plugins/000-native-mentta-pack-trace-temporary.php"
+          rm -f "$SITE/wp-content/uploads/mdo-pack-native-profile-20261028.log"
           install -m 0644 "/tmp/native-pack-trace-$RUN.php" "$SITE/wp-content/mu-plugins/000-native-mentta-pack-trace-temporary.php"
           cp -a "$LIVE" "$LIVE.native-mentta-test-backup-$RUN"
           install -m 0644 "/tmp/native-mentta-override-$RUN.php" "$LIVE"
@@ -96,6 +99,7 @@ jobs:
           CURL_RC=$?
           set -e
           echo "ONE_PACK_RENDER_PROBE HTTP=$CODE EXIT=$CURL_RC"
+          sshpass -e ssh "${SSH[@]}" "$TARGET" "if test -f '$SITE/wp-content/uploads/mdo-pack-native-profile-20261028.log'; then tail -100 '$SITE/wp-content/uploads/mdo-pack-native-profile-20261028.log'; else echo PROFILER_LOG_NOT_WRITTEN; fi" || true
           sshpass -e ssh "${SSH[@]}" "$TARGET" "for f in '$SITE/../logs/error_log' '/var/www/vhosts/system/elmercadodeorigen.com/logs/error_log'; do if test -r \"\$f\"; then grep -ohE 'MDO_NATIVE_TRACE_V4 [0-9.]+ [A-Z0-9_]+ pid=[0-9]+ mem=[0-9.]+MB' \"\$f\" | tail -40 || true; fi; done" || true
           test "$CURL_RC" = 0
           echo "NATIVE_TEST_PRODUCT_HTTP=$CODE"
