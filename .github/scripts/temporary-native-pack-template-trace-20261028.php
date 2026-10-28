@@ -10,7 +10,7 @@ $GLOBALS['mdo_native_trace_start']=microtime(true);
 function mdo_pack_trace($marker){
  $start=$GLOBALS['mdo_native_trace_start']??microtime(true);
  $line=sprintf("%.3f %s pid=%d mem=%.1fMB\n",microtime(true)-$start,$marker,getmypid(),memory_get_usage(true)/1048576);
- file_put_contents(sys_get_temp_dir().'/mdo-native-pack-trace-20261028.log',$line,FILE_APPEND|LOCK_EX);
+ error_log('MDO_NATIVE_TRACE '.$line);
 }
 mdo_pack_trace('MU_FILE_LOADED');
 foreach(['muplugins_loaded','plugins_loaded','init','wp_loaded','parse_request','pre_get_posts','the_posts','wp','template_redirect','template_include','get_header','wp_head','woocommerce_before_main_content','woocommerce_before_single_product','woocommerce_single_product_summary','woocommerce_after_single_product_summary','get_footer','wp_footer'] as $hook){
