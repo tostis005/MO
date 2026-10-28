@@ -1,0 +1,102 @@
+name: Install latest three Ikore coffee pack cover images
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/install-ikore-final-covers-20261028.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ikore-three-covers-production-20261028
+  cancel-in-progress: false
+jobs:
+  install:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify full-resolution artwork from the conversation
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/install-ikore-final-covers-20261028.php
+          command -v ffmpeg >/dev/null || { sudo apt-get update -qq; sudo apt-get install -y ffmpeg >/dev/null; }
+          SRC='.github/assets/ikore-final-covers-20261028'
+          mkdir -p /tmp/ikore-final-jpegs
+          for KEY in esencia-costa-rica ruta-cuatro-origenes coleccion-completa; do
+            base64 --decode "$SRC/$KEY.avif.b64" > "/tmp/ikore-final-jpegs/$KEY.avif"
+          done
+          echo '66af4446a9162e6c5708aedb64f19a5d0a000216c94e88f47b476283049c3d59  /tmp/ikore-final-jpegs/esencia-costa-rica.avif' | sha256sum --check
+          echo 'dbb42fc11708741042c663310460dcc3c7544eb32da70d1e075d3d209c3f77e7  /tmp/ikore-final-jpegs/ruta-cuatro-origenes.avif' | sha256sum --check
+          echo 'cbf143b960585162ff005bd061f7e1145ac253d7c32ab412d75962e2c9e1d301  /tmp/ikore-final-jpegs/coleccion-completa.avif' | sha256sum --check
+          for KEY in esencia-costa-rica ruta-cuatro-origenes coleccion-completa; do
+            ffmpeg -hide_banner -nostdin -loglevel error -y -i "/tmp/ikore-final-jpegs/$KEY.avif" \
+              -frames:v 1 -q:v 2 "/tmp/ikore-final-jpegs/$KEY.jpg"
+            test "$(file -b --mime-type "/tmp/ikore-final-jpegs/$KEY.jpg")" = "image/jpeg"
+            test "$(stat -c '%s' "/tmp/ikore-final-jpegs/$KEY.jpg")" -gt 100000
+            echo "IKORE_FINAL_ARTWORK_STAGED $KEY"
+          done
+      - name: Update only the three WooCommerce featured images and verify attachments
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$PORT")
+          SCP=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P "$PORT")
+          TARGET="$STAGING_USER@$STAGING_HOST"
+          SITE="$(sshpass -e ssh "${SSH[@]}" "$TARGET" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${SITE:?Production WordPress root not found}"
+          RUN="$GITHUB_RUN_ID"
+          REMOTE_DIR="/tmp/ikore-final-covers-$RUN"
+          sshpass -e ssh "${SSH[@]}" "$TARGET" "mkdir -p '$REMOTE_DIR'"
+          sshpass -e scp "${SCP[@]}" .github/scripts/install-ikore-final-covers-20261028.php "$TARGET:$REMOTE_DIR/install.php"
+          for KEY in esencia-costa-rica ruta-cuatro-origenes coleccion-completa; do
+            sshpass -e scp "${SCP[@]}" "/tmp/ikore-final-jpegs/$KEY.jpg" "$TARGET:$REMOTE_DIR/$KEY.jpg"
+          done
+          sshpass -e ssh "${SSH[@]}" "$TARGET" "bash -s -- '$SITE' '$REMOTE_DIR'" <<'REMOTE'
+          set -euo pipefail
+          SITE="$1"; REMOTE_DIR="$2"
+          PHP_BIN="$(command -v php || true)"
+          [ -n "$PHP_BIN" ] || PHP_BIN="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          WP_BIN="$(command -v wp)"
+          "$PHP_BIN" -l "$REMOTE_DIR/install.php"
+          MDO_IKORE_COVER_DIR="$REMOTE_DIR" MDO_IKORE_COVER_MODE=preflight "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "$REMOTE_DIR/install.php" --path="$SITE" --allow-root
+          MDO_IKORE_COVER_DIR="$REMOTE_DIR" MDO_IKORE_COVER_MODE=apply "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "$REMOTE_DIR/install.php" --path="$SITE" --allow-root
+          MDO_IKORE_COVER_DIR="$REMOTE_DIR" MDO_IKORE_COVER_MODE=verify "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "$REMOTE_DIR/install.php" --path="$SITE" --allow-root
+          rm -rf "$REMOTE_DIR"
+          REMOTE
+      - name: Confirm images are publicly available and store remains healthy
+        run: |
+          set -euo pipefail
+          BASE='https://www.elmercadodeorigen.com'
+          for KEY in esencia-costa-rica ruta-cuatro-origenes coleccion-completa; do
+            URL="$BASE/wp-content/uploads/mentta-ikore-packs/ikore-$KEY-portada-final-20261028.jpg"
+            STATUS="$(curl --retry 2 --retry-delay 3 -sSL --connect-timeout 8 --max-time 28 -o /dev/null -w '%{http_code}' "$URL")"
+            echo "IKORE_IMAGE_PUBLIC $KEY HTTP=$STATUS"
+            test "$STATUS" = 200
+          done
+          for PATH in / /tienda/; do
+            STATUS="$(curl --retry 1 -sSL --connect-timeout 8 --max-time 35 -o /dev/null -w '%{http_code}' "$BASE$PATH")"
+            echo "STORE_HEALTH $PATH HTTP=$STATUS"
+            test "$STATUS" = 200
+          done
+          echo ALL_THREE_IKORE_FEATURED_COVERS_LIVE
