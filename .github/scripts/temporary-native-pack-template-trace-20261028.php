@@ -14,7 +14,7 @@ function mdo_pack_trace($marker){
 }
 mdo_pack_trace('MU_FILE_LOADED');
 foreach(['muplugins_loaded','plugins_loaded','init','wp_loaded','parse_request','pre_get_posts','the_posts','wp','template_redirect','template_include','get_header','wp_head','woocommerce_before_main_content','woocommerce_before_single_product','woocommerce_single_product_summary','woocommerce_after_single_product_summary','get_footer','wp_footer'] as $hook){
- if($hook==='pre_get_posts'||$hook==='the_posts')continue;
+ if(in_array($hook,['pre_get_posts','the_posts','template_include'],true))continue;
  add_action($hook,static function()use($hook){mdo_pack_trace('ACTION_'.$hook);},PHP_INT_MAX,0);
 }
 add_filter('template_include',static function($template){mdo_pack_trace('FILTER_TEMPLATE_INCLUDE');return $template;},PHP_INT_MAX,1);
