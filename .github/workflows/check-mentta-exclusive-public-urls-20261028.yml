@@ -48,3 +48,16 @@ jobs:
               "https://www.elmercadodeorigen.com$URI"
             echo "CURL_EXIT=$?"
           done
+      - name: Compare existing native product speed with new native product
+        run: |
+          set +e
+          for URI in \
+            /producto/jamon-de-bellota-100-iberico/ \
+            /producto/pack-degustacion-pasaporte-salvaje/ \
+            /producto/pack-cafe-esencia-de-costa-rica/
+          do
+            curl -sSL -o /dev/null --connect-timeout 7 --max-time 18 \
+              -w "NATIVE_SPEED uri=$URI http=%{http_code} total=%{time_total} ttfb=%{time_starttransfer}\n" \
+              "https://www.elmercadodeorigen.com$URI"
+            echo "NATIVE_SPEED_RC=$?"
+          done
