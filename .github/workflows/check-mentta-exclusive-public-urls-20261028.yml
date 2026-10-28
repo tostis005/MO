@@ -1,0 +1,19 @@
+name: Check public URLs for Mentta-exclusive products
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/check-mentta-exclusive-public-urls-20261028.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check the same direct-URL behavior as customers
+        run: |
+          for SLUG in jamon-de-bellota-100-iberico-montjam-mentta pack-cafe-especialidad-esencia-costa-rica-ikore pack-cafe-especialidad-ruta-cuatro-origenes-ikore pack-cafe-especialidad-coleccion-completa-ikore; do
+            CODE=$(curl -L -s -o /dev/null --connect-timeout 8 --max-time 18 -w '%{http_code}' "https://www.elmercadodeorigen.com/producto/$SLUG/" || true)
+            echo "$SLUG HTTP=$CODE"
+          done
