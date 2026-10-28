@@ -1,0 +1,84 @@
+name: Read-only WooCommerce performance audit 20261028
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/audit-woocommerce-performance-readonly-20261028.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Read-only production metrics, schemas, and slow traces
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          ROOT=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+          PHP=/opt/plesk/php/8.2/bin/php
+          WP=/usr/local/bin/wp
+          LOG=/var/www/vhosts/system/elmercadodeorigen.com/logs/php-fpm_slow.log
+          echo '=== SYSTEM ==='
+          date -u
+          uptime
+          free -m | head -n 3
+          echo '=== ACTIVE COMMERCE PLUGINS ==='
+          timeout 40 "$PHP" -d memory_limit=768M "$WP" plugin list --status=active --fields=name,version --format=csv --path="$ROOT" --allow-root 2>/dev/null | grep -Ei 'woocommerce|translatepress|wcfm|yith|woostify|multivendor|litespeed|redis|object-cache|cache|aioseo|wp-rocket|perfmatters|advanced-coupons|elementor|^name' | head -n 55 || true
+          echo '=== OBJECT CACHE ==='
+          timeout 25 "$PHP" -d memory_limit=768M "$WP" eval 'echo "EXT_OBJECT_CACHE=".(wp_using_ext_object_cache()?"yes":"no")." CACHE_TYPE=".(is_object($GLOBALS["wp_object_cache"]??null)?get_class($GLOBALS["wp_object_cache"]):"none")."\n";' --path="$ROOT" --allow-root 2>/dev/null || true
+          echo '=== DATABASE SERVER STATUS ==='
+          for q in \
+            "SHOW VARIABLES LIKE 'slow_query_log'" \
+            "SHOW VARIABLES LIKE 'long_query_time'" \
+            "SHOW VARIABLES LIKE 'innodb_buffer_pool_size'" \
+            "SHOW GLOBAL STATUS LIKE 'Slow_queries'" \
+            "SHOW GLOBAL STATUS LIKE 'Threads_running'" \
+            "SELECT COUNT(*) autoload_rows,ROUND(SUM(LENGTH(option_value))/1048576,2) autoload_mib FROM wp_options WHERE autoload IN ('yes','on','auto-on','auto')" \
+            "SELECT option_name,ROUND(LENGTH(option_value)/1024) approx_kib FROM wp_options WHERE autoload IN ('yes','on','auto-on','auto') ORDER BY LENGTH(option_value) DESC LIMIT 12" \
+            "SHOW INDEX FROM wp_postmeta" \
+            "SHOW INDEX FROM wp_wc_product_meta_lookup" \
+            "SHOW INDEX FROM wp_wc_product_attributes_lookup" \
+            "SHOW INDEX FROM wp_yith_wapo_blocks_assoc" \
+            "SHOW TABLES LIKE 'wp_trp_original_strings'" \
+            "SELECT status,COUNT(*) n FROM wp_actionscheduler_actions GROUP BY status"; do
+            echo "--- SQL_KIND: $(printf '%s' "$q" | cut -c 1-95)"
+            timeout 35 "$PHP" -d memory_limit=768M "$WP" db query "$q" --path="$ROOT" --allow-root --skip-column-names 2>&1 | head -n 22 || true
+          done
+          echo '=== PHP-FPM POOL CAPACITY ==='
+          grep -RH -E '^[[:space:]]*pm\.(max_children|max_requests|start_servers|min_spare_servers|max_spare_servers)[[:space:]]*=' /opt/plesk/php/8.2/etc/php-fpm.d 2>/dev/null | grep -E 'elmercadodeorigen|www' | head -n 10 || true
+          echo '=== SLOWLOG TAIL FINGERPRINT ==='
+          python3 - "$LOG" <<'PY'
+          import os,sys,re,collections
+          path=sys.argv[1]
+          if not os.path.isfile(path):print('NO_SLOWLOG');raise SystemExit(0)
+          with open(path,'rb') as f:
+              f.seek(0,2);f.seek(max(0,f.tell()-3_000_000))
+              text=f.read().decode('utf-8','replace')
+          blocks=re.split(r'(?=\[\d{2}-[A-Za-z]{3}-\d{4} )',text)
+          categories=collections.Counter(); funcs=collections.Counter(); stamps=[]
+          for block in blocks:
+              if not block.startswith('['):continue
+              match=re.search(r'/wp-content/plugins/([^/]+)/',block)
+              if match:cat='plugin/'+match.group(1)
+              else:
+                  match=re.search(r'/wp-content/themes/([^/]+)/',block)
+                  cat='theme/'+match.group(1) if match else 'core/other'
+              categories[cat]+=1
+              for fn in re.findall(r'\b(?:function|method)\s*=\s*([a-zA-Z_][\w:]*)',block)[:3]:funcs[fn]+=1
+              stamp=re.match(r'\[([0-9A-Za-z :\-]+)\]',block)
+              if stamp:stamps.append(stamp.group(1))
+          print('SLOWLOG_BYTES',len(text),'SAMPLED_BLOCKS',sum(categories.values()),'EARLIEST',stamps[0] if stamps else '', 'LATEST',stamps[-1] if stamps else '')
+          print('TOP_CATEGORIES',categories.most_common(20))
+          print('TOP_FUNCTIONS',funcs.most_common(18))
+          PY
+          echo '=== NO WOOCOMMERCE SETTINGS OR DB TABLES ALTERED ==='
+          REMOTE
