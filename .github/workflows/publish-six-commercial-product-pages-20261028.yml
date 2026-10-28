@@ -100,7 +100,8 @@ jobs:
             test "$HTTP" = 200
             grep -Fq 'EL MERCADO DE ORIGEN' "$FILE"
             grep -Fq 'Descubre este pack' "$FILE"
-            if grep -Eiq 'mentta|ficha de producto para revisión|integración con menta|revisión de menta|referencia:.*mentta|importador|exportador' "$FILE"; then
+            # Inspect only customer-visible text, not internal media paths.
+            if sed -E 's/<[^>]+>/ /g' "$FILE" | grep -Eiq 'mentta|ficha de producto para revisión|integración con menta|revisión de menta|referencia:.*mentta|importador|exportador'; then
               echo "::error::Technical marketplace wording on $SLUG"; exit 1
             fi
           done
