@@ -1,0 +1,199 @@
+name: Deploy universal producer Nginx cache (five-minute freshness) 20261028
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/deploy-universal-producer-nginx-cache-20261028.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: emdo-nginx-universal-vendor-cache
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate PHP source and prepare SSH
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+          php -l elmercadodeorigen-child/dropins/advanced-cache.php
+      - name: Stage producer fallback PHP cache
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e scp -q -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -P "$STAGING_PORT" \
+            elmercadodeorigen-child/dropins/advanced-cache.php "$STAGING_USER@$STAGING_HOST:/tmp/emdo-universal-vendor-advanced-cache-20261028.stage"
+      - name: Deploy guarded Nginx proxy cache and verify with automatic rollback
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          test "$(id -u)" = 0
+          CONF=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          GENERATED=/var/www/vhosts/system/elmercadodeorigen.com/conf/nginx.conf
+          ROOT=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+          PHP_CACHE="$ROOT/wp-content/advanced-cache.php"
+          STAGED=/tmp/emdo-universal-vendor-advanced-cache-20261028.stage
+          GLOBAL=/etc/nginx/conf.d/94-emdo-universal-vendor-cache-20261028.conf
+          NGINX_CACHE=/var/cache/nginx/emdo-vendor-v1
+          TAG='# BEGIN EMDO UNIVERSAL VENDOR NGINX CACHE 20261028'
+          BACKUP=/root/emdo-universal-vendor-cache-backup-$(date -u +%Y%m%dT%H%M%SZ)
+          test -s "$CONF" && test -s "$GENERATED" && test -s "$PHP_CACHE" && test -s "$STAGED"
+          /opt/plesk/php/8.2/bin/php -l "$STAGED"
+          nginx -t
+          if grep -Fq "$TAG" "$CONF"; then
+            echo "ALREADY_INSTALLED; validate existing vendor cache"
+            curl -ksS --max-time 20 -D /tmp/emdo-universal-existing-h -o /dev/null https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/
+            grep -i '^x-emdo-vendor-cache:' /tmp/emdo-universal-existing-h
+            exit 0
+          fi
+          test ! -e "$GLOBAL"
+          install -d -m 0700 "$BACKUP"
+          cp -p "$CONF" "$BACKUP/vhost_nginx.conf"
+          cp -p "$PHP_CACHE" "$BACKUP/advanced-cache.php"
+          changed=0
+          rollback() {
+            rc=$?
+            trap - EXIT
+            if [ "$rc" != 0 ] && [ "$changed" = 1 ]; then
+              echo 'ROLLBACK: restore previous Nginx routing and PHP cache drop-in'
+              cp -p "$BACKUP/vhost_nginx.conf" "$CONF"
+              cp -p "$BACKUP/advanced-cache.php" "$PHP_CACHE"
+              rm -f "$GLOBAL"
+              nginx -t && systemctl reload nginx || true
+              echo 'ROLLBACK_COMPLETE'
+            fi
+            rm -f "$STAGED"
+            exit "$rc"
+          }
+          trap rollback EXIT
+          USER_NAME=$(awk '/^[[:space:]]*user[[:space:]]/ {gsub(/;/,"",$2);print $2;exit}' /etc/nginx/nginx.conf)
+          if [ -z "$USER_NAME" ]; then USER_NAME=nginx; fi
+          getent passwd "$USER_NAME" >/dev/null
+          USER_GROUP=$(id -gn "$USER_NAME")
+          install -d -m 0755 /var/cache/nginx
+          install -d -m 0750 -o "$USER_NAME" -g "$USER_GROUP" "$NGINX_CACHE"
+          df -Pm "$NGINX_CACHE" | awk 'NR==2 {if($4<600) exit 1}'
+          cat > "$GLOBAL" <<'GLOBALCONF'
+          # Cache only complete anonymous GET responses with no query and safe cookies.
+          # Other requests (login, cart, filters, sorting) bypass both read and write.
+          proxy_cache_path /var/cache/nginx/emdo-vendor-v1 levels=1:2 keys_zone=emdo_vendor_cache:20m max_size=512m inactive=30m use_temp_path=off;
+          map $request_method $emdo_vendor_method_unsafe {
+            default 1;
+            GET 0;
+          }
+          map $http_cookie $emdo_vendor_cookie_unsafe {
+            default 1;
+            "" 0;
+            ~"^(?:(?:_ga[^=;[:space:]]*|_gid|_gat[^=;[:space:]]*|_gcl_[^=;[:space:]]*|_fbp|_fbc|_pin_unauth|cookielawinfo-[^=;[:space:]]*|sbjs_[^=;[:space:]]*|tk_[^=;[:space:]]*|CookieLawInfoConsent|viewed_cookie_policy|total_page|emdo_filter_pass)=[^;]*(?:;[[:space:]]*|$))*$" 0;
+          }
+          map "$emdo_vendor_method_unsafe:$emdo_vendor_cookie_unsafe:$args" $emdo_vendor_skip_cache {
+            default 1;
+            "0:0:" 0;
+          }
+          GLOBALCONF
+          chmod 0644 "$GLOBAL"
+          python3 - "$CONF" "$GENERATED" <<'PY'
+          import sys,re
+          path,generated=sys.argv[1:3]
+          s=open(path,encoding="utf-8").read()
+          backend=re.search(r'proxy_pass\s+"(https://[^"]+:7081)"\s*;',open(generated,encoding="utf-8").read())
+          assert backend, "Plesk upstream missing"
+          tag="# BEGIN EMDO UNIVERSAL VENDOR NGINX CACHE 20261028"
+          assert tag not in s
+          def change_location(marker):
+              global s
+              needle=marker+"\n"
+              assert s.count(needle)==1,marker
+              start=s.index(needle)
+              end=s.find("\n}",start)
+              assert end>start,marker
+              block=s[start:end]
+              old="error_page 418 = @emdo_hot_static_origin;"
+              assert block.count(old)==1, marker
+              updated=block.replace(old,"error_page 418 = @emdo_vendor_cache_origin;",1)
+              s=s[:start]+updated+s[end:]
+          # Keep signed-filter challenge/redirect, only change the unfiltered fallback.
+          for pathpart in ("/tienda/hidalgo-de-la-jara/","/en/tienda/hidalgo-de-la-jara/","/tienda/montjam/","/en/tienda/montjam/"):
+              change_location("location = "+pathpart+" {")
+          # Existing guarded page/N routes keep their filter admission, with a cacheable unfiltered branch.
+          paginated="location ~* ^/(?:tienda|en/(?:tienda|store))/(?:hidalgo-de-la-jara|montjam)/page/[1-9][0-9]*/?$ {"
+          change_location(paginated)
+          block=[
+            tag,
+            "# Generic producer stores: all current/future vendors, first page and scroll pagination.",
+            "# Exact producer routes and signed-filter challenges retain Nginx precedence.",
+            "location ~* ^/(?:tienda|en/store)/[a-z0-9][a-z0-9-]{0,119}/(?:page/[1-9][0-9]{0,3}/)?$ {",
+            "    error_page 418 = @emdo_vendor_cache_origin;",
+            "    return 418;",
+            "}",
+            "location @emdo_vendor_cache_origin {",
+            "    proxy_cache emdo_vendor_cache;",
+            '    proxy_cache_key "$scheme|$host|$request_uri";',
+            "    proxy_cache_valid 200 240s;",
+            "    proxy_cache_lock on;",
+            "    proxy_cache_lock_timeout 15s;",
+            "    proxy_cache_lock_age 15s;",
+            "    proxy_cache_methods GET;",
+            "    proxy_cache_bypass $emdo_vendor_skip_cache $http_authorization $http_cache_control $http_pragma;",
+            "    proxy_no_cache $emdo_vendor_skip_cache $http_authorization $http_cache_control $http_pragma $upstream_http_set_cookie;",
+            "    proxy_ignore_headers Cache-Control Expires;",
+            '    proxy_pass "'+backend.group(1)+'";',
+            "    proxy_ssl_server_name on;",
+            "    proxy_ssl_name $host;",
+            "    proxy_ssl_session_reuse off;",
+            "    proxy_set_header Host $host;",
+            "    proxy_set_header X-Real-IP $remote_addr;",
+            "    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;",
+            "    proxy_set_header X-Forwarded-Proto $scheme;",
+            "    proxy_set_header X-Accel-Internal /internal-nginx-static-location;",
+            '    add_header X-EMDO-Vendor-Cache $upstream_cache_status always;',
+            "}",
+            "# END EMDO UNIVERSAL VENDOR NGINX CACHE 20261028"
+          ]
+          open(path,"w",encoding="utf-8").write(s.rstrip()+"\n\n"+"\n".join(block)+"\n")
+          print("Nginx universal producer routes configured, all slugs covered")
+          PY
+          changed=1
+          install -m 0644 "$STAGED" "$PHP_CACHE"
+          /opt/plesk/php/8.2/bin/php -l "$PHP_CACHE"
+          nginx -t
+          systemctl reload nginx
+          sleep 2
+          BASE=https://www.elmercadodeorigen.com
+          echo '=== SPANISH PRODUCER CACHE: verify MISS -> HIT ==='
+          curl -ksS --connect-timeout 3 --max-time 35 -A 'EMDO-Vendor-Cache-Verify/20261028' -D /tmp/emdo-vendor-cache-h1 -o /tmp/emdo-vendor-cache-b1 "$BASE/tienda/hidalgo-de-la-jara/"
+          curl -ksS --connect-timeout 3 --max-time 25 -A 'EMDO-Vendor-Cache-Verify/20261028' -D /tmp/emdo-vendor-cache-h2 -o /tmp/emdo-vendor-cache-b2 "$BASE/tienda/hidalgo-de-la-jara/"
+          grep -Ei '^(HTTP/|x-emdo-vendor-cache:)' /tmp/emdo-vendor-cache-h1 /tmp/emdo-vendor-cache-h2
+          grep -qi '^x-emdo-vendor-cache: HIT' /tmp/emdo-vendor-cache-h2
+          cmp /tmp/emdo-vendor-cache-b1 /tmp/emdo-vendor-cache-b2
+          grep -q 'emo-continuous-catalog' /tmp/emdo-vendor-cache-b2
+          echo '=== SAFETY: filters must still redirect and cart cookies bypass cache ==='
+          FILTER="$BASE/tienda/hidalgo-de-la-jara/?emo_vendor_cat=jamones-paletas&filter_preparacion=deshuesado&filter_calidad=bellota-iberico"
+          curl -ksS --connect-timeout 3 --max-time 10 -D /tmp/emdo-vendor-filter-h -o /dev/null "$FILTER"
+          grep -q ' 302 ' /tmp/emdo-vendor-filter-h
+          grep -qi '^location: /tienda/hidalgo-de-la-jara/' /tmp/emdo-vendor-filter-h
+          curl -ksS --connect-timeout 3 --max-time 35 -H 'Cookie: woocommerce_items_in_cart=1' -D /tmp/emdo-vendor-cart-h -o /dev/null "$BASE/tienda/hidalgo-de-la-jara/"
+          if grep -qi '^x-emdo-vendor-cache: HIT' /tmp/emdo-vendor-cart-h; then echo 'ERROR: cart cookie served cached anonymous response'; exit 1; fi
+          echo '=== CHECK OTHER VENDOR ROUTES (non-blocking where slug absent) ==='
+          for uri in /tienda/1957/ /tienda/monham/ /tienda/montjam/ /tienda/hidalgo-de-la-jara/page/2/; do
+            curl -ksS --connect-timeout 3 --max-time 24 -D /tmp/emdo-vendor-other-h -o /dev/null -w "$uri http=%{http_code} total=%{time_total}s\n" "$BASE$uri" || true
+            grep -i '^x-emdo-vendor-cache:' /tmp/emdo-vendor-other-h || true
+          done
+          echo '=== EXISTING ENGLISH STATIC CACHE UNAFFECTED ==='
+          curl -ksS --connect-timeout 3 --max-time 12 -D /tmp/emdo-vendor-en-h -o /dev/null "$BASE/en/store/hidalgo-de-la-jara/"
+          grep -qi '^x-emdo-nginx-hot-cache: HIT' /tmp/emdo-vendor-en-h
+          nginx -t
+          echo 'DEPLOY_VERIFIED: universal vendor cache, filtered redirects, safe cart bypass, scroll HTML preserved'
+          echo "BACKUP_DIR=$BACKUP"
+          REMOTE
