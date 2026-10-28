@@ -94,9 +94,9 @@ jobs:
             echo "IKORE_IMAGE_PUBLIC $KEY HTTP=$STATUS"
             test "$STATUS" = 200
           done
-          for PATH in / /tienda/; do
-            STATUS="$(curl --retry 1 -sSL --connect-timeout 8 --max-time 35 -o /dev/null -w '%{http_code}' "$BASE$PATH")"
-            echo "STORE_HEALTH $PATH HTTP=$STATUS"
+          for URL_PATH in / /tienda/; do
+            STATUS="$(curl --retry 1 -sSL --connect-timeout 8 --max-time 35 -o /dev/null -w '%{http_code}' "$BASE$URL_PATH")"
+            echo "STORE_HEALTH $URL_PATH HTTP=$STATUS"
             test "$STATUS" = 200
           done
           echo ALL_THREE_IKORE_FEATURED_COVERS_LIVE
