@@ -13,9 +13,9 @@
   clip-path: inset(50%) !important;
 }
 .emdo-ikore-grind { width: 100%; margin: 7px 0 17px; box-sizing: border-box; }
-.emdo-ikore-title { margin: 0 0 3px !important; color: #263a30; font-size: 15px; font-weight: 700; line-height: 1.3; }
-.emdo-ikore-help { margin: 0 0 13px !important; color: #66746e; font-size: 12px; line-height: 1.45; }
-.emdo-ikore-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; }
+.emdo-ikore-title { margin: 0 0 3px !important; color: #263a30; font-size: 17px; font-weight: 700; line-height: 1.3; }
+.emdo-ikore-help { margin: 0 0 13px !important; color: #66746e; font-size: 14px; line-height: 1.45; }
+.emdo-ikore-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 
 /* Alta especificidad para impedir que Woostify/otros estilos de botones
    sobrescriban el fondo y dejen letras blancas sobre verde claro. */
@@ -25,11 +25,11 @@ body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-ca
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 4px;
+  gap: 7px;
   width: 100%;
   min-width: 0;
-  min-height: 100px;
-  padding: 9px 6px;
+  min-height: 130px;
+  padding: 12px 10px;
   color: #24583e !important;
   background: #fff !important;
   background-image: none !important;
@@ -50,8 +50,8 @@ body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-ca
 }
 body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card img {
   display: block;
-  width: 66px;
-  height: 66px;
+  width: 80px;
+  height: 80px;
   max-width: 100%;
   object-fit: contain;
 }
@@ -59,7 +59,7 @@ body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-ca
   display: block;
   overflow-wrap: anywhere;
   color: #24583e !important;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 650;
   line-height: 1.25;
 }
@@ -78,7 +78,7 @@ body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-ca
   color: #20583b !important;
   background: #edf6ef !important;
   border: 2px solid #2b7050 !important;
-  padding: 8px 5px;
+  padding: 11px 9px;
   box-shadow: 0 0 0 1px rgba(43,112,80,.08) !important;
 }
 body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card[aria-pressed="true"] .emdo-ikore-card-label {
@@ -92,19 +92,19 @@ body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-ca
 @media (max-width: 500px) {
   .emdo-ikore-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card {
-    min-height: 106px;
+    min-height: 115px;
     padding: 8px 6px;
   }
   body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card[aria-pressed="true"] {
     padding: 7px 5px;
   }
   body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card img {
-    width: 68px;
-    height: 68px;
+    width: 72px;
+    height: 72px;
   }
 }
 @media (min-width: 501px) and (max-width: 900px) {
-  .emdo-ikore-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .emdo-ikore-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) {
   body.single-product form.variations_form .emdo-ikore-grid > button.emdo-ikore-card { transition: none; }
