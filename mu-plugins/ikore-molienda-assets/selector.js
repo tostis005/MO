@@ -57,11 +57,11 @@
       var img = document.createElement('img');
       // Unique URL for V60 avoids stale CDN/browser image caches.
       var filename = type === 'filtro-v60' ? 'filtro-v60-ilustracion.webp' : type + '.webp';
-      img.src = config.assetBase + filename + (type === 'filtro-v60' ? '?v=20261021.4' : '');
+      img.src = config.assetBase + filename + (type === 'filtro-v60' ? '?v=20261028.1' : '');
       if (type === 'filtro-v60') {
         img.onerror = function () {
           img.onerror = null;
-          img.src = config.assetBase + 'filtro-v60.webp?v=20261021.4';
+          img.src = config.assetBase + 'filtro-v60.webp?v=20261028.1';
         };
       }
       img.alt = '';

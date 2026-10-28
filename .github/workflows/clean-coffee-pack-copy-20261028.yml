@@ -1,0 +1,103 @@
+name: Clean coffee tasting pack customer-facing branding
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/clean-ikore-mentta-pack-customer-copy-20261028.php'
+      - '.github/workflows/clean-coffee-pack-copy-20261028.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: coffee-pack-customer-copy-production-20261028
+  cancel-in-progress: false
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint and validate limited product scope
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/clean-ikore-mentta-pack-customer-copy-20261028.php
+          grep -Fq '21904 =>' .github/scripts/clean-ikore-mentta-pack-customer-copy-20261028.php
+          grep -Fq '21906 =>' .github/scripts/clean-ikore-mentta-pack-customer-copy-20261028.php
+          grep -Fq '21908 =>' .github/scripts/clean-ikore-mentta-pack-customer-copy-20261028.php
+          : "$STAGING_HOST"; : "$STAGING_USER"; : "$STAGING_PASSWORD"
+          test -n "$STAGING_HOST" && test -n "$STAGING_USER" && test -n "$STAGING_PASSWORD"
+      - name: Update only copy in production and verify unchanged Mentta variation feed
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="$STAGING_PORT"; if [ -z "$PORT" ]; then PORT=22; fi
+          SSH=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$PORT")
+          SCP=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P "$PORT")
+          TARGET="$STAGING_USER@$STAGING_HOST"
+          SITE="$(sshpass -e ssh "${SSH[@]}" "$TARGET" '
+            WP_BIN=$(command -v wp)
+            PHP_BIN=$(command -v php || true)
+            [ -n "$PHP_BIN" ] || PHP_BIN=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$PHP_BIN" -d memory_limit=256M "$WP_BIN" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          test -n "$SITE"
+          FILE="/tmp/emdo-coffee-pack-copy-$GITHUB_RUN_ID.php"
+          sshpass -e scp "${SCP[@]}" .github/scripts/clean-ikore-mentta-pack-customer-copy-20261028.php "$TARGET:$FILE"
+          sshpass -e ssh "${SSH[@]}" "$TARGET" "bash -s -- '$SITE' '$FILE'" <<'REMOTE'
+          set -euo pipefail
+          SITE="$1"; FILE="$2"
+          PHP_BIN=$(command -v php || true)
+          [ -n "$PHP_BIN" ] || PHP_BIN=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          WP_BIN=$(command -v wp)
+          test -f "$SITE/wp-config.php" && test -s "$FILE"
+          "$PHP_BIN" -l "$FILE"
+          MDO_COFFEE_COPY_MODE=preflight "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "$FILE" --path="$SITE" --allow-root
+          applied=0
+          restore_on_error() {
+            status="$?"
+            trap - EXIT
+            if [ "$status" -ne 0 ] && [ "$applied" -eq 1 ]; then
+              echo 'Product verification failed: restoring previous coffee pack copy'
+              MDO_COFFEE_COPY_MODE=rollback "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "$FILE" --path="$SITE" --allow-root || true
+            fi
+            rm -f "$FILE"
+            exit "$status"
+          }
+          trap restore_on_error EXIT
+          applied=1
+          MDO_COFFEE_COPY_MODE=apply "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "$FILE" --path="$SITE" --allow-root
+          MDO_COFFEE_COPY_MODE=verify "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "$FILE" --path="$SITE" --allow-root
+          applied=0
+          trap - EXIT
+          rm -f "$FILE"
+          echo 'THREE_COFFEE_PACK_COPIES_AND_MENTTA_FEED_VERIFIED'
+          REMOTE
+      - name: Smoke-check three actual WooCommerce customer product pages
+        run: |
+          set -euo pipefail
+          for SLUG in pack-cafe-esencia-de-costa-rica pack-cafe-ruta-de-los-cuatro-origenes pack-cafe-coleccion-completa; do
+            FILE="/tmp/coffee-page-$SLUG.html"
+            STATUS="$(curl -sSL --retry 2 --connect-timeout 8 --max-time 38 -o "$FILE" -w '%{http_code}' "https://www.elmercadodeorigen.com/producto/$SLUG/?coffee_copy_release=$GITHUB_RUN_ID")"
+            echo "$SLUG HTTP=$STATUS"
+            test "$STATUS" = 200
+            grep -Fq 'Pack degustación de café de especialidad' "$FILE"
+            grep -Eiq 'variations_form|attribute_molienda' "$FILE"
+            if grep -Eiq 'Pack Degustaci[oó]n de Caf[eé] de Especialidad.*(Ikore|Icore)' "$FILE"; then
+              echo "::error::Old branded product title persists on $SLUG"; exit 1
+            fi
+          done
+          echo 'COFFEE_PACK_PRODUCT_PAGE_SMOKE_OK'

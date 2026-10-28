@@ -37,7 +37,7 @@ function emdo_ikore_molienda_product_20261021() {
 add_action( 'wp_enqueue_scripts', function () {
     if ( ! emdo_ikore_molienda_product_20261021() ) { return; }
     $base = content_url( '/mu-plugins/ikore-molienda-assets/' );
-    $version = '20261021.4';
+    $version = '20261028.1';
     wp_enqueue_style( 'emdo-ikore-molienda', $base . 'selector.css', array(), $version );
     wp_enqueue_script( 'emdo-ikore-molienda', $base . 'selector.js', array( 'jquery', 'wc-add-to-cart-variation' ), $version, true );
     $is_en = 0 === strpos( (string) wp_parse_url( $_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH ), '/en/' );
