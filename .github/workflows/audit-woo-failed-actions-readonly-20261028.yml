@@ -1,0 +1,48 @@
+name: Read-only WooCommerce task failures and SQL context 20261028
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/audit-woo-failed-actions-readonly-20261028.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Inspect production WooCommerce scheduler and indexes, without changing anything
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          ROOT=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+          WP=/usr/local/bin/wp
+          PHP=/opt/plesk/php/8.2/bin/php
+          query(){
+            echo "=== $1 ==="
+            timeout 22 "$PHP" -d memory_limit=768M "$WP" db query "$2" --path="$ROOT" --allow-root --skip-column-names 2>&1 | head -n 38 || true
+          }
+          date -u
+          query 'TOP FAILED HOOKS (cumulative)' "SELECT hook,COUNT(*) n,MIN(last_attempt_gmt) first_attempt,MAX(last_attempt_gmt) latest_attempt FROM wp_actionscheduler_actions WHERE status='failed' GROUP BY hook ORDER BY n DESC LIMIT 20"
+          query 'FAILED HOOKS RECENT 7 DAYS' "SELECT hook,COUNT(*) n FROM wp_actionscheduler_actions WHERE status='failed' AND last_attempt_gmt>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 7 DAY) GROUP BY hook ORDER BY n DESC LIMIT 15"
+          query 'FAILED HOOKS RECENT 24H' "SELECT hook,COUNT(*) n FROM wp_actionscheduler_actions WHERE status='failed' AND last_attempt_gmt>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 1 DAY) GROUP BY hook ORDER BY n DESC LIMIT 15"
+          query 'PENDING HOOKS' "SELECT hook,COUNT(*) n,MIN(scheduled_date_gmt) earliest,MAX(scheduled_date_gmt) latest FROM wp_actionscheduler_actions WHERE status='pending' GROUP BY hook ORDER BY n DESC LIMIT 20"
+          query 'FAILED STATUS TOTAL AND ATTEMPT DATES' "SELECT status,COUNT(*),MIN(last_attempt_gmt),MAX(last_attempt_gmt) FROM wp_actionscheduler_actions GROUP BY status"
+          query 'ACTION SCHEDULER INDEXES' "SHOW INDEX FROM wp_actionscheduler_actions"
+          query 'PRODUCT POST RECORD COUNT' "SELECT post_type,post_status,COUNT(*) n FROM wp_posts WHERE post_type IN ('product','product_variation') GROUP BY post_type,post_status"
+          query 'DATABASE ENGINE AND SIZE' "SELECT table_name,engine,ROUND(data_length/1048576,1) data_MB,ROUND(index_length/1048576,1) index_MB FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name IN ('wp_postmeta','wp_posts','wp_actionscheduler_actions','wp_options','wp_wc_product_meta_lookup','wp_wc_product_attributes_lookup') ORDER BY data_length DESC"
+          echo '=== REDIS MEMCACHED SERVICES (installed/running, no writes) ==='
+          for s in redis-server redis memcached; do systemctl is-active "$s" 2>/dev/null || true; done
+          command -v redis-cli >/dev/null && (redis-cli ping 2>/dev/null | head -c 100; echo) || true
+          echo '=== SYSTEM CURRENT LOAD ==='
+          uptime
+          echo 'AUDIT_READ_ONLY_DONE'
+          REMOTE
