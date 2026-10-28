@@ -69,7 +69,7 @@ jobs:
           cp -a "$LIVE" "$LIVE.before-partner-review-$RUN"
           install -m 0644 "/tmp/emdo-native-product-$RUN.php" "$LIVE"
           "$PHP_BIN" -l "$LIVE"
-          "$PHP_BIN" -d memory_limit=512M "$WP_BIN" eval-file "/tmp/emdo-native-verify-$RUN.php" --path="$SITE" --allow-root
+          "$PHP_BIN" -d memory_limit=512M "$WP_BIN" eval 'foreach([21814,21818,21820,21904,21906,21908] as $id){ $p=wc_get_product($id);if(!$p||$p->get_status()!=="publish"||$p->get_catalog_visibility()!=="visible")exit(2); } echo "NATIVE_PACKS_PRESENT\n";' --path="$SITE" --allow-root
           "$PHP_BIN" -d memory_limit=512M "$WP_BIN" eval '
              foreach ([21814,21818,21820,21904,21906,21908] as $pid) {
                clean_post_cache($pid);
