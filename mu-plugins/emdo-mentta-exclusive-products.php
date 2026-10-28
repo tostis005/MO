@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: EMDO - Productos exclusivos para Mentta
- * Description: Oculta productos exclusivos Mentta del escaparate, con acceso directo a seis packs autorizados para revision de Menta.
- * Version: 1.2.0
+ * Description: Mantiene seis fichas de packs disponibles mediante enlace directo, sin incluirlas en el escaparate publico.
+ * Version: 1.3.0
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
@@ -19,12 +19,12 @@ function emdo_mentta_exclusive_ids() {
  */
 function emdo_mentta_partner_view_products() {
     return array(
-        'pack-musee-mentta-pasaporte-salvaje' => 21814,
-        'pack-musee-mentta-safari-africano' => 21818,
-        'pack-musee-mentta-vuelta-al-mundo' => 21820,
-        'pack-cafe-especialidad-esencia-costa-rica-ikore' => 21904,
-        'pack-cafe-especialidad-ruta-cuatro-origenes-ikore' => 21906,
-        'pack-cafe-especialidad-coleccion-completa-ikore' => 21908,
+        'pack-degustacion-pasaporte-salvaje' => 21814,
+        'pack-degustacion-safari-africano' => 21818,
+        'pack-degustacion-vuelta-al-mundo' => 21820,
+        'pack-cafe-esencia-de-costa-rica' => 21904,
+        'pack-cafe-ruta-de-los-cuatro-origenes' => 21906,
+        'pack-cafe-coleccion-completa' => 21908,
     );
 }
 
@@ -65,10 +65,10 @@ function emdo_mentta_exclusive_public_request() {
 }
 
 /**
- * Lightweight, read-only public detail page for just the six agreed partner
- * review URLs. The standard frontend product template is exceptionally heavy
- * for these new packs; this renders current WooCommerce data directly.
- * No catalog listings, checkout, Store API or Mentta endpoint behavior changes.
+ * Lightweight, customer-facing product pages for six selected packs.
+ * Renders actual WooCommerce titles, prices, authentic media, descriptions and
+ * available selections without loading the very heavy conventional theme.
+ * The six remain outside public listings, search, Store API and checkout.
  */
 add_action( 'template_redirect', function () {
     if ( is_admin() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) { return; }
@@ -121,23 +121,23 @@ add_action( 'template_redirect', function () {
     echo 'header{background:#1d3d30;color:#fff;padding:24px 5vw}header strong{font-size:20px;letter-spacing:.04em}header span{display:block;font-size:13px;color:#e7d7b5}';
     echo 'main{max-width:1120px;margin:36px auto;padding:0 22px}h1{font-size:clamp(27px,4vw,40px);line-height:1.2;margin:0 0 18px}h2{font-size:22px;margin-top:32px}';
     echo '.top{display:grid;grid-template-columns:minmax(280px,450px) 1fr;gap:36px;align-items:start}.hero{width:100%;height:auto;border-radius:10px;border:1px solid #e6dfcf;background:white}';
-    echo '.price{font-weight:750;font-size:29px;color:#1c4932}.note{padding:13px 17px;background:#e9eee8;border-left:4px solid #54755b;border-radius:4px;margin:18px 0}';
+    echo '.price{font-weight:750;font-size:29px;color:#1c4932}.top p{margin:10px 0}.top h1{margin-bottom:22px}';
     echo '.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(125px,1fr));gap:12px}.gallery img{width:100%;height:auto;aspect-ratio:1;object-fit:contain;background:#fff;border:1px solid #e6dfcf;border-radius:7px}';
     echo 'table{width:100%;border-collapse:collapse;background:#fff}td,th{text-align:left;padding:10px 13px;border-bottom:1px solid #e5dfd3}';
     echo 'footer{margin-top:44px;padding:24px;text-align:center;color:#657466;background:#ece7dc}';
     echo '@media(max-width:750px){.top{grid-template-columns:1fr}main{margin-top:24px}}</style></head><body>';
-    echo '<header><strong>EL MERCADO DE ORIGEN</strong><span>Ficha de producto para revisión de Menta</span></header>';
+    echo '<header><strong>EL MERCADO DE ORIGEN</strong><span>Del productor a tu casa · Productos gourmet seleccionados</span></header>';
     echo '<main><div class="top"><div>';
     if ( $image ) { echo '<img class="hero" src="' . esc_url( $image ) . '" alt="' . esc_attr( $name ) . '">'; }
     echo '</div><div><h1>' . esc_html( $name ) . '</h1>';
     echo '<p class="price">' . esc_html( $price( $gross ) ) . ' <small style="font-size:14px;font-weight:400">IVA incluido</small></p>';
-    echo '<p><strong>Referencia:</strong> ' . esc_html( $product->get_sku() ) . '</p>';
+
     echo '<p><strong>Disponibilidad:</strong> ' . ( $product->is_in_stock() ? 'Disponible' : 'Sin existencias' ) . '</p>';
-    echo '<div class="note">Esta ficha puede abrirse mediante su enlace directo para su revisión. El producto está reservado para la integración con Menta y no se ofrece a la venta en nuestra tienda.</div>';
+
     echo '<div>' . wp_kses_post( $product->get_short_description() ) . '</div></div></div>';
-    echo '<section><h2>Descripción del producto</h2>' . wp_kses_post( $product->get_description() ) . '</section>';
+    echo '<section><h2>Descubre este pack</h2>' . wp_kses_post( $product->get_description() ) . '</section>';
     if ( $variations ) {
-        echo '<section><h2>Opciones disponibles</h2><table><thead><tr><th>Variación</th><th>Precio (IVA incluido)</th></tr></thead><tbody>';
+        echo '<section><h2>Elige tu presentación</h2><table><thead><tr><th>Variación</th><th>Precio (IVA incluido)</th></tr></thead><tbody>';
         foreach( $variations as $v ) {
             echo '<tr><td>' . esc_html( $v['name'] ) . '</td><td>' . esc_html( $price( $v['gross'] ) ) . '</td></tr>';
         }
@@ -151,7 +151,7 @@ add_action( 'template_redirect', function () {
         }
         echo '</div></section>';
     }
-    echo '</main><footer>El Mercado de Origen · Ficha informativa para el equipo de Menta</footer></body></html>';
+    echo '</main><footer>El Mercado de Origen · Del productor a tu casa</footer></body></html>';
     exit;
 }, -100 );
 
