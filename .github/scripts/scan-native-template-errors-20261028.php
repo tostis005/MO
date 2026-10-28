@@ -31,6 +31,16 @@ foreach(array_slice(array_keys($files),0,12) as $path){
    if(stripos($line,$phrase)!==false){$msg=$phrase;break;}
   $samples[]=['kind'=>$kind,'type'=>$msg];
  }
- echo 'NATIVE_TEMPLATE_SERVER_LOG_SUMMARY '.wp_json_encode(['file'=>basename($path),'scanned'=>$n,'counts'=>$counts,'error_samples'=>$samples])."\n";
+ $fatalDetails=[];
+ foreach(explode("\\n",(string)$raw) as $line) {
+  if(!preg_match('/(?:PHP Fatal error|Uncaught (?:Error|TypeError|RuntimeException|Exception)|Allowed memory size|Maximum execution time)/i',$line))continue;
+  $kind='OTHER';
+  foreach(['Call to undefined function','Call to a member function','Cannot redeclare','Uncaught TypeError','Uncaught Error','Allowed memory size','Maximum execution time','Uncaught Exception','Uncaught RuntimeException','Unknown named parameter'] as $phrase)
+   if(stripos($line,$phrase)!==false){$kind=$phrase;break;}
+  $place='unknown';
+  if(preg_match('~(?:/wp-content/|/wp-includes/)([a-zA-Z0-9_./-]+?\\.php)(?::|\\b)~',$line,$m))$place=substr($m[1],0,140);
+  if(count($fatalDetails)<12)$fatalDetails[]=['kind'=>$kind,'file'=>$place];
+ }
+ echo 'NATIVE_TEMPLATE_SERVER_LOG_SUMMARY '.wp_json_encode(['file'=>basename($path),'scanned'=>$n,'counts'=>$counts,'error_samples'=>$samples,'fatal_details'=>$fatalDetails])."\n";
 }
 echo "NATIVE_TEMPLATE_ERROR_SCAN_COMPLETE\n";
