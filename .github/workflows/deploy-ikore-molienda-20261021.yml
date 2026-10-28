@@ -39,7 +39,10 @@ jobs:
           grep -Fq 'color: #20583b !important' mu-plugins/ikore-molienda-assets/selector.css
           grep -Fq 'grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;' mu-plugins/ikore-molienda-assets/selector.css
           grep -Fq 'font-size: 14px;' mu-plugins/ikore-molienda-assets/selector.css
-          grep -Fq "20261028.1" mu-plugins/mdo-ikore-molienda-selector-20261021.php
+          grep -Fq "table.insertAdjacentElement('afterend', wrap)" mu-plugins/ikore-molienda-assets/selector.js
+          grep -Fq 'tr.emdo-ikore-grind-row' mu-plugins/ikore-molienda-assets/selector.css
+          grep -Fq 'form.variations_form > .emdo-ikore-grind' mu-plugins/ikore-molienda-assets/selector.css
+          grep -Fq "20261028.2" mu-plugins/mdo-ikore-molienda-selector-20261021.php
           grep -Fq 'filtro-v60-ilustracion.webp' mu-plugins/ikore-molienda-assets/selector.js
           # This previously passed with a corrupt RIFF file; full decoder check is required.
           python3 -m pip install --quiet --break-system-packages Pillow
@@ -169,8 +172,8 @@ jobs:
           curl -fsSL --retry 2 --max-time 45 "$url" -o "/tmp/ikore-smoke-$runid.html"
           grep -q 'ikore-molienda-assets/selector.js' "/tmp/ikore-smoke-$runid.html"
           grep -q 'ikore-molienda-assets/selector.css' "/tmp/ikore-smoke-$runid.html"
-          grep -q '20261028.1' "/tmp/ikore-smoke-$runid.html"
-          curl -fsSL --retry 2 --max-time 25 "https://www.elmercadodeorigen.com/wp-content/mu-plugins/ikore-molienda-assets/selector.css?v=20261028.1&release=$runid" -o "/tmp/ikore-css-$runid.css"
+          grep -q '20261028.2' "/tmp/ikore-smoke-$runid.html"
+          curl -fsSL --retry 2 --max-time 25 "https://www.elmercadodeorigen.com/wp-content/mu-plugins/ikore-molienda-assets/selector.css?v=20261028.2&release=$runid" -o "/tmp/ikore-css-$runid.css"
           grep -Fq 'background: #edf6ef !important' "/tmp/ikore-css-$runid.css"
           grep -Fq 'color: #20583b !important' "/tmp/ikore-css-$runid.css"
           for rel in grano italiana espresso francesa cold-brew aeropress filtro-v60; do
@@ -180,10 +183,10 @@ jobs:
             head -c 4 "/tmp/ikore-asset-$runid.webp" | grep -q RIFF
           done
           # Confirm exact new V60 bytes, not merely the RIFF header.
-          curl -fsSL --retry 2 --max-time 25 "https://www.elmercadodeorigen.com/wp-content/mu-plugins/ikore-molienda-assets/filtro-v60-ilustracion.webp?v=20261028.1" -o "/tmp/ikore-v60-$runid.webp"
+          curl -fsSL --retry 2 --max-time 25 "https://www.elmercadodeorigen.com/wp-content/mu-plugins/ikore-molienda-assets/filtro-v60-ilustracion.webp?v=20261028.2" -o "/tmp/ikore-v60-$runid.webp"
           cmp -s "/tmp/ikore-v60-$runid.webp" "$stage/mu-plugins/ikore-molienda-assets/filtro-v60-ilustracion.webp"
           grep -Fq 'filtro-v60-ilustracion.webp' "$dest/ikore-molienda-assets/selector.js"
-          grep -Fq '20261028.1' "$dest/ikore-molienda-assets/selector.js"
+          grep -Fq '20261028.2' "$dest/ikore-molienda-assets/selector.js"
           echo "IKORE_V60_ASSET_LIVE_OK bytes=$(wc -c < "/tmp/ikore-v60-$runid.webp")"
           echo "IKORE_SELECTOR_PRODUCTION_OK run=$runid backup=$backup"
           changed=0
@@ -191,3 +194,12 @@ jobs:
           rm -f "/tmp/ikore-smoke-$runid.html" "/tmp/ikore-asset-$runid.webp" "/tmp/ikore-css-$runid.css" "/tmp/ikore-v60-$runid.webp"
           rm -rf "$stage"
           REMOTE
+
+      - name: Browser test selector at 390, 719, 721, 768, 1024 and 1440 pixels
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --check .github/scripts/test-ikore-molienda-responsive-20261028.cjs
+          mkdir -p /tmp/emdo-coffee-browser
+          npm install --prefix /tmp/emdo-coffee-browser --no-save --no-package-lock --no-audit --no-fund playwright@1.55.0
+          NODE_PATH=/tmp/emdo-coffee-browser/node_modules node .github/scripts/test-ikore-molienda-responsive-20261028.cjs
