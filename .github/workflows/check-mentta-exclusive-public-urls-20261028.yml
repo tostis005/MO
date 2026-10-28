@@ -17,3 +17,18 @@ jobs:
             CODE=$(curl -L -s -o /dev/null --connect-timeout 8 --max-time 18 -w '%{http_code}' "https://www.elmercadodeorigen.com/producto/$SLUG/" || true)
             echo "$SLUG HTTP=$CODE"
           done
+      - name: Check externally accessible cover images for imported ham and six new packs
+        run: |
+          while IFS='|' read -r ID PATH_; do
+            [ -n "$ID" ] || continue
+            CODE=$(curl -L -sS -o /dev/null --connect-timeout 8 --max-time 20 -w '%{http_code}' "https://www.elmercadodeorigen.com$PATH_" || true)
+            echo "COVER ID=$ID HTTP=$CODE"
+          done <<'LIST'
+          17129|/wp-content/uploads/2026/09/Jamon-de-bellota-100-iberico.jpg
+          21814|/wp-content/uploads/mentta-musee-packs/pasaporte-salvaje-portada-premium-fotos-reales-9fe87bab6db080a98-v2.jpg
+          21818|/wp-content/uploads/mentta-musee-packs/safari-africano-portada-premium-fotos-reales-a2cace54a8c37ade9-v2.jpg
+          21820|/wp-content/uploads/mentta-musee-packs/vuelta-al-mundo-portada-premium-fotos-reales-df6c0918a7f84393d-v2.jpg
+          21904|/wp-content/uploads/mentta-ikore-packs/pack-ikore-esencia-costa-rica-fotos-originales-sin-molienda-v2.jpg
+          21906|/wp-content/uploads/mentta-ikore-packs/pack-ikore-ruta-cuatro-origenes-fotos-originales-sin-molienda-v2.jpg
+          21908|/wp-content/uploads/mentta-ikore-packs/pack-ikore-coleccion-completa-fotos-originales-sin-molienda-v2.jpg
+          LIST
