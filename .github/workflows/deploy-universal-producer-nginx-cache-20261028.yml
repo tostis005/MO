@@ -93,9 +93,10 @@ jobs:
             GET 0;
           }
           map $http_cookie $emdo_vendor_cookie_unsafe {
-            default 1;
-            "" 0;
-            ~"^(?:(?:_ga[^=;[:space:]]*|_gid|_gat[^=;[:space:]]*|_gcl_[^=;[:space:]]*|_fbp|_fbc|_pin_unauth|cookielawinfo-[^=;[:space:]]*|sbjs_[^=;[:space:]]*|tk_[^=;[:space:]]*|CookieLawInfoConsent|viewed_cookie_policy|total_page|emdo_filter_pass)=[^;]*(?:;[[:space:]]*|$))*$" 0;
+            # Only unknown cookies are unsafe; approved analytics and challenge cookies remain cacheable.
+            # Hex encoding avoids literal semicolons in Nginx config parser regex tokens.
+            default 0;
+            ~*(?:^|\x3b[[:space:]]*)(?!(?:_ga[^=\x3b[:space:]]*|_gid|_gat[^=\x3b[:space:]]*|_gcl_[^=\x3b[:space:]]*|_fbp|_fbc|_pin_unauth|cookielawinfo-[^=\x3b[:space:]]*|sbjs_[^=\x3b[:space:]]*|tk_[^=\x3b[:space:]]*|CookieLawInfoConsent|viewed_cookie_policy|total_page|emdo_filter_pass)=)[^=\x3b[:space:]]+= 1;
           }
           map "$emdo_vendor_method_unsafe:$emdo_vendor_cookie_unsafe:$args" $emdo_vendor_skip_cache {
             default 1;
