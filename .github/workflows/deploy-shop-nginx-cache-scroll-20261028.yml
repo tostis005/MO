@@ -1,0 +1,146 @@
+name: Deploy five-minute shop cache and verify infinite scroll 20261028
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/deploy-shop-nginx-cache-scroll-20261028.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: emdo-nginx-shop-cache
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate PHP and install SSH prerequisite
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+          php -l elmercadodeorigen-child/dropins/advanced-cache.php
+      - name: Stage existing shop PHP cache update
+        run: |
+          set -Eeuo pipefail
+          sshpass -e scp -q -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -P "$STAGING_PORT" \
+            elmercadodeorigen-child/dropins/advanced-cache.php "$STAGING_USER@$STAGING_HOST:/tmp/emdo-shop-advanced-cache-20261028.stage"
+      - name: Deploy guarded Spanish shop edge cache and verify scroll, cookies, filters
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          test "$(id -u)" -eq 0
+          CONF=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          ROOT=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+          PHP_CACHE="$ROOT/wp-content/advanced-cache.php"
+          STAGED=/tmp/emdo-shop-advanced-cache-20261028.stage
+          BACKUP=/root/emdo-shop-nginx-cache-backup-$(date -u +%Y%m%dT%H%M%SZ)
+          TAG='# BEGIN EMDO SPANISH SHOP CACHE 20261028'
+          test -s "$CONF" && test -s "$PHP_CACHE" && test -s "$STAGED"
+          grep -q 'location @emdo_vendor_cache_origin {' "$CONF"
+          grep -q 'proxy_cache_valid 200 240s;' "$CONF"
+          grep -q 'proxy_cache_bypass \$emdo_vendor_skip_cache' "$CONF"
+          /opt/plesk/php/8.2/bin/php -l "$STAGED"
+          nginx -t
+          if grep -Fq "$TAG" "$CONF"; then
+            echo 'ALREADY_INSTALLED'
+            exit 0
+          fi
+          test "$(grep -Fc 'location = /tienda/ {' "$CONF")" -eq 0
+          install -d -m 0700 "$BACKUP"
+          cp -p "$CONF" "$BACKUP/vhost_nginx.conf"
+          cp -p "$PHP_CACHE" "$BACKUP/advanced-cache.php"
+          changed=0
+          rollback() {
+            rc=$?
+            trap - EXIT
+            if [ "$rc" != 0 ] && [ "$changed" = 1 ]; then
+              echo 'ROLLBACK: restore Nginx and PHP shop cache drop-in'
+              cp -p "$BACKUP/vhost_nginx.conf" "$CONF"
+              cp -p "$BACKUP/advanced-cache.php" "$PHP_CACHE"
+              nginx -t && systemctl reload nginx || true
+              echo 'ROLLBACK_COMPLETE'
+            fi
+            rm -f "$STAGED"
+            exit "$rc"
+          }
+          trap rollback EXIT
+          cat >> "$CONF" <<'CONFEOF'
+
+          # BEGIN EMDO SPANISH SHOP CACHE 20261028
+          # Reuse the safe anonymous vendor proxy cache: 240s Nginx + 60s PHP fallback.
+          # No query, unknown cookies, signed-in users, cart or checkout may receive shared HTML.
+          location = /tienda/ {
+              error_page 418 = @emdo_vendor_cache_origin;
+              return 418;
+          }
+          location ~* ^/tienda/page/[1-9][0-9]*/?$ {
+              error_page 418 = @emdo_vendor_cache_origin;
+              return 418;
+          }
+          # END EMDO SPANISH SHOP CACHE 20261028
+          CONFEOF
+          changed=1
+          install -m 0644 "$STAGED" "$PHP_CACHE"
+          /opt/plesk/php/8.2/bin/php -l "$PHP_CACHE"
+          nginx -t
+          systemctl reload nginx
+          sleep 2
+          BASE=https://www.elmercadodeorigen.com
+          echo '=== SHOP CACHE: 1ST + 2ND REQUEST ==='
+          curl -ksS --connect-timeout 3 --max-time 28 -A 'EMDO-Shop-Cache-Verify/20261028' -D /tmp/emdo-shop-1.h -o /tmp/emdo-shop-1.html "$BASE/tienda/" 
+          curl -ksS --connect-timeout 3 --max-time 28 -A 'EMDO-Shop-Cache-Verify/20261028' -D /tmp/emdo-shop-2.h -o /tmp/emdo-shop-2.html "$BASE/tienda/"
+          grep -Ei '^(HTTP/|x-emdo-vendor-cache:|set-cookie:)' /tmp/emdo-shop-1.h /tmp/emdo-shop-2.h || true
+          grep -qi '^x-emdo-vendor-cache: HIT' /tmp/emdo-shop-2.h
+          cmp /tmp/emdo-shop-1.html /tmp/emdo-shop-2.html
+          grep -q 'emo-continuous-catalog' /tmp/emdo-shop-2.html
+          grep -q 'emo-shop-title-block' /tmp/emdo-shop-2.html
+          echo '=== PAGE 2: FETCH AND REPEAT CACHE ==='
+          curl -ksS --connect-timeout 3 --max-time 28 -D /tmp/emdo-shop-p2a.h -o /tmp/emdo-shop-p2a.html "$BASE/tienda/page/2/"
+          curl -ksS --connect-timeout 3 --max-time 28 -D /tmp/emdo-shop-p2b.h -o /tmp/emdo-shop-p2b.html "$BASE/tienda/page/2/"
+          grep -Ei '^(HTTP/|x-emdo-vendor-cache:|set-cookie:)' /tmp/emdo-shop-p2a.h /tmp/emdo-shop-p2b.h || true
+          grep -q 'emo-continuous-catalog' /tmp/emdo-shop-p2b.html
+          grep -q 'class="products' /tmp/emdo-shop-p2b.html || grep -q 'ul class="products' /tmp/emdo-shop-p2b.html || grep -q 'products columns' /tmp/emdo-shop-p2b.html
+          python3 - <<'PY'
+          import re,html
+          def slugs(path):
+              body=open(path,encoding='utf-8',errors='replace').read()
+              return set(re.findall(r'\bpost-(\d+)\b',body)),body
+          one,a=slugs('/tmp/emdo-shop-2.html')
+          two,b=slugs('/tmp/emdo-shop-p2b.html')
+          print('PAGE1_IDENTIFIERS',len(one),'PAGE2_IDENTIFIERS',len(two),'DIFFERENT_PRODUCT_IDS',len(one.symmetric_difference(two)))
+          print('PAGE1_LINKS_TO_NEXT',bool(re.search(r'/tienda/page/2/?',a)))
+          assert len(one)>4 and len(two)>4 and one!=two, 'Scroll pagination not independent'
+          assert re.search(r'/tienda/page/2/?',a), 'Page 1 lacks next-page URL needed by infinite scroll'
+          assert 'elmercado-continuous-catalog-loader' in a and 'elmercado-continuous-catalog-loader' in b
+          assert '</html>' in a.lower() and '</html>' in b.lower()
+          PY
+          echo '=== COOKIE AND URL QUERY MUST BYPASS ANONYMOUS CACHE ==='
+          curl -ksS --connect-timeout 3 --max-time 28 -H 'Cookie: woocommerce_items_in_cart=1' -D /tmp/emdo-shop-cart.h -o /dev/null "$BASE/tienda/"
+          curl -ksS --connect-timeout 3 --max-time 28 -H 'Cookie: wordpress_logged_in_testing=1' -D /tmp/emdo-shop-login.h -o /dev/null "$BASE/tienda/"
+          curl -ksS --connect-timeout 3 --max-time 28 -D /tmp/emdo-shop-sort.h -o /dev/null "$BASE/tienda/?orderby=price"
+          for file in /tmp/emdo-shop-cart.h /tmp/emdo-shop-login.h /tmp/emdo-shop-sort.h; do
+            if grep -qi '^x-emdo-vendor-cache: HIT' "$file"; then echo "ERROR: shared cache served to stateful request $file"; exit 1; fi
+            echo "$file: BYPASS_VERIFIED"
+          done
+          echo '=== PROTECTED PRODUCER FILTER ROUTE STILL REDIRECTS ==='
+          FILTER="$BASE/tienda/hidalgo-de-la-jara/?emo_vendor_cat=jamones-paletas&filter_calidad=bellota-100-iberico&filter_preparacion=deshuesado"
+          curl -ksS --connect-timeout 3 --max-time 12 -D /tmp/emdo-shop-filter.h -o /dev/null "$FILTER"
+          grep -q ' 302 ' /tmp/emdo-shop-filter.h
+          grep -qi '^location: /tienda/hidalgo-de-la-jara/' /tmp/emdo-shop-filter.h
+          echo '=== EXISTING VENDOR CACHE AND GOOGLE ANALYTICS HTML PRESERVED ==='
+          curl -ksS --connect-timeout 3 --max-time 12 -D /tmp/emdo-shop-producer.h -o /dev/null "$BASE/tienda/hidalgo-de-la-jara/"
+          grep -qi '^x-emdo-vendor-cache: HIT' /tmp/emdo-shop-producer.h
+          echo '=== RESPONSE TIMINGS ==='
+          curl -ksS --connect-timeout 3 --max-time 16 -o /dev/null -w 'shop_cached_http=%{http_code} total=%{time_total}s ttfb=%{time_starttransfer}s\n' "$BASE/tienda/"
+          curl -ksS --connect-timeout 3 --max-time 16 -o /dev/null -w 'page2_http=%{http_code} total=%{time_total}s ttfb=%{time_starttransfer}s\n' "$BASE/tienda/page/2/"
+          nginx -t
+          echo 'DEPLOY_VERIFIED: shop edge HIT, scroll page 2, filter safety, cart/login/query bypass, producer routes'
+          echo "BACKUP_DIR=$BACKUP"
+          REMOTE
