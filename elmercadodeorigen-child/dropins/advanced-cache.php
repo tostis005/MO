@@ -197,11 +197,11 @@ if ( isset( $hot_cache_paths[ $path ] ) ) {
 	$hot_cache_dir  = __DIR__ . '/uploads/elmercado-hot-static-v1';
 	$hot_cache_file = $hot_cache_dir . '/' . $hot_cache_paths[ $path ] . '.html';
 	$hot_lock_file  = $hot_cache_file . '.lock';
-	$hot_ttl        = $is_new_vendor_store_hot_path ? 60 : 300;
+	$hot_ttl        = ( $is_new_vendor_store_hot_path || '/tienda/' === $path ) ? 60 : 300;
 	// Generic vendor pages additionally use a four-minute Nginx cache.
 	// A one-minute PHP fallback keeps the combined normal freshness at five minutes.
 	// Other existing exact-route hot caches preserve their original cadence.
-	$hot_stale_ttl  = $is_new_vendor_store_hot_path ? 180 : 3600;
+	$hot_stale_ttl  = ( $is_new_vendor_store_hot_path || '/tienda/' === $path ) ? 180 : 3600;
 	$hot_age        = null;
 	$hot_valid      = false;
 
@@ -216,14 +216,14 @@ if ( isset( $hot_cache_paths[ $path ] ) ) {
 		}
 	}
 
-	$serve_hot_cache = static function ( $status ) use ( $hot_cache_file, $is_new_vendor_store_hot_path ) {
+	$serve_hot_cache = static function ( $status ) use ( $hot_cache_file, $is_new_vendor_store_hot_path, $path ) {
 		if ( ! headers_sent() ) {
 			header( 'Content-Type: text/html; charset=UTF-8' );
 			header( 'Cache-Control: private, no-store, max-age=0' );
 			header( 'Vary: Cookie', false );
 			header( 'X-El-Mercado-Hot-Early-Cache: ' . $status );
 			// A cached paginated store page must not reset the scroll state.
-			if ( ! $is_new_vendor_store_hot_path ) {
+			if ( ! $is_new_vendor_store_hot_path && '/tienda/' !== $path ) {
 				setcookie( 'total_page', '1', time() + 7200, '/' );
 			}
 		}
