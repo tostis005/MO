@@ -1,0 +1,34 @@
+name: Read-only check Meta catalog integration status 20261028
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/audit-meta-feed-plugins-readonly-20261028.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Check current Meta/Facebook/Google/feed plugin status without writes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          ROOT=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+          PHP=/opt/plesk/php/8.2/bin/php
+          WP=/usr/local/bin/wp
+          echo '=== PLUGIN STATUS: advertising, product feeds ==='
+          timeout 40 "$PHP" -d memory_limit=768M "$WP" plugin list --fields=name,status,version --format=csv --path="$ROOT" --allow-root 2>/dev/null | grep -Ei '(^name|facebook|google|merchant|gla|rex|feed|catalog|meta-pixel|marketing|woocommerce)' | head -n 60 || true
+          echo '=== ACTION SCHEDULER: RECENT META JOBS ==='
+          timeout 24 "$PHP" "$WP" db query "SELECT hook,status,COUNT(*) n,MAX(last_attempt_gmt) newest_attempt FROM wp_actionscheduler_actions WHERE hook LIKE '%facebook%' OR hook LIKE 'wc_facebook%' OR hook LIKE 'rex_feed%' GROUP BY hook,status ORDER BY hook,status" --path="$ROOT" --allow-root --skip-column-names 2>&1 | head -n 55 || true
+          echo '=== READ ONLY ==='
+          REMOTE
