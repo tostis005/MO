@@ -1,0 +1,46 @@
+name: Read-only WooCommerce action queue and Redis audit 20261028
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/audit-woocommerce-action-queue-redis-readonly-20261028.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Read task queue and object cache prerequisites, without changes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          ROOT=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+          PHP=/opt/plesk/php/8.2/bin/php
+          WP=/usr/local/bin/wp
+          echo '=== REDIS CAPABILITY (READ ONLY) ==='
+          $PHP -m | grep -Ei '^redis$|^apcu$|^memcached$' || true
+          systemctl is-active redis-server || true
+          systemctl is-active redis || true
+          test -f "$ROOT/wp-content/object-cache.php" && echo 'OBJECT_CACHE_DROPIN_PRESENT' || echo 'OBJECT_CACHE_DROPIN_ABSENT'
+          echo '=== ACTION QUEUE FAILED BY HOOK (ALL TIME) ==='
+          timeout 35 "$PHP" "$WP" db query "SELECT hook,COUNT(*) AS n FROM wp_actionscheduler_actions WHERE status='failed' GROUP BY hook ORDER BY n DESC LIMIT 20;" --skip-column-names --path="$ROOT" --allow-root 2>&1 | head -n 30 || true
+          echo '=== ACTION QUEUE FAILED LAST 7 DAYS ==='
+          timeout 35 "$PHP" "$WP" db query "SELECT hook,COUNT(*) AS n FROM wp_actionscheduler_actions WHERE status='failed' AND last_attempt_gmt >= UTC_TIMESTAMP()-INTERVAL 7 DAY GROUP BY hook ORDER BY n DESC LIMIT 20;" --skip-column-names --path="$ROOT" --allow-root 2>&1 | head -n 30 || true
+          echo '=== ACTION QUEUE PENDING BY HOOK ==='
+          timeout 35 "$PHP" "$WP" db query "SELECT hook,COUNT(*) AS n FROM wp_actionscheduler_actions WHERE status='pending' GROUP BY hook ORDER BY n DESC LIMIT 15;" --skip-column-names --path="$ROOT" --allow-root 2>&1 | head -n 25 || true
+          echo '=== ACTION QUEUE FAILURES RECENT DAYS ==='
+          timeout 35 "$PHP" "$WP" db query "SELECT DATE(last_attempt_gmt) AS day,COUNT(*) AS failures FROM wp_actionscheduler_actions WHERE status='failed' AND last_attempt_gmt >= UTC_TIMESTAMP()-INTERVAL 7 DAY GROUP BY DATE(last_attempt_gmt) ORDER BY day DESC;" --skip-column-names --path="$ROOT" --allow-root 2>&1 | head -n 16 || true
+          echo '=== CURRENT SERVER MYSQL RESOURCE ==='
+          free -m | head -n 3
+          timeout 12 "$PHP" "$WP" db query "SHOW GLOBAL STATUS LIKE 'Innodb_buffer_pool_reads'; SHOW GLOBAL STATUS LIKE 'Innodb_buffer_pool_read_requests'; SHOW GLOBAL STATUS LIKE 'Threads_running';" --skip-column-names --path="$ROOT" --allow-root 2>&1 | head -n 12 || true
+          echo 'AUDIT_COMPLETE_NO_CHANGES'
+          REMOTE
