@@ -1,0 +1,57 @@
+name: Read-only shop scroll browser-session diagnostic 20261028
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/audit-shop-session-pagination-readonly-20261028.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Simulate page navigation with same cookies and referer (read only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          BASE=https://www.elmercadodeorigen.com
+          UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36'
+          curl -ksS --connect-timeout 4 --max-time 20 -A "$UA" -c /tmp/emdo-shop-cookies -D /tmp/emdo-shop-browser-first.h -o /tmp/emdo-shop-browser-first.html "$BASE/tienda/"
+          for spec in 'cookie_and_referer|/tienda/page/2/' 'cookie_only|/tienda/page/2/' 'referer_only|/tienda/page/2/' 'cookie_and_referer3|/tienda/page/3/'; do
+            label="${spec%%|*}"
+            path="${spec#*|}"
+            echo "=== $label ==="
+            case "$label" in
+              cookie_and_referer|cookie_and_referer3)
+                curl -ksS --connect-timeout 4 --max-time 21 -A "$UA" -b /tmp/emdo-shop-cookies -e "$BASE/tienda/" -H 'Accept: text/html' -D "/tmp/emdo-shopsession-$label.h" -o "/tmp/emdo-shopsession-$label.html" "$BASE$path" || true
+                ;;
+              cookie_only)
+                curl -ksS --connect-timeout 4 --max-time 21 -A "$UA" -b /tmp/emdo-shop-cookies -D "/tmp/emdo-shopsession-$label.h" -o "/tmp/emdo-shopsession-$label.html" "$BASE$path" || true
+                ;;
+              referer_only)
+                curl -ksS --connect-timeout 4 --max-time 21 -A "$UA" -e "$BASE/tienda/" -D "/tmp/emdo-shopsession-$label.h" -o "/tmp/emdo-shopsession-$label.html" "$BASE$path" || true
+                ;;
+            esac
+            python3 - "$label" <<'PY'
+          import sys,re,html
+          label=sys.argv[1];p='/tmp/emdo-shopsession-'+label+'.html'
+          t=open(p,encoding='utf8',errors='replace').read()
+          print('RESPONSE',{'bytes':len(t),'li_products':len(re.findall(r'<li\b[^>]*\bclass=["\x27][^"\x27]*\bproduct\b',t,re.I)),'post_ids':len(set(re.findall(r'\bpost-(\d+)\b',t))), 'no_products':bool(re.search(r'no products|no se han encontrado|no se encontraron|no hay productos',t,re.I)),'loops':len(re.findall(r'<ul\b[^>]*\bclass=["\x27][^"\x27]*\bproducts\b',t,re.I)), 'scroll_script':'elmercado-continuous-catalog-loader-010181' in t,'has_next':bool(re.search(r'/tienda/page/[3-9]/',t))})
+          for word in ['No se han encontrado','No hay productos','woocommerce-no-products-found','woocommerce-info','pagination','product-container']:
+              m=re.search(re.escape(word),t,re.I)
+              if m:print('MARKER',word,re.sub(r'\s+',' ',t[max(0,m.start()-80):m.start()+150])[:230])
+          PY
+            grep -Ei '^(HTTP/|x-emdo-vendor-cache:|x-el-mercado-hot-early-cache:|set-cookie:)' "/tmp/emdo-shopsession-$label.h" | head -n 6 || true
+          done
+          echo '=== INITIAL SESSION COOKIE NAMES ==='
+          awk '/^www.elmercadodeorigen.com/ {print $6}' /tmp/emdo-shop-cookies | head -n 10 || true
+          REMOTE
