@@ -1,0 +1,48 @@
+name: Verify all six native WooCommerce pack pages
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-six-native-mentta-product-pages-20261028.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Check all six real single-product pages, variations and ordinary store pages
+        run: |
+          set -euo pipefail
+          BASE='https://www.elmercadodeorigen.com/producto'
+          for SLUG in \
+            pack-degustacion-pasaporte-salvaje \
+            pack-degustacion-safari-africano \
+            pack-degustacion-vuelta-al-mundo \
+            pack-cafe-esencia-de-costa-rica \
+            pack-cafe-ruta-de-los-cuatro-origenes \
+            pack-cafe-coleccion-completa
+          do
+            FILE="/tmp/native-$SLUG.html"
+            STATUS="$(curl --retry 1 --retry-delay 1 -sSL --connect-timeout 8 --max-time 32 -o "$FILE" -w '%{http_code}' "$BASE/$SLUG/")"
+            echo "NATIVE_PACK_PAGE $SLUG HTTP=$STATUS BYTES=$(wc -c < "$FILE")"
+            test "$STATUS" = 200
+            grep -Eiq 'single-product|woocommerce-product-gallery|product-page-container' "$FILE"
+            grep -Eiq 'site-header|primary-menu|main-navigation|woostify' "$FILE"
+            grep -Eiq 'product_title|entry-title|product-summary' "$FILE"
+            if [[ "$SLUG" == pack-cafe-* ]]; then
+              grep -Eiq 'variations_form|attribute_pa_molienda|variations' "$FILE"
+              echo "VARIABLE_PRODUCT_MOLIENDA_OK $SLUG"
+            fi
+            if grep -Eiq 'Ficha de producto para revisi[oó]n|integraci[oó]n con menta|revisi[oó]n de menta|Esta ficha puede abrirse' "$FILE"; then
+              echo "::error::Obsolete standalone review page found in $SLUG"
+              exit 1
+            fi
+          done
+          for P in / /tienda/ /producto/jamon-de-bellota-100-iberico/; do
+            STATUS="$(curl --retry 1 -sSL --connect-timeout 8 --max-time 30 -o /dev/null -w '%{http_code}' "https://www.elmercadodeorigen.com$P")"
+            echo "STOREFRONT_BASELINE $P HTTP=$STATUS"
+            test "$STATUS" = 200
+          done
+          echo ALL_SIX_NATIVE_WOOCOMMERCE_PAGES_VERIFIED
