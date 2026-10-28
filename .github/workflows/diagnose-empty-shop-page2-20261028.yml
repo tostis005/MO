@@ -1,0 +1,47 @@
+name: Diagnose empty shop page 2 and source hooks 20261028
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/diagnose-empty-shop-page2-20261028.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report product-query customizations in child theme
+        run: |
+          echo '=== PHP PRODUCT QUERY AND SHOP FILTER HOOKS ==='
+          rg -n -l 'pre_get_posts|woocommerce_product_query|woocommerce_shortcode_products_query|woocommerce_products_widget_query_args|posts_per_page|woocommerce_loop_shop_per_page|woocommerce_product_query_meta_query|woocommerce_product_query_tax_query|is_shop\(' elmercadodeorigen-child/inc --glob '*.php' | head -n 90
+          echo '=== MOST LIKELY SOURCE LINES ==='
+          rg -n 'pre_get_posts|woocommerce_product_query|woocommerce_loop_shop_per_page|woocommerce_product_query_meta_query|woocommerce_product_query_tax_query|set\(.paged.|posts_per_page' elmercadodeorigen-child/inc --glob '*.php' | head -n 170
+      - name: Inspect page 1 and page 2 shop HTML on production read-only
+        shell: bash
+        run: |
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          for spec in 'base|/tienda/' 'p2|/tienda/page/2/'; do
+            name="${spec%%|*}";uri="${spec#*|}"
+            curl -ksS --max-time 20 -o "/tmp/emdo-shop-query-$name.html" "https://www.elmercadodeorigen.com$uri"
+          done
+          python3 - <<'PY'
+          import re,html
+          for n in ('base','p2'):
+              t=open('/tmp/emdo-shop-query-'+n+'.html',encoding='utf-8',errors='replace').read()
+              body=re.search(r'<body\b[^>]*>',t,re.I|re.S)
+              ls=re.findall(r'<li\b[^>]*class=["\x27][^"\x27]*\bproduct\b',t,re.I)
+              grid=re.search(r'<ul\b[^>]*class=["\x27][^"\x27]*\bproducts\b[^>]*>',t,re.I)
+              no_match=re.search(r'<p\b[^>]*class=["\x27][^"\x27]*woocommerce-info[^"\x27]*["\x27][^>]*>(.*?)</p>',t,re.I|re.S)
+              js=re.findall(r'<script[^>]*\bid=["\x27]([^"\x27]+)',t,re.I)
+              print('HTML',n,'bytes',len(t),'body',body.group(0)[:420] if body else 'none','grid',grid.group(0)[:300] if grid else 'none','products',len(ls),'info',html.unescape(no_match.group(1)[:250]) if no_match else 'none','script_ids',[s for s in js if 'catalog' in s or 'pagination' in s or 'infinite' in s])
+              print('FILTER_TEXT',n,'emo-continuous-catalog' in t,'elmercado-continuous-catalog-loader-' in t,'woocommerce-no-products-found' in t,'no products were found' in t.lower())
+          PY
+          REMOTE
