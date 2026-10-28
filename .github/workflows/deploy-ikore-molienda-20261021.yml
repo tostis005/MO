@@ -194,3 +194,12 @@ jobs:
           rm -f "/tmp/ikore-smoke-$runid.html" "/tmp/ikore-asset-$runid.webp" "/tmp/ikore-css-$runid.css" "/tmp/ikore-v60-$runid.webp"
           rm -rf "$stage"
           REMOTE
+
+      - name: Browser test selector at 390, 719, 721, 768, 1024 and 1440 pixels
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --check .github/scripts/test-ikore-molienda-responsive-20261028.cjs
+          mkdir -p /tmp/emdo-coffee-browser
+          npm install --prefix /tmp/emdo-coffee-browser --no-save --no-package-lock --no-audit --no-fund playwright@1.55.0
+          NODE_PATH=/tmp/emdo-coffee-browser/node_modules node .github/scripts/test-ikore-molienda-responsive-20261028.cjs
