@@ -1,0 +1,59 @@
+name: Diagnose native WooCommerce template hang for approved product
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/trace-native-woocommerce-pack-20261028.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Temporarily trace one slow template request then remove tracer
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/temporary-native-pack-template-trace-20261028.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$PORT")
+          SCP=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P "$PORT")
+          TARGET="$STAGING_USER@$STAGING_HOST"
+          PROD_PATH="$(sshpass -e ssh "${SSH[@]}" "$TARGET" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?not found}"
+          SRC=".github/scripts/temporary-native-pack-template-trace-20261028.php"
+          DST="$PROD_PATH/wp-content/mu-plugins/000-mdo-native-pack-trace-temporary.php"
+          sshpass -e scp "${SCP[@]}" "$SRC" "$TARGET:/tmp/mdo-native-pack-trace-${GITHUB_RUN_ID}.php"
+          cleanup() {
+            sshpass -e ssh "${SSH[@]}" "$TARGET" "rm -f '$DST' '/tmp/mdo-native-pack-trace-${GITHUB_RUN_ID}.php' '/tmp/mdo-native-pack-trace-20261028.log'" || true
+          }
+          trap cleanup EXIT
+          sshpass -e ssh "${SSH[@]}" "$TARGET" "test ! -f '$DST'; rm -f /tmp/mdo-native-pack-trace-20261028.log; install -m 0644 '/tmp/mdo-native-pack-trace-${GITHUB_RUN_ID}.php' '$DST'; php -l '$DST'"
+          set +e
+          curl -sSL --connect-timeout 7 --max-time 28 -o /dev/null -w 'NATIVE_TEMPLATE_PROBE_HTTP=%{http_code} TOTAL=%{time_total} TTFB=%{time_starttransfer}\n' 'https://www.elmercadodeorigen.com/producto/pack-degustacion-pasaporte-salvaje/'
+          echo "NATIVE_TEMPLATE_CURL_RC=$?"
+          set -e
+          sshpass -e ssh "${SSH[@]}" "$TARGET" 'if test -f /tmp/mdo-native-pack-trace-20261028.log; then tail -60 /tmp/mdo-native-pack-trace-20261028.log; else echo NO_TRACE_FILE; fi'
+          echo TRACE_COLLECTED_CLEANUP_ON_EXIT
