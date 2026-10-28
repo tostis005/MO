@@ -150,4 +150,31 @@ if ($mode!=='rollback') {
         echo 'COFFEE_PACK_COPY_OK '.wp_json_encode(['id'=>$id,'name'=>$p->get_name(),'slug'=>$p->get_slug(),'variations'=>count($p->get_children()),'image'=>$img,'visibility'=>$p->get_catalog_visibility()],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
     }
 } else echo "COFFEE_PACK_COPY_ROLLBACK_COMPLETE\n";
+
+if ($mode==='verify' && class_exists('WC_Mentta_Plugin')) {
+    if (!defined('REST_REQUEST')) define('REST_REQUEST',true);
+    foreach ($catalog as $id=>$item) {
+        $_SERVER['REQUEST_URI']='/wp-json/mentta_marketplace/products?product_id='.$id;
+        $req=new WP_REST_Request('GET','/mentta_marketplace/products');
+        $req->set_param('product_id',$id);
+        $res=WC_Mentta_Plugin::get_products($req);
+        if(!($res instanceof WP_REST_Response)||$res->get_status()!==200)exit(8);
+        $raw=$res->get_data();
+        $data=is_object($raw)?($raw->data??[]):(is_array($raw)?($raw['data']??[]):[]);
+        $entry=is_array($data)?($data[0]??[]):[];
+        if(!is_array($entry)||(int)($entry['Id']??0)!==$id||
+            ($entry['IsVisible']??null)!==true||
+            ($entry['IsInStock']??null)!==true||
+            ($entry['IsPurchasable']??null)!==true||
+            count((array)($entry['Variations']??[]))!==7) {
+            fwrite(STDERR,"COFFEE_PACK_MENTTA_FEED_REGRESSION $id\n");exit(8);
+        }
+        foreach(['Name','Title','ProductName','Description','ShortDescription'] as $field) {
+            if(isset($entry[$field])&&is_string($entry[$field])&&emdo_coffee_copy_has_brand_20261028($entry[$field])) {
+                fwrite(STDERR,"BRAND_REMAINS_IN_MENTTA_{$field} $id\n");exit(9);
+            }
+        }
+        echo "COFFEE_PACK_MENTTA_FEED_OK $id\n";
+    }
+}
 echo "COFFEE_PACK_CUSTOMER_COPY_".strtoupper($mode)."_OK\n";
