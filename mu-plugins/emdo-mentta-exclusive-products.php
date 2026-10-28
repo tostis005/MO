@@ -30,17 +30,24 @@ function emdo_mentta_partner_view_products() {
 
 /** Only the MAIN single-product query can pass the public shop exclusion. */
 function emdo_mentta_partner_direct_product_query( $query ) {
-    if ( ! ( $query instanceof WP_Query ) || ! $query->is_main_query() || ! $query->is_singular( 'product' ) ) { return false; }
+    if ( ! ( $query instanceof WP_Query ) || ! $query->is_main_query() ) { return false; }
+
+    // A real direct product URL can still be unresolved as a singular query
+    // during pre_get_posts. Use its exact canonical route rather than relying
+    // only on WordPress's early is_singular() state.
+    $path = trim( (string) wp_parse_url( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), PHP_URL_PATH ), '/' );
+    $parts = explode( '/', $path );
+    if ( count( $parts ) !== 2 || $parts[0] !== 'producto' ) { return false; }
     $approved = emdo_mentta_partner_view_products();
+    $slug = $parts[1];
+    if ( ! isset( $approved[ $slug ] ) ) { return false; }
+    $id = (int) $approved[ $slug ];
+
+    // Reject incompatible explicit product targets rather than allowing a
+    // query to surface another protected product under a shared URL.
     $requested_id = absint( $query->get( 'p' ) );
-    if ( $requested_id && in_array( $requested_id, array_values( $approved ), true ) ) { return true; }
-    foreach ( array( 'product', 'name', 'pagename' ) as $field ) {
-        $candidate = (string) $query->get( $field );
-        if ( $candidate === '' ) { continue; }
-        $candidate = trim( $candidate, '/' );
-        if ( isset( $approved[ $candidate ] ) ) { return true; }
-    }
-    return false;
+    if ( $requested_id && $requested_id !== $id ) { return false; }
+    return true;
 }
 
 function emdo_mentta_exclusive_public_request() {
