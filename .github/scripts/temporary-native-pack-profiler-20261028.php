@@ -27,6 +27,26 @@ foreach(['the_posts','template_include','woocommerce_product_is_visible','woocom
        return $value;
     }, 100000, 1);
 }
+/**
+ * At most three snapshots of function names. No arguments or object contents.
+ * Find why a product detail view unexpectedly visits thousands of stock checks.
+ */
+add_filter('woocommerce_product_get_stock_status', static function($value,$product) {
+    static $seen=0;
+    ++$seen;
+    if (in_array($seen,[500,2000,10000],true)) {
+        $frames=[];
+        foreach(array_slice(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS,25),0,25) as $frame) {
+            $fn=(string)($frame['function']??'');
+            $cl=(string)($frame['class']??'');
+            $file=basename((string)($frame['file']??''));
+            $frames[] = preg_replace('/[^a-zA-Z0-9_\\.-]/','',($cl?$cl.'::':'').$fn.'@'.$file);
+        }
+        mdo_pack_native_profile_20261028('STOCK_SAMPLE_'.$seen.'_ID_'.(($product instanceof WC_Product)?$product->get_id():0));
+        @file_put_contents($GLOBALS['mdo_pack_profile_file_20261028'], 'STACK_'.$seen.' '.implode(' > ',$frames)."\\n",FILE_APPEND|LOCK_EX);
+    }
+    return $value;
+},100001,2);
 register_shutdown_function(static function() {
     $err = error_get_last();
     $fatal = $err && in_array((int)$err['type'], [E_ERROR,E_PARSE,E_CORE_ERROR,E_COMPILE_ERROR],true);
