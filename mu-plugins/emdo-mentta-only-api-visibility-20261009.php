@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO - Mentta-only API visibility for Montjam
  * Description: Mentta's custom product endpoint receives IsVisible=true for the explicitly protected Montjam duplicate, while the WooCommerce catalogue and public website remain hidden.
- * Version: 1.0.0
+ * Version: 1.1.0
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
@@ -37,3 +37,25 @@ add_filter( 'woocommerce_product_is_visible', static function ( $visible, $produ
     }
     return true;
 }, 10000, 2 );
+
+/**
+ * Same export-only visibility exception for the six tasting packs.
+ * They are hidden from WooCommerce's native catalog, not deleted or drafted.
+ * The standard WooCommerce single product URL remains public.
+ */
+add_filter( 'woocommerce_product_is_visible', static function ( $visible, $product_id ) {
+    $id = (int) $product_id;
+    if ( ! in_array( $id, array( 21814, 21818, 21820, 21904, 21906, 21908 ), true )
+        || ! emdo_montjam_mentta_product_export_request() ) {
+        return $visible;
+    }
+    $product = function_exists( 'wc_get_product' ) ? wc_get_product( $id ) : false;
+    if ( ! $product || 'publish' !== $product->get_status()
+        || 'hidden' !== $product->get_catalog_visibility()
+        || 'yes' !== get_post_meta( $id, '_emdo_mentta_only', true )
+        || ! in_array( 429, array_map( 'intval', $product->get_category_ids() ), true ) ) {
+        return $visible;
+    }
+    return true;
+}, 10001, 2 );
+
