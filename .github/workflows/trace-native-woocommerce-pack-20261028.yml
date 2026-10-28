@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/trace-native-woocommerce-pack-20261028.yml'
+      - '.github/scripts/temporary-native-pack-template-trace-20261028.php'
   workflow_dispatch:
 permissions:
   contents: read
@@ -55,5 +56,5 @@ jobs:
           curl -sSL --connect-timeout 7 --max-time 28 -o /dev/null -w 'NATIVE_TEMPLATE_PROBE_HTTP=%{http_code} TOTAL=%{time_total} TTFB=%{time_starttransfer}\n' 'https://www.elmercadodeorigen.com/producto/pack-degustacion-pasaporte-salvaje/'
           echo "NATIVE_TEMPLATE_CURL_RC=$?"
           set -e
-          sshpass -e ssh "${SSH[@]}" "$TARGET" "for f in '$PROD_PATH/../logs/error_log' '/var/www/vhosts/system/elmercadodeorigen.com/logs/error_log'; do if test -r \"\$f\"; then grep -h 'MDO_NATIVE_TRACE' \"\$f\" | tail -35 || true; fi; done"
+          sshpass -e ssh "${SSH[@]}" "$TARGET" "for f in '$PROD_PATH/../logs/error_log' '/var/www/vhosts/system/elmercadodeorigen.com/logs/error_log'; do if test -r \"\$f\"; then grep -ohE 'MDO_NATIVE_TRACE [0-9.]+ [A-Z0-9_]+ pid=[0-9]+ mem=[0-9.]+MB' \"\$f\" | tail -35 || true; fi; done"
           echo TRACE_COLLECTED_CLEANUP_ON_EXIT
