@@ -74,6 +74,24 @@ foreach($cfg as $id=>$item) {
    wp_strip_all_tags($fresh->get_short_description('edit').' '.$fresh->get_description('edit'))),
  ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
 }
+if($mode==='verify'&&class_exists('WC_Mentta_Plugin')) {
+ if(!defined('REST_REQUEST'))define('REST_REQUEST',true);
+ $_SERVER['REQUEST_URI']='/wp-json/mentta_marketplace/products';
+ foreach(array_keys($cfg) as $id) {
+  $req=new WP_REST_Request('GET','/mentta_marketplace/products');
+  $req->set_param('product_id',$id);
+  $result=WC_Mentta_Plugin::get_products($req);
+  if(!($result instanceof WP_REST_Response)||$result->get_status()!==200)exit(7);
+  $body=$result->get_data();
+  $items=is_object($body)?($body->data??[]):($body['data']??[]);
+  $entry=is_array($items)?($items[0]??[]):[];
+  if(!is_array($entry)||(int)($entry['Id']??0)!==$id||
+     ($entry['IsVisible']??null)!==true||($entry['IsInStock']??null)!==true||
+     ($entry['IsPurchasable']??null)!==true||
+     !in_array(429,array_map('intval',$entry['Categories']??[]),true))exit(8);
+  echo 'CUSTOMER_PACK_FEED_UNCHANGED '.wp_json_encode(['id'=>$id,'status'=>200,'visible'=>true,'stock'=>true])."\n";
+ }
+}
 if($mode==='apply'){
  foreach(array_keys($cfg) as $id)if(function_exists('rocket_clean_post'))rocket_clean_post($id);
  if(class_exists('WC_Cache_Helper'))WC_Cache_Helper::get_transient_version('product',true);
