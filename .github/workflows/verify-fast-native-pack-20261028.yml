@@ -1,0 +1,110 @@
+name: Verify fast native WooCommerce pack with Woostify navigation bypass
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-fast-native-pack-20261028.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-hidden-mentta-safe-test
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 13
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test one real WooCommerce product with automatic rollback on failure
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/emdo-native-mentta-pack-navigation-20261028.php
+          php -l mu-plugins/emdo-mentta-only-api-visibility-20261009.php
+          php -l .github/scripts/migrate-six-packs-to-native-hidden-mentta-20261028.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$PORT")
+          SCP=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P "$PORT")
+          TARGET="$STAGING_USER@$STAGING_HOST"
+          SITE="$(sshpass -e ssh "${SSH[@]}" "$TARGET" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${SITE:?No production root}"
+          RUN="$GITHUB_RUN_ID"
+          sshpass -e scp "${SCP[@]}" mu-plugins/emdo-mentta-only-api-visibility-20261009.php "$TARGET:/tmp/native-mentta-override-$RUN.php"
+          sshpass -e scp "${SCP[@]}" .github/scripts/migrate-six-packs-to-native-hidden-mentta-20261028.php "$TARGET:/tmp/native-mentta-migrate-$RUN.php"
+          sshpass -e scp "${SCP[@]}" mu-plugins/emdo-native-mentta-pack-navigation-20261028.php "$TARGET:/tmp/native-mentta-fastnav-$RUN.php"
+          REMOTE_SCRIPT="/tmp/native-mentta-migrate-$RUN.php"
+          LIVE="$SITE/wp-content/mu-plugins/emdo-mentta-only-api-visibility-20261009.php"
+          BACKUP="$LIVE.native-mentta-test-backup-$RUN"
+          FASTNAV="$SITE/wp-content/mu-plugins/emdo-native-mentta-pack-navigation-20261028.php"
+          SUCCESS=0
+          rollback() {
+            rc=$?
+            if [[ "$SUCCESS" != 1 ]]; then sshpass -e ssh "${SSH[@]}" "$TARGET" "rm -f '$FASTNAV'" || true; fi
+            if [[ "$SUCCESS" != 1 ]]; then
+              echo "::warning::Native product test unsuccessful; restoring old WooCommerce visibility and override"
+              sshpass -e ssh "${SSH[@]}" "$TARGET" "bash -s -- '$SITE' '$REMOTE_SCRIPT' '$LIVE' '$BACKUP'" <<'UNDO' || true
+          SITE="$1"; SCRIPT="$2"; LIVE="$3"; BACKUP="$4"
+          PHP_BIN="$(command -v php || true)"
+          [ -n "$PHP_BIN" ] || PHP_BIN="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          WP_BIN="$(command -v wp)"
+          MDO_HIDE_PACKS_MODE=rollback_one "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "$SCRIPT" --path="$SITE" --allow-root || true
+          if test -f "$BACKUP"; then cp -f "$BACKUP" "$LIVE"; fi
+          "$PHP_BIN" -d memory_limit=512M "$WP_BIN" eval 'if(function_exists("rocket_clean_domain"))rocket_clean_domain();wp_cache_flush();' --path="$SITE" --allow-root || true
+          UNDO
+            fi
+          }
+          trap rollback EXIT
+          sshpass -e ssh "${SSH[@]}" "$TARGET" "bash -s -- '$SITE' '$RUN'" <<'DEPLOY'
+          set -euo pipefail
+          SITE="$1"; RUN="$2"
+          PHP_BIN="$(command -v php || true)"
+          [ -n "$PHP_BIN" ] || PHP_BIN="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          WP_BIN="$(command -v wp)"
+          SCRIPT="/tmp/native-mentta-migrate-$RUN.php"
+          LIVE="$SITE/wp-content/mu-plugins/emdo-mentta-only-api-visibility-20261009.php"
+          "$PHP_BIN" -l "/tmp/native-mentta-override-$RUN.php"
+          MDO_HIDE_PACKS_MODE=preflight "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "$SCRIPT" --path="$SITE" --allow-root
+          test ! -f "$SITE/wp-content/mu-plugins/emdo-native-mentta-pack-navigation-20261028.php"
+          "$PHP_BIN" -l "/tmp/native-mentta-fastnav-$RUN.php"
+          cp -a "$LIVE" "$LIVE.native-mentta-test-backup-$RUN"
+          install -m 0644 "/tmp/native-mentta-fastnav-$RUN.php" "$SITE/wp-content/mu-plugins/emdo-native-mentta-pack-navigation-20261028.php"
+          install -m 0644 "/tmp/native-mentta-override-$RUN.php" "$LIVE"
+          MDO_HIDE_PACKS_MODE=apply_one "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "$SCRIPT" --path="$SITE" --allow-root
+          MDO_HIDE_PACKS_MODE=verify_one "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "$SCRIPT" --path="$SITE" --allow-root
+          DEPLOY
+          URL='https://www.elmercadodeorigen.com/producto/pack-degustacion-pasaporte-salvaje/'
+          CODE="$(curl -sSL --connect-timeout 8 --max-time 38 -o /tmp/native-mentta-test.html -w '%{http_code}' "$URL")"
+          echo "NATIVE_TEST_PRODUCT_HTTP=$CODE"
+          test "$CODE" = 200
+          grep -Eq 'class="[^"]*single-product|woocommerce-product-gallery|product-page-container' /tmp/native-mentta-test.html
+          grep -Eiq 'site-header|primary-menu|main-navigation|woostify' /tmp/native-mentta-test.html
+          grep -Eiq 'Pasaporte Salvaje|Pasaporte salvaje' /tmp/native-mentta-test.html
+          echo "NATIVE_TEMPLATE_HEADER_AND_PRODUCT_VERIFIED"
+          CODE="$(curl -sSL --connect-timeout 8 --max-time 35 -o /dev/null -w '%{http_code}' 'https://www.elmercadodeorigen.com/')"
+          echo "HOMEPAGE_HTTP=$CODE"
+          test "$CODE" = 200
+          CODE="$(curl -sSL --connect-timeout 8 --max-time 35 -o /dev/null -w '%{http_code}' 'https://www.elmercadodeorigen.com/producto/jamon-de-bellota-100-iberico/')"
+          echo "ESTABLISHED_PRODUCT_HTTP=$CODE"
+          test "$CODE" = 200
+          SUCCESS=1
+          echo "FAST_NATIVE_PRODUCT_WITH_NAV_BYPASS_PASSED"
