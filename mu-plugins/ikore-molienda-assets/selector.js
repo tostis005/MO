@@ -27,6 +27,12 @@
     if (form.dataset.emdoIkoreReady) { return; }
     var select = grindSelect(form);
     if (!select) { return; }
+    var table = select.closest('table.variations');
+    var grindRow = select.closest('tr');
+    // The WooCommerce value <td> is narrower than the form on desktop.
+    // Keep the native attribute inside its row, but put the visual cards
+    // after the table so they can use the complete product-form width.
+    if (!table || !grindRow || !form.contains(table)) { return; }
     var options = Array.from(select.options).filter(function (option) { return option.value !== ''; });
     // Never hide the native selector when an unfamiliar variant is encountered.
     if (!options.length || options.some(function (option) {
@@ -57,11 +63,11 @@
       var img = document.createElement('img');
       // Unique URL for V60 avoids stale CDN/browser image caches.
       var filename = type === 'filtro-v60' ? 'filtro-v60-ilustracion.webp' : type + '.webp';
-      img.src = config.assetBase + filename + (type === 'filtro-v60' ? '?v=20261028.1' : '');
+      img.src = config.assetBase + filename + (type === 'filtro-v60' ? '?v=20261028.2' : '');
       if (type === 'filtro-v60') {
         img.onerror = function () {
           img.onerror = null;
-          img.src = config.assetBase + 'filtro-v60.webp?v=20261028.1';
+          img.src = config.assetBase + 'filtro-v60.webp?v=20261028.2';
         };
       }
       img.alt = '';
@@ -88,7 +94,16 @@
     wrap.appendChild(legend);
     wrap.appendChild(help);
     wrap.appendChild(grid);
-    select.insertAdjacentElement('afterend', wrap);
+    table.insertAdjacentElement('afterend', wrap);
+    // WooCommerce's real reset link must remain in the form and clickable.
+    // On single-attribute packs it normally belongs to this row; on
+    // multi-attribute coffees it may be in a different table row.
+    var reset = table.querySelector('a.reset_variations');
+    if (reset) {
+      reset.classList.add('emdo-ikore-reset');
+      wrap.appendChild(reset);
+    }
+    grindRow.classList.add('emdo-ikore-grind-row');
     select.classList.add('emdo-ikore-native');
     select.setAttribute('tabindex', '-1');
     form.dataset.emdoIkoreReady = '1';
