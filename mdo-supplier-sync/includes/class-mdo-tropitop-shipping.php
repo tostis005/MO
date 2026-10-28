@@ -2,9 +2,9 @@
 /**
  * Tropitop-specific WooCommerce shipping guard.
  *
- * Mainland Spain shipping amounts follow the merchant-provided i2Gourmet
- * refrigerated parcel tariff (23 October 2026), inclusive of VAT as shown
- * in the "Precio" column. Bands are upper-inclusive (up to 3/5/10/.../100 kg).
+ * Mainland Spain shipping amounts follow the Tropitop merchant-provided
+ * GLS 19 H urgent shipping tariff (28 October 2026), inclusive of VAT from
+ * the "Precio" column. All 21 weight bands are upper-inclusive (3–100 kg).
  * Other destinations stay blocked until independently verified.
  *
  * Never modify rates for another WCFM vendor.
@@ -81,17 +81,25 @@ final class MDO_Tropitop_Shipping {
         $bands = array(
             3 => 2.95,
             5 => 3.95,
-            10 => 5.95,
+            10 => 6.95,
             15 => 7.95,
             20 => 10.95,
-            30 => 15.95,
-            40 => 20.95,
-            50 => 25.95,
-            60 => 31.95,
-            70 => 38.95,
-            80 => 44.95,
-            90 => 49.95,
-            100 => 55.95,
+            25 => 14.95,
+            30 => 17.95,
+            35 => 21.95,
+            40 => 24.95,
+            45 => 28.95,
+            50 => 31.95,
+            55 => 35.95,
+            60 => 38.95,
+            65 => 41.95,
+            70 => 45.95,
+            75 => 48.95,
+            80 => 52.95,
+            85 => 55.95,
+            90 => 59.95,
+            95 => 62.95,
+            100 => 66.95,
         );
         foreach ( $bands as $maximum_kg => $price ) {
             if ( $kg <= (float) $maximum_kg + 0.000001 ) {
