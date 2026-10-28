@@ -1,0 +1,101 @@
+name: Hide internal SKUs on six native WooCommerce pack pages
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-native-pack-public-copy-20261028.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-pack-public-copy-safe
+  cancel-in-progress: false
+jobs:
+  deploy-and-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy SKU presentation only and verify normal product pages
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/emdo-native-mentta-pack-navigation-20261028.php
+          grep -Fq 'Version: 1.1.0' mu-plugins/emdo-native-mentta-pack-navigation-20261028.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$PORT")
+          SCP=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P "$PORT")
+          TARGET="$STAGING_USER@$STAGING_HOST"
+          SITE="$(sshpass -e ssh "${SSH[@]}" "$TARGET" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${SITE:?Site root not found}"
+          RUN="$GITHUB_RUN_ID"
+          LIVE="$SITE/wp-content/mu-plugins/emdo-native-mentta-pack-navigation-20261028.php"
+          BACKUP="$LIVE.public-sku-backup-$RUN"
+          sshpass -e scp "${SCP[@]}" mu-plugins/emdo-native-mentta-pack-navigation-20261028.php "$TARGET:/tmp/native-pack-public-copy-$RUN.php"
+          SUCCESS=0
+          cleanup() {
+            if [[ "$SUCCESS" != 1 ]]; then
+              echo "::warning::Rolling back pack presentation adjustment"
+              sshpass -e ssh "${SSH[@]}" "$TARGET" "test -f '$BACKUP' && cp -f '$BACKUP' '$LIVE' || true" || true
+            fi
+          }
+          trap cleanup EXIT
+          sshpass -e ssh "${SSH[@]}" "$TARGET" "bash -s -- '$LIVE' '$BACKUP' '$RUN'" <<'REMOTE'
+          set -euo pipefail
+          LIVE="$1"; BACKUP="$2"; RUN="$3"
+          test -f "$LIVE"
+          PHP_BIN="$(command -v php || true)"
+          [ -n "$PHP_BIN" ] || PHP_BIN="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          "$PHP_BIN" -l "/tmp/native-pack-public-copy-$RUN.php"
+          cp -a "$LIVE" "$BACKUP"
+          install -m 0644 "/tmp/native-pack-public-copy-$RUN.php" "$LIVE.tmp-$RUN"
+          mv -f "$LIVE.tmp-$RUN" "$LIVE"
+          grep -Fq 'Version: 1.1.0' "$LIVE"
+          REMOTE
+          BASE="https://www.elmercadodeorigen.com/producto"
+          for SLUG in \
+            pack-degustacion-pasaporte-salvaje \
+            pack-degustacion-safari-africano \
+            pack-degustacion-vuelta-al-mundo \
+            pack-cafe-esencia-de-costa-rica \
+            pack-cafe-ruta-de-los-cuatro-origenes \
+            pack-cafe-coleccion-completa
+          do
+            FILE="/tmp/native-public-$SLUG.html"
+            CODE="$(curl -sSL --connect-timeout 8 --max-time 35 -o "$FILE" -w '%{http_code}' "$BASE/$SLUG/")"
+            echo "CLEAN_PRODUCT $SLUG HTTP=$CODE"
+            test "$CODE" = 200
+            grep -Eiq 'single-product|woocommerce-product-gallery|product-page-container' "$FILE"
+            grep -Eiq 'site-header|main-navigation|woostify' "$FILE"
+            if grep -Eiq 'class=["'\''"][^"'\'']*sku_wrapper' "$FILE"; then
+              echo "::error::Internal SKU still shown publicly on $SLUG"
+              exit 1
+            fi
+            if [[ "$SLUG" == pack-cafe-* ]]; then grep -Eiq 'variations_form|variations' "$FILE"; fi
+          done
+          for URL_PATH in / /tienda/; do
+            CODE="$(curl -sSL --connect-timeout 8 --max-time 35 -o /dev/null -w '%{http_code}' "https://www.elmercadodeorigen.com$URL_PATH")"
+            echo "BASELINE $URL_PATH HTTP=$CODE"
+            test "$CODE" = 200
+          done
+          SUCCESS=1
+          echo NATIVE_PRODUCT_PUBLIC_SKU_HIDE_AND_STABILITY_OK
