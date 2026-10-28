@@ -55,5 +55,5 @@ jobs:
           curl -sSL --connect-timeout 7 --max-time 28 -o /dev/null -w 'NATIVE_TEMPLATE_PROBE_HTTP=%{http_code} TOTAL=%{time_total} TTFB=%{time_starttransfer}\n' 'https://www.elmercadodeorigen.com/producto/pack-degustacion-pasaporte-salvaje/'
           echo "NATIVE_TEMPLATE_CURL_RC=$?"
           set -e
-          sshpass -e ssh "${SSH[@]}" "$TARGET" 'if test -f /tmp/mdo-native-pack-trace-20261028.log; then tail -60 /tmp/mdo-native-pack-trace-20261028.log; else echo NO_TRACE_FILE; fi'
+          sshpass -e ssh "${SSH[@]}" "$TARGET" "for f in '$PROD_PATH/../logs/error_log' '/var/www/vhosts/system/elmercadodeorigen.com/logs/error_log'; do if test -r \"\$f\"; then grep -h 'MDO_NATIVE_TRACE' \"\$f\" | tail -35 || true; fi; done"
           echo TRACE_COLLECTED_CLEANUP_ON_EXIT
