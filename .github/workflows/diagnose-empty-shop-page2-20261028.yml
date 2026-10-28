@@ -20,14 +20,19 @@ jobs:
       - name: Report product-query customizations in child theme
         run: |
           echo '=== PHP PRODUCT QUERY AND SHOP FILTER HOOKS ==='
-          rg -n -l 'pre_get_posts|woocommerce_product_query|woocommerce_shortcode_products_query|woocommerce_products_widget_query_args|posts_per_page|woocommerce_loop_shop_per_page|woocommerce_product_query_meta_query|woocommerce_product_query_tax_query|is_shop\(' elmercadodeorigen-child/inc --glob '*.php' | head -n 90
+          grep -RlE 'pre_get_posts|woocommerce_product_query|woocommerce_shortcode_products_query|woocommerce_products_widget_query_args|posts_per_page|woocommerce_loop_shop_per_page|woocommerce_product_query_meta_query|woocommerce_product_query_tax_query|is_shop\(' elmercadodeorigen-child/inc --include='*.php' | head -n 90
           echo '=== MOST LIKELY SOURCE LINES ==='
-          rg -n 'pre_get_posts|woocommerce_product_query|woocommerce_loop_shop_per_page|woocommerce_product_query_meta_query|woocommerce_product_query_tax_query|set\(.paged.|posts_per_page' elmercadodeorigen-child/inc --glob '*.php' | head -n 170
+          grep -RnE 'pre_get_posts|woocommerce_product_query|woocommerce_loop_shop_per_page|woocommerce_product_query_meta_query|woocommerce_product_query_tax_query|set\(.paged.|posts_per_page' elmercadodeorigen-child/inc --include='*.php' | head -n 170
       - name: Inspect page 1 and page 2 shop HTML on production read-only
         shell: bash
         run: |
           sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
           sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          echo '=== DEPLOYED CONTINUOUS SCROLL PHP FILE ==='
+          F=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-continuous-loading-010176.php
+          test -r "$F" && (grep -nE "elmercado-continuous-catalog-loader|elmercado-continuous-catalog-history|wp_footer|wp_head" "$F" | tail -n 12; sha256sum "$F") || echo 'SCROLL_SOURCE_MISSING'
+          echo '=== FOOTER ACTION REMOVAL IN DEPLOYED THEME ==='
+          grep -RlnE "remove_all_actions\\(.*wp_footer|remove_action\\(.*wp_footer" /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc --include='*.php' 2>/dev/null | head -n 25 || true
           for spec in 'base|/tienda/' 'p2|/tienda/page/2/'; do
             name="${spec%%|*}";uri="${spec#*|}"
             curl -ksS --max-time 20 -o "/tmp/emdo-shop-query-$name.html" "https://www.elmercadodeorigen.com$uri"
