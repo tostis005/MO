@@ -32,3 +32,19 @@ jobs:
           21906|/wp-content/uploads/mentta-ikore-packs/pack-ikore-ruta-cuatro-origenes-fotos-originales-sin-molienda-v2.jpg
           21908|/wp-content/uploads/mentta-ikore-packs/pack-ikore-coleccion-completa-fotos-originales-sin-molienda-v2.jpg
           LIST
+      - name: Diagnose speed and HTTP status of private vs shareable pages
+        run: |
+          set +e
+          for URI in \
+            / \
+            /producto/jamon-de-bellota-100-iberico-montjam-mentta/ \
+            /producto/pack-musee-mentta-pasaporte-salvaje/ \
+            /producto/pack-cafe-especialidad-esencia-costa-rica-ikore/ \
+            /producto/pack-cafe-especialidad-coleccion-completa-ikore/
+          do
+            echo "CHECK_REQUEST $URI"
+            curl -sS -L --connect-timeout 6 --max-time 16 -o /dev/null \
+              -w "DIAG uri=$URI code=%{http_code} total=%{time_total} connect=%{time_connect} ttfb=%{time_starttransfer} redirect=%{num_redirects} bytes=%{size_download}\n" \
+              "https://www.elmercadodeorigen.com$URI"
+            echo "CURL_EXIT=$?"
+          done
