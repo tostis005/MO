@@ -1,0 +1,155 @@
+name: Finalize optional slash and nested category filter coverage 20261029
+on:
+  push:
+    branches: [feature/scoped-filter-guard-20261029]
+    paths: ['.github/workflows/finalize-scoped-filter-path-coverage-20261029.yml']
+permissions:
+  contents: read
+concurrency:
+  group: emdo-production-finalize-scoped-guard-20261029
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: Compile and unit-test comprehensive scope parser
+        run: |
+          set -Eeuo pipefail
+          cd ops/emdo-filter-gate
+          gofmt -w main.go main_test.go
+          GO111MODULE=off go test -v .
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /tmp/emdo-gate-final main.go
+      - name: Stage binary for atomic release
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+          sshpass -e scp -q -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -P "$STAGING_PORT" /tmp/emdo-gate-final "$STAGING_USER@$STAGING_HOST:/tmp/emdo-gate-final-20261029.stage"
+      - name: Apply route fixes with backup and live verification
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          VHOST=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          GLOBAL=/etc/nginx/conf.d/95-emdo-filter-signed-admission-20261027.conf
+          BIN=/usr/local/sbin/emdo-filter-gate
+          STAGE=/tmp/emdo-gate-final-20261029.stage
+          STAMP='# BEGIN EMDO FINAL SCOPED SLASH AND HIERARCHY GUARD 20261029'
+          test "$(id -u)" -eq 0
+          test -s "$VHOST" && test -s "$GLOBAL" && test -s "$BIN" && test -s "$STAGE"
+          grep -Fq '# BEGIN EMDO SCOPED FULL-SITE FILTER GATE 20261029' "$VHOST"
+          systemctl is-active --quiet emdo-filter-gate.service
+          nginx -t
+          if grep -Fq "$STAMP" "$VHOST";then echo 'PATH_COVERAGE_ALREADY_INSTALLED';exit 0;fi
+          BK=/root/emdo-filter-route-final-$(date -u +%Y%m%dT%H%M%SZ)
+          install -d -m 0700 "$BK"
+          cp -p "$VHOST" "$BK/vhost_nginx.conf"
+          cp -p "$GLOBAL" "$BK/95-emdo-filter-signed-admission-20261027.conf"
+          cp -p "$BIN" "$BK/emdo-filter-gate"
+          changed=0
+          rollback() {
+           rc=$?
+           trap - EXIT
+           if [ "$rc" != 0 ] && [ "$changed" = 1 ];then
+            cp -p "$BK/vhost_nginx.conf" "$VHOST"
+            cp -p "$BK/95-emdo-filter-signed-admission-20261027.conf" "$GLOBAL"
+            cp -p "$BK/emdo-filter-gate" "$BIN"
+            systemctl restart emdo-filter-gate.service || true
+            nginx -t && systemctl reload nginx || true
+            echo 'ROLLBACK_COMPLETE'
+           fi
+           rm -f "$STAGE"
+           exit "$rc"
+          }
+          trap rollback EXIT
+          python3 - "$VHOST" "$GLOBAL" <<'PY'
+          import sys
+          p,g=sys.argv[1:]
+          s=open(p,encoding='utf8').read()
+          old='^/(?:tienda|en/(?:store|tienda))/[a-z0-9][a-z0-9-]*/(?:page/[1-9][0-9]*/)?$'
+          new='^/(?:tienda|en/(?:store|tienda))/[a-z0-9][a-z0-9-]*(?:/page/[1-9][0-9]*)?/?$'
+          assert s.count(old)==1,('vendor regex',s.count(old))
+          s=s.replace(old,new,1)
+          old='^/(?:categoria-producto|en/product-category)/[a-z0-9][a-z0-9-]*/(?:page/[1-9][0-9]*/)?$'
+          new='^/(?:categoria-producto|en/product-category)/(?:[a-z0-9][a-z0-9-]*/){0,4}[a-z0-9][a-z0-9-]*(?:/page/[1-9][0-9]*)?/?$'
+          assert s.count(old)==1,('category regex',s.count(old))
+          s=s.replace(old,new,1)
+          needle='location = /tienda {\n'
+          assert s.count(needle)==1
+          addition='''location = /en/store {
+              error_page 419 = @emdo_signed_filter_gate;
+              if ($emdo_gate_has_filters) { return 419; }
+              return 301 /en/store/;
+          }
+          location = /en/tienda {
+              error_page 419 = @emdo_signed_filter_gate;
+              if ($emdo_gate_has_filters) { return 419; }
+              return 301 /en/store/;
+          }
+          '''
+          s=s.replace(needle,addition+needle,1)
+          s+='\n# BEGIN EMDO FINAL SCOPED SLASH AND HIERARCHY GUARD 20261029\n# END EMDO FINAL SCOPED SLASH AND HIERARCHY GUARD 20261029\n'
+          open(p,'w',encoding='utf8').write(s)
+          original=open(g,encoding='utf8').read()
+          old='~*^/(?:categoria-producto|en/product-category)/[a-z0-9][a-z0-9-]*(?:/page/[1-9][0-9]*)?/?$ 1;'
+          new='~*^/(?:categoria-producto|en/product-category)/(?:[a-z0-9][a-z0-9-]*/){0,4}[a-z0-9][a-z0-9-]*(?:/page/[1-9][0-9]*)?/?$ 1;'
+          assert original.count(old)==1
+          open(g,'w',encoding='utf8').write(original.replace(old,new,1))
+          print('ROUTE_COVERAGE no_final_slash + nested_category + en_shop_alias')
+          PY
+          changed=1
+          install -m 0755 "$STAGE" "$BIN"
+          systemctl restart emdo-filter-gate.service
+          systemctl is-active --quiet emdo-filter-gate.service
+          nginx -t
+          systemctl reload nginx
+          sleep 2
+          BASE=https://www.elmercadodeorigen.com
+          UA=EMDO-Complete-Route-Coverage-Smoke/20261029
+          H="$(mktemp)"
+          check_redirect(){
+           label="$1";path="$2";expect="$3"
+           code="$(curl -ksS --connect-timeout 3 --max-time 9 -A "$UA" -D "$H" -o /dev/null -w '%{http_code}' "$BASE$path")"
+           loc="$(grep -i '^location:' "$H" | tr -d '\r' | tail -n 1)"
+           echo "$label $code $loc"
+           test "$code" = 302
+           test "$loc" = "location: $expect"
+          }
+          check_redirect no_slash_vendor '/tienda/1957?filter_preparacion=x' /tienda/1957/
+          check_redirect no_slash_hidalgo '/en/store/hidalgo-de-la-jara?filter_preparacion=x' /en/store/hidalgo-de-la-jara/
+          check_redirect no_slash_category '/categoria-producto/jamones-paletas?filter_calidad=x' /categoria-producto/jamones-paletas/
+          check_redirect nested_category '/categoria-producto/quesos/curados/?filter_calidad=x' /categoria-producto/quesos/curados/
+          check_redirect nested_category_no_slash '/categoria-producto/quesos/curados?filter_calidad=x' /categoria-producto/quesos/curados/
+          check_redirect nested_en_category '/en/product-category/cheese/aged/?filter_calidad=x' /en/product-category/cheese/aged/
+          check_redirect en_shop_no_slash '/en/store?filter_calidad=x' /en/store/
+          check_redirect standard_1957 '/tienda/1957/?filter_calidad=x' /tienda/1957/
+          echo '=== RIGHT VENDOR ALLOWED, WRONG VENDOR REJECTED ==='
+          code="$(curl -ksS --connect-timeout 3 --max-time 9 -A "$UA" -H "Referer: $BASE/tienda/1957/" -o "$H.html" -w '%{http_code}' "$BASE/tienda/1957/?filter_preparacion=deshuesado")"
+          test "$code" = 200
+          grep -q 'Verificando acceso a los filtros' "$H.html"
+          code="$(curl -ksS --connect-timeout 3 --max-time 9 -A "$UA" -H "Referer: $BASE/tienda/montjam/" -o /dev/null -w '%{http_code}' "$BASE/tienda/1957/?filter_preparacion=deshuesado")"
+          test "$code" = 302
+          echo '=== MATCHING CATEGORY ALLOWED, DIFFERENT CATEGORY DENIED ==='
+          code="$(curl -ksS --connect-timeout 3 --max-time 9 -A "$UA" -H "Referer: $BASE/categoria-producto/quesos/curados/" -o "$H.html" -w '%{http_code}' "$BASE/categoria-producto/quesos/curados/?filter_calidad=x")"
+          test "$code" = 200
+          grep -q 'Verificando acceso a los filtros' "$H.html"
+          code="$(curl -ksS --connect-timeout 3 --max-time 9 -A "$UA" -H "Referer: $BASE/categoria-producto/quesos/" -o /dev/null -w '%{http_code}' "$BASE/categoria-producto/quesos/curados/?filter_calidad=x")"
+          test "$code" = 302
+          echo '=== CLEAN VENDOR STILL AVAILABLE ==='
+          code="$(curl -ksS --connect-timeout 3 --max-time 20 -A "$UA" -o /dev/null -w '%{http_code}' "$BASE/tienda/1957/")"
+          test "$code" = 200
+          nginx -t
+          echo 'COMPLETE_SCOPE_ROUTING_VERIFIED'
+          echo "BACKUP_DIR=$BK"
+          rm -f "$H" "$H.html"
+          REMOTE
