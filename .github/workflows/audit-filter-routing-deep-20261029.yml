@@ -91,7 +91,7 @@ jobs:
              m=rx.match(line)
              if not m:continue
              ts=m.group(1).decode('ascii','replace')
-             if ts[:17] not in hours:continue
+             if ts[:15] not in hours:continue
              req=m.group(2).decode('utf8','replace').split()
              if len(req)<2:continue
              method,url=req[:2];pathpart,sep,q=url.partition('?')
@@ -108,10 +108,10 @@ jobs:
              else:
               u=urllib.parse.urlsplit(ref)
               refer='internal' if u.hostname in ('www.elmercadodeorigen.com','elmercadodeorigen.com') else 'external'
-             c[(ts[:17],cat,code)]+=1
-             refc[(ts[:17],cat,code,refer)]+=1
+             c[(ts[:15],cat,code)]+=1
+             refc[(ts[:15],cat,code,refer)]+=1
              # normalized path only; no values
-             statuspath[(ts[:17],cat,code,pathpart)]+=1
+             statuspath[(ts[:15],cat,code,pathpart)]+=1
            for h in sorted(hours):
             matches=[(key[1],key[2],v) for key,v in c.items() if key[0]==h]
             if not matches:continue
