@@ -62,7 +62,7 @@ jobs:
           }
           map $http_cookie $emdo_20261029_hidalgo_real_session {
               default 0;
-              ~*(?:^|;\s*)(?:wordpress_logged_in_[^=]*|wp_woocommerce_session_[^=]*|woocommerce_items_in_cart|woocommerce_cart_hash)= 1;
+              ~*(?:wordpress_logged_in_[^=]*|wp_woocommerce_session_[^=]*|woocommerce_items_in_cart|woocommerce_cart_hash)= 1;
           }
           map "$uri:$emdo_20261029_hidalgo_internal_ref:$emdo_20261029_hidalgo_real_session" $emdo_20261029_hidalgo_direct_key {
               default "";
