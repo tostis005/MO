@@ -46,7 +46,7 @@ jobs:
              first_party) arg=(-H 'Referer: https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/') ;;
              signed) arg=(-H 'Cookie: emdo_filter_pass=invalid-test') ;;
            esac
-           curl --noproxy '*' -ksS --connect-timeout 3 --max-time 14 -A 'EMDO-Anonymous-Edge-Audit/20261029' \${arg[@]} -D "$HEAD" -o "$BODY" -w "$kind status=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} bytes=%{size_download}\n" "$BASE" || true
+           curl --noproxy '*' -ksS --connect-timeout 3 --max-time 14 -A 'EMDO-Anonymous-Edge-Audit/20261029' ${arg[@]} -D "$HEAD" -o "$BODY" -w "$kind status=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} bytes=%{size_download}\n" "$BASE" || true
            grep -iE '^(x-emdo-vendor-cache|cache-control|set-cookie|location|x-emdo-nginx-hot-cache):' "$HEAD" | sed -E 's/^(set-cookie):.*/\1: REDACTED/' | head -n 9
            rm -f "$HEAD" "$BODY"
           done
