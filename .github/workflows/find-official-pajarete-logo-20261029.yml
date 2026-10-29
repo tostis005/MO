@@ -1,0 +1,14 @@
+name: Find official Quesos Pajarete round store logo
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/find-official-pajarete-logo-20261029.yml','.github/scripts/find-official-pajarete-logo-20261029.py']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -u .github/scripts/find-official-pajarete-logo-20261029.py
