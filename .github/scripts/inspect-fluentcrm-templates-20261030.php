@@ -21,15 +21,16 @@ foreach(['\\FluentCrm\\App\\Http\\Controllers\\CampaignController','\\FluentCrm\
  }
 }
 foreach([8,7,11] as $id) {
- $c=$cls::find($id);if(!$c)continue;
- echo 'REFERENCE_BODY='.wp_json_encode(['id'=>$id,'template'=>(string)$c->design_template,'body'=>(string)$c->email_body],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\\n";
+ $campaign=$cls::find($id);
+ if(!$campaign)continue;
+ echo 'REFERENCE_BODY='.wp_json_encode(['id'=>$id,'template'=>(string)$campaign->design_template,'body'=>(string)$campaign->email_body],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
 }
-$controller='\\\\FluentCrm\\\\App\\\\Http\\\\Controllers\\\\CampaignController';
+$controller='\\FluentCrm\\App\\Http\\Controllers\\CampaignController';
 if(class_exists($controller)) {
  $reflection=new ReflectionMethod($controller,'sendTestEmail');
  $source=file($reflection->getFileName(), FILE_IGNORE_NEW_LINES);
  for($i=$reflection->getStartLine();$i<=$reflection->getEndLine();$i++){
-  echo 'TEST_SOURCE='.$i.' '.($source[$i-1]??'')."\\n";
+  echo 'TEST_SOURCE='.$i.' '.($source[$i-1]??'')."\n";
  }
 }
-echo "FLUENT_AUDIT_COMPLETE\\n";
+echo "FLUENT_AUDIT_COMPLETE\n";
