@@ -1,0 +1,92 @@
+name: Read-only incident add-to-cart attribution 20261029
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/incident-cart-referrer-audit-20261029.yml']
+permissions:
+  contents: write
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'python3 -' > /tmp/cart-report.json <<'PYREMOTE'
+          import os,re,json,datetime,urllib.parse,collections
+          root='/var/www/vhosts/system/elmercadodeorigen.com/logs'
+          now=datetime.datetime.now(datetime.timezone.utc)
+          cut=now-datetime.timedelta(minutes=18)
+          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"([^"]+)"\s+(\d{3})\s+\S+(?:\s+"([^"]*)"\s+"([^"]*)")?')
+          out={}
+          for fn in ('access_ssl_log','proxy_access_ssl_log'):
+            p=os.path.join(root,fn)
+            status=collections.Counter();method=collections.Counter();ref=collections.Counter()
+            ip=collections.Counter();paths=collections.Counter();type_status=collections.Counter()
+            values=collections.Counter();ua=collections.Counter();minutes=collections.Counter()
+            total=0; variants=set()
+            with open(p,'rb') as f:
+              f.seek(0,os.SEEK_END);f.seek(max(0,f.tell()-25000000))
+              if f.tell():f.readline()
+              for raw in f:
+                m=rx.match(raw.decode('utf8','replace'))
+                if not m:continue
+                ipaddr,ds,req,code,referer,agent=m.groups()
+                try:d=datetime.datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(datetime.timezone.utc)
+                except:continue
+                if not cut<=d<=now:continue
+                parts=req.split()
+                if len(parts)<2:continue
+                target=urllib.parse.urlsplit(parts[1])
+                if not re.search(r'(?:^|&)add-to-cart=',target.query,re.I):continue
+                total+=1;status[code]+=1;method[parts[0]]+=1;ip[ipaddr]+=1
+                if referer in ('-',None,''):rt='no_referer'
+                elif 'elmercadodeorigen.com' in referer:rt='same_site'
+                else:rt='other_site'
+                ref[rt]+=1;type_status[(rt,code)]+=1
+                if target.path.startswith('/producto/'):ptype='product'
+                elif target.path.startswith('/en/product/'):ptype='english_product'
+                elif target.path.startswith('/categoria-producto/'):ptype='category'
+                elif target.path.startswith('/tienda/'):ptype='store'
+                elif target.path in ('/',''):ptype='home'
+                else:ptype='article_or_other'
+                paths[(ptype,code)]+=1
+                try:q=urllib.parse.parse_qs(target.query);v=q.get('add-to-cart',[''])[0]
+                except:v=''
+                values['all_numeric' if v.isdigit() else 'invalid']+=1
+                variants.add(v[:100])
+                aa=agent or ''
+                if re.search(r'bot|spider|crawl|curl|wget|python',aa,re.I):ua['bot_named']+=1
+                elif 'Mozilla/5.0' in aa:ua['browser_claim']+=1
+                else:ua['other']+=1
+                minutes[d.strftime('%H:%M')]+=1
+            out[fn]={'requests':total,'status':status,'methods':method,'referrers':ref,
+              'ref_status':[([r,c],n) for (r,c),n in type_status.most_common(15)],
+              'path_status':[([p,c],n) for (p,c),n in paths.most_common(15)],
+              'unique_ips':len(ip),'largest_ip_count':max(ip.values()) if ip else 0,
+              'top10_ip_share':round(sum(n for _,n in ip.most_common(10))/total,3) if total else 0,
+              'unique_cart_product_values':len(variants),'value_types':values,'ua':ua,'minutes':sorted(minutes.items())[-18:]}
+          print(json.dumps({'generated_utc':now.isoformat(),'window_minutes':18,'cart':out},ensure_ascii=False))
+          PYREMOTE
+          python3 -m json.tool /tmp/cart-report.json >/dev/null
+      - name: Save aggregate report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import os,json,base64,urllib.request
+          with open('/tmp/cart-report.json','rb') as f:data=f.read()
+          path='diagnostics/emdo-incident-cart-referrer-20261029.json'
+          url='https://api.github.com/repos/'+os.environ['GH_REPO']+'/contents/'+path
+          body=json.dumps({'message':'Record anonymous cart burst attribution [skip ci]','content':base64.b64encode(data).decode(),'branch':'main'}).encode()
+          req=urllib.request.Request(url,data=body,method='PUT',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'})
+          with urllib.request.urlopen(req,timeout=25) as r:print('REPORT_SAVED',r.status)
+          PY
