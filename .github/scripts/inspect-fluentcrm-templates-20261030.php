@@ -20,4 +20,16 @@ foreach(['\\FluentCrm\\App\\Http\\Controllers\\CampaignController','\\FluentCrm\
   echo 'FLUENT_METHOD='.wp_json_encode(['class'=>$class,'method'=>$m->name,'file'=>$m->getFileName(),'start'=>$m->getStartLine(),'end'=>$m->getEndLine(),'parameters'=>array_map(static function($p){return ['name'=>$p->name,'optional'=>$p->isOptional()];},$m->getParameters())],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
  }
 }
-echo "FLUENT_AUDIT_COMPLETE\n";
+foreach([8,7,11] as $id) {
+ $c=$cls::find($id);if(!$c)continue;
+ echo 'REFERENCE_BODY='.wp_json_encode(['id'=>$id,'template'=>(string)$c->design_template,'body'=>(string)$c->email_body],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\\n";
+}
+$controller='\\\\FluentCrm\\\\App\\\\Http\\\\Controllers\\\\CampaignController';
+if(class_exists($controller)) {
+ $reflection=new ReflectionMethod($controller,'sendTestEmail');
+ $source=file($reflection->getFileName(), FILE_IGNORE_NEW_LINES);
+ for($i=$reflection->getStartLine();$i<=$reflection->getEndLine();$i++){
+  echo 'TEST_SOURCE='.$i.' '.($source[$i-1]??'')."\\n";
+ }
+}
+echo "FLUENT_AUDIT_COMPLETE\\n";
