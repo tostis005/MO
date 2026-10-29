@@ -63,7 +63,8 @@ jobs:
            if [ "$rc" != 0 ] && [ "$changed" = 1 ];then
             cp -p "$BK/vhost_nginx.conf" "$VHOST"
             cp -p "$BK/95-emdo-filter-signed-admission-20261027.conf" "$GLOBAL"
-            cp -p "$BK/emdo-filter-gate" "$BIN"
+            cp -p "$BK/emdo-filter-gate" "$BIN.restore.tmp"
+            mv -f "$BIN.restore.tmp" "$BIN"
             systemctl restart emdo-filter-gate.service || true
             nginx -t && systemctl reload nginx || true
             echo 'ROLLBACK_COMPLETE'
@@ -81,7 +82,7 @@ jobs:
           assert s.count(old)==1,('vendor regex',s.count(old))
           s=s.replace(old,new,1)
           old='^/(?:categoria-producto|en/product-category)/[a-z0-9][a-z0-9-]*/(?:page/[1-9][0-9]*/)?$'
-          new='^/(?:categoria-producto|en/product-category)/(?:[a-z0-9][a-z0-9-]*/){0,4}[a-z0-9][a-z0-9-]*(?:/page/[1-9][0-9]*)?/?$'
+          new='^/(?:categoria-producto|en/product-category)/(?:[a-z0-9][a-z0-9-]*/)*[a-z0-9][a-z0-9-]*(?:/page/[1-9][0-9]*)?/?$'
           assert s.count(old)==1,('category regex',s.count(old))
           s=s.replace(old,new,1)
           needle='location = /tienda {\n'
@@ -102,13 +103,14 @@ jobs:
           open(p,'w',encoding='utf8').write(s)
           original=open(g,encoding='utf8').read()
           old='~*^/(?:categoria-producto|en/product-category)/[a-z0-9][a-z0-9-]*(?:/page/[1-9][0-9]*)?/?$ 1;'
-          new='~*^/(?:categoria-producto|en/product-category)/(?:[a-z0-9][a-z0-9-]*/){0,4}[a-z0-9][a-z0-9-]*(?:/page/[1-9][0-9]*)?/?$ 1;'
+          new='~*^/(?:categoria-producto|en/product-category)/(?:[a-z0-9][a-z0-9-]*/)*[a-z0-9][a-z0-9-]*(?:/page/[1-9][0-9]*)?/?$ 1;'
           assert original.count(old)==1
           open(g,'w',encoding='utf8').write(original.replace(old,new,1))
           print('ROUTE_COVERAGE no_final_slash + nested_category + en_shop_alias')
           PY
           changed=1
-          install -m 0755 "$STAGE" "$BIN"
+          install -m 0755 "$STAGE" "$BIN.new.tmp"
+          mv -f "$BIN.new.tmp" "$BIN"
           systemctl restart emdo-filter-gate.service
           systemctl is-active --quiet emdo-filter-gate.service
           nginx -t
