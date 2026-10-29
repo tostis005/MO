@@ -1,0 +1,63 @@
+name: Readonly production cache and attacker routing snapshot 20261029
+on:
+  push:
+    branches: [diagnostic/site-availability-20261029]
+    paths: ['.github/workflows/incident-followup-vhost-20261029.yml']
+permissions: { contents: read }
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Inspect cache and dynamic bypass without changes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set +e
+          V=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          echo '=== MAIN ROUTING LOCATIONS ==='
+          grep -n -E 'location = /tienda/hidalgo-de-la-jara/|location @emdo_vendor_cache_origin|location @emdo_hot_static_origin|proxy_cache_bypass|proxy_no_cache|proxy_cache_key|emdo_vendor_skip_cache|emdo_vendor_cache' "$V" | head -n 110
+          echo '=== CACHE RELATED NGINX SNIPPET ==='
+          grep -n -A38 -B5 'location @emdo_vendor_cache_origin' "$V" | head -n 115
+          grep -n -A25 -B4 'location @emdo_hot_static_origin' "$V" | head -n 110
+          echo '=== ACTIVE GLOBAL LAYER FILES ==='
+          ls -1 /etc/nginx/conf.d/*emdo* 2>/dev/null | head -n 65
+          echo '=== REMOTE LOOPBACK HTTPS NO PROXY ==='
+          for url in 'https://www.elmercadodeorigen.com/' 'https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/' 'https://www.elmercadodeorigen.com/mi-cuenta/';do
+             curl -sSk --noproxy '*' --resolve www.elmercadodeorigen.com:443:127.0.0.1 --connect-timeout 3 --max-time 8 -o /dev/null -w 'code=%{http_code} ttfb=%{time_starttransfer} time=%{time_total}\n' "$url" || true
+          done
+          echo '=== RECENT REQUEST PATTERNS ==='
+          python3 - <<'PY'
+          import os,re,collections,datetime,hashlib
+          fn='/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log'
+          d=collections.Counter();sources=collections.defaultdict(set);codes=collections.Counter();methods=collections.Counter();agents=collections.Counter();refs=collections.Counter();pathqs=collections.Counter()
+          cutoff=datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(minutes=12)
+          with open(fn,'rb') as f:
+            f.seek(max(0,os.path.getsize(fn)-27000000))
+            for raw in f:
+              s=raw.decode('utf8','replace')
+              m=re.match(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"([^"]+)"\s+(\d{3})\s+\S+\s+"([^"]*)"\s+"([^"]*)"',s)
+              if not m:continue
+              ip,when,req,code,ref,ua=m.groups()
+              try:dt=datetime.datetime.strptime(when,'%d/%b/%Y:%H:%M:%S %z').astimezone(datetime.timezone.utc)
+              except:continue
+              if dt<cutoff:continue
+              parts=req.split()
+              if len(parts)<2:continue
+              method,url=parts[:2];path=url.split('?')[0];bucket='hidalgo' if path in ['/tienda/hidalgo-de-la-jara/','/en/store/hidalgo-de-la-jara/'] else 'other'
+              d[bucket]+=1;sources[bucket].add(hashlib.sha256(ip.encode()).hexdigest()[:12]);codes[(bucket,code)]+=1;methods[(bucket,method)]+=1
+              if bucket=='hidalgo':
+                agents['browser_claim' if 'Mozilla' in ua else 'crawler_or_other']+=1
+                refs['site' if 'elmercadodeorigen.com' in ref else 'not_site']+=1
+                pathqs['with_query' if '?' in url else 'clean']+=1
+          print('REQUESTS',dict(d),'UNIQUE_IPS',{k:len(v) for k,v in sources.items()},'STATUS',dict(codes),'METHODS',dict(methods),'AGENTS',dict(agents),'REFERERS',dict(refs),'QUERY',dict(pathqs))
+          PY
+          echo '=== SERVICE LOAD ==='; uptime; ps -eo stat=,args= | awk '/php-fpm: pool elmercadodeorigen.com/ {n++;if ($1~/R/)r++} END{print "PHP_WORKERS",n,"RUNNING",r}'
+          REMOTE
