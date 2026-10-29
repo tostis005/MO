@@ -1,0 +1,53 @@
+name: Verify warm public-page Nginx cache HIT and bypass 20261029
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/verify-public-page-nginx-cache-20261029.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Verify real cache headers without logging personal data
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          conf=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          grep -Fq '# BEGIN EMDO SAFE PUBLIC PAGE CACHE 20261029' "$conf"
+          nginx -t
+          h=$(mktemp)
+          root=https://www.elmercadodeorigen.com
+          for item in 'product|/producto/carcasa-de-pato/' 'category|/categoria-producto/embutidos-y-curados/page/2/' 'blog|/como-se-crian-vacas-wagyu-japon/'; do
+            label=$(printf '%s' "$item" | cut -d '|' -f 1)
+            url=$(printf '%s' "$item" | cut -d '|' -f 2)
+            echo "=== $label ==="
+            for attempt in 1 2 3 4; do
+              : > "$h"
+              curl -ksS --connect-timeout 3 --max-time 12 -D "$h" -o /dev/null -w 'http=%{http_code} ttfb=%{time_starttransfer}s\n' "$root$url" || true
+              grep -Ei '^(x-emdo-public-cache|x-el-mercado-product-early-cache|x-el-mercado-blog-early-cache|x-emdo-nginx-hot-cache):' "$h" | tr -d '\r' || true
+              awk 'BEGIN{n=0} tolower($1)=="set-cookie:"{n++} END{print "set_cookie_headers="n}' "$h"
+              grep -Ei '^(vary|cache-control|x-accel-expires):' "$h" | tr -d '\r' | head -3 || true
+            done
+          done
+          echo '=== CACHE STORAGE ==='
+          find /var/cache/nginx/emdo-public-v1 -type f | wc -l
+          echo '=== BYPASS TEST ==='
+          for mode in 'Cookie: woocommerce_items_in_cart=1' 'Cookie: wordpress_logged_in_test=1'; do
+            : > "$h"
+            curl -ksS --connect-timeout 3 --max-time 10 -H "$mode" -D "$h" -o /dev/null "$root/producto/carcasa-de-pato/" || true
+            grep -i '^x-emdo-public-cache:' "$h" || true
+            if grep -qi '^x-emdo-public-cache: HIT' "$h"; then echo 'UNSAFE_CACHED_SESSION';exit 1;fi
+          done
+          rm -f "$h"
+          REMOTE
