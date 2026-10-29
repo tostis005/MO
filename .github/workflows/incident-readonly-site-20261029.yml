@@ -1,0 +1,58 @@
+name: Readonly live site outage audit 20261029
+on:
+  push:
+    branches: [diagnostic/site-availability-20261029]
+    paths: ['.github/workflows/incident-readonly-site-20261029.yml']
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: External current uncached and canonical domain response
+        shell: bash
+        run: |
+          set +e
+          for u in 'https://www.elmercadodeorigen.com/' 'https://elmercadodeorigen.com/' 'https://www.elmercadodeorigen.com/tienda/' 'https://www.elmercadodeorigen.com/mi-cuenta/' 'https://www.elmercadodeorigen.com/tienda/entre-setas/' 'https://www.elmercadodeorigen.com/?emdo_health_probe=20261029'; do
+            echo "CHECK_URL=$u"
+            curl -sSkL --connect-timeout 4 --max-time 12 -o /dev/null -w 'code=%{http_code} ip=%{remote_ip} first_byte=%{time_starttransfer} total=%{time_total} redirects=%{num_redirects} final=%{url_effective}\n' "$u" || true
+          done
+      - name: Read only production infrastructure logs and local origin
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set +e
+          echo '=== CLOCK ==='; date -u
+          echo '=== LOAD ==='; uptime; free -m; df -h /
+          echo '=== SERVICES ==='; for v in nginx apache2 plesk-php82-fpm mariadb mysql; do echo "$v $(systemctl is-active "$v")"; done
+          echo '=== NGINX SYNTAX ==='; nginx -t 2>&1 | tail -n 6
+          echo '=== WORKER SUMMARY ==='
+          ps -eo stat=,etime=,args= | awk '/php-fpm: pool elmercadodeorigen.com/ {n++;if ($1~/R/)r++; if ($1~/D/)d++;} END{print "PHP_WORKERS",n,"RUNNING",r,"IO_WAIT",d}'
+          echo '=== TOP CPU PROCESSES ==='; ps -eo pid,stat,%cpu,%mem,etime,comm --sort=-%cpu | head -n 18
+          echo '=== LOCAL VHOST ENDPOINTS ==='
+          for h in www.elmercadodeorigen.com elmercadodeorigen.com;do
+            for p in / /mi-cuenta/ /tienda/ /tienda/entre-setas/;do
+              printf 'LOCAL %s%s ' "$h" "$p"
+              curl -sk --resolve "$h:443:127.0.0.1" --connect-timeout 2 --max-time 9 -o /dev/null -w 'status=%{http_code} first_byte=%{time_starttransfer} total=%{time_total}\n' "https://$h$p" || true
+            done
+          done
+          echo '=== UNCACHED LOCAL ==='
+          curl -sk --resolve 'www.elmercadodeorigen.com:443:127.0.0.1' --connect-timeout 2 --max-time 9 -o /dev/null -w 'status=%{http_code} first_byte=%{time_starttransfer} total=%{time_total}\n' 'https://www.elmercadodeorigen.com/?incident_uncached=20261029' || true
+          echo '=== ERROR LOG RECENT ==='
+          for f in /var/www/vhosts/system/elmercadodeorigen.com/logs/proxy_error_log /var/www/vhosts/system/elmercadodeorigen.com/logs/error_log /var/log/plesk-php82-fpm/error.log /var/log/nginx/error.log;do
+            if test -f "$f";then echo "FILE $f"; tail -n 22 "$f" | cut -c1-320;fi
+          done
+          echo '=== PHP FPM RECENT JOURNAL ==='
+          journalctl -u plesk-php82-fpm -n 16 --no-pager -o short-iso 2>/dev/null | cut -c1-300
+          echo '=== MYSQL QUICK ==='; mysqladmin ping 2>&1 | head -n 4
+          echo '=== LAST HTTP STATUS HISTOGRAM ==='
+          tail -n 9000 /var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log 2>/dev/null | awk 'match($0, /" [0-9][0-9][0-9] /) {s=substr($0,RSTART+2,3); a[s]++} END{for(s in a)print s,a[s]}' | sort -k2nr | head -n 12
+          REMOTE
