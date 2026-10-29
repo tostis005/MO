@@ -52,7 +52,7 @@ if ids:
 # Classic WooCommerce shipping calculator (independent from the Store API).
 # It is safe to submit country and postal code with an anonymous cart:
 # this does not create an order or submit a payment.
-for country,state,city,postcode in [('ES','M','Madrid','28001'),('ES','P','Palencia','34001'),('ES','PM','Palma','07001'),('PT','','Lisboa','1000-001')]:
+for country,state,city,postcode in [('ES','M','Madrid','28001'),('ES','P','Palencia','34001'),('ES','PM','Palma','07001'),('PT','','Lisboa','1000-001'),('ES','GC','Las Palmas','35001'),('ES','CE','Ceuta','51001'),('ES','ML','Melilla','52001'),('FR','','Paris','75001')]:
  try:
   resp=session.get(base+'carrito/',timeout=28)
   soup=BeautifulSoup(resp.text,'html.parser')
@@ -74,3 +74,23 @@ for country,state,city,postcode in [('ES','M','Madrid','28001'),('ES','P','Palen
         'shipping_summary',text[:650],'method_inputs',
         [(x.get('id'),x.get('value')) for x in row.select('input.shipping_method')] if row else [],flush=True)
  except Exception as exc:print('CLASSIC_SHIPPING_ERROR',country,postcode,str(exc)[:180],flush=True)
+
+# Check whether a 130 EUR order changes the flat shipping rule; original
+# manufacturer checkout only, no order submission.
+if ids:
+ high=requests.Session();high.headers.update(session.headers)
+ high.get(base+'product/seta-de-ostra-ecologica/',timeout=28)
+ added=high.get(base+'?add-to-cart='+ids[0]+'&quantity=20',timeout=30)
+ hcart=high.get(base+'wp-json/wc/store/v1/cart',timeout=30).json()
+ print('HIGH_VALUE_CART',hcart.get('totals',{}).get('total_items'),[(x.get('quantity'),x.get('name')) for x in hcart.get('items',[])],flush=True)
+ for country,state,city,postcode in [('ES','M','Madrid','28001'),('PT','','Lisboa','1000-001')]:
+  try:
+   f=BeautifulSoup(high.get(base+'carrito/',timeout=25).text,'html.parser').select_one('form.woocommerce-shipping-calculator')
+   if not f:break
+   data={x.get('name'):(x.get('value') or '') for x in f.select('input[name],select[name]') if x.get('type') not in ('radio','checkbox')}
+   data.update({'calc_shipping_country':country,'calc_shipping_state':state,'calc_shipping_city':city,'calc_shipping_postcode':postcode,'calc_shipping':'1'})
+   resp=high.post(f.get('action') or base+'carrito/',data=data,timeout=32)
+   row=BeautifulSoup(resp.text,'html.parser').select_one('tr.shipping')
+   msg=' '.join(row.stripped_strings) if row else ''
+   print('HIGH_VALUE_SHIPPING',country,postcode,'status',resp.status_code,'summary',msg[:160],flush=True)
+  except Exception as e:print('HIGH_VALUE_RATE_ERROR',country,str(e)[:180],flush=True)
