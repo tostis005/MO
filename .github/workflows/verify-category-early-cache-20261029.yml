@@ -1,0 +1,54 @@
+name: Verify category cache after Set-Cookie workaround 20261029
+on:
+  push:
+    branches: ['diagnostic/category-cache-cookie-20261029']
+    paths: ['.github/workflows/verify-category-early-cache-20261029.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Check deployed PHP, cache and headers without personal data
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+          DROPIN="$ROOT/wp-content/advanced-cache.php"
+          /opt/plesk/php/8.2/bin/php -l "$DROPIN"
+          if ! grep -Fq 'elmercado-category-static-v1' "$DROPIN"; then
+            echo 'CATEGORY_EARLY_DROPIN_NOT_YET_DEPLOYED'
+            exit 2
+          fi
+          echo 'CATEGORY_DROPIN_INSTALLED'
+          H=$(mktemp)
+          URL=https://www.elmercadodeorigen.com/categoria-producto/embutidos-y-curados/page/2/
+          for attempt in 1 2 3; do
+            : > "$H"
+            curl -ksS --connect-timeout 3 --max-time 20 -D "$H" -o /dev/null -w 'http=%{http_code} ttfb=%{time_starttransfer}s\n' "$URL" || true
+            grep -Ei '^(x-emdo-public-cache|x-el-mercado-category-early-cache):' "$H" | tr -d '\r' || true
+            grep -i '^set-cookie:' "$H" | sed -E 's/^[Ss]et-[Cc]ookie:[[:space:]]*([^=;[:space:]]+).*/cookie_name=\1/' | head -5 || true
+          done
+          CACHE="$ROOT/wp-content/uploads/elmercado-category-static-v1"
+          if test -d "$CACHE"; then
+            echo "EARLY_FILES=$(find "$CACHE" -maxdepth 1 -type f -name '*.html' | wc -l)"
+          else
+            echo 'EARLY_FILES=0'
+          fi
+          echo '=== Bypass ==='
+          : > "$H"
+          curl -ksS --connect-timeout 3 --max-time 8 -H 'Cookie: woocommerce_items_in_cart=1' -D "$H" -o /dev/null "$URL" || true
+          if grep -qi '^x-emdo-public-cache: HIT' "$H";then echo 'DANGER_SHARED_CART';exit 1;fi
+          if grep -qi '^x-el-mercado-category-early-cache: HIT' "$H";then echo 'DANGER_EARLY_CART';exit 1;fi
+          echo 'STATEFUL_BYPASS_OK'
+          rm -f "$H"
+          REMOTE
