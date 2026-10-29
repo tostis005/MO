@@ -1,0 +1,137 @@
+name: Repair bypassed English shop origin and reuse anonymous producer cache 20261029
+on:
+  push:
+    branches: [diagnostic/site-availability-20261029]
+    paths: ['.github/workflows/repair-cache-and-en-shop-20261029.yml']
+permissions: { contents: read }
+concurrency:
+  group: emdo-emergency-cache-shop-20261029
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Apply guarded Nginx patch and verify cache and scoped URLs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          test "$(id -u)" -eq 0
+          V=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          G=/etc/nginx/conf.d/92-emdo-en-shop-origin-guard-20261029.conf
+          MARK='# BEGIN EMDO UNIVERSAL ANON CACHE VARY AND ENGLISH SHOP BYPASS FIX 20261029'
+          test -s "$V"
+          nginx -t
+          test ! -e "$G"
+          ! grep -Fq "$MARK" "$V"
+          grep -Fq 'location @emdo_vendor_cache_origin {' "$V"
+          grep -Fq 'proxy_cache_lock_age 15s;' "$V"
+          BK=/root/emdo-cache-en-shop-fix-$(date -u +%Y%m%dT%H%M%SZ)
+          install -d -m 0700 "$BK"
+          cp -p "$V" "$BK/vhost_nginx.conf"
+          echo "BACKUP_DIR=$BK"
+          changed=0
+          rollback(){
+            rc=$?
+            trap - EXIT
+            if [ "$rc" -ne 0 ] && [ "$changed" = 1 ];then
+              cp -p "$BK/vhost_nginx.conf" "$V"
+              rm -f "$G"
+              nginx -t && systemctl reload nginx || true
+              echo 'ROLLBACK_COMPLETE'
+            fi
+            exit "$rc"
+          }
+          trap rollback EXIT
+          cat > "$G" <<'CONF'
+          # English legacy /en/shop pagination with QUERY used to evade the
+          # earlier /tienda/, /en/store and category filter gate.
+          # Drop external direct filtered/query links before WordPress; real
+          # in-site navigation remains possible, with a GLOBAL origin cap.
+          map $http_referer $emdo_en_shop_local_referer {
+              default 0;
+              ~*^https?://(www\.)?elmercadodeorigen\.com(?:/|$) 1;
+          }
+          map "$uri|$args|$emdo_en_shop_local_referer" $emdo_en_shop_direct_query {
+              default 0;
+              ~*^/en/shop(?:/page/[1-9][0-9]*)?/?\|[^|]+\|0$ 1;
+          }
+          map "$uri|$args" $emdo_en_shop_query_budget_key {
+              default "";
+              ~*^/en/shop(?:/page/[1-9][0-9]*)?/?\|[^|]+$ "emdo-en-shop-dynamic";
+          }
+          limit_req_zone $emdo_en_shop_query_budget_key zone=emdo_en_shop_query_global:1m rate=2r/s;
+          limit_conn_zone $emdo_en_shop_query_budget_key zone=emdo_en_shop_query_conn:1m;
+          CONF
+          python3 - "$V" <<'PY'
+          import sys
+          p=sys.argv[1]
+          s=open(p,encoding='utf8').read()
+          start=s.index('location @emdo_vendor_cache_origin {')
+          end=s.index('\n}',start)
+          block=s[start:end]
+          assert block.count('proxy_cache_lock_timeout 15s;')==1
+          assert block.count('proxy_cache_lock_age 15s;')==1
+          assert block.count('proxy_ignore_headers Cache-Control Expires;')==1
+          block=block.replace('proxy_cache_lock_timeout 15s;', 'proxy_cache_lock_timeout 60s;')
+          block=block.replace('proxy_cache_lock_age 15s;', 'proxy_cache_lock_age 60s;')
+          block=block.replace('proxy_ignore_headers Cache-Control Expires;', 'proxy_ignore_headers Cache-Control Expires Vary;')
+          # Reuse already safe anonymous cache while revalidating in background.
+          # Never ignore Set-Cookie: session-bearing upstream replies still cannot be stored.
+          block=block.replace('    proxy_cache_methods GET;',
+            '    proxy_cache_methods GET;\n    proxy_cache_use_stale updating error timeout http_500 http_502 http_503 http_504;\n    proxy_cache_background_update on;')
+          s=s[:start]+block+s[end:]
+          # Safe at server level: the maps produce EMPTY keys except English
+          # paginated shop URLs containing a query string.
+          s+='\n# BEGIN EMDO UNIVERSAL ANON CACHE VARY AND ENGLISH SHOP BYPASS FIX 20261029\n'
+          s+='if ($emdo_en_shop_direct_query) { return 302 /en/shop/; }\n'
+          s+='limit_req zone=emdo_en_shop_query_global burst=10 nodelay;\n'
+          s+='limit_conn emdo_en_shop_query_conn 2;\n'
+          s+='# END EMDO UNIVERSAL ANON CACHE VARY AND ENGLISH SHOP BYPASS FIX 20261029\n'
+          open(p,'w',encoding='utf8').write(s)
+          print('APPLIED: CACHED VARY FIX, STALE REVALIDATION, ENGLISH SHOP DIRECT QUERY GATE')
+          PY
+          changed=1
+          nginx -t
+          systemctl reload nginx
+          sleep 2
+          BASE=https://www.elmercadodeorigen.com
+          H=$(mktemp)
+          for p in '/en/shop/page/2?orderby=price' '/en/shop/page/7/?filter_calidad=x' '/en/shop/?min_price=8';do
+             c=$(curl -ksS --connect-timeout 4 --max-time 12 -o /dev/null -D "$H" -w '%{http_code}' "$BASE$p")
+             l=$(grep -i '^location:' "$H" | tail -n1 | tr -d '\r')
+             echo "DIRECT_ALIAS $p CODE=$c $l"
+             test "$c" = 302
+             case "$l" in 'location: /en/shop/') ;; *) exit 7;; esac
+          done
+          echo '=== ORIGIN SAFE ANON CACHED ==='
+          for i in 1 2 3;do
+             c=$(curl -ksS --connect-timeout 4 --max-time 25 -D "$H" -o /dev/null -w '%{http_code}' "$BASE/tienda/hidalgo-de-la-jara/")
+             h=$(grep -i '^x-emdo-vendor-cache:' "$H" | tr -d '\r' | tail -n1)
+             echo "ANON_VENDOR $i $c $h"
+             test "$c" = 200
+             if echo "$h" | grep -qi HIT;then break;fi
+          done
+          grep -qi '^x-emdo-vendor-cache: HIT' "$H"
+          echo '=== WRONG FILTER DIRECT PROTECTED ==='
+          c=$(curl -ksS --connect-timeout 4 --max-time 10 -D "$H" -o /dev/null -w '%{http_code}' "$BASE/tienda/hidalgo-de-la-jara/?filter_preparacion=x")
+          echo "FILTER_DIRECT $c"
+          test "$c" = 302
+          echo '=== CART MUST NOT GET ANONYMOUS CACHE ==='
+          c=$(curl -ksS --connect-timeout 4 --max-time 30 -H 'Cookie: woocommerce_items_in_cart=1' -D "$H" -o /dev/null -w '%{http_code}' "$BASE/tienda/hidalgo-de-la-jara/")
+          echo "CART $c"
+          test "$c" = 200
+          ! grep -qi '^x-emdo-vendor-cache: HIT' "$H"
+          echo '=== PRODUCTION NGINX VALID ==='
+          nginx -t
+          echo 'SAFE_CACHE_AND_ENGLISH_SHOP_BYPASS_REPAIR_VERIFIED'
+          echo "BACKUP_DIR=$BK"
+          REMOTE
