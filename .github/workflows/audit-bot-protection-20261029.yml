@@ -1,0 +1,87 @@
+name: Audit bot protection trend (read-only, 2026-10-29)
+on:
+  push:
+    branches: [audit/bot-protection-20261029]
+    paths: ['.github/workflows/audit-bot-protection-20261029.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install SSH helper
+        run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Read bounded Nginx and Apache records and compare cache routing
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          echo '=== LIVE RESOURCE SNAPSHOT ==='
+          date -u; uptime
+          ps -eo stat=,args= | awk '/php-fpm: pool elmercadodeorigen.com/ {n++;if ($1~/^R/)r++} END{print "PHP_WORKERS",n,"RUNNING",r}'
+          echo '=== PROTECTION INSTALLATION ==='
+          nginx -t 2>&1 | tail -n 3
+          systemctl is-active emdo-filter-gate.service || true
+          grep -Fhc '# BEGIN EMDO SIGNED FILTER ADMISSION 20261027' /var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf || true
+          grep -Fhc '# BEGIN EMDO UNIVERSAL VENDOR NGINX CACHE 20261028' /var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf || true
+          grep -Fhc '# BEGIN EMDO SPANISH SHOP CACHE 20261028' /var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf || true
+          echo '=== AGGREGATED ACCESS LOGS FROM 2026-10-27 UTC ==='
+          nice -n 15 python3 - <<'PY'
+          import os,re,datetime,collections,json
+          base='/var/www/vhosts/system/elmercadodeorigen.com/logs/'
+          start=datetime.datetime(2026,10,27,tzinfo=datetime.timezone.utc)
+          pattern=re.compile(rb'^\S+\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"([^"]+)"\s+(\d{3})\s')
+          for name in ('proxy_access_ssl_log','access_ssl_log'):
+           for suffix in ('','.1'):
+            path=base+name+suffix
+            if not os.path.isfile(path):continue
+            n=os.path.getsize(path);limit=(220 if name.startswith('proxy_') else 140)*1024*1024;offset=max(0,n-limit)
+            counts=collections.Counter();hours=collections.defaultdict(collections.Counter)
+            earliest=latest=None
+            with open(path,'rb',buffering=262144) as f:
+             if offset:f.seek(offset);f.readline()
+             for line in f:
+              m=pattern.match(line)
+              if not m:continue
+              try:t=datetime.datetime.strptime(m.group(1).decode('ascii'),'%d/%b/%Y:%H:%M:%S %z').astimezone(datetime.timezone.utc)
+              except ValueError:continue
+              if t<start:continue
+              if earliest is None:earliest=t
+              latest=t
+              req=m.group(2).decode('utf-8','replace').split()
+              if len(req)<2:continue
+              url=req[1];route,sep,query=url.partition('?');status=m.group(3).decode('ascii')
+              hour=t.strftime('%m-%d %H')
+              counts['requests']+=1;counts['status_'+status]+=1;hours[hour]['requests']+=1
+              if status=='429':hours[hour]['429']+=1
+              if status.startswith('5'):hours[hour]['5xx']+=1
+              if 'filter_' in query or 'emo_vendor_cat=' in query:
+               counts['filter_requests']+=1;hours[hour]['filters']+=1
+               if status=='429':counts['filter_429']+=1;hours[hour]['filter_429']+=1
+               if status=='302':counts['filter_302']+=1
+               if 'hidalgo-de-la-jara' in route:counts['filters_hidalgo']+=1
+               elif 'montjam' in route:counts['filters_montjam']+=1
+               elif route.startswith('/tienda/') or route.startswith('/en/store/'):counts['filters_other_producers']+=1;hours[hour]['filters_other_producers']+=1
+               elif 'categoria-producto' in route or 'product-category' in route:counts['filters_categories']+=1
+              if route.startswith('/wp-admin/admin-ajax.php'):counts['admin_ajax']+=1
+              if route.startswith('/wp-json/'):counts['rest']+=1
+            print('LOG_AGGREGATES',json.dumps({'file':name+suffix,'bytes_total':n,'bytes_scanned':n-offset,'truncated':bool(offset),'earliest_utc':str(earliest),'latest_utc':str(latest),'counts':counts,'hours':hours},default=dict,ensure_ascii=False))
+          PY
+          echo '=== CURRENT CACHE HIT/MISS PROBES ==='
+          for path in '/tienda/' '/tienda/hidalgo-de-la-jara/' '/tienda/1957/' '/tienda/montjam/'; do
+            for attempt in 1 2; do
+              hdr="$(mktemp)"
+              stat="$(curl -ksS --connect-timeout 3 --max-time 15 -A 'EMDO-safe-bot-audit/20261029' -D "$hdr" -o /dev/null -w 'http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total}' "https://www.elmercadodeorigen.com$path" || true)"
+              cache="$(grep -i '^x-emdo-vendor-cache:' "$hdr" | tail -n 1 | tr -d '\r' | cut -d' ' -f2- || true)"
+              echo "CACHE path=$path attempt=$attempt $stat cache=$cache"
+              rm -f "$hdr"
+            done
+          done
+          echo 'AUDIT_COMPLETE_READ_ONLY'
+          REMOTE
