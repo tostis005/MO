@@ -112,5 +112,48 @@ jobs:
               rm -f "$hdr"
             done
           done
+          echo '=== HISTORICAL APACHE DAILY AND HOURLY BACKEND TRAFFIC ==='
+          nice -n 15 python3 - <<'PY'
+          import gzip,os,re,datetime,collections,json
+          base='/var/www/vhosts/system/elmercadodeorigen.com/logs/'
+          pat=re.compile(rb'^\S+\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"([^"]+)"\s+(\d{3})\s')
+          start=datetime.datetime(2026,10,27,0,0,tzinfo=datetime.timezone.utc)
+          combined=collections.defaultdict(collections.Counter)
+          for i in (1,2,3):
+           path=base+'access_ssl_log.processed.'+str(i)+'.gz'
+           if not os.path.isfile(path):continue
+           c=collections.Counter();hourly=collections.defaultdict(collections.Counter);min_t=max_t=None;bad=0
+           with gzip.open(path,'rb') as f:
+            for line in f:
+             m=pat.match(line)
+             if not m:bad+=1;continue
+             try:t=datetime.datetime.strptime(m.group(1).decode('ascii'),'%d/%b/%Y:%H:%M:%S %z').astimezone(datetime.timezone.utc)
+             except ValueError:bad+=1;continue
+             if t<start:continue
+             min_t=t if min_t is None or t<min_t else min_t
+             max_t=t if max_t is None or t>max_t else max_t
+             req=m.group(2).decode('utf-8','replace').split()
+             if len(req)<2:continue
+             url=req[1];route,sep,query=url.partition('?');status=m.group(3).decode('ascii')
+             hour=t.strftime('%Y-%m-%dT%H:00Z')
+             c['requests']+=1;hourly[hour]['requests']+=1;combined[hour]['requests']+=1
+             if status=='429':c['429']+=1;hourly[hour]['429']+=1;combined[hour]['429']+=1
+             if status.startswith('5'):c['5xx']+=1;hourly[hour]['5xx']+=1;combined[hour]['5xx']+=1
+             if status in ('200','301','302','403'):c['status_'+status]+=1
+             if route.startswith('/wp-admin/admin-ajax.php'):c['admin_ajax']+=1;hourly[hour]['admin_ajax']+=1;combined[hour]['admin_ajax']+=1
+             if route.startswith('/wp-json/'):c['rest']+=1
+             if route.startswith('/tienda/') and '?' not in url:c['producer_or_shop_clean']+=1
+             if 'filter_' in query or 'emo_vendor_cat=' in query:
+              c['filter']+=1;hourly[hour]['filter']+=1;combined[hour]['filter']+=1
+              if status=='429':c['filter_429']+=1;hourly[hour]['filter_429']+=1;combined[hour]['filter_429']+=1
+              if status=='200':c['filter_200']+=1;hourly[hour]['filter_200']+=1
+              if 'hidalgo-de-la-jara' in route:c['filter_hidalgo']+=1;hourly[hour]['filter_hidalgo']+=1;combined[hour]['filter_hidalgo']+=1
+              elif 'montjam' in route:c['filter_montjam']+=1;hourly[hour]['filter_montjam']+=1;combined[hour]['filter_montjam']+=1
+              elif route.startswith('/tienda/') or route.startswith('/en/store/'):c['filter_other_producer']+=1;hourly[hour]['filter_other_producer']+=1;combined[hour]['filter_other_producer']+=1
+              elif 'categoria-producto' in route or '/product-category/' in route:c['filter_category']+=1;hourly[hour]['filter_category']+=1;combined[hour]['filter_category']+=1
+              else:c['filter_other']+=1
+           print('ARCHIVE_SUMMARY',json.dumps({'archive':i,'earliest_utc':str(min_t),'latest_utc':str(max_t),'bad_lines':bad,'counts':c,'hourly':hourly},default=dict))
+          print('COMBINED_HOURLY_BACKEND',json.dumps({k:combined[k] for k in sorted(combined)},default=dict))
+          PY
           echo 'AUDIT_COMPLETE_READ_ONLY'
           REMOTE
