@@ -207,9 +207,16 @@ final class MDO_Woo_Importer {
 			$product->set_status( 'draft' );
 			$product->set_catalog_visibility( 'hidden' );
 		}
-		// This producer may be prepared in WooCommerce, but cannot trade until
-		// shipping, commercial agreement and media rights are explicitly signed off.
+		// An owner-requested publication of a *specific existing* EntreSetas
+		// product is independent of supplier licensing/contract assertions.
+		// Never turn a commercial/media verification flag on merely because
+		// someone requests a public listing. New products are not auto-approved.
+		$entresetas_explicitly_listed = 'entresetas' === (string) $supplier['code']
+			&& $existing_id > 0
+			&& '1' === (string) get_post_meta( $existing_id, '_mdo_entresetas_publication_user_requested', true )
+			&& (int) $product->get_image_id() > 0;
 		if ( 'entresetas' === (string) $supplier['code'] &&
+			! $entresetas_explicitly_listed &&
 			( ! get_option( 'mdo_entresetas_commercial_ready', false ) ||
 			  ! get_option( 'mdo_entresetas_media_authorized', false ) ) ) {
 			$product->set_status( 'draft' );
