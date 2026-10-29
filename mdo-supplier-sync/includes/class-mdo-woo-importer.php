@@ -818,8 +818,10 @@ final class MDO_Woo_Importer {
 			throw new RuntimeException( 'EntreSetas: origen inválido para clasificación.' );
 		}
 		$title = remove_accents( mb_strtolower( (string) ( $payload['title'] ?? '' ), 'UTF-8' ) );
-		if ( preg_match( '/\b(?:matcha|infusion|extracto|reishi|melena de leon)\b/u', $title ) ) {
-			$label = 'Infusiones y extractos de setas'; $slug = 'entresetas-infusiones-extractos';
+		if ( preg_match( '/\b(?:extracto|reishi|melena de leon|cordyceps)\b/u', $title ) ) {
+			$label = 'Extractos de setas'; $slug = 'extractos-de-setas';
+		} elseif ( preg_match( '/\b(?:matcha|infusion|te de setas)\b/u', $title ) ) {
+			$label = 'Infusiones y tés de setas'; $slug = 'infusiones-y-tes-de-setas';
 		} elseif ( preg_match( '/\b(?:harina|sal de|sal con|polvo)\b/u', $title ) ) {
 			$label = 'Harinas y sales de setas'; $slug = 'entresetas-harinas-sales';
 		} elseif ( preg_match( '/(?:deshidratad|boletus edulis|trompeta de los muertos|colmenillas|angula de monte|niscalos)/u', $title ) ) {

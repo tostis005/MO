@@ -1,0 +1,28 @@
+name: EntreSetas original checkout shipping quotes audit
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/source-entresetas-shipping-20261029.yml','.github/scripts/source-entresetas-shipping-20261029.py']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  quote:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read public shipping checkout without ordering
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m venv /tmp/en-shipping-python
+          /tmp/en-shipping-python/bin/pip -q install requests
+          /tmp/en-shipping-python/bin/python -u .github/scripts/source-entresetas-shipping-20261029.py | tee /tmp/en-source-shipping.txt
+      - name: Save public quote evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: entre-setas-source-shipping-samples
+          path: /tmp/en-source-shipping.txt
+          if-no-files-found: warn
+          retention-days: 20
