@@ -182,7 +182,7 @@ jobs:
           BASE=https://www.elmercadodeorigen.com
           UA='EMDO-Scoped-Guard-Smoke/20261029'
           TD="$(mktemp -d)"
-          trap 'rm -rf "$TD"; rollback' EXIT
+          trap rollback EXIT
           check_direct() {
             label="$1";url="$2";expect="$3"
             code="$(curl -ksS --connect-timeout 3 --max-time 9 -A "$UA" -D "$TD/head" -o /dev/null -w '%{http_code}' "$BASE$url")"
