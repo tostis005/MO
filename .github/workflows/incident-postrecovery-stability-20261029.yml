@@ -1,0 +1,42 @@
+name: Readonly post recovery stability check EMDO 20261029
+on:
+  push:
+    branches: [diagnostic/site-availability-20261029]
+    paths: ['.github/workflows/incident-postrecovery-stability-20261029.yml']
+permissions: { contents: read }
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: External live checks
+        shell: bash
+        run: |
+          set +e
+          for spec in 'home|https://www.elmercadodeorigen.com/' 'shop|https://www.elmercadodeorigen.com/tienda/' 'account|https://www.elmercadodeorigen.com/mi-cuenta/' 'hidalgo_internal|https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/';do
+            n="${spec%%|*\}"; u="${spec#*|\}"
+            echo "CHECK=$n"
+            curl -sSkL -H 'Referer: https://www.elmercadodeorigen.com/tienda/' --connect-timeout 4 --max-time 12 -o /dev/null -w 'http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total}\n' "$u" || true
+          done
+      - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Check live php utilization and emergency guard remained active
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set +e
+          echo '=== POST STATUS ==='; date -u; uptime; free -m | head -n 3
+          echo '=== PHP WORKERS ==='; ps -eo stat=,etime=,args= | awk '/php-fpm: pool elmercadodeorigen.com/ {n++;if ($1~/R/)r++;} END{print "EMDO_PHP",n,"RUNNING",r}'
+          echo '=== NGINX FPM MYSQL ==='
+          systemctl is-active nginx plesk-php82-fpm mysql
+          echo '=== RESTRICTION IS ACTIVE ==='
+          grep -n 'EMDO ANON HIDALGO OUTAGE RELIEF' /var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          grep -n 'zone=emdo_20261029_hidalgo_direct_rate' /etc/nginx/conf.d/98-emdo-hidalgo-anon-incident-20261029.conf
+          echo '=== RECENT ORIGIN TIMEOUTS AND THROTTLES ==='
+          tail -n 120 /var/www/vhosts/system/elmercadodeorigen.com/logs/proxy_error_log 2>/dev/null | grep -Ei 'upstream timed out|limiting requests|connect\(\) failed' | tail -n 8 | sed -E 's/client: [^,]+/client: REDACTED/' | cut -c1-250
+          REMOTE
