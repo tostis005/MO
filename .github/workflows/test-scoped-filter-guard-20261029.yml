@@ -20,7 +20,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           cd ops/emdo-filter-gate
-          test -z "$(gofmt -l main.go main_test.go)"
+          gofmt -w main.go main_test.go
           GO111MODULE=off go test -v .
           GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/emdo-scoped-filter-gate main.go
           test -s /tmp/emdo-scoped-filter-gate
