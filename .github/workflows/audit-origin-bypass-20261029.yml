@@ -1,0 +1,75 @@
+name: Read-only origin and routing bypass audit 2026-10-29
+on:
+  push:
+    branches: [audit/bot-protection-20261029]
+    paths: ['.github/workflows/audit-origin-bypass-20261029.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Check public TCP ingress without sending HTTP to Apache
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import socket
+          hostname="www.elmercadodeorigen.com"
+          for p in (443,7080,7081):
+           try:
+            sock=socket.create_connection((hostname,p),timeout=3)
+            sock.close()
+            print("EXTERNAL_TCP",p,"REACHABLE")
+           except OSError as e:
+            print("EXTERNAL_TCP",p,"NOT_REACHABLE",type(e).__name__)
+          PY
+      - name: Inspect origin listeners, proxy matching, and recent log correlation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          echo '=== APACHE PORT BINDINGS (NO ADDRESSES) ==='
+          ss -H -ltn 2>/dev/null | awk '{split($4,a,":");p=a[length(a)]; if(p=="7080"||p=="7081"||p=="443"){b=($4 ~ /127[.]0[.]0[.]1|[[]::1[]]/)?"loopback_only":"non_loopback";print "LISTENER",p,b}}' | sort -u
+          echo '=== IP TRUST & NGINX FRONT-GUARD COUNTS ==='
+          python3 - <<'PY'
+          import glob,re,os,collections
+          paths=['/etc/nginx/nginx.conf']+glob.glob('/etc/nginx/conf.d/*.conf')+glob.glob('/var/www/vhosts/system/elmercadodeorigen.com/conf/*nginx*.conf')
+          for p in paths:
+           if not os.path.isfile(p):continue
+           s=open(p,errors='replace').read()
+           if any(n in s for n in ('set_real_ip_from','real_ip_header','real_ip_recursive')):
+            print('REAL_IP_CONFIG',os.path.basename(p),dict((n,len(re.findall(r'(?m)^\s*'+n+r'\b',s))) for n in ('set_real_ip_from','real_ip_header','real_ip_recursive')))
+          PY
+          echo '=== SAMPLED PHP AND WEB LOAD ==='
+          uptime
+          ps -eo stat=,args= | awk '/php-fpm: pool elmercadodeorigen.com/ {n++;if($1~/^R/)r++} END {print "FPM_COUNT",n,"ACTIVE",r}'
+          echo '=== EVIDENCE OF TARGETED GATE AUDIT REQUESTS IN APACHE VS NGINX ==='
+          python3 - <<'PY'
+          import os,re,collections
+          base='/var/www/vhosts/system/elmercadodeorigen.com/logs/'
+          for n in ('access_ssl_log','proxy_access_ssl_log'):
+           p=base+n
+           try:
+            with open(p,'rb') as f:
+             sz=os.path.getsize(p);f.seek(max(0,sz-3000000))
+             if sz>3000000:f.readline()
+             matches=collections.Counter()
+             for l in f:
+              if b'EMDO-ReadOnly-Audit/20261029' not in l:continue
+              m=re.search(rb'\"(GET|HEAD) ([^ ]+) [^\"]+\" (\d{3}) ',l)
+              if not m:continue
+              uri=m.group(2).split(b'?',1)[0].decode('utf8','replace')
+              matches[(uri,m.group(3).decode())]+=1
+             print('AUDIT_TRAFFIC_BY_LAYER',n,list(matches.items())[:30])
+           except OSError as ex:print('AUDIT_TRAFFIC_BY_LAYER',n,type(ex).__name__)
+          PY
+          echo 'END_ORIGIN_SECURITY_AUDIT'
+          REMOTE
