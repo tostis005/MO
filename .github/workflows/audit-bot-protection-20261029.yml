@@ -170,7 +170,7 @@ jobs:
              m=rx.match(ln)
              if not m:continue
              when=m.group(1).decode('ascii','replace')
-             day=when[:17]
+             day=when[:14]
              if not any(when.startswith(prefix) for prefix in windows):continue
              rr=m.group(2).decode('utf8','replace').split()
              if len(rr)<2:continue
@@ -178,8 +178,7 @@ jobs:
              if 'filter_' not in q and 'emo_vendor_cat=' not in q:continue
              if '/hidalgo-de-la-jara/' in path:
               prefix='hidalgo'
-              if re.match(r'^/(?:tienda|en/tienda|en/store)/hidalgo-de-la-jara/?
-          REMOTE,path):prefix='hidalgo_exact'
+              if path.rstrip('/') in ('/tienda/hidalgo-de-la-jara','/en/tienda/hidalgo-de-la-jara','/en/store/hidalgo-de-la-jara'):prefix='hidalgo_exact'
               else:prefix='hidalgo_other_path'
              elif '/montjam/' in path:prefix='montjam'
              elif '/categoria-producto/' in path or '/product-category/' in path:prefix='category'
