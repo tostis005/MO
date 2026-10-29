@@ -80,17 +80,26 @@ func targetFromPath(path string)(scope,clean string,ok bool){
   if len(seg)!=idx+2||!validPage(seg[idx+1]){return "","",false}
   return "shop:"+lang,shopRoot(lang),true
  }
- slug:=seg[idx]
- if !validSlug(slug){return "","",false}
- if len(seg)>idx+1 {
-  if len(seg)!=idx+3||seg[idx+1]!="page"||!validPage(seg[idx+2]){return "","",false}
- }
  if base=="store"{
+  slug:=seg[idx]
+  if !validSlug(slug){return "","",false}
+  if len(seg)>idx+1{
+   if len(seg)!=idx+3||seg[idx+1]!="page"||!validPage(seg[idx+2]){return "","",false}
+  }
   return "vendor:"+slug,shopRoot(lang)+slug+"/",true
  }
+ // Category permalinks may contain hierarchical /parent/child/ slugs.
+ // Use the complete hierarchy as the token scope and clean redirect.
+ parts:=append([]string(nil),seg[idx:]...)
+ if len(parts)>=2&&parts[len(parts)-2]=="page"&&validPage(parts[len(parts)-1]){
+  parts=parts[:len(parts)-2]
+ }
+ if len(parts)<1||len(parts)>5{return "","",false}
+ for _,part:=range parts{if !validSlug(part){return "","",false}}
+ category:=strings.Join(parts,"/")
  prefix:="/categoria-producto/"
  if lang=="en"{prefix="/en/product-category/"}
- return "category:"+lang+":"+slug,prefix+slug+"/",true
+ return "category:"+lang+":"+category,prefix+category+"/",true
 }
 func validPage(s string)bool{
  n,e:=strconv.Atoi(s)
