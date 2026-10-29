@@ -1,0 +1,109 @@
+name: Install EntreSetas banner and About in production
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/install-entresetas-visuals-20261029.yml'
+      - '.github/scripts/install-entresetas-visuals-20261029.php'
+      - '.github/assets/entresetas-20261029/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: install-entresetas-visuals-20261029
+  cancel-in-progress: false
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate PHP and reconstruct the generated illustrative banner
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/install-entresetas-visuals-20261029.php
+          test -n "${STAGING_HOST:-}"
+          test -n "${STAGING_USER:-}"
+          test -n "${STAGING_PASSWORD:-}"
+          SRC="$RUNNER_TEMP/entresetas-source.avif"
+          cat .github/assets/entresetas-20261029/part-*.b64 > "$RUNNER_TEMP/entresetas-source.b64"
+          base64 -d "$RUNNER_TEMP/entresetas-source.b64" > "$SRC"
+          echo "07ae4e196df0ac419a04f73f9622234cf1c3b85168eb1bb8d24da30f7f185866  $SRC" | sha256sum -c
+          python3 -m venv "$RUNNER_TEMP/emdo-banner-venv"
+          "$RUNNER_TEMP/emdo-banner-venv/bin/pip" install --quiet 'Pillow>=11.3.0'
+          "$RUNNER_TEMP/emdo-banner-venv/bin/python" - "$RUNNER_TEMP" <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          import sys
+          target=Path(sys.argv[1])
+          with Image.open(target/"entresetas-source.avif") as src:
+              if src.size!=(1024,394):
+                  raise RuntimeError("Unexpected source dimensions")
+              rgb=src.convert("RGB")
+          for name,w,h,q in (("desktop.webp",2022,778,85),("mobile.webp",960,369,81)):
+              output=target/name
+              rgb.resize((w,h),Image.Resampling.LANCZOS).save(output,format="WEBP",quality=q,method=6)
+              with Image.open(output) as v:
+                  assert v.size==(w,h) and v.format=="WEBP"
+              print("ENTRESETAS_BANNER_ENCODED",output,output.stat().st_size)
+          PY
+      - name: Apply native WCFM visuals safely to production only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=30 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER$@STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s|%s|%s" "$p" "$php_bin" "$wp_bin"; break ;;
+              esac
+            done
+          ')"
+          test -n "$INFO"
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+          REMOTE_SCRIPT="/tmp/entresetas-visuals-${GITHUB_RUN_ID}.php"
+          REMOTE_DESKTOP="/tmp/entresetas-desktop-${GITHUB_RUN_ID}.webp"
+          REMOTE_MOBILE="/tmp/entresetas-mobile-${GITHUB_RUN_ID}.webp"
+          sshpass -e scp $SCP .github/scripts/install-entresetas-visuals-20261029.php "$STAGING_USER$@STAGING_HOST:$REMOTE_SCRIPT"
+          sshpass -e scp $SCP "$RUNNER_TEMP/desktop.webp" "$STAGING_USER$@STAGING_HOST:$REMOTE_DESKTOP"
+          sshpass -e scp $SCP "$RUNNER_TEMP/mobile.webp" "$STAGING_USER$@STAGING_HOST:$REMOTE_MOBILE"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER$@STAGING_HOST" "rm -f $REMOTE_SCRIPT $REMOTE_DESKTOP $REMOTE_MOBILE" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER$@STAGING_HOST" "bash -s -- '$PROD' '$PHP' '$WP' '$REMOTE_SCRIPT' '$REMOTE_DESKTOP' '$REMOTE_MOBILE'" <<'REMOTE' | tee "$RUNNER_TEMP/entresetas-visuals.log"
+          set -Eeuo pipefail
+          prod="$1"; php="$2"; wp="$3"; script="$4"; desktop="$5"; mobile="$6"
+          export PATH="$(dirname "$php"):$PATH"
+          ENTRESETAS_BANNER_DESKTOP_FILE="$desktop" ENTRESETAS_BANNER_MOBILE_FILE="$mobile" "$php" -d memory_limit=1536M "$wp" eval-file "$script" --path="$prod" --allow-root
+          REMOTE
+          grep -q '^ENTRESETAS_VISUALS_UPDATED=' "$RUNNER_TEMP/entresetas-visuals.log"
+      - name: Save operational evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: entresetas-production-visuals-20261029
+          path: ${{ runner.temp }}/entresetas-visuals.log
+          if-no-files-found: warn
+          retention-days: 30
