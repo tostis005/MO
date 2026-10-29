@@ -1,0 +1,112 @@
+name: Read-only audit SINFILTRO coupon for 1957 26-27 oils
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-1957-sinfiltro-coupon-20261030.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build syntactically checked read-only coupon script
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/audit-1957-sinfiltro.php <<'PHP'
+          <?php
+          /**
+           * Read-only coupon audit: no writes, orders, checkout or customer data.
+           */
+          if(!defined('ABSPATH') || !defined('WP_CLI') || !WP_CLI || !function_exists('wc_get_coupon_id_by_code')) {
+            fwrite(STDERR,"COUPON_AUDIT_ABORT_WOO_REQUIRED\n"); exit(2);
+          }
+          if(!in_array(strtolower((string)wp_parse_url(home_url('/'),PHP_URL_HOST)),['elmercadodeorigen.com','www.elmercadodeorigen.com'],true)) {
+            fwrite(STDERR,"COUPON_AUDIT_ABORT_HOST\n"); exit(3);
+          }
+          $vendor=get_user_by('login','1957');
+          if(!$vendor)$vendor=get_user_by('slug','1957');
+          if(!$vendor) {fwrite(STDERR,"COUPON_AUDIT_ABORT_VENDOR\n"); exit(4);}
+          $cid=wc_get_coupon_id_by_code('SINFILTRO');
+          if(!$cid) {echo "SINFILTRO_COUPON_NOT_FOUND\n";exit(0);}
+          $c=new WC_Coupon($cid);
+          $expiry=$c->get_date_expires();
+          $prodids=array_map('intval',$c->get_product_ids());
+          $excludedids=array_map('intval',$c->get_excluded_product_ids());
+          $catids=array_map('intval',$c->get_product_categories());
+          $excludedcats=array_map('intval',$c->get_excluded_product_categories());
+          echo 'SINFILTRO_COUPON='.wp_json_encode([
+            'id'=>$cid, 'code'=>$c->get_code(), 'post_status'=>get_post_status($cid),
+            'discount_type'=>$c->get_discount_type(), 'amount'=>$c->get_amount(),
+            'expires_gmt'=>$expiry?$expiry->date('Y-m-d H:i:s'):null,
+            'usage_limit'=>$c->get_usage_limit(), 'usage_count'=>$c->get_usage_count(),
+            'usage_limit_per_user'=>$c->get_usage_limit_per_user(),
+            'individual_use'=>$c->get_individual_use(), 'exclude_sale_items'=>$c->get_exclude_sale_items(),
+            'product_ids'=>$prodids, 'excluded_product_ids'=>$excludedids,
+            'category_ids'=>$catids, 'excluded_category_ids'=>$excludedcats,
+            'minimum_amount'=>$c->get_minimum_amount(), 'maximum_amount'=>$c->get_maximum_amount(),
+            'email_restrictions_count'=>count($c->get_email_restrictions())
+          ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+          $ids=get_posts(['post_type'=>'product','post_status'=>'publish','author'=>(int)$vendor->ID,'posts_per_page'=>-1,'fields'=>'ids','suppress_filters'=>true]);
+          $found=0;
+          foreach($ids as $id) {
+            $p=wc_get_product($id);
+            if(!$p||!preg_match('/COSECHA\\s*26\\/27/iu',$p->get_name()))continue;
+            $found++;
+            $children=$p->is_type('variable')?$p->get_children():[];
+            $catids_product=array_map('intval',$p->get_category_ids());
+            $eligible=true;$notes=[];
+            if($prodids && !in_array((int)$id,$prodids,true) && !array_intersect(array_map('intval',$children),$prodids)) {$eligible=false;$notes[]='product_ids_not_included';}
+            if(in_array((int)$id,$excludedids,true)) {$eligible=false;$notes[]='product_excluded';}
+            if($catids && !array_intersect($catids_product,$catids)) {$eligible=false;$notes[]='category_not_included';}
+            if(array_intersect($catids_product,$excludedcats)) {$eligible=false;$notes[]='category_excluded';}
+            $is_sale=$p->is_on_sale();
+            if($c->get_exclude_sale_items() && $is_sale) {$eligible=false;$notes[]='sale_excluded';}
+            echo 'SINFILTRO_PRODUCT='.wp_json_encode([
+              'id'=>(int)$id,'name'=>$p->get_name(),'type'=>$p->get_type(),
+              'status'=>$p->get_status(),'catalog_visibility'=>$p->get_catalog_visibility(),
+              'price'=>$p->get_price(), 'on_sale'=>$is_sale,
+              'category_ids'=>$catids_product,'variations_count'=>count($children),
+              'eligible_by_saved_coupon_restrictions'=>$eligible,'notes'=>$notes,
+              'shop_url'=>'https://www.elmercadodeorigen.com/tienda/1957/'
+            ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+          }
+          echo 'SINFILTRO_PRODUCTS_FOUND='.$found."\n";
+          echo "SINFILTRO_AUDIT_COMPLETE\n";
+          PHP
+          php -l /tmp/audit-1957-sinfiltro.php
+      - name: Verify coupon in live WooCommerce, no writes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "$STAGING_HOST" && test -n "$STAGING_USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          PROD_ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          REMOTE="/tmp/audit-1957-sinfiltro-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP /tmp/audit-1957-sinfiltro.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $REMOTE" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "timeout 120 /opt/plesk/php/8.2/bin/php -d memory_limit=768M /usr/local/bin/wp eval-file '$REMOTE' --path='$PROD_ROOT' --allow-root" | tee /tmp/1957-sinfiltro-coupon-report.txt
+          grep -q 'SINFILTRO_AUDIT_COMPLETE\|SINFILTRO_COUPON_NOT_FOUND' /tmp/1957-sinfiltro-coupon-report.txt
+      - name: Save coupon report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 1957-sinfiltro-coupon-audit
+          path: /tmp/1957-sinfiltro-coupon-report.txt
+          if-no-files-found: warn
+          retention-days: 3
