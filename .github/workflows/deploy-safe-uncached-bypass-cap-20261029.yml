@@ -1,0 +1,133 @@
+name: Protect PHP from anonymous cache-bypass storms 20261029
+on:
+  push:
+    branches: [feature/scoped-filter-guard-20261029]
+    paths: ['.github/workflows/deploy-safe-uncached-bypass-cap-20261029.yml']
+permissions:
+  contents: read
+concurrency:
+  group: emdo-production-uncached-bypass-20261029
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Guard bypassing origin traffic without ever sharing logged-in HTML
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          VHOST=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          GLOBAL=/etc/nginx/conf.d/97-emdo-uncached-bypass-guard-20261029.conf
+          MARK='# BEGIN EMDO SAFE UNCACHED BYPASS GUARD 20261029'
+          test "$(id -u)" -eq 0
+          test -s "$VHOST"
+          grep -q 'SCOPED FULL-SITE FILTER GATE 20261029' "$VHOST"
+          nginx -t
+          if grep -Fq "$MARK" "$VHOST"; then echo 'ALREADY_PROTECTED';exit 0;fi
+          test ! -e "$GLOBAL"
+          BK=/root/emdo-uncached-bypass-guard-$(date -u +%Y%m%dT%H%M%SZ)
+          install -d -m 0700 "$BK"
+          cp -p "$VHOST" "$BK/vhost_nginx.conf"
+          echo "BACKUP_DIR=$BK"
+          changed=0
+          rollback() {
+           rc=$?
+           trap - EXIT
+           if [ "$rc" != 0 ]&&[ "$changed" = 1 ];then
+            echo 'ROLLBACK_START'
+            cp -p "$BK/vhost_nginx.conf" "$VHOST"
+            rm -f "$GLOBAL"
+            nginx -t && systemctl reload nginx || true
+            echo 'ROLLBACK_COMPLETE'
+           fi
+           exit "$rc"
+          }
+          trap rollback EXIT
+          python3 - "$VHOST" "$GLOBAL" <<'PY'
+          import sys
+          p,g=sys.argv[1:]
+          s=open(p,encoding='utf8').read()
+          for label in ('location @emdo_vendor_cache_origin {','location @emdo_hot_static_origin {'):
+           assert s.count(label)==1,(label,s.count(label))
+           s=s.replace(label,label+'''
+              # Only requests that have already bypassed the safe shared cache
+              # consume this global origin budget. Cache HITs have an empty key.
+              limit_req zone=emdo_dynamic_bypass_rate burst=16 nodelay;
+              limit_conn emdo_dynamic_bypass_conn 4;
+              limit_req_status 429;
+              limit_conn_status 429;
+          ''',1)
+          s=s.replace('proxy_cache_bypass $emdo_vendor_skip_cache $http_authorization $http_cache_control $http_pragma;',
+            'proxy_cache_bypass $emdo_vendor_skip_cache $http_authorization;',1)
+          s=s.replace('proxy_no_cache $emdo_vendor_skip_cache $http_authorization $http_cache_control $http_pragma $upstream_http_set_cookie;',
+            'proxy_no_cache $emdo_vendor_skip_cache $http_authorization $upstream_http_set_cookie;',1)
+          assert 'proxy_cache_bypass $emdo_vendor_skip_cache $http_authorization;' in s
+          assert 'proxy_no_cache $emdo_vendor_skip_cache $http_authorization $upstream_http_set_cookie;' in s
+          s+='\n# BEGIN EMDO SAFE UNCACHED BYPASS GUARD 20261029\n# Only limits backend requests that are ineligible for shared anonymous cache.\n# END EMDO SAFE UNCACHED BYPASS GUARD 20261029\n'
+          open(p,'w',encoding='utf8').write(s)
+          open(g,'w',encoding='utf8').write('''# Global non-empty key only for uncacheable store/category/shop requests.
+          # Signed filtered traffic goes through a separate tighter origin rate zone.
+          # No HTML is ever cached for shopping sessions, unknown cookies, or query URLs.
+          map "$emdo_vendor_skip_cache:$uri" $emdo_dynamic_bypass_key {
+              default "";
+              ~*^1:/(?:tienda|categoria-producto|en/(?:store|tienda|product-category))(?:/|$) "emdo-dynamic-bypass";
+          }
+          limit_req_zone $emdo_dynamic_bypass_key zone=emdo_dynamic_bypass_rate:1m rate=6r/s;
+          limit_conn_zone $emdo_dynamic_bypass_key zone=emdo_dynamic_bypass_conn:1m;
+          ''')
+          print('UNCACHED_DYNAMIC_BYPASS_PROTECTED; SAFE_CACHE_NOT_BYPASSED_BY_CLIENT_NO_CACHE')
+          PY
+          changed=1
+          nginx -t
+          systemctl reload nginx
+          sleep 2
+          BASE=https://www.elmercadodeorigen.com
+          UA='EMDO-Anonymous-Bypass-Guard-Smoke/20261029'
+          HEAD="$(mktemp)"
+          trap rollback EXIT
+          echo '=== Warm one safe vendor cache and test client no-cache cannot force bypass ==='
+          for k in 1 2 3; do
+           curl -ksS --connect-timeout 3 --max-time 20 -A "$UA" -D "$HEAD" -o /dev/null "$BASE/tienda/1957/"
+           if grep -qi '^x-emdo-vendor-cache: HIT' "$HEAD";then break;fi
+          done
+          grep -qi '^x-emdo-vendor-cache: HIT' "$HEAD"
+          status="$(curl -ksS --connect-timeout 3 --max-time 20 -A "$UA" -H 'Cache-Control: no-cache' -D "$HEAD" -o /dev/null -w '%{http_code}' "$BASE/tienda/1957/")"
+          cache="$(grep -i '^x-emdo-vendor-cache:' "$HEAD" | tail -n 1 | tr -d '\r')"
+          echo "CLIENT_NO_CACHE http=$status $cache"
+          test "$status" = 200
+          grep -qi '^x-emdo-vendor-cache: HIT' "$HEAD"
+          echo '=== Stateful cart cookie must still NOT receive anonymous cache ==='
+          status="$(curl -ksS --connect-timeout 3 --max-time 25 -A "$UA" -H 'Cookie: woocommerce_items_in_cart=1' -D "$HEAD" -o /dev/null -w '%{http_code}' "$BASE/tienda/1957/")"
+          echo "CART_HTTP=$status"
+          test "$status" = 200
+          ! grep -qi '^x-emdo-vendor-cache: HIT' "$HEAD"
+          echo '=== Unknown cookie still bypasses, never shared HTML ==='
+          status="$(curl -ksS --connect-timeout 3 --max-time 25 -A "$UA" -H 'Cookie: emdo_unknown_test=1' -D "$HEAD" -o /dev/null -w '%{http_code}' "$BASE/tienda/1957/")"
+          echo "UNKNOWN_COOKIE_HTTP=$status"
+          test "$status" = 200
+          ! grep -qi '^x-emdo-vendor-cache: HIT' "$HEAD"
+          echo '=== Unknown query remains uncached, but guarded by GLOBAL rate/connection cap ==='
+          status="$(curl -ksS --connect-timeout 3 --max-time 25 -A "$UA" -D "$HEAD" -o /dev/null -w '%{http_code}' "$BASE/tienda/1957/?emdo_safe_rate_probe=1")"
+          echo "UNKNOWN_QUERY_HTTP=$status"
+          test "$status" = 200
+          ! grep -qi '^x-emdo-vendor-cache: HIT' "$HEAD"
+          echo '=== Producer/category direct facet still redirected pre-PHP ==='
+          for uri in '/tienda/1957/?filter_preparacion=deshuesado' '/categoria-producto/jamones-paletas/?filter_calidad=x';do
+           status="$(curl -ksS --connect-timeout 3 --max-time 10 -A "$UA" -D "$HEAD" -o /dev/null -w '%{http_code}' "$BASE$uri")"
+           echo "FACET_DIRECT_HTTP=$status"
+           test "$status" = 302
+          done
+          nginx -t
+          echo 'SAFE_UNCACHED_BYPASS_GUARD_DEPLOY_VERIFIED'
+          echo "BACKUP_DIR=$BK"
+          rm -f "$HEAD"
+          REMOTE
