@@ -1,0 +1,243 @@
+name: Deploy and verify scoped producer/category/shop filter defense 20261029
+on:
+  push:
+    branches: [feature/scoped-filter-guard-20261029]
+    paths: ['.github/workflows/deploy-scoped-filter-guard-20261029.yml']
+permissions:
+  contents: read
+concurrency:
+  group: emdo-production-scoped-gate-20261029
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 13
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: Test and compile Go front-door guard
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd ops/emdo-filter-gate
+          gofmt -w main.go main_test.go
+          GO111MODULE=off go test -v .
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /tmp/emdo-scoped-gate main.go
+          test -s /tmp/emdo-scoped-gate
+      - name: Stage binary securely (no production mutation)
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+          sshpass -e scp -q -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -P "$STAGING_PORT" /tmp/emdo-scoped-gate "$STAGING_USER@$STAGING_HOST:/tmp/emdo-scoped-gate-20261029.stage"
+      - name: Install guarded Nginx routing, scoped auth, global limit, and verify with rollback
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          test "$(id -u)" -eq 0
+          VHOST=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          GLOBAL=/etc/nginx/conf.d/95-emdo-filter-signed-admission-20261027.conf
+          BIN=/usr/local/sbin/emdo-filter-gate
+          STAGE=/tmp/emdo-scoped-gate-20261029.stage
+          MARK='# BEGIN EMDO SCOPED FULL-SITE FILTER GATE 20261029'
+          test -s "$VHOST" && test -s "$GLOBAL" && test -s "$BIN" && test -s "$STAGE"
+          systemctl is-active --quiet emdo-filter-gate.service
+          nginx -t
+          test "$(grep -Fc 'location @emdo_signed_filter_gate {' "$VHOST")" -eq 1
+          test "$(grep -Fc 'location @emdo_vendor_cache_origin {' "$VHOST")" -eq 1
+          test "$(grep -Fc 'location = /tienda/ {' "$VHOST")" -eq 1
+          if grep -Fq "$MARK" "$VHOST"; then
+             echo 'SCOPED_GATE_ALREADY_INSTALLED'; exit 0
+          fi
+          BK=/root/emdo-scoped-filter-guard-$(date -u +%Y%m%dT%H%M%SZ)
+          install -d -m 0700 "$BK"
+          cp -p "$VHOST" "$BK/vhost_nginx.conf"
+          cp -p "$GLOBAL" "$BK/95-emdo-filter-signed-admission-20261027.conf"
+          cp -p "$BIN" "$BK/emdo-filter-gate"
+          echo "BACKUP_DIR=$BK"
+          modified=0
+          rollback() {
+           rc=$?
+           trap - EXIT
+           if [ "$rc" != 0 ] && [ "$modified" = 1 ]; then
+             echo 'ROLLBACK_START'
+             cp -p "$BK/vhost_nginx.conf" "$VHOST"
+             cp -p "$BK/95-emdo-filter-signed-admission-20261027.conf" "$GLOBAL"
+             cp -p "$BK/emdo-filter-gate" "$BIN"
+             systemctl restart emdo-filter-gate.service || true
+             nginx -t && systemctl reload nginx || true
+             echo 'ROLLBACK_COMPLETE'
+           fi
+           rm -f "$STAGE"
+           exit "$rc"
+          }
+          trap rollback EXIT
+          python3 - "$VHOST" "$GLOBAL" <<'PY'
+          import sys,re
+          v,g=sys.argv[1:]
+          s=open(v,encoding='utf8').read()
+          orig=s
+          def inject_exact(url):
+           global s
+           needle='location = '+url+' {\n'
+           assert s.count(needle)==1,('missing exact',url)
+           assert 'error_page 419 = @emdo_signed_filter_gate;' not in s[s.index(needle):s.index(needle)+210],url
+           s=s.replace(needle,needle+'    error_page 419 = @emdo_signed_filter_gate;\n    if ($emdo_gate_has_filters) { return 419; }\n',1)
+          # Existing exact fast-cache categories would otherwise bypass generic regex routes.
+          cat_urls=re.findall(r'(?m)^location = (/(?:categoria-producto|en/product-category)/[^\s{}]+) \{',s)
+          assert len(cat_urls)>=4,('existing cached category count',cat_urls)
+          for url in cat_urls:inject_exact(url)
+          inject_exact('/tienda/')
+          marker='# BEGIN EMDO UNIVERSAL VENDOR NGINX CACHE 20261028'
+          assert s.count(marker)==1
+          addition='''# BEGIN EMDO SCOPED FULL-SITE FILTER GATE 20261029
+          # Exact legacy two vendors and category pages retain higher precedence.
+          # Newly encountered producers (and vendor pagination) are gated before
+          # the generic anonymous Nginx proxy cache.
+          location ~* ^/(?:tienda|en/(?:store|tienda))/[a-z0-9][a-z0-9-]*/(?:page/[1-9][0-9]*/)?$ {
+              error_page 419 = @emdo_signed_filter_gate;
+              error_page 418 = @emdo_vendor_cache_origin;
+              if ($emdo_gate_has_filters) { return 419; }
+              return 418;
+          }
+          # Categories not in the exact hot-cache whitelist still use the gate.
+          location ~* ^/(?:categoria-producto|en/product-category)/[a-z0-9][a-z0-9-]*/(?:page/[1-9][0-9]*/)?$ {
+              error_page 419 = @emdo_signed_filter_gate;
+              error_page 418 = @emdo_hot_static_origin;
+              if ($emdo_gate_has_filters) { return 419; }
+              return 418;
+          }
+          # Shop pagination must remain uncached unless filtered and authorized.
+          location ~* ^/(?:tienda|en/(?:store|tienda))/page/[1-9][0-9]*/?$ {
+              error_page 419 = @emdo_signed_filter_gate;
+              error_page 418 = @emdo_hot_static_origin;
+              if ($emdo_gate_has_filters) { return 419; }
+              return 418;
+          }
+          # English shop front door; no cache is introduced for the unfiltered route.
+          location = /en/store/ {
+              error_page 419 = @emdo_signed_filter_gate;
+              error_page 418 = @emdo_hot_static_origin;
+              if ($emdo_gate_has_filters) { return 419; }
+              return 418;
+          }
+          location = /en/tienda/ {
+              error_page 419 = @emdo_signed_filter_gate;
+              error_page 418 = @emdo_hot_static_origin;
+              if ($emdo_gate_has_filters) { return 419; }
+              return 418;
+          }
+          location = /tienda {
+              error_page 419 = @emdo_signed_filter_gate;
+              if ($emdo_gate_has_filters) { return 419; }
+              return 301 /tienda/;
+          }
+          # END EMDO SCOPED FULL-SITE FILTER GATE 20261029
+
+          '''
+          s=s.replace(marker,addition+marker,1)
+          # Only admitted, signed filter queries can access Apache; this is
+          # a GLOBAL cap across all visitors, not one independent IP quota.
+          name='location ^~ /__emdo_filtergate/upstream/ {'
+          assert s.count(name)==1
+          s=s.replace(name,name+'\n    limit_req zone=emdo_filter_origin_global burst=12 nodelay;\n    limit_req_status 429;',1)
+          assert s!=orig
+          global_src=open(g,encoding='utf8').read()
+          qstart=global_src.index('map $args $emdo_gate_has_filters {')
+          qend=global_src.index('\n}',qstart)+2
+          global_src=global_src[:qstart]+'''map $args $emdo_gate_has_filters {
+              default 0;
+              ~*(?:^|&)(?:filter_[^=&]+|emo_vendor_cat|query_type_[^=&]+|(?:min|max)_price|orderby)(?:=|&|$) 1;
+          }'''+global_src[qend:]
+          start=global_src.index('map $uri $emdo_gate_vendor_path {')
+          end=global_src.index('\n}',start)+2
+          global_src=global_src[:start]+'''map $uri $emdo_gate_vendor_path {
+              default 0;
+              ~*^/(?:tienda|en/(?:tienda|store))(?:/[a-z0-9][a-z0-9-]*(?:/page/[1-9][0-9]*)?)?/?$ 1;
+              ~*^/(?:tienda|en/(?:tienda|store))/page/[1-9][0-9]*/?$ 1;
+              ~*^/(?:categoria-producto|en/product-category)/[a-z0-9][a-z0-9-]*(?:/page/[1-9][0-9]*)?/?$ 1;
+          }'''+global_src[end:]
+          if 'zone=emdo_filter_origin_global' not in global_src:
+           global_src+='\nlimit_req_zone $server_name zone=emdo_filter_origin_global:1m rate=4r/s;\n'
+          open(v,'w',encoding='utf8').write(s)
+          open(g,'w',encoding='utf8').write(global_src)
+          print('COVERAGE exact_categories',len(cat_urls),'generic_vendor/shop/category/pagination')
+          PY
+          modified=1
+          install -m 0755 "$STAGE" "$BIN"
+          systemctl restart emdo-filter-gate.service
+          systemctl is-active --quiet emdo-filter-gate.service
+          echo '=== NGINX CONFIG VALIDATION ==='
+          nginx -t
+          systemctl reload nginx
+          sleep 2
+          BASE=https://www.elmercadodeorigen.com
+          UA='EMDO-Scoped-Guard-Smoke/20261029'
+          TD="$(mktemp -d)"
+          trap 'rm -rf "$TD"; rollback' EXIT
+          check_direct() {
+            label="$1";url="$2";expect="$3"
+            code="$(curl -ksS --connect-timeout 3 --max-time 9 -A "$UA" -D "$TD/head" -o /dev/null -w '%{http_code}' "$BASE$url")"
+            loc="$(grep -i '^location:' "$TD/head" | tail -n 1 | tr -d '\r' || true)"
+            echo "DIRECT $label $code $loc"
+            test "$code" = 302
+            test "$loc" = "location: $expect"
+          }
+          check_direct hidalgo '/tienda/hidalgo-de-la-jara/?filter_preparacion=deshuesado' /tienda/hidalgo-de-la-jara/
+          check_direct other_vendor_1957 '/tienda/1957/?filter_preparacion=deshuesado' /tienda/1957/
+          check_direct montjam '/tienda/montjam/?filter_preparacion=deshuesado' /tienda/montjam/
+          check_direct category '/categoria-producto/jamones-paletas/?filter_calidad=x' /categoria-producto/jamones-paletas/
+          check_direct other_category '/categoria-producto/embutidos-y-curados/?min_price=5' /categoria-producto/embutidos-y-curados/
+          check_direct shop '/tienda/?filter_calidad=x' /tienda/
+          check_direct vendor_pagination '/tienda/1957/page/2/?filter_preparacion=x' /tienda/1957/
+          check_direct category_pagination '/categoria-producto/jamones-paletas/page/2/?filter_calidad=x' /categoria-producto/jamones-paletas/
+          echo '=== DIFFERENT VENDOR REFERRER MUST NOT AUTHORIZE FILTER ==='
+          code="$(curl -ksS --connect-timeout 3 --max-time 9 -A "$UA" -H "Referer: $BASE/tienda/hidalgo-de-la-jara/" -D "$TD/head" -o /dev/null -w '%{http_code}' "$BASE/tienda/1957/?filter_preparacion=deshuesado")"
+          echo "WRONG_VENDOR_REFERER $code"
+          test "$code" = 302
+          echo '=== OWN VENDOR REFERRER GETS SIGNED CHALLENGE ==='
+          code="$(curl -ksS --connect-timeout 3 --max-time 9 -A "$UA" -H "Referer: $BASE/tienda/hidalgo-de-la-jara/" -o "$TD/challenge.html" -w '%{http_code}' "$BASE/tienda/hidalgo-de-la-jara/?filter_preparacion=deshuesado")"
+          test "$code" = 200
+          grep -q 'Verificando acceso a los filtros' "$TD/challenge.html"
+          verify_path="$(python3 - "$TD/challenge.html" <<'PY'
+          import re,sys
+          t=open(sys.argv[1],encoding='utf8').read()
+          x=re.search(r"fetch\('(/__emdo_filtergate/verify\?scope=[^']+)'",t)
+          assert x,'scoped verification link missing'
+          print(x.group(1).replace('&amp;','&'))
+          PY
+          )"
+          code="$(curl -ksS --connect-timeout 3 --max-time 9 -A "$UA" -c "$TD/cookie" -b "$TD/cookie" -o /dev/null -w '%{http_code}' "$BASE$verify_path")"
+          test "$code" = 200
+          echo 'SCOPED_TOKEN_ISSUED'
+          echo '=== CONFIRM ONE AUTHORIZED PHP FILTER, NOT JUST CHALLENGE ==='
+          code="$(curl -ksS --connect-timeout 3 --max-time 30 -A "$UA" -b "$TD/cookie" -H "Referer: $BASE/tienda/hidalgo-de-la-jara/" -o "$TD/filtered.html" -w '%{http_code}' "$BASE/tienda/hidalgo-de-la-jara/?filter_preparacion=deshuesado")"
+          echo "AUTHENTICATED_FILTER $code"
+          test "$code" = 200
+          grep -q 'wcfmmp-store' "$TD/filtered.html"
+          echo '=== CROSS-PRODUCER COOKIE MUST NOT AUTHORIZE DIRECT FILTER ==='
+          code="$(curl -ksS --connect-timeout 3 --max-time 9 -A "$UA" -b "$TD/cookie" -o /dev/null -w '%{http_code}' "$BASE/tienda/1957/?filter_preparacion=deshuesado")"
+          echo "CROSS_VENDOR_COOKIE_DIRECT $code"
+          test "$code" = 302
+          echo '=== ANONYMOUS CACHE, CART AND STATUS SAFETY ==='
+          for url in /tienda/ /tienda/hidalgo-de-la-jara/ /tienda/1957/; do
+            code="$(curl -ksS --connect-timeout 3 --max-time 25 -A "$UA" -D "$TD/cache-head" -o /dev/null -w '%{http_code}' "$BASE$url")"
+            echo "CLEAN_PAGE $url $code"
+            test "$code" = 200
+          done
+          curl -ksS --connect-timeout 3 --max-time 25 -A "$UA" -H 'Cookie: woocommerce_items_in_cart=1' -D "$TD/cart-head" -o /dev/null "$BASE/tienda/1957/"
+          ! grep -qi '^x-emdo-vendor-cache: HIT' "$TD/cart-head"
+          nginx -t
+          echo 'SCOPED_FILTER_GUARD_DEPLOY_VERIFIED'
+          echo "BACKUP_DIR=$BK"
+          rm -rf "$TD"
+          trap rollback EXIT
+          REMOTE
