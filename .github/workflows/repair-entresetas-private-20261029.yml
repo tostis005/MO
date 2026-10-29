@@ -1,8 +1,5 @@
 name: EntreSetas product media and category repair private drafts
 on:
-  workflow_run:
-    workflows: ['Deploy MDO Supplier Sync to production']
-    types: [completed]
   workflow_dispatch:
 permissions: {contents: read}
 concurrency:
@@ -10,7 +7,6 @@ concurrency:
   cancel-in-progress: false
 jobs:
   repair:
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     env:
@@ -18,7 +14,6 @@ jobs:
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
       STAGING_USER: ${{ secrets.STAGING_USER }}
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-      EXPECTED_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
       - name: Attach source images to private drafts and revise producer taxonomy
@@ -50,8 +45,9 @@ jobs:
             done
           ')"
           test -n "$PROD_PATH"
-          DEPLOYED_SHA="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cat '$PROD_PATH/wp-content/plugins/mdo-supplier-sync/.emdo-deployed-sha'" | tr -d '\r\n')"
-          test "$DEPLOYED_SHA" = "$EXPECTED_SHA"
+          EXPECTED_IMPORTER_HASH="$(sha256sum mdo-supplier-sync/includes/class-mdo-woo-importer.php | cut -d ' ' -f1)"
+          REMOTE_IMPORTER_HASH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sha256sum '$PROD_PATH/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-woo-importer.php' | cut -d ' ' -f1" | tr -d '\r\n')"
+          test "$EXPECTED_IMPORTER_HASH" = "$REMOTE_IMPORTER_HASH"
           REMOTE="/tmp/repair-entresetas-$GITHUB_RUN_ID.php"
           sshpass -e scp $SCP .github/scripts/repair-entresetas-private-20261029.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
           trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $REMOTE" >/dev/null 2>&1 || true' EXIT
