@@ -51,7 +51,7 @@ final class MDO_Woo_Importer {
             throw new RuntimeException( 'Referencia Pajarete excluida; no se importará.' );
         }
 
-		if ( in_array( (string) $supplier['code'], array( 'latitudes', 'chocolates-artesanos-isabel', 'tropitop', 'quesos-pajarete' ), true ) &&
+		if ( in_array( (string) $supplier['code'], array( 'latitudes', 'chocolates-artesanos-isabel', 'tropitop', 'quesos-pajarete', 'entresetas' ), true ) &&
 			! in_array( (string) ( $payload['stock_status'] ?? 'unknown' ), array( 'instock', 'outofstock' ), true ) ) {
 			throw new RuntimeException( 'Stock del proveedor sin verificar: se cancela la importación de esta referencia.' );
 		}
@@ -60,7 +60,7 @@ final class MDO_Woo_Importer {
 		$variations = self::usable_variations( $payload );
 		$declared_variations = isset( $payload['variation_count'] ) ? (int) $payload['variation_count'] : 0;
 		if ( $declared_variations > 1 && ( ! $variations ||
-			( in_array( (string) $supplier['code'], array( 'chocolates-artesanos-isabel', 'tropitop', 'quesos-pajarete' ), true ) && count( $variations ) < $declared_variations ) ) ) {
+			( in_array( (string) $supplier['code'], array( 'chocolates-artesanos-isabel', 'tropitop', 'quesos-pajarete', 'entresetas' ), true ) && count( $variations ) < $declared_variations ) ) ) {
 			throw new RuntimeException( 'El producto tiene opciones/variantes, pero EMDO aún no dispone de la matriz completa de precios y stock. No se importará hasta evitar una ficha incorrecta.' );
 		}
 
@@ -203,7 +203,15 @@ final class MDO_Woo_Importer {
 
 		// Prelaunch products from Latitudes must never become public while its
 		// WCFM vendor is hard-disabled, including after nightly updates.
-		if ( in_array( (string) $supplier['code'], array( 'latitudes', 'chocolates-artesanos-isabel', 'tropitop', 'quesos-pajarete' ), true ) && get_user_meta( $vendor_id, '_disable_vendor', true ) ) {
+		if ( in_array( (string) $supplier['code'], array( 'latitudes', 'chocolates-artesanos-isabel', 'tropitop', 'quesos-pajarete', 'entresetas' ), true ) && get_user_meta( $vendor_id, '_disable_vendor', true ) ) {
+			$product->set_status( 'draft' );
+			$product->set_catalog_visibility( 'hidden' );
+		}
+		// This producer may be prepared in WooCommerce, but cannot trade until
+		// shipping, commercial agreement and media rights are explicitly signed off.
+		if ( 'entresetas' === (string) $supplier['code'] &&
+			( ! get_option( 'mdo_entresetas_commercial_ready', false ) ||
+			  ! get_option( 'mdo_entresetas_media_authorized', false ) ) ) {
 			$product->set_status( 'draft' );
 			$product->set_catalog_visibility( 'hidden' );
 		}
@@ -259,6 +267,19 @@ final class MDO_Woo_Importer {
                     'category_ids' => $pajarete_categories, 'score' => null );
             }
         }
+		// Bypass meat-oriented automatic categorization for mushroom products.
+		if ( 'entresetas' === (string) $supplier['code'] ) {
+			$categories = self::entresetas_category_ids( $payload );
+			$product->set_category_ids( $categories );
+			$category_result = array( 'assigned' => true, 'reason' => 'entresetas_source_family', 'category_ids' => $categories );
+			if ( isset( $payload['weight_kg'] ) && is_numeric( $payload['weight_kg'] ) &&
+				(float) $payload['weight_kg'] > 0 ) {
+				$product->set_weight( wc_format_decimal( (float) $payload['weight_kg'] ) );
+			}
+			if ( ! empty( $payload['short_description'] ) ) {
+				$product->set_short_description( wp_kses_post( (string) $payload['short_description'] ) );
+			}
+		}
 		if ( $is_variable ) {
 			self::apply_variable_product( $product, $variations );
 		} else {
@@ -311,7 +332,14 @@ final class MDO_Woo_Importer {
 			MDO_Auto_Categorizer::record_result( $product_id, $category_result );
 		}
 
-		self::sync_images( $product, $payload );
+		// Preserve source-image URLs in EMDO, but importing/copying them into
+		// WordPress requires explicit permission from the rightsholder.
+		$media_payload = $payload;
+		if ( 'entresetas' === (string) $supplier['code'] &&
+			! get_option( 'mdo_entresetas_media_authorized', false ) ) {
+			$media_payload['images'] = array();
+		}
+		self::sync_images( $product, $media_payload );
 		// A product without a real, imported cover cannot be offered for sale.
 		// Keep it recoverable as a draft for the next incremental sync.
 		if ( 'tropitop' === (string) $supplier['code'] && ! $product->get_image_id() ) {
@@ -400,6 +428,13 @@ final class MDO_Woo_Importer {
                 clean_post_cache( $product_id );
             }
         }
+		if ( 'entresetas' === (string) $supplier['code'] ) {
+			$expected = self::entresetas_category_ids( $payload );
+			$set = wp_set_object_terms( $product_id, $expected, 'product_cat', false );
+			if ( is_wp_error( $set ) ) {
+				throw new RuntimeException( 'EntreSetas: no se pudieron confirmar las categorías.' );
+			}
+		}
 		return $product_id;
 	}
 
@@ -774,6 +809,44 @@ final class MDO_Woo_Importer {
         }
         return array_values( array_unique( $ids ) );
     }
+
+
+	/** Producer-specific taxonomy; unknown names are held for review, never guessed. */
+	private static function entresetas_category_ids( array $payload ): array {
+		$source_host = strtolower( (string) wp_parse_url( (string) ( $payload['source_url'] ?? '' ), PHP_URL_HOST ) );
+		if ( ! in_array( $source_host, array( 'entresetas.com', 'www.entresetas.com' ), true ) ) {
+			throw new RuntimeException( 'EntreSetas: origen inválido para clasificación.' );
+		}
+		$title = remove_accents( mb_strtolower( (string) ( $payload['title'] ?? '' ), 'UTF-8' ) );
+		if ( preg_match( '/\b(?:matcha|infusion|extracto|reishi|melena de leon)\b/u', $title ) ) {
+			$label = 'Infusiones y extractos de setas'; $slug = 'entresetas-infusiones-extractos';
+		} elseif ( preg_match( '/\b(?:harina|sal de|sal con|polvo)\b/u', $title ) ) {
+			$label = 'Harinas y sales de setas'; $slug = 'entresetas-harinas-sales';
+		} elseif ( preg_match( '/(?:deshidratad|boletus edulis|trompeta de los muertos|colmenillas|angula de monte|niscalos)/u', $title ) ) {
+			$label = 'Setas deshidratadas'; $slug = 'setas-deshidratadas';
+		} elseif ( preg_match( '/(?:salsa|vinagre|mousse|en su jugo|conserva)/u', $title ) ) {
+			$label = 'Conservas y elaborados de setas'; $slug = 'conservas-de-setas';
+		} elseif ( preg_match( '/(?:fresc|ostra|shiitake|portobello|trufa|caja de setas)/u', $title ) ) {
+			$label = 'Setas frescas'; $slug = 'setas-frescas';
+		} else {
+			throw new RuntimeException( 'EntreSetas: categoría no comprobada para ' . $title );
+		}
+		$root = get_term_by( 'slug', 'setas-y-hongos', 'product_cat' );
+		if ( ! $root ) {
+			$created = wp_insert_term( 'Setas y hongos', 'product_cat', array( 'slug' => 'setas-y-hongos' ) );
+			if ( is_wp_error( $created ) ) { throw new RuntimeException( $created->get_error_message() ); }
+			$root = get_term_by( 'id', (int) $created['term_id'], 'product_cat' );
+		}
+		if ( ! $root ) { throw new RuntimeException( 'EntreSetas: no se pudo crear Setas y hongos.' ); }
+		$child = get_term_by( 'slug', $slug, 'product_cat' );
+		if ( ! $child ) {
+			$created = wp_insert_term( $label, 'product_cat', array( 'slug' => $slug, 'parent' => (int) $root->term_id ) );
+			if ( is_wp_error( $created ) ) { throw new RuntimeException( $created->get_error_message() ); }
+			$child = get_term_by( 'id', (int) $created['term_id'], 'product_cat' );
+		}
+		if ( ! $child ) { throw new RuntimeException( 'EntreSetas: no se pudo clasificar.' ); }
+		return array( (int) $root->term_id, (int) $child->term_id );
+	}
 
 	private static function apply_common_fields( WC_Product $product, array $payload ): void {
 		$product->set_name( MDO_Text::normalize_title( (string) $payload['title'] ) );

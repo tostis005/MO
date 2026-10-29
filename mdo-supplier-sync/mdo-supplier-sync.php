@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO
  * Description: Gestión y sincronización de catálogos de proveedores con WooCommerce/WCFM.
- * Version: 1.0.69
+ * Version: 1.0.70
  * Author: El Mercado de Origen
  * Requires at least: 6.4
  * Requires PHP: 8.0
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.69' );
+define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.70' );
 define( 'MDO_SUPPLIER_SYNC_DB_VERSION', '1.2.0' );
 define( 'MDO_SUPPLIER_SYNC_FILE', __FILE__ );
 define( 'MDO_SUPPLIER_SYNC_PATH', plugin_dir_path( __FILE__ ) );
@@ -28,6 +28,7 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-rich-description-sourc
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-tolecarnes.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-latitudes.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-chocolates-isabel.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-entresetas.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-quesos-pajarete.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-tropitop.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-tropitop-editorial.php';

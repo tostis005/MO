@@ -35,6 +35,7 @@ jobs:
           set -euo pipefail
           find mdo-supplier-sync -type f -name '*.php' -print0 | xargs -0 -n1 php -l
           php tests/tropitop-smoke.php
+          php tests/entresetas-smoke.php
 
       - name: Deploy and verify EMDO production
         shell: bash
