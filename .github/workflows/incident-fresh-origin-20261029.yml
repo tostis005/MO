@@ -1,0 +1,96 @@
+name: Readonly incident snapshot PHP origin and bot routes 20261029
+on:
+  push:
+    branches: [diagnostic/site-availability-20261029]
+    paths:
+      - '.github/workflows/incident-fresh-origin-20261029.yml'
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install SSH client
+        run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Read-only active server diagnostics
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set +e
+          echo '--- INCIDENT SNAPSHOT UTC / UPTIME ---'
+          date -u; uptime; free -m | head -n 3
+          echo '--- PHP-FPM/NGINX CONFIG ---'
+          ps -eo stat=,args= | awk '/php-fpm: pool elmercadodeorigen.com/ {n++;if ($1~/R/)r++} END{print "PHP_POOL_WORKERS",n,"RUNNING",r}'
+          nginx -t 2>&1 | tail -n 4
+          echo '--- TOP CPU PROCESSES ---'
+          ps -eo comm=,stat=,%cpu=,%mem= --sort=-%cpu | head -n 15
+          echo '--- LOG FILENAMES/SIZES ---'
+          find /var/www/vhosts/system/elmercadodeorigen.com/logs -maxdepth 1 -type f -printf '%f %s bytes\n' | grep -E 'access|proxy|error|php' | head -n 28
+          echo '--- REAL LAST 12 MINUTE REQUEST ORIGIN ANALYSIS ---'
+          python3 - <<'PY'
+          import os, re, json, hashlib, datetime, collections, urllib.parse
+          P='/var/www/vhosts/system/elmercadodeorigen.com/logs/'
+          now=datetime.datetime.now(datetime.timezone.utc)
+          cutoff=now-datetime.timedelta(minutes=12)
+          pattern=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"([^"]+)"\s+(\d{3})\s+\S+\s+"([^"]*)"\s+"([^"]*)"')
+          outputs=[]
+          for basename in ['access_ssl_log','proxy_access_ssl_log','access_log','proxy_access_log']:
+           f=P+basename
+           if not os.path.isfile(f):continue
+           top=collections.Counter(); filtered=collections.Counter(); ajax=collections.Counter(); methods=collections.Counter()
+           headers=collections.Counter(); refs=collections.Counter(); statuses=collections.Counter(); minute=collections.Counter()
+           cats=collections.Counter(); ips=collections.defaultdict(set); qkeys=collections.Counter(); hot_ip=collections.Counter()
+           seen=0;parsed=0;new=0
+           with open(f,'rb') as h:
+            h.seek(max(0,os.path.getsize(f)-50000000))
+            for b in h:
+             seen+=1
+             m=pattern.match(b.decode('utf8','replace'))
+             if not m:continue
+             ip,dt,request,code,ref,ua=m.groups()
+             try:day=datetime.datetime.strptime(dt,'%d/%b/%Y:%H:%M:%S %z').astimezone(datetime.timezone.utc)
+             except ValueError:continue
+             parsed+=1
+             if day<cutoff or day>now+datetime.timedelta(minutes=2):continue
+             new+=1
+             parts=request.split()
+             if len(parts)<2:continue
+             method,target=parts[:2]
+             path=target.split('?',1)[0]
+             query=urllib.parse.parse_qs(target.partition('?')[2],keep_blank_values=True)
+             iphash=hashlib.sha256(ip.encode()).hexdigest()[:12]
+             top[path]+=1;ips[path].add(iphash);statuses[code]+=1;minute[day.strftime('%H:%M')]+=1;methods[method]+=1
+             hot_ip[iphash]+=1
+             refs['internal' if 'elmercadodeorigen.com' in ref else ('none' if ref=='-' else 'external')]+=1
+             if '/wp-admin/admin-ajax.php' in path:
+              action=query.get('action',['(post-body-or-none)'])[0]
+              ajax[re.sub(r'[^a-zA-Z0-9_-]','',action)[:65]]+=1
+             if query:
+              qkeys[tuple(sorted(query))]+=1
+             if any(k.startswith('filter_') for k in query) or any(k in query for k in ['orderby','min_price','max_price','emo_vendor_cat']):
+              filtered[path]+=1
+             if path.startswith('/wp-json/'):cats['rest']+=1
+             elif 'admin-ajax.php' in path:cats['admin_ajax']+=1
+             elif 'wc-ajax' in target:cats['wc_ajax']+=1
+             elif 'xmlrpc.php' in path:cats['xmlrpc']+=1
+             elif 'wp-login.php' in path:cats['wp_login']+=1
+             elif path.startswith(('/tienda/','/en/shop/','/en/store/','/categoria-producto/')):cats['catalog']+=1
+             elif path.startswith(('/wp-content/','/wp-includes/')):cats['assets']+=1
+             else:cats['other']+=1
+           data=dict(log=basename,lines=seen,valid_lines=parsed,window_requests=new,status=statuses,methods=methods,referrers=refs,top_routes=[(p,n,len(ips[p])) for p,n in top.most_common(22)],top_ip_hash_counts=hot_ip.most_common(10),minute=sorted(minute.items()),categories=cats,facet_paths=filtered.most_common(12),query_keys=[(list(k),v) for k,v in qkeys.most_common(12)],admin_ajax_actions=ajax.most_common(15))
+           print('WINDOW_REPORT',json.dumps(data,default=list,ensure_ascii=False))
+          PY
+          echo '--- EDGES AND CACHE CHECKS WITHOUT LOAD GENERATION ---'
+          for url in / /tienda/ /tienda/1957/ /en/shop/; do
+           curl -ksS --connect-timeout 3 --max-time 12 -D /tmp/incident-h-20261029 -o /dev/null -w "PROBE $url HTTP=%{http_code} first=%{time_starttransfer} total=%{time_total}\n" "https://www.elmercadodeorigen.com$url" || true
+           grep -iE '^x-emdo-vendor-cache:' /tmp/incident-h-20261029 | tr -d '\r' | tail -n1 || true
+          done
+          echo '--- END SNAPSHOT ---'
+          REMOTE
