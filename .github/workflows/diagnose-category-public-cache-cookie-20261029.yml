@@ -1,0 +1,31 @@
+name: Inspect only public category Set-Cookie names 20261029
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/diagnose-category-public-cache-cookie-20261029.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          h=$(mktemp)
+          for u in /categoria-producto/embutidos-y-curados/page/2/ /categoria-producto/quesos/curados/ /tienda/; do
+            curl -ksS --connect-timeout 3 --max-time 14 -D "$h" -o /dev/null -w "url=$u http=%{http_code}\n" "https://www.elmercadodeorigen.com$u" || true
+            grep -i '^set-cookie:' "$h" | sed -E 's/^[Ss]et-[Cc]ookie:[[:space:]]*([^=;[:space:]]+).*/cookie_name=\1/' | head -8 || true
+            grep -i '^x-emdo-public-cache:' "$h" | tr -d '\r' || true
+          done
+          rm -f "$h"
+          REMOTE
