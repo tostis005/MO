@@ -52,10 +52,10 @@ jobs:
                 except:q={}
                 parsed+=1; byip[ip]+=1; bystatus[status]+=1
                 if path.startswith('/wp-admin/admin-ajax.php'):route='/wp-admin/admin-ajax.php'
-                elif path.startswith('/wp-json/'):route='/wp-json/'+path.removeprefix('/wp-json/').split('/')[0]+'/*'
+                elif path.startswith('/wp-json/'):route='/wp-json/'+path[len('/wp-json/'):].split('/')[0]+'/*'
                 elif path.startswith('/wp-content/'):route='/wp-content/*'
-                elif path.startswith('/tienda/'):route='/tienda/'+path.removeprefix('/tienda/').split('/')[0]+'/*'
-                elif path.startswith('/categoria-producto/'):route='/categoria-producto/'+path.removeprefix('/categoria-producto/').split('/')[0]+'/*'
+                elif path.startswith('/tienda/'):route='/tienda/'+path[len('/tienda/'):].split('/')[0]+'/*'
+                elif path.startswith('/categoria-producto/'):route='/categoria-producto/'+path[len('/categoria-producto/'):].split('/')[0]+'/*'
                 elif path.startswith('/producto/'):route='/producto/*'
                 elif path.startswith('/en/'):route='/en/*'
                 elif path=='/':route='/'
