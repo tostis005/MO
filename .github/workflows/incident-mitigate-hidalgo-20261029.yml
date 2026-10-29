@@ -1,0 +1,109 @@
+name: Emergency mitigate Hidalgo anonymous flood and recover PHP 20261029
+on:
+  push:
+    branches: [diagnostic/site-availability-20261029]
+    paths: ['.github/workflows/incident-mitigate-hidalgo-20261029.yml']
+permissions:
+  contents: read
+concurrency:
+  group: emdo-hidalgo-outage-recovery-20261029
+  cancel-in-progress: false
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install SSH helper
+        run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Guard distributed anonymous direct requests and recover exhausted FPM
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          test "$(id -u)" -eq 0
+          V=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          G=/etc/nginx/conf.d/98-emdo-hidalgo-anon-incident-20261029.conf
+          MARK='# BEGIN EMDO ANON HIDALGO OUTAGE RELIEF 20261029'
+          test -s "$V"
+          nginx -t
+          BK="/root/emdo-hidalgo-outage-20261029-$(date -u +%Y%m%dT%H%M%SZ)"
+          install -d -m 0700 "$BK"
+          cp -p "$V" "$BK/vhost_nginx.conf"
+          changed=0
+          rollback() {
+             rc=$?
+             trap - EXIT
+             if [ "$rc" -ne 0 ] && [ "$changed" -eq 1 ]; then
+                echo 'PROTECTIVE_NGINX_ROLLBACK'
+                cp -p "$BK/vhost_nginx.conf" "$V"
+                rm -f "$G"
+                nginx -t && systemctl reload nginx || true
+             fi
+             exit "$rc"
+          }
+          trap rollback EXIT
+          if grep -Fq "$MARK" "$V"; then
+             echo 'LIMIT_ALREADY_INSTALLED'
+          else
+             test ! -e "$G"
+             cat > "$G" <<'CONF'
+          # Only unauthenticated requests entering the exact Spanish Hidalgo shop
+          # directly, without a referring EMDO page. Return 429 on excess,
+          # not 403/500, so legitimate customers can retry.
+          map $http_referer $emdo_20261029_hidalgo_internal_ref {
+              default 0;
+              ~*^https?://(www\.)?elmercadodeorigen\.com(?:/|$) 1;
+          }
+          map $http_cookie $emdo_20261029_hidalgo_real_session {
+              default 0;
+              ~*(?:^|;\s*)(?:wordpress_logged_in_[^=]*|wp_woocommerce_session_[^=]*|woocommerce_items_in_cart|woocommerce_cart_hash)= 1;
+          }
+          map "$uri:$emdo_20261029_hidalgo_internal_ref:$emdo_20261029_hidalgo_real_session" $emdo_20261029_hidalgo_direct_key {
+              default "";
+              "/tienda/hidalgo-de-la-jara/:0:0" "emdo-hidalgo-anon-direct";
+          }
+          limit_req_zone $emdo_20261029_hidalgo_direct_key zone=emdo_20261029_hidalgo_direct_rate:1m rate=6r/m;
+          CONF
+             python3 - "$V" <<'PY'
+          import sys
+          p=sys.argv[1]
+          s=open(p,encoding='utf8').read()
+          needle='location @emdo_vendor_cache_origin {'
+          assert s.count(needle)==1,'cache target missing or duplicated'
+          marker='# BEGIN EMDO ANON HIDALGO OUTAGE RELIEF 20261029'
+          block='\n    '+marker+'\n    limit_req zone=emdo_20261029_hidalgo_direct_rate burst=4 nodelay;\n    # END EMDO ANON HIDALGO OUTAGE RELIEF 20261029'
+          s=s.replace(needle,needle+block,1)
+          open(p,'w',encoding='utf8').write(s)
+          PY
+             changed=1
+             echo '=== VALIDATE NGINX ==='
+             nginx -t
+             systemctl reload nginx
+             test "$(systemctl is-active nginx)" = active
+             echo 'HIDALGO_DIRECT_ANON_LIMIT_ACTIVE'
+          fi
+          echo '=== RECOVER PHP FPM FROM HUNG WORKERS ==='
+          test "$(systemctl is-active plesk-php82-fpm)" = active
+          systemctl restart plesk-php82-fpm
+          sleep 3
+          test "$(systemctl is-active plesk-php82-fpm)" = active
+          echo 'FPM_RESTARTED_HEALTHY'
+          echo '=== LOAD AFTER ACTION ==='
+          uptime
+          ps -eo stat=,args= | awk '/php-fpm: pool elmercadodeorigen.com/ {n++;if ($1~/R/)r++} END{print "EMDO_WORKERS",n,"RUNNING",r}'
+          echo "BACKUP_DIR=$BK"
+          REMOTE
+      - name: Confirm remote public response after recovery
+        shell: bash
+        run: |
+          set +e
+          for u in 'https://www.elmercadodeorigen.com/' 'https://www.elmercadodeorigen.com/tienda/' 'https://www.elmercadodeorigen.com/mi-cuenta/' 'https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/';do
+            echo "POST_CHECK=$u"
+            curl -sSkL --connect-timeout 4 --max-time 18 -o /dev/null -w 'HTTP=%{http_code} TTFB=%{time_starttransfer} SECONDS=%{time_total}\n' "$u" || true
+          done
