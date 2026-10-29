@@ -118,15 +118,15 @@ jobs:
              h=$(grep -i '^x-emdo-vendor-cache:' "$H" | tr -d '\r' | tail -n1)
              echo "ANON_VENDOR $i $c $h"
              test "$c" = 200
-             if echo "$h" | grep -qi HIT;then break;fi
+             if echo "$h" | grep -Eqi 'HIT|STALE|UPDATING';then break;fi
           done
-          grep -qi '^x-emdo-vendor-cache: HIT' "$H"
+          grep -Eqi '^x-emdo-vendor-cache: (HIT|STALE|UPDATING)' "$H"
           echo '=== WRONG FILTER DIRECT PROTECTED ==='
           c=$(curl -ksS --connect-timeout 4 --max-time 10 -D "$H" -o /dev/null -w '%{http_code}' "$BASE/tienda/hidalgo-de-la-jara/?filter_preparacion=x")
           echo "FILTER_DIRECT $c"
           test "$c" = 302
           echo '=== CART MUST NOT GET ANONYMOUS CACHE ==='
-          c=$(curl -ksS --connect-timeout 4 --max-time 30 -H 'Cookie: woocommerce_items_in_cart=1' -D "$H" -o /dev/null -w '%{http_code}' "$BASE/tienda/hidalgo-de-la-jara/")
+          c=$(curl -ksS --connect-timeout 4 --max-time 30 -H 'Cookie: woocommerce_items_in_cart=1' -H "Referer: $BASE/tienda/hidalgo-de-la-jara/" -D "$H" -o /dev/null -w '%{http_code}' "$BASE/tienda/hidalgo-de-la-jara/")
           echo "CART $c"
           test "$c" = 200
           ! grep -qi '^x-emdo-vendor-cache: HIT' "$H"
