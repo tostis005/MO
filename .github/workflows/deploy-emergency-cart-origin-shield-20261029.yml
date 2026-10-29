@@ -1,0 +1,113 @@
+name: Emergency Nginx direct-cart attack shield 20261029
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/deploy-emergency-cart-origin-shield-20261029.yml']
+permissions:
+  contents: read
+concurrency:
+  group: emdo-production-cart-shield-20261029
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Shield uncited direct cart GET and throttle any spoofed-referrer cart storm before PHP
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          test "$(id -u)" -eq 0
+          VHOST=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          MAPS=/etc/nginx/conf.d/98-emdo-direct-cart-shield-20261029.conf
+          MARK='# BEGIN EMDO DIRECT CART REQUEST SHIELD 20261029'
+          test -s "$VHOST"
+          nginx -t
+          if grep -Fq "$MARK" "$VHOST";then echo 'CART_SHIELD_ALREADY_INSTALLED';exit 0;fi
+          test ! -e "$MAPS"
+          BK="/root/emdo-direct-cart-shield-$(date -u +%Y%m%dT%H%M%SZ)"
+          install -d -m 0700 "$BK"
+          cp -p "$VHOST" "$BK/vhost_nginx.conf"
+          changed=0
+          rollback(){
+            rc=$?
+            trap - EXIT
+            if [ "$rc" != 0 ] && [ "$changed" = 1 ];then
+              echo 'CART_SHIELD_ROLLBACK_START'
+              cp -p "$BK/vhost_nginx.conf" "$VHOST"
+              rm -f "$MAPS"
+              nginx -t && systemctl reload nginx || true
+              echo 'CART_SHIELD_ROLLBACK_COMPLETE'
+            fi
+            exit "$rc"
+          }
+          trap rollback EXIT
+          cat > "$MAPS" <<'MAPSEOF'
+          # GET add-to-cart is hit by distributed no-referer crawlers, not the filter gate.
+          # POST, AJAX cart operations, checkout and other URL parameters are untouched.
+          map $args $emdo_cart_get_query_20261029 {
+              default 0;
+              ~*(?:^|&)add-to-cart= 1;
+          }
+          map $http_referer $emdo_cart_same_site_ref_20261029 {
+              default 0;
+              ~*^https?://(?:www\.)?elmercadodeorigen\.com(?::(?:80|443))?(?:/|$) 1;
+          }
+          map "$request_method:$emdo_cart_get_query_20261029:$emdo_cart_same_site_ref_20261029" $emdo_cart_direct_reject_20261029 {
+              default 0;
+              "GET:1:0" 1;
+          }
+          # Global nonempty key caps referrer-spoofed attack bursts from distinct IPs.
+          map "$request_method:$emdo_cart_get_query_20261029" $emdo_cart_global_rate_key_20261029 {
+              default "";
+              "GET:1" "emdo-cart-20261029";
+          }
+          limit_req_zone $emdo_cart_global_rate_key_20261029 zone=emdo_cart_get_global_20261029:1m rate=36r/m;
+          MAPSEOF
+          cat >> "$VHOST" <<'VHOSTEOF'
+          # BEGIN EMDO DIRECT CART REQUEST SHIELD 20261029
+          # Reject only direct GET cart mutations without same-site navigation before Apache.
+          if ($emdo_cart_direct_reject_20261029) { return 403; }
+          # Keep genuine site-originating cart links, bounded by an origin-wide budget.
+          limit_req zone=emdo_cart_get_global_20261029 burst=14 nodelay;
+          limit_req_status 429;
+          # END EMDO DIRECT CART REQUEST SHIELD 20261029
+          VHOSTEOF
+          changed=1
+          nginx -t
+          systemctl reload nginx
+          sleep 2
+          BASE='https://www.elmercadodeorigen.com'
+          H="$(mktemp)"
+          echo '=== DIRECT URL DENIED BY NGINX, BEFORE PHP ==='
+          code="$(curl -ksS --connect-timeout 3 --max-time 9 -A 'EMDO-CartShield-Verify/20261029' -o /dev/null -D "$H" -w '%{http_code}' "$BASE/producto/entrecot-de-lomo-bajo?add-to-cart=0")"
+          echo "DIRECT_CART_HTTP=$code"
+          test "$code" = 403
+          echo '=== NORMAL STATIC ASSET UNAFFECTED ==='
+          code="$(curl -ksS --connect-timeout 3 --max-time 9 -A 'EMDO-CartShield-Verify/20261029' -o /dev/null -w '%{http_code}' "$BASE/robots.txt")"
+          echo "ROBOTS_HTTP=$code"
+          test "$code" = 200
+          echo '=== DIRECT FACET SIGNED-GATE REDIRECT UNAFFECTED ==='
+          code="$(curl -ksS --connect-timeout 3 --max-time 9 -A 'EMDO-CartShield-Verify/20261029' -o /dev/null -w '%{http_code}' "$BASE/tienda/1957/?filter_preparacion=deshuesado")"
+          echo "FILTER_HTTP=$code"
+          test "$code" = 302
+          echo '=== SAME-SITE CART REQUEST MUST NOT BE REJECTED BY EDGE GUARD ==='
+          code="$(curl -ksS --connect-timeout 3 --max-time 14 -A 'EMDO-CartShield-Verify/20261029' -e "$BASE/producto/entrecot-de-lomo-bajo/" -o /dev/null -w '%{http_code}' "$BASE/producto/entrecot-de-lomo-bajo/?add-to-cart=0" || true)"
+          echo "SAME_SITE_TEST_HTTP=$code"
+          test "$code" != 403 && test "$code" != 429
+          nginx -t
+          echo '=== CURRENT SERVER LOAD ==='
+          uptime
+          ps -eo stat=,args= | awk '/php-fpm: pool elmercadodeorigen.com/ {n++;if ($1~/R/)r++} END{print "PHP_WORKERS",n,"RUNNING",r}'
+          echo 'CART_SHIELD_DEPLOY_VERIFIED'
+          echo "BACKUP_DIR=$BK"
+          rm -f "$H"
+          REMOTE
