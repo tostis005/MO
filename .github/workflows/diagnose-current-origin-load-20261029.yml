@@ -25,7 +25,7 @@ jobs:
           python3 - <<'PY'
           import re,datetime,collections,os,urllib.parse,hashlib,json
           f='/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log'
-          cutoff=datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(minutes=7)
+          cutoff=datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(minutes=3)
           paths=collections.Counter(); countries=collections.Counter(); q=collections.Counter(); codes=collections.Counter(); ref=collections.Counter(); ipper=collections.defaultdict(set); uncache=collections.Counter(); ua=collections.Counter(); minutes=collections.Counter()
           with open(f,'rb') as inp:
            inp.seek(max(0,os.path.getsize(f)-33000000))
@@ -49,5 +49,6 @@ jobs:
           print('HTTP',codes,'REFERER',ref,'QUERY',q,'UA',ua,'MINUTES',sorted(minutes.items()))
           print('HOT_ORIGIN_VARIANTS',json.dumps([(*key,n) for key,n in uncache.most_common(18)]))
           PY
+          echo '=== CORRECT ENTRE SETAS STORE SLUG ==='; curl -sSk --connect-timeout 4 --max-time 22 -o /dev/null -w 'entresetas_http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total}\n' 'https://www.elmercadodeorigen.com/tienda/entresetas/' || true
           echo '=== TOP PHP/DB ==='; ps -eo pid,stat,%cpu,%mem,etime,comm --sort=-%cpu | head -n 15
           REMOTE
