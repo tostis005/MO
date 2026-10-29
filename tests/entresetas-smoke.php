@@ -24,4 +24,11 @@ foreach (array('https://www.entresetas.com/product-category/tienda/','https://ww
     try { method('check_url',$u,true); }catch(RuntimeException $e){$failed=true;}
     ensure($failed,'invalid product URL accepted: '.$u);
 }
+
+// An Elementor product template can have no WooCommerce .summary wrapper.
+// The add-to-cart form is still the authoritative primary product scope.
+$dom = new DOMDocument();
+@$dom->loadHTML( '<html><body><h1>Seta de ostra</h1><section class="elementor-widget"><form class="cart"><input type="number"><button class="single_add_to_cart_button">Añadir</button></form></section></body></html>' );
+$scope = ( new ReflectionMethod('MDO_Connector_EntreSetas','product_scope') )->invoke(null,new DOMXPath($dom));
+ensure($scope instanceof DOMElement && $scope->tagName === 'form','Elementor cart must be recognized');
 echo "ENTRESETAS_SMOKE_OK\n";

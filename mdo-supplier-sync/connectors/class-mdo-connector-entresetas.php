@@ -42,6 +42,21 @@ final class MDO_Connector_EntreSetas {
         return $html;
     }
 
+
+    /** Product's own entry summary OR its standalone WooCommerce cart form. */
+    private static function product_scope( DOMXPath $xp ): ?DOMNode {
+        $summary = $xp->query(
+            '//div[contains(concat(" ",normalize-space(@class)," ")," entry-summary ")]' .
+            ' | //div[contains(concat(" ",normalize-space(@class)," ")," summary ")]' .
+            ' | //section[contains(concat(" ",normalize-space(@class)," ")," summary ")]'
+        );
+        if ( $summary && $summary->length ) { return $summary->item(0); }
+        // Elementor product pages place form.cart directly within a widget.
+        $forms = $xp->query( '//form[contains(concat(" ",normalize-space(@class)," ")," cart ")]' );
+        if ( $forms && $forms->length ) { return $forms->item(0); }
+        return null;
+    }
+
     private static function xpath( string $html ): DOMXPath {
         $dom = new DOMDocument();
         $prev = libxml_use_internal_errors( true );
@@ -99,10 +114,12 @@ final class MDO_Connector_EntreSetas {
             $name = trim( preg_replace( '/\s+/u', ' ', (string) $h1->item(0)->textContent ) );
             if ( $name ) { $product['title'] = sanitize_text_field( $name ); }
         }
-        $summary = $xp->query( '//div[contains(concat(" ",normalize-space(@class)," ")," summary ")] | //div[contains(concat(" ",normalize-space(@class)," ")," entry-summary ")]' );
-        $main = $summary && $summary->length ? $summary->item(0) : null;
-        if ( ! $main ) { throw new RuntimeException( 'EntreSetas: no hay ficha de venta principal ' . $url ); }
-        $add = $xp->query( './/form[contains(@class,"cart")]//button[contains(@class,"single_add_to_cart_button") and not(@disabled)]', $main );
+        // EntreSetas uses Elementor for several product templates. Its
+        // WooCommerce cart form is reliable even where .summary is absent.
+        // Never borrow the stock/price of cross-sells from the page footer.
+        $main = self::product_scope( $xp );
+        if ( ! $main ) { throw new RuntimeException( 'EntreSetas: sin formulario o resumen principal ' . $url ); }
+        $add = $xp->query( './/button[(contains(@class,"single_add_to_cart_button") or @name="add-to-cart") and not(@disabled)]', $main );
         $main_text = mb_strtolower( (string) $main->textContent, 'UTF-8' );
         $unavailable = (bool) preg_match( '/agotad[oa]|sin existencias|sin stock|no disponible/iu', $main_text );
         $schema_status = (string) ( $product['stock_status'] ?? 'unknown' );
@@ -135,7 +152,7 @@ final class MDO_Connector_EntreSetas {
                 $product['description'] = $body;
             }
         }
-        $short = $xp->query( './/div[contains(@class,"woocommerce-product-details__short-description")]', $main );
+        $short = $xp->query( '//div[contains(@class,"woocommerce-product-details__short-description")] | //div[contains(@class,"elementor-widget-woocommerce-product-short-description")]' );
         if ( $short && $short->length ) {
             $product['short_description'] = wp_kses_post( trim( (string) $short->item(0)->textContent ) );
         }
