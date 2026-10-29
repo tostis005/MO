@@ -27,8 +27,9 @@ jobs:
           test "$(id -u)" -eq 0
           V=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
           G=/etc/nginx/conf.d/92-emdo-en-shop-origin-guard-20261029.conf
+          EG=/etc/nginx/conf.d/98-emdo-hidalgo-anon-incident-20261029.conf
           MARK='# BEGIN EMDO UNIVERSAL ANON CACHE VARY AND ENGLISH SHOP BYPASS FIX 20261029'
-          test -s "$V"
+          test -s "$V" && test -s "$EG"
           nginx -t
           test ! -e "$G"
           ! grep -Fq "$MARK" "$V"
@@ -37,6 +38,7 @@ jobs:
           BK=/root/emdo-cache-en-shop-fix-$(date -u +%Y%m%dT%H%M%SZ)
           install -d -m 0700 "$BK"
           cp -p "$V" "$BK/vhost_nginx.conf"
+          cp -p "$EG" "$BK/98-emdo-hidalgo-anon-incident-20261029.conf"
           echo "BACKUP_DIR=$BK"
           changed=0
           rollback(){
@@ -44,6 +46,7 @@ jobs:
             trap - EXIT
             if [ "$rc" -ne 0 ] && [ "$changed" = 1 ];then
               cp -p "$BK/vhost_nginx.conf" "$V"
+              cp -p "$BK/98-emdo-hidalgo-anon-incident-20261029.conf" "$EG"
               rm -f "$G"
               nginx -t && systemctl reload nginx || true
               echo 'ROLLBACK_COMPLETE'
@@ -71,9 +74,9 @@ jobs:
           limit_req_zone $emdo_en_shop_query_budget_key zone=emdo_en_shop_query_global:1m rate=2r/s;
           limit_conn_zone $emdo_en_shop_query_budget_key zone=emdo_en_shop_query_conn:1m;
           CONF
-          python3 - "$V" <<'PY'
+          python3 - "$V" "$EG" <<'PY'
           import sys
-          p=sys.argv[1]
+          p,emergency=sys.argv[1:]
           s=open(p,encoding='utf8').read()
           start=s.index('location @emdo_vendor_cache_origin {')
           end=s.index('\n}',start)
@@ -96,8 +99,18 @@ jobs:
           s+='limit_req zone=emdo_en_shop_query_global burst=10 nodelay;\n'
           s+='limit_conn emdo_en_shop_query_conn 2;\n'
           s+='# END EMDO UNIVERSAL ANON CACHE VARY AND ENGLISH SHOP BYPASS FIX 20261029\n'
+          # The earlier emergency global limiter accidentally throttled anonymous
+          # CACHE HITS. Keep its protection only for requests that bypass cache.
+          legacy=open(emergency,encoding='utf8').read()
+          oldmap='map "$uri:$emdo_20261029_hidalgo_internal_ref:$emdo_20261029_hidalgo_real_session" $emdo_20261029_hidalgo_direct_key {'
+          newmap='map "$uri:$emdo_20261029_hidalgo_internal_ref:$emdo_20261029_hidalgo_real_session:$emdo_vendor_skip_cache" $emdo_20261029_hidalgo_direct_key {'
+          oldkey='"/tienda/hidalgo-de-la-jara/:0:0" "emdo-hidalgo-anon-direct";'
+          newkey='"/tienda/hidalgo-de-la-jara/:0:0:1" "emdo-hidalgo-anon-direct";'
+          assert legacy.count(oldmap)==1 and legacy.count(oldkey)==1
+          legacy=legacy.replace(oldmap,newmap).replace(oldkey,newkey)
+          open(emergency,'w',encoding='utf8').write(legacy)
           open(p,'w',encoding='utf8').write(s)
-          print('APPLIED: CACHED VARY FIX, STALE REVALIDATION, ENGLISH SHOP DIRECT QUERY GATE')
+          print('APPLIED: CACHED VARY FIX, STALE REVALIDATION, ENGLISH SHOP DIRECT QUERY GATE, CACHE HIT LIMIT EXEMPTION')
           PY
           changed=1
           nginx -t
