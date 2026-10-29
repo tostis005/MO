@@ -188,15 +188,19 @@ if ( 'report' === $phase ) {
         (sp.wc_product_id IS NULL OR p.post_author != %d OR p.post_status != 'draft')",
         $id, $vendor_id
     ) );
+    $error_events = $wpdb->get_results( $wpdb->prepare(
+        'SELECT event_type,message FROM ' . MDO_Database::table('sync_events') .
+        " WHERE supplier_id=%d AND severity='error' ORDER BY id DESC LIMIT 6", $id
+    ), ARRAY_A );
     echo 'ENTRESETAS_REPORT=' . wp_json_encode( array(
         'supplier_id' => $id, 'vendor_id' => $vendor_id,
         'disabled' => (bool) get_user_meta( $vendor_id, '_disable_vendor', true ),
         'commercial_ready' => (bool) get_option( 'mdo_entresetas_commercial_ready', false ),
         'media_authorized' => (bool) get_option( 'mdo_entresetas_media_authorized', false ),
-        'status_counts' => $statuses, 'sync' => $sync,
+        'status_counts' => $statuses, 'sync' => $sync, 'recent_errors' => $error_events,
         'published_products' => $published, 'invalid_draft_links' => $wrong
     ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . "\n";
-    if ( $published || $wrong ) { exit( 42 ); }
+    if ( $published || $wrong || ( empty( $statuses ) && ! empty( $sync['errors_count'] ) ) ) { exit( 42 ); }
     exit;
 }
 throw new RuntimeException( 'EntreSetas: fase desconocida.' );
