@@ -1,0 +1,40 @@
+name: Read-only anonymous cache bypass analysis 2026-10-29
+on:
+  push:
+    branches: [audit/bot-protection-20261029]
+    paths: ['.github/workflows/audit-cache-bypass-user-headers-20261029.yml']
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Verify public cache bypasses with four lightweight non-mutating probes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          BASE=https://www.elmercadodeorigen.com
+          USERAGENT=EMDO-Safe-Cache-Bypass-Audit/20261029
+          for mode in standard unknown_cookie no_cache_header arbitrary_query; do
+            H="$(mktemp)"
+            case "$mode" in
+              standard) DATA="$(curl -ksS --connect-timeout 2 --max-time 15 -A "$USERAGENT" -o /dev/null -D "$H" -w 'http=%{http_code} ttfb=%{time_starttransfer}s total=%{time_total}s' "$BASE/tienda/1957/" || true)";;
+              unknown_cookie) DATA="$(curl -ksS --connect-timeout 2 --max-time 15 -A "$USERAGENT" -H 'Cookie: emdo_audit_arbitrary=1' -o /dev/null -D "$H" -w 'http=%{http_code} ttfb=%{time_starttransfer}s total=%{time_total}s' "$BASE/tienda/1957/" || true)";;
+              no_cache_header) DATA="$(curl -ksS --connect-timeout 2 --max-time 15 -A "$USERAGENT" -H 'Cache-Control: no-cache' -o /dev/null -D "$H" -w 'http=%{http_code} ttfb=%{time_starttransfer}s total=%{time_total}s' "$BASE/tienda/1957/" || true)";;
+              arbitrary_query) DATA="$(curl -ksS --connect-timeout 2 --max-time 15 -A "$USERAGENT" -o /dev/null -D "$H" -w 'http=%{http_code} ttfb=%{time_starttransfer}s total=%{time_total}s' "$BASE/tienda/1957/?emdo_audit_noop=1" || true)";;
+            esac
+            CACHE="$(grep -i '^x-emdo-vendor-cache:' "$H" | tr -d '\r' | tail -n 1 | cut -d' ' -f2- || true)"
+            echo "CACHE_BYPASS_PROBE mode=$mode $DATA cache=$CACHE"
+            rm -f "$H"
+          done
+          echo 'READ_ONLY_DONE'
+          REMOTE
