@@ -110,7 +110,7 @@ jobs:
              l=$(grep -i '^location:' "$H" | tail -n1 | tr -d '\r')
              echo "DIRECT_ALIAS $p CODE=$c $l"
              test "$c" = 302
-             case "$l" in 'location: /en/shop/') ;; *) exit 7;; esac
+             case "$l" in 'location: /en/shop/'|'location: https://www.elmercadodeorigen.com/en/shop/') ;; *) exit 7;; esac
           done
           echo '=== ORIGIN SAFE ANON CACHED ==='
           for i in 1 2 3;do
