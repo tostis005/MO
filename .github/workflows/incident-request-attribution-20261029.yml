@@ -1,0 +1,138 @@
+name: Read-only production request and PHP attribution 20261029
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/incident-request-attribution-20261029.yml'
+permissions:
+  contents: write
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Aggregate query bypass traffic and PHP slow stacks
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'python3 -' > /tmp/emdo-attribution.json <<'PYREMOTE'
+          import os,re,json,subprocess,datetime,urllib.parse,collections
+          now=datetime.datetime.now(datetime.timezone.utc)
+          root='/var/www/vhosts/system/elmercadodeorigen.com/logs'
+          cutoff=now-datetime.timedelta(minutes=28)
+          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"([^"]+)"\s+(\d{3})\s+\S+(?:\s+"([^"]*)"\s+"([^"]*)")?')
+          stats={}
+          for fn in ('access_ssl_log','proxy_access_ssl_log'):
+            p=os.path.join(root,fn)
+            bystatus=collections.Counter(); byroute=collections.Counter(); byqueryroute=collections.Counter()
+            bykeys=collections.Counter(); byaction=collections.Counter(); byagent=collections.Counter()
+            byref=collections.Counter(); byip=collections.Counter(); qstatus=collections.Counter()
+            per5=collections.Counter(); top301=collections.Counter(); bots=collections.Counter()
+            parsed=0; total=0; unique_queries=set()
+            with open(p,'rb') as f:
+              f.seek(0,os.SEEK_END);f.seek(max(0,f.tell()-25000000))
+              if f.tell():f.readline()
+              for raw in f:
+                m=rx.match(raw.decode('utf8','replace'))
+                if not m:continue
+                ip,ds,req,status,ref,agent=m.groups()
+                try: dt=datetime.datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(datetime.timezone.utc)
+                except:continue
+                if not cutoff<=dt<=now:continue
+                parts=req.split()
+                if len(parts)<2:continue
+                url=urllib.parse.urlsplit(parts[1]);path=url.path or '/'
+                try:q=urllib.parse.parse_qs(url.query,keep_blank_values=True)
+                except:q={}
+                parsed+=1; byip[ip]+=1; bystatus[status]+=1
+                if path.startswith('/wp-admin/admin-ajax.php'):route='/wp-admin/admin-ajax.php'
+                elif path.startswith('/wp-json/'):route='/wp-json/'+path.removeprefix('/wp-json/').split('/')[0]+'/*'
+                elif path.startswith('/wp-content/'):route='/wp-content/*'
+                elif path.startswith('/tienda/'):route='/tienda/'+path.removeprefix('/tienda/').split('/')[0]+'/*'
+                elif path.startswith('/categoria-producto/'):route='/categoria-producto/'+path.removeprefix('/categoria-producto/').split('/')[0]+'/*'
+                elif path.startswith('/producto/'):route='/producto/*'
+                elif path.startswith('/en/'):route='/en/*'
+                elif path=='/':route='/'
+                else:route='/article-other/*'
+                byroute[(status,route)]+=1
+                if url.query:
+                  keys=tuple(sorted(q.keys()))
+                  if len(unique_queries)<40000:unique_queries.add((route,url.query))
+                  byqueryroute[(route,status)]+=1
+                  for k in keys:bykeys[k[:48]]+=1
+                  if 'action' in q and route=='/wp-admin/admin-ajax.php':
+                    byaction[str(q['action'][0])[:80]]+=1
+                  qstatus[status]+=1
+                if status=='301':top301[route]+=1
+                if ref=='-' or not ref: byref['none']+=1
+                elif 'elmercadodeorigen.com' in ref: byref['internal']+=1
+                else:byref['external']+=1
+                agent=agent or ''
+                if re.search(r'googlebot|bingbot|bytespider|semrush|ahrefs|mj12|claudebot|gptbot|yandex|facebookexternalhit|pinterestbot',agent,re.I):
+                  m2=re.search(r'googlebot|bingbot|bytespider|semrush|ahrefs|mj12|claudebot|gptbot|yandex|facebookexternalhit|pinterestbot',agent,re.I)
+                  a=m2.group(0).lower()
+                elif re.search(r'bot|crawler|spider|curl|python|wget',agent,re.I):a='generic_bot_or_script'
+                elif 'Mozilla/5.0' in agent:a='browser_claim'
+                else:a='other_or_empty'
+                byagent[a]+=1
+                if dt>=now-datetime.timedelta(minutes=5):per5[(status,route)]+=1
+            stats[fn]={'count':parsed,'statuses':bystatus,'ip_count':len(byip),
+              'top10_ip_share':round(sum(x for _,x in byip.most_common(10))/parsed,3) if parsed else 0,
+              'max_single_ip_requests':max(byip.values()) if byip else 0,
+              'unique_query_pairs_max_40000':len(unique_queries),'top_status_routes':[([c,p],n) for (c,p),n in byroute.most_common(30)],
+              'top_query_status_routes':[([p,s],n) for (p,s),n in byqueryroute.most_common(30)],
+              'query_key_counts':bykeys.most_common(25),'ajax_actions':byaction.most_common(20),'status_with_query':qstatus,
+              'referrers':byref,'user_agent_types':byagent,'last5min_routes':[([s,p],n) for (s,p),n in per5.most_common(20)]}
+          slow=os.path.join(root,'php-fpm_slow.log')
+          slowresult={}
+          if os.path.isfile(slow):
+            with open(slow,'rb') as f:
+              f.seek(0,os.SEEK_END);f.seek(max(0,f.tell()-7000000))
+              b=f.read().decode('utf8','replace')
+            plugins=collections.Counter()
+            samples=re.split(r'(?=\[\d\d-[A-Za-z]{3}-\d{4}\s)',b)
+            for x in samples:
+              mm=re.search(r'/wp-content/plugins/([^/]+)/',x)
+              plugins['plugin/'+mm.group(1) if mm else 'core_theme_or_other']+=1
+            slowresult={'bytes':len(b),'sample_counts_by_first_plugin':plugins.most_common(15),'rough_samples':len(samples)}
+          proc=subprocess.run(['ps','-eo','stat,pcpu,rss,args'],capture_output=True,text=True,timeout=6)
+          workers=[]
+          for line in proc.stdout.splitlines():
+            if 'php-fpm: pool elmercadodeorigen.com' not in line:continue
+            parts=line.split(maxsplit=3)
+            if len(parts)<4:continue
+            try:workers.append({'state':parts[0],'cpu_pct':float(parts[1]),'rss_kb':int(parts[2])})
+            except:continue
+          workers.sort(key=lambda x:-x['cpu_pct'])
+          mem={}
+          try:
+            with open('/proc/meminfo') as f:
+              for line in f:
+                if line.startswith(('MemTotal:','MemAvailable:','SwapTotal:','SwapFree:')):
+                  k,v=line.split(':',1);mem[k]=int(v.strip().split()[0])
+          except:pass
+          print(json.dumps({'generated_utc':now.isoformat(),'window_minutes':28,'logs':stats,'php_slowlog':slowresult,
+            'php_workers':{'count':len(workers),'top_cpu':workers[:12]},'meminfo_kb':mem},ensure_ascii=False))
+          PYREMOTE
+          python3 -m json.tool /tmp/emdo-attribution.json >/dev/null
+      - name: Persist sanitized metrics only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os,json,base64,urllib.request
+          target='diagnostics/emdo-incident-attribution-20261029.json'
+          with open('/tmp/emdo-attribution.json','rb') as f: data=f.read()
+          body=json.dumps({'message':'Read-only origin traffic attribution [skip ci]','content':base64.b64encode(data).decode(),'branch':'main'}).encode()
+          url='https://api.github.com/repos/'+os.environ['GH_REPO']+'/contents/'+target
+          req=urllib.request.Request(url,data=body,method='PUT',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'})
+          with urllib.request.urlopen(req,timeout=25) as r:print('REPORT_SAVED',r.status)
+          PY
