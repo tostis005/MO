@@ -1,0 +1,105 @@
+name: Close clean English shop pagination cache gap 20261029
+on:
+  push:
+    branches: [diagnostic/site-availability-20261029]
+    paths: ['.github/workflows/complete-english-shop-clean-cache-20261029.yml']
+permissions: { contents: read }
+concurrency:
+  group: emdo-production-english-shop-clean-cache-20261029
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Cache only clean English shop pages and keep dynamic bypass protected
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          V=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          MARK='# BEGIN EMDO ENGLISH SHOP CLEAN CACHE COMPLETION 20261029'
+          test "$(id -u)" -eq 0
+          test -s "$V"
+          grep -Fq 'CACHE VARY AND ENGLISH SHOP BYPASS FIX 20261029' "$V"
+          ! grep -Fq "$MARK" "$V"
+          ! grep -Fq 'location = /en/shop/ {' "$V"
+          nginx -t
+          BK=/root/emdo-english-shop-clean-cache-$(date -u +%Y%m%dT%H%M%SZ)
+          install -d -m 0700 "$BK"
+          cp -p "$V" "$BK/vhost_nginx.conf"
+          echo "BACKUP=$BK"
+          changed=0
+          rollback(){
+             rc=$?
+             trap - EXIT
+             if [ "$rc" != 0 ] && [ "$changed" = 1 ];then
+               cp -p "$BK/vhost_nginx.conf" "$V"
+               nginx -t && systemctl reload nginx || true
+               echo 'ROLLBACK_COMPLETE'
+             fi
+             exit "$rc"
+          }
+          trap rollback EXIT
+          python3 - "$V" <<'PY'
+          import sys
+          p=sys.argv[1];s=open(p,encoding='utf8').read()
+          marker='# BEGIN EMDO UNIVERSAL ANON CACHE VARY AND ENGLISH SHOP BYPASS FIX 20261029'
+          assert s.count(marker)==1
+          extra='''# BEGIN EMDO ENGLISH SHOP CLEAN CACHE COMPLETION 20261029
+          # The same shared cache safety map blocks all query, cart, unknown
+          # cookie, logged-in and authorization requests from shared HTML.
+          # Server-level direct-query redirect still runs before location selection.
+          location = /en/shop/ {
+              error_page 418 = @emdo_vendor_cache_origin;
+              return 418;
+          }
+          location ~* ^/en/shop/page/[1-9][0-9]*/?$ {
+              error_page 418 = @emdo_vendor_cache_origin;
+              return 418;
+          }
+          # END EMDO ENGLISH SHOP CLEAN CACHE COMPLETION 20261029
+          '''
+          s=s.replace(marker,extra+marker,1)
+          needle='location @emdo_vendor_cache_origin {'
+          assert s.count(needle)==1
+          s=s.replace(needle,needle+'''
+              # Still cap all stateful English shop queries, even when routed
+              # through this named cache/bypass location rather than Plesk.
+              limit_req zone=emdo_en_shop_query_global burst=10 nodelay;
+              limit_conn emdo_en_shop_query_conn 2;
+          ''',1)
+          open(p,'w',encoding='utf8').write(s)
+          PY
+          changed=1
+          nginx -t
+          systemctl reload nginx
+          sleep 2
+          B=https://www.elmercadodeorigen.com
+          H=$(mktemp)
+          echo '=== ENGLISH CLEAN PAGINATION ==='
+          for u in /en/shop/ /en/shop/page/2/;do
+             c=$(curl -ksS --connect-timeout 4 --max-time 25 -D "$H" -o /dev/null -w '%{http_code}' "$B$u")
+             cache=$(grep -i '^x-emdo-vendor-cache:' "$H" | tail -n1 | tr -d '\r' || true)
+             echo "CLEAN $u $c $cache"
+             case "$c" in 200|301|302|404) ;; *) exit 6;; esac
+             test -n "$cache"
+          done
+          echo '=== ENGLISH DIRECT PARAMETERIZED PAGE STILL REDIRECTS BEFORE PHP ==='
+          c=$(curl -ksS --connect-timeout 4 --max-time 10 -D "$H" -o /dev/null -w '%{http_code}' "$B/en/shop/page/2/?orderby=price")
+          echo "DIRECT_QUERY $c"
+          test "$c" = 302
+          echo '=== EXISTING HISPANIC VENDOR AND CART STILL SAFE ==='
+          c=$(curl -ksS --connect-timeout 4 --max-time 20 -D "$H" -o /dev/null -w '%{http_code}' "$B/tienda/hidalgo-de-la-jara/")
+          echo "HIDALGO $c $(grep -i '^x-emdo-vendor-cache:' "$H" | tr -d '\r' | tail -n1)"
+          test "$c" = 200
+          nginx -t
+          echo 'ENGLISH_CLEAN_SHOP_CACHE_AND_DYNAMIC_GUARD_VERIFIED'
+          REMOTE
