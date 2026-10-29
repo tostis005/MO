@@ -1,0 +1,49 @@
+name: Check 1957 crop 26-27 in Mentta feed
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/check-1957-mentta-feed-20261029.yml'
+      - '.github/scripts/check-1957-mentta-feed-20261029.php'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check PHP syntax
+        run: php -l .github/scripts/check-1957-mentta-feed-20261029.php
+      - name: Query production Mentta connector for the 1957 oils
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "$STAGING_HOST" && test -n "$STAGING_USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          PROD_ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          REMOTE="/tmp/check-1957-mentta-feed-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/check-1957-mentta-feed-20261029.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $REMOTE" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "timeout 200 /opt/plesk/php/8.2/bin/php -d memory_limit=768M /usr/local/bin/wp eval-file '$REMOTE' --path='$PROD_ROOT' --allow-root" | tee /tmp/check-1957-mentta-feed.txt
+          grep -q 'MENTTA_1957_EXPORT_AUDIT_COMPLETE' /tmp/check-1957-mentta-feed.txt
+      - name: Archive result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: check-1957-mentta-feed
+          path: /tmp/check-1957-mentta-feed.txt
+          if-no-files-found: warn
+          retention-days: 5
