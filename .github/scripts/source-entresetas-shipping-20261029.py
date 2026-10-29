@@ -26,6 +26,17 @@ if ids:
  print('ADD_ANONYMOUS_CART',p.status_code,p.url,flush=True)
  cart=session.get(base+'wp-json/wc/store/v1/cart',timeout=35)
  print('SOURCE_CART_RESULT',cart.status_code,cart.text[:1500],flush=True)
+ if cart.status_code==200:
+  j=cart.json()
+  print('SOURCE_CART_SHIPPING_FIELDS',json.dumps({k:v for k,v in j.items() if 'shipp' in k or 'address' in k or 'needs_' in k},ensure_ascii=False)[:2200],flush=True)
+  print('SOURCE_ITEM_TYPES',[(i.get('name'),i.get('quantity'),i.get('prices'),i.get('extensions')) for i in j.get('items',[])][:2],flush=True)
+  for route in ['carrito/','finalizar-compra/']:
+   pg=session.get(base+route,timeout=25); body=pg.text
+   print('AFTER_ADD_ROUTE',route,pg.status_code,pg.url,len(body),flush=True)
+   for key in ['shipping_method','woocommerce-shipping-totals','shipping-calculator','cart_totals','Gastos de envío','Envío gratuito','Envío','checkout-button']:
+    pos=body.casefold().find(key.casefold())
+    if pos>=0:print('AFTER_ADD_MATCH',route,key,re.sub(r'\s+',' ',body[max(0,pos-140):pos+300])[:440],flush=True)
+
  headers={}
  for k in ['Cart-Token','Nonce']:
   if k in cart.headers:headers[k]=cart.headers[k]
