@@ -83,5 +83,34 @@ jobs:
               rm -f "$hdr"
             done
           done
+          echo '=== LOG ROTATION INVENTORY: NAMES AND SIZES ONLY ==='
+          python3 - <<'PY'
+          import os,glob,datetime
+          base='/var/www/vhosts/system/elmercadodeorigen.com/logs/'
+          for g in ('*access*ssl*','*proxy*access*','*php*fpm*'):
+           for p in sorted(glob.glob(base+g)):
+            try:
+             v=os.stat(p);print('LOG_INVENTORY',os.path.basename(p),'bytes',v.st_size,'mtime_utc',datetime.datetime.fromtimestamp(v.st_mtime,datetime.timezone.utc).isoformat())
+            except:pass
+          PY
+          echo '=== CACHE HEADER EXPLANATION; NO COOKIE VALUES ==='
+          for path in '/tienda/' '/tienda/hidalgo-de-la-jara/' '/tienda/1957/' '/tienda/montjam/'; do
+            for attempt in 1 2; do
+              hdr="$(mktemp)"
+              curl -ksS --connect-timeout 3 --max-time 17 -A 'EMDO-header-cache-audit/20261029' -D "$hdr" -o /dev/null "https://www.elmercadodeorigen.com$path" || true
+              python3 - "$hdr" "$path" "$attempt" <<'PY'
+          import sys
+          h=open(sys.argv[1],errors='replace').read().splitlines()
+          useful={}
+          for x in h:
+           if ':' not in x:continue
+           k,v=x.split(':',1);k=k.lower().strip();v=v.strip()
+           if k=='set-cookie':useful.setdefault(k,[]).append(v.split('=',1)[0])
+           elif k in ('x-emdo-vendor-cache','x-emdo-nginx-hot-cache','x-cache','age','cache-control','vary','expires','x-rocket-cache','x-litespeed-cache','pragma'):useful[k]=v[:180]
+          print('CACHE_HEADERS',sys.argv[2],sys.argv[3],useful)
+          PY
+              rm -f "$hdr"
+            done
+          done
           echo 'AUDIT_COMPLETE_READ_ONLY'
           REMOTE
