@@ -39,8 +39,24 @@ require_once ABSPATH.'wp-admin/includes/file.php';
 require_once ABSPATH.'wp-admin/includes/image.php';
 $id=(int)get_user_meta($vid,'_mdo_quesos_pajarete_official_logo_20261029',true);
 if(!$id||get_post_type($id)!=='attachment'||(string)get_post_meta($id,'_mdo_quesos_pajarete_official_logo_source',true)!==$origin){
- $id=media_sideload_image($origin,0,'Logotipo oficial de Quesos Pajarete','id');
- if(is_wp_error($id))throw new RuntimeException('Could not import official logo: '.$id->get_error_message());
+ $local_file=(string)getenv('PAJARETE_LOGO_UPLOAD');
+ if(!$local_file||!is_readable($local_file)||!is_file($local_file)){
+  throw new RuntimeException('The verified local official logo transfer is required');
+ }
+ $signature=file_get_contents($local_file,false,null,0,8);
+ if($signature!=="\x89PNG\r\n\x1a\n")throw new RuntimeException('Untrusted or malformed PNG source');
+ $file_size=filesize($local_file);
+ $picture=@getimagesize($local_file);
+ if($file_size<1000||$file_size>12000000||!is_array($picture)||
+   (string)($picture['mime']??'')!=='image/png'||$picture[0]<600||$picture[1]<200){
+  throw new RuntimeException('Image byte size and genuine dimensions do not match the official Pajarete logo');
+ }
+ $id=media_handle_sideload([
+  'name'=>'logo__1_-removebg-preview.png',
+  'tmp_name'=>$local_file,
+  'error'=>0,'size'=>$file_size
+ ],0,'Logotipo oficial de Quesos Pajarete');
+ if(is_wp_error($id))throw new RuntimeException('Cannot install transferred official logo: '.$id->get_error_message());
  $id=(int)$id;
  $meta=wp_get_attachment_metadata($id);
  if(!is_array($meta)||(int)($meta['width']??0)<600||(int)($meta['height']??0)<200){

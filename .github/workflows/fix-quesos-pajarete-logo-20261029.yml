@@ -45,15 +45,30 @@ jobs:
             done
           ')"
           test -n "$PROD_PATH"
-          REMOTE="/tmp/audit-entresetas-$GITHUB_RUN_ID.php"
+          REMOTE="/tmp/fix-pajarete-logo-$GITHUB_RUN_ID.php"
+          REMOTE_PNG="/tmp/official-pajarete-logo-$GITHUB_RUN_ID.png"
+          LOCAL_PNG="/tmp/official-pajarete-logo-$GITHUB_RUN_ID.png"
+          curl -fL --retry 3 --retry-all-errors --connect-timeout 20 --max-time 95 \
+            -A 'Mozilla/5.0' 'https://quesospajarete.com/wp-content/uploads/2024/04/logo__1_-removebg-preview.png' \
+            -o "$LOCAL_PNG"
+          python3 - "$LOCAL_PNG" <<'PY'
+          import sys,struct
+          data=open(sys.argv[1],'rb').read()
+          if not data.startswith(bytes([137,80,78,71,13,10,26,10])):raise Exception('Not a PNG')
+          if not 1000<len(data)<12000000:raise Exception('Invalid official image size')
+          width,height=struct.unpack('>II',data[16:24])
+          if width<600 or height<200:raise Exception('Unexpected official logo dimensions')
+          print('PAJARETE_VERIFIED_ORIGINAL_IMAGE=',len(data),width,height)
+          PY
           sshpass -e scp $SCP .github/scripts/fix-quesos-pajarete-logo-20261029.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
-          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $REMOTE" >/dev/null 2>&1 || true' EXIT
+          sshpass -e scp $SCP "$LOCAL_PNG" "$STAGING_USER@$STAGING_HOST:$REMOTE_PNG"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $REMOTE $REMOTE_PNG" >/dev/null 2>&1 || true' EXIT
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
             set -e
             php_bin=\$(command -v php || true)
             [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
             wp_bin=\$(command -v wp)
-            \"\$php_bin\" -d memory_limit=1536M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root
+            PAJARETE_LOGO_UPLOAD='$REMOTE_PNG' \"\$php_bin\" -d memory_limit=1536M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root
           " | tee /tmp/pajarete-logo-fix.txt
           grep -Eq 'PAJARETE_LOGO_(CONFIGURED|ALREADY_PRESENT)=' /tmp/pajarete-logo-fix.txt
       - name: Verify official logo appears on public WCFM store page
