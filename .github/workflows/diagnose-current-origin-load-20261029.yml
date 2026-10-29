@@ -1,0 +1,53 @@
+name: Readonly live Apache hot paths and PHP saturation 20261029
+on:
+  push:
+    branches: [diagnostic/site-availability-20261029]
+    paths: ['.github/workflows/diagnose-current-origin-load-20261029.yml']
+permissions: { contents: read }
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Analyze only last seven minutes of origin requests
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set +e
+          echo '=== TIME SERVICE LOAD ==='; date -u; uptime
+          echo '=== PHP ==='; ps -eo stat=,args= | awk '/php-fpm: pool elmercadodeorigen.com/ {n++;if ($1~/R/)r++} END{print "PHP_WORKERS",n,"RUNNING",r}'
+          python3 - <<'PY'
+          import re,datetime,collections,os,urllib.parse,hashlib,json
+          f='/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log'
+          cutoff=datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(minutes=7)
+          paths=collections.Counter(); countries=collections.Counter(); q=collections.Counter(); codes=collections.Counter(); ref=collections.Counter(); ipper=collections.defaultdict(set); uncache=collections.Counter(); ua=collections.Counter(); minutes=collections.Counter()
+          with open(f,'rb') as inp:
+           inp.seek(max(0,os.path.getsize(f)-33000000))
+           for b in inp:
+            s=b.decode('utf8','replace')
+            m=re.match(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"([^"]+)"\s+(\d{3})\s+\S+\s+"([^"]*)"\s+"([^"]*)"',s)
+            if not m:continue
+            ip,dt,request,code,referer,agent=m.groups()
+            try:d=datetime.datetime.strptime(dt,'%d/%b/%Y:%H:%M:%S %z').astimezone(datetime.timezone.utc)
+            except:continue
+            if d<cutoff:continue
+            parts=request.split()
+            if len(parts)<2:continue
+            method,url=parts[:2];path=url.split('?')[0];query=url.partition('?')[2];paths[path]+=1;codes[code]+=1; ipper[path].add(hashlib.sha256(ip.encode()).hexdigest()[:9])
+            ref['site' if 'elmercadodeorigen.com' in referer else 'external_or_none']+=1
+            ua['browser_claim' if 'Mozilla' in agent else 'crawler_or_other']+=1
+            minutes[d.strftime('%H:%M')]+=1
+            q['with_query' if query else 'clean']+=1
+            uncache[(path,'query' if query else 'no_query', 'site_ref' if 'elmercadodeorigen.com' in referer else 'not_site_ref')]+=1
+          print('ROUTES',json.dumps([(p,n,len(ipper[p])) for p,n in paths.most_common(28)]))
+          print('HTTP',codes,'REFERER',ref,'QUERY',q,'UA',ua,'MINUTES',sorted(minutes.items()))
+          print('HOT_ORIGIN_VARIANTS',json.dumps([(*key,n) for key,n in uncache.most_common(18)]))
+          PY
+          echo '=== TOP PHP/DB ==='; ps -eo pid,stat,%cpu,%mem,etime,comm --sort=-%cpu | head -n 15
+          REMOTE
