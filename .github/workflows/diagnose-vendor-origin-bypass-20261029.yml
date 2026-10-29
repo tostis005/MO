@@ -1,0 +1,55 @@
+name: Readonly audit why clean vendor requests hit Apache 20261029
+on:
+  push:
+    branches: [diagnostic/site-availability-20261029]
+    paths: ['.github/workflows/diagnose-vendor-origin-bypass-20261029.yml']
+permissions: { contents: read }
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Inspect live cache configuration, headers and routed anonymous responses
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set +e
+          V=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          echo '=== STATUS AND TIME ==='; date -u; uptime
+          echo '=== ROUTE/CACHE CONFIG ==='
+          grep -n -A38 -B5 'location @emdo_vendor_cache_origin' "$V" | head -n 70
+          grep -n -A16 -B5 'location = /tienda/hidalgo-de-la-jara/' "$V" | head -n 50
+          echo '=== GLOBAL VENDOR COOKIE MAP ==='
+          cat /etc/nginx/conf.d/94-emdo-universal-vendor-cache-20261028.conf
+          echo '=== DYNAMIC BYPASS AND INCIDENT MAP (NO SECRETS) ==='
+          cat /etc/nginx/conf.d/97-emdo-uncached-bypass-guard-20261029.conf
+          cat /etc/nginx/conf.d/98-emdo-hidalgo-anon-incident-20261029.conf
+          echo '=== DISK CACHE FILES ==='
+          du -sh /var/cache/nginx/emdo-vendor-v1 2>/dev/null
+          find /var/cache/nginx/emdo-vendor-v1 -type f 2>/dev/null | wc -l
+          echo '=== REQUESTS VIA PUBLIC HOST ==='
+          BASE=https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/
+          for kind in clean clean_again analytics unknown cart first_party signed; do
+           HEAD=$(mktemp); BODY=$(mktemp)
+           case "$kind" in
+             clean|clean_again) arg=() ;;
+             analytics) arg=(-H 'Cookie: _ga=GA1.1.111.222') ;;
+             unknown) arg=(-H 'Cookie: unexpected_probe=1') ;;
+             cart) arg=(-H 'Cookie: woocommerce_items_in_cart=1') ;;
+             first_party) arg=(-H 'Referer: https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/') ;;
+             signed) arg=(-H 'Cookie: emdo_filter_pass=invalid-test') ;;
+           esac
+           curl --noproxy '*' -ksS --connect-timeout 3 --max-time 14 -A 'EMDO-Anonymous-Edge-Audit/20261029' \${arg[@]} -D "$HEAD" -o "$BODY" -w "$kind status=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} bytes=%{size_download}\n" "$BASE" || true
+           grep -iE '^(x-emdo-vendor-cache|cache-control|set-cookie|location|x-emdo-nginx-hot-cache):' "$HEAD" | sed -E 's/^(set-cookie):.*/\1: REDACTED/' | head -n 9
+           rm -f "$HEAD" "$BODY"
+          done
+          echo '=== RECENT ROOT PHP SATURATION ==='
+          ps -eo stat=,args= | awk '/php-fpm: pool elmercadodeorigen.com/ {n++;if ($1~/R/)r++} END{print "PHP_WORKERS",n,"RUNNING",r}'
+          REMOTE
