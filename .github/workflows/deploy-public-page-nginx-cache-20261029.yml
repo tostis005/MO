@@ -1,0 +1,160 @@
+name: Deploy safe public-page Nginx cache 20261029
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/deploy-public-page-nginx-cache-20261029.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: emdo-public-page-cache-20261029
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install SSH client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Install protected anonymous edge caching with rollback
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          CONF=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          GENERATED=/var/www/vhosts/system/elmercadodeorigen.com/conf/nginx.conf
+          GLOBAL=/etc/nginx/conf.d/93-emdo-public-page-cache-20261029.conf
+          CACHE=/var/cache/nginx/emdo-public-v1
+          MARK='# BEGIN EMDO SAFE PUBLIC PAGE CACHE 20261029'
+          test "$(id -u)" -eq 0
+          test -s "$CONF" && test -s "$GENERATED"
+          grep -Fq '# BEGIN EMDO SCOPED FULL-SITE FILTER GATE 20261029' "$CONF"
+          grep -Fq 'location @emdo_signed_filter_gate {' "$CONF"
+          grep -Fq 'location @emdo_vendor_cache_origin {' "$CONF"
+          test -s /etc/nginx/conf.d/94-emdo-universal-vendor-cache-20261028.conf
+          nginx -t
+          if grep -Fq "$MARK" "$CONF"; then
+            test -s "$GLOBAL"
+            echo 'PUBLIC_PAGE_CACHE_ALREADY_INSTALLED'
+            exit 0
+          fi
+          test ! -e "$GLOBAL"
+          BK=/root/emdo-public-cache-$(date -u +%Y%m%dT%H%M%SZ)
+          install -d -m 0700 "$BK"
+          cp -p "$CONF" "$BK/vhost_nginx.conf"
+          changed=0
+          rollback() {
+            rc=$?
+            trap - EXIT
+            if [ "$rc" != 0 ] && [ "$changed" = 1 ]; then
+              cp -p "$BK/vhost_nginx.conf" "$CONF"
+              rm -f "$GLOBAL"
+              nginx -t && systemctl reload nginx || true
+              echo 'ROLLBACK_COMPLETE'
+            fi
+            exit "$rc"
+          }
+          trap rollback EXIT
+          NGINX_USER=$(awk '/^[[:space:]]*user[[:space:]]/ {gsub(/;/,"",$2);print $2;exit}' /etc/nginx/nginx.conf)
+          if [ -z "$NGINX_USER" ]; then NGINX_USER=nginx; fi
+          getent passwd "$NGINX_USER" >/dev/null
+          install -d -m 0755 /var/cache/nginx
+          install -d -m 0750 -o "$NGINX_USER" -g "$(id -gn "$NGINX_USER")" "$CACHE"
+          df -Pm "$CACHE" | awk 'NR==2 {if ($4<250) exit 1}'
+          cat > "$GLOBAL" <<'GLOBALEOF'
+          # Dedicated bounded cache for safe anonymous public-page responses only.
+          proxy_cache_path /var/cache/nginx/emdo-public-v1 levels=1:2 keys_zone=emdo_public_page:30m max_size=768m inactive=40m use_temp_path=off;
+          GLOBALEOF
+          chmod 0644 "$GLOBAL"
+          python3 - "$CONF" "$GENERATED" <<'PY'
+          import re,sys
+          p,g=sys.argv[1:3]
+          s=open(p,encoding='utf8').read()
+          generated=open(g,encoding='utf8').read()
+          m=re.search(r'proxy_pass\s+"(https://[^"]+:7081)"\s*;',generated)
+          assert m, 'Plesk HTTPS upstream unavailable'
+          marker='# BEGIN EMDO SCOPED FULL-SITE FILTER GATE 20261029'
+          assert s.count(marker)==1
+          assert 'emdo_public_page_origin' not in s
+          block='''# BEGIN EMDO SAFE PUBLIC PAGE CACHE 20261029
+          # Canonical products; no cart, checkout, sessions or query caching.
+          location ~* ^/(?:producto|en/product)/[a-z0-9][a-z0-9-]*/?$ {
+              error_page 418 = @emdo_public_page_origin;
+              return 418;
+          }
+          # All categories including descendants and pagination; signed filters retained.
+          location ~* ^/(?:categoria-producto|en/product-category)/(?:[a-z0-9][a-z0-9-]*/)*[a-z0-9][a-z0-9-]*(?:/page/[1-9][0-9]*)?/?$ {
+              error_page 419 = @emdo_signed_filter_gate;
+              error_page 418 = @emdo_public_page_origin;
+              if ($emdo_gate_has_filters) { return 419; }
+              return 418;
+          }
+          # Public single-slug editorials; sensitive routes excluded explicitly.
+          location ~* ^/(?:en/)?(?!(?:cart|carrito|checkout|finalizar-compra|mi-cuenta|my-account|cuenta|login|acceso|registro|register|registrarse|logout|salir|user|usuarios|perfil|pedidos|orders|order-pay|order-received|pagar|pedido-recibido|seguimiento-pedido|tracking|wishlist|lista-de-deseos|comparar|compare|dashboard|wcfm|vendor-dashboard|vendedor|tienda|store|producto|product|categoria-producto|product-category|buscar|search|wp-admin|wp-login|wp-json|wp-content|wp-includes|api|wc-api|feed|sitemap|robots|xmlrpc|suscripciones)(?:/|$))[a-z0-9][a-z0-9-]*/?$ {
+              error_page 418 = @emdo_public_page_origin;
+              return 418;
+          }
+          location @emdo_public_page_origin {
+              proxy_cache emdo_public_page;
+              proxy_cache_key "$scheme|$host|$request_uri";
+              proxy_cache_valid 200 240s;
+              proxy_cache_lock on;
+              proxy_cache_lock_timeout 12s;
+              proxy_cache_lock_age 12s;
+              proxy_cache_methods GET;
+              proxy_cache_bypass $emdo_vendor_skip_cache $http_authorization;
+              proxy_no_cache $emdo_vendor_skip_cache $http_authorization $upstream_http_set_cookie;
+              proxy_ignore_headers Cache-Control Expires;
+              proxy_cache_use_stale updating error timeout http_500 http_502 http_503 http_504;
+              proxy_pass "__UPSTREAM__";
+              proxy_ssl_server_name on;
+              proxy_ssl_name $host;
+              proxy_ssl_session_reuse off;
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
+              proxy_set_header X-Accel-Internal /internal-nginx-static-location;
+              add_header X-EMDO-Public-Cache $upstream_cache_status always;
+          }
+          # END EMDO SAFE PUBLIC PAGE CACHE 20261029
+
+          '''.replace('__UPSTREAM__',m.group(1))
+          open(p,'w',encoding='utf8').write(s.replace(marker,block+marker,1))
+          print('Public cache: products, categories, editorial. TTL=240s.')
+          PY
+          changed=1
+          nginx -t
+          systemctl reload nginx
+          sleep 2
+          BASE=https://www.elmercadodeorigen.com
+          H=$(mktemp)
+          echo '=== Verify scoped category filter admission ==='
+          code=$(curl -ksS --connect-timeout 3 --max-time 10 -D "$H" -o /dev/null -w '%{http_code}' "$BASE/categoria-producto/quesos/curados/?filter_calidad=x" || true)
+          echo "FILTER_DIRECT=$code"
+          test "$code" = 302
+          echo '=== Verify private state bypass ==='
+          for mode in 'Cookie: woocommerce_items_in_cart=1' 'Cookie: wordpress_logged_in_sample=1' 'Cookie: private_custom_cookie=1'; do
+            : > "$H"
+            curl -ksS --connect-timeout 3 --max-time 8 -H "$mode" -D "$H" -o /dev/null "$BASE/producto/carcasa-de-pato/" || true
+            if grep -qi '^X-EMDO-Public-Cache: HIT' "$H"; then echo 'UNSAFE_COOKIE_CACHE_HIT';exit 1;fi
+          done
+          : > "$H"
+          curl -ksS --connect-timeout 3 --max-time 8 -D "$H" -o /dev/null "$BASE/producto/carcasa-de-pato/?add-to-cart=99999999" || true
+          if grep -qi '^X-EMDO-Public-Cache: HIT' "$H"; then echo 'UNSAFE_CART_QUERY_CACHE_HIT';exit 1;fi
+          echo '=== Warm probe (overloaded origin may not respond yet) ==='
+          for attempt in 1 2; do
+            : > "$H"
+            curl -ksS --connect-timeout 3 --max-time 12 -D "$H" -o /dev/null -w 'product http=%{http_code} ttfb=%{time_starttransfer}s\n' "$BASE/producto/carcasa-de-pato/" || true
+            grep -i '^x-emdo-public-cache:' "$H" || true
+          done
+          nginx -t
+          echo 'PUBLIC_PAGE_NGINX_CACHE_INSTALLED'
+          echo "BACKUP_DIR=$BK"
+          REMOTE
