@@ -155,5 +155,42 @@ jobs:
            print('ARCHIVE_SUMMARY',json.dumps({'archive':i,'earliest_utc':str(min_t),'latest_utc':str(max_t),'bad_lines':bad,'counts':c,'hourly':hourly},default=dict))
           print('COMBINED_HOURLY_BACKEND',json.dumps({k:combined[k] for k in sorted(combined)},default=dict))
           PY
+          echo '=== APACHE FILTER ROUTES BY STATUS AT PEAK HOURS (NO IPS, NO QUERY VALUES) ==='
+          nice -n 15 python3 - <<'PY'
+          import gzip,re,os,collections,json,datetime
+          base='/var/www/vhosts/system/elmercadodeorigen.com/logs/'
+          rx=re.compile(rb'^\S+\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"([^"]+)"\s+(\d{3})\s')
+          windows=('27/Oct/2026:08:','27/Oct/2026:09:','27/Oct/2026:11:','28/Oct/2026:08:','28/Oct/2026:09:','28/Oct/2026:10:','28/Oct/2026:11:','28/Oct/2026:13:','29/Oct/2026:05:')
+          for i in (1,2):
+           p=base+'access_ssl_log.processed.'+str(i)+'.gz'
+           if not os.path.isfile(p):continue
+           agg=collections.Counter()
+           with gzip.open(p,'rb') as f:
+            for ln in f:
+             m=rx.match(ln)
+             if not m:continue
+             when=m.group(1).decode('ascii','replace')
+             day=when[:17]
+             if not any(when.startswith(prefix) for prefix in windows):continue
+             rr=m.group(2).decode('utf8','replace').split()
+             if len(rr)<2:continue
+             method,url=rr[:2];path,sep,q=url.partition('?')
+             if 'filter_' not in q and 'emo_vendor_cat=' not in q:continue
+             if '/hidalgo-de-la-jara/' in path:
+              prefix='hidalgo'
+              if re.match(r'^/(?:tienda|en/tienda|en/store)/hidalgo-de-la-jara/?
+          REMOTE,path):prefix='hidalgo_exact'
+              else:prefix='hidalgo_other_path'
+             elif '/montjam/' in path:prefix='montjam'
+             elif '/categoria-producto/' in path or '/product-category/' in path:prefix='category'
+             elif path.startswith('/tienda/') or path.startswith('/en/store/'):prefix='other_producer'
+             else:prefix='other'
+             stat=m.group(3).decode('ascii')
+             agg[(day,prefix,stat)]+=1
+           perhour=collections.defaultdict(collections.Counter)
+           for (day,route,stat),count in agg.items():perhour[day][route+'_'+stat]+=count
+           for day in sorted(perhour):
+            print('BACKEND_FILTER_STATUS',json.dumps({'hour':day,'groups':perhour[day]},default=dict))
+          PY
           echo 'AUDIT_COMPLETE_READ_ONLY'
           REMOTE
