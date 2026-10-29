@@ -57,6 +57,43 @@ final class MDO_Connector_EntreSetas {
         return null;
     }
 
+
+    /**
+     * Strictly accept the producer's own displayed euro price, not the first
+     * generic Woo price (which could belong to an unrelated recommendation).
+     * Under-order truffles have no price and must remain out of automation.
+     */
+    private static function visible_price( DOMXPath $xp ): ?float {
+        $nodes = $xp->query(
+            '//div[contains(@class,"elementor-widget-woocommerce-product-price")]' .
+            ' | //p[contains(concat(" ",normalize-space(@class)," ")," price ")][not(ancestor::*[contains(@class,"related")])]'
+        );
+        foreach ( $nodes ?: array() as $node ) {
+            $value = self::euros( (string) $node->textContent, false );
+            if ( null !== $value ) { return $value; }
+        }
+        // EntreSetas custom Elementor product layout displays e.g. "€6,50"
+        // in the FIRST h4 following its h1 (before any related product cards).
+        $heading = $xp->query( '(//h1)[1]/following::h4[1]' );
+        if ( $heading && $heading->length ) {
+            return self::euros( (string) $heading->item(0)->textContent, true );
+        }
+        return null;
+    }
+
+    private static function euros( string $text, bool $one_heading ): ?float {
+        $text = trim( preg_replace( '/\s+/u', ' ', str_replace( "\xC2\xA0", ' ', $text ) ) );
+        if ( ! str_contains( $text, '€' ) ) { return null; }
+        if ( $one_heading && ! preg_match( '/^\s*(?:€\s*)?[0-9]+(?:[.,][0-9]{2})\s*€?\s*$/u', $text ) ) {
+            return null;
+        }
+        if ( ! preg_match_all( '/[0-9]+(?:[.,][0-9]{2})/u', $text, $m ) || empty($m[0]) ) {
+            return null;
+        }
+        $price = (float) str_replace( ',', '.', (string) end($m[0]) );
+        return $price > 0 && $price < 100000 ? $price : null;
+    }
+
     private static function xpath( string $html ): DOMXPath {
         $dom = new DOMDocument();
         $prev = libxml_use_internal_errors( true );
@@ -168,6 +205,10 @@ final class MDO_Connector_EntreSetas {
                 if ( $kg > 0 && $kg < 100 ) { $product['weight_kg'] = $kg; }
             }
         }
+        // Elementor renders the genuine price as a visual heading (h4),
+        // rather than a standard .summary .price or Product JSON-LD.
+        // Never reuse a price from "También te puede gustar" recommendations.
+        $product['price'] = self::visible_price( $xp );
         if ( ! isset($product['price']) || ! is_numeric($product['price']) || (float)$product['price'] <= 0 ) {
             throw new RuntimeException( 'EntreSetas: precio no válido en ' . $url );
         }

@@ -31,4 +31,12 @@ $dom = new DOMDocument();
 @$dom->loadHTML( '<html><body><h1>Seta de ostra</h1><section class="elementor-widget"><form class="cart"><input type="number"><button class="single_add_to_cart_button">Añadir</button></form></section></body></html>' );
 $scope = ( new ReflectionMethod('MDO_Connector_EntreSetas','product_scope') )->invoke(null,new DOMXPath($dom));
 ensure($scope instanceof DOMElement && $scope->tagName === 'form','Elementor cart must be recognized');
+
+$price = new ReflectionMethod('MDO_Connector_EntreSetas','visible_price');
+$priceDom = new DOMDocument();
+@$priceDom->loadHTML('<?xml encoding="utf-8" ?>' . '<html><body><h1>Seta de ostra</h1><h4>€6,50</h4><section class="related"><h4>Caja variada</h4><h4>€40,00</h4></section></body></html>');
+ensure(abs($price->invoke(null,new DOMXPath($priceDom))-6.5)<0.001,'individual Elementor price must win');
+$truffleDom = new DOMDocument();
+@$truffleDom->loadHTML('<?xml encoding="utf-8" ?>' . '<html><body><h1>Trufas</h1><h2>También te puede gustar</h2><h4>Caja variada</h4><h4>€40,00</h4></body></html>');
+ensure($price->invoke(null,new DOMXPath($truffleDom))===null,'missing price must not borrow recommendation price');
 echo "ENTRESETAS_SMOKE_OK\n";
