@@ -19,7 +19,7 @@ jobs:
         run: |
           set +e
           B=https://www.elmercadodeorigen.com
-          for u in / /tienda/ /mi-cuenta/ /tienda/hidalgo-de-la-jara/ /tienda/1957/ /tienda/montjam/ /tienda/entre-setas/;do
+          for u in / /tienda/ /mi-cuenta/ /tienda/hidalgo-de-la-jara/ /tienda/1957/ /tienda/montjam/ /tienda/entresetas/ /en/shop/ /en/shop/page/2/;do
              H=$(mktemp)
              c=$(curl -ksS --connect-timeout 4 --max-time 16 -D "$H" -o /dev/null -w '%{http_code} %{time_starttransfer} %{time_total}' "$B$u")
              echo "PUBLIC $u $c $(grep -i '^x-emdo-vendor-cache:' "$H" | tail -n1 | tr -d '\r')"
@@ -46,6 +46,16 @@ jobs:
              echo "DIRECT $u $c $(grep -i '^location:' "$H" | tail -n1 | tr -d '\r')"
              test "$c" = 302 || exit 8
           done
+          echo '=== OWN STORE REFERER CHALLENGE ==='
+          F=$(mktemp)
+          code=$(curl -ksS --connect-timeout 4 --max-time 13 -H "Referer: $B/tienda/hidalgo-de-la-jara/" -o "$F" -w '%{http_code}' "$B/tienda/hidalgo-de-la-jara/?filter_preparacion=x")
+          echo "OWN_STORE_FILTER $code"
+          if [ "$code" = 200 ];then
+             grep -q 'Verificando acceso a los filtros' "$F" || exit 7
+          else
+             echo 'OWN_STORE_FILTER_UNEXPECTED_RESPONSE';exit 7
+          fi
+          rm -f "$F"
           c=$(curl -ksS --connect-timeout 4 --max-time 10 -H "Referer: $B/tienda/hidalgo-de-la-jara/" -o /dev/null -w '%{http_code}' "$B/tienda/1957/?filter_preparacion=x")
           echo "CROSS_VENDOR_REFERER $c"
           test "$c" = 302 || exit 8
