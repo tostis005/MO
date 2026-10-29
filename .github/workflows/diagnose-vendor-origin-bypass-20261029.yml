@@ -36,10 +36,10 @@ jobs:
           find /var/cache/nginx/emdo-vendor-v1 -type f 2>/dev/null | wc -l
           echo '=== REQUESTS VIA PUBLIC HOST ==='
           BASE=https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/
-          for kind in clean clean_again analytics unknown cart first_party signed; do
+          for kind in clean clean_again clean_third; do
            HEAD=$(mktemp); BODY=$(mktemp)
            case "$kind" in
-             clean|clean_again) arg=() ;;
+             clean|clean_again|clean_third) arg=() ;;
              analytics) arg=(-H 'Cookie: _ga=GA1.1.111.222') ;;
              unknown) arg=(-H 'Cookie: unexpected_probe=1') ;;
              cart) arg=(-H 'Cookie: woocommerce_items_in_cart=1') ;;
@@ -47,7 +47,7 @@ jobs:
              signed) arg=(-H 'Cookie: emdo_filter_pass=invalid-test') ;;
            esac
            curl --noproxy '*' -ksS --connect-timeout 3 --max-time 14 -A 'EMDO-Anonymous-Edge-Audit/20261029' ${arg[@]} -D "$HEAD" -o "$BODY" -w "$kind status=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} bytes=%{size_download}\n" "$BASE" || true
-           grep -iE '^(x-emdo-vendor-cache|cache-control|set-cookie|location|x-emdo-nginx-hot-cache):' "$HEAD" | sed -E 's/^(set-cookie):.*/\1: REDACTED/' | head -n 9
+           grep -iE '^(x-emdo-vendor-cache|x-el-mercado-hot-early-cache|vary|x-accel-expires|cache-control|set-cookie|location|x-emdo-nginx-hot-cache):' "$HEAD" | sed -E 's/^(set-cookie):.*/\1: REDACTED/' | head -n 13
            rm -f "$HEAD" "$BODY"
           done
           echo '=== RECENT ROOT PHP SATURATION ==='
