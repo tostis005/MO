@@ -48,33 +48,90 @@ func(g *gate)parseTicket(raw,kind,binding string)(string,bool){
  if !hmac.Equal([]byte(parts[3]),[]byte(sign(g.secret,base+"|"+binding))){return "",false}
  return parts[1],true
 }
-func permittedReferrer(r *http.Request)bool{
- u,err:=url.Parse(r.Referer())
- if err!=nil||(u.Scheme!="https"&&u.Scheme!="http"){return false}
- host:=strings.ToLower(u.Hostname())
- if host!="www.elmercadodeorigen.com"&&host!="elmercadodeorigen.com"{return false}
- p:=strings.ToLower(u.Path)
- for _,prefix:=range []string{"/tienda/","/en/store/","/en/tienda/","/categoria-producto/","/en/product-category/"}{
-  if strings.HasPrefix(p,prefix){return true}
+// The token scope is the actual storefront/category, not a blanket site pass.
+// A Referer alone is not proof of human navigation: signature + scoped quota +
+// Nginx aggregate rate limits are also enforced before Apache/PHP.
+type filterTarget struct {
+ uri string
+ scope string
+ clean string
+ depth int
+ filtered bool
+}
+func validSlug(s string) bool {
+ if len(s)<1||len(s)>120{return false}
+ for _,c:=range s {if !((c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='-'){return false}}
+ return s[0]!='-' && s[len(s)-1]!='-'
+}
+func targetFromPath(path string)(scope,clean string,ok bool){
+ p:=strings.ToLower(strings.TrimSuffix(path,"/"))
+ seg:=strings.Split(strings.Trim(p,"/"),"/")
+ if len(seg)==1 && seg[0]=="tienda"{return "shop:es","/tienda/",true}
+ if len(seg)==2 && seg[0]=="en" && (seg[1]=="store"||seg[1]=="tienda"){return "shop:en","/en/store/",true}
+ base,idx,lang:="",0,"es"
+ if len(seg)>=1 && seg[0]=="tienda" {base="store";idx=1
+ } else if len(seg)>=2&&seg[0]=="en"&&(seg[1]=="store"||seg[1]=="tienda"){base="store";idx=2;lang="en"
+ } else if len(seg)>=1&&seg[0]=="categoria-producto"{base="category";idx=1
+ } else if len(seg)>=2&&seg[0]=="en"&&seg[1]=="product-category"{base="category";idx=2;lang="en"
+ } else{return "","",false}
+ if idx>=len(seg) {return "","",false}
+ // A shop pagination URL is not a vendor named 'page'.
+ if base=="store"&&seg[idx]=="page" {
+  if len(seg)!=idx+2||!validPage(seg[idx+1]){return "","",false}
+  return "shop:"+lang,shopRoot(lang),true
  }
- return p=="/tienda"||p=="/en/store"
+ slug:=seg[idx]
+ if !validSlug(slug){return "","",false}
+ if len(seg)>idx+1 {
+  if len(seg)!=idx+3||seg[idx+1]!="page"||!validPage(seg[idx+2]){return "","",false}
+ }
+ if base=="store"{
+  return "vendor:"+slug,shopRoot(lang)+slug+"/",true
+ }
+ prefix:="/categoria-producto/"
+ if lang=="en"{prefix="/en/product-category/"}
+ return "category:"+lang+":"+slug,prefix+slug+"/",true
 }
-func storeRoot(p string)string{
- slug:="hidalgo-de-la-jara";if strings.Contains(p,"montjam"){slug="montjam"}
- if strings.HasPrefix(p,"/en/"){return "/en/store/"+slug+"/"}
- return "/tienda/"+slug+"/"
+func validPage(s string)bool{
+ n,e:=strconv.Atoi(s)
+ return e==nil&&n>=1&&n<=9999&&strconv.Itoa(n)==s
 }
-func canonicalTarget(uri string)(string,bool,int){
- if len(uri)>4096||!strings.HasPrefix(uri,"/")||strings.HasPrefix(uri,"//"){return "",false,0}
- u,err:=url.ParseRequestURI(uri);if err!=nil{return "",false,0}
- p:=strings.ToLower(u.Path)
- allowed:=false
- for _,prefix:=range []string{"/tienda/","/en/store/","/en/tienda/"}{if strings.HasPrefix(p,prefix){allowed=true;break}}
- if !allowed||(!strings.Contains(p,"/hidalgo-de-la-jara/")&&!strings.Contains(p,"/montjam/")){return "",false,0}
- q,err:=url.ParseQuery(u.RawQuery);if err!=nil{return "",false,0}
- count:=0;has:=false
- for k:=range q {if strings.HasPrefix(k,"filter_"){count++;has=true};if k=="emo_vendor_cat"{has=true}}
- return uri,has,count
+func shopRoot(lang string)string{
+ if lang=="en"{return "/en/store/"}
+ return "/tienda/"
+}
+func canonicalTarget(uri string)(filterTarget,bool){
+ if len(uri)>4096||!strings.HasPrefix(uri,"/")||strings.HasPrefix(uri,"//"){return filterTarget{},false}
+ u,err:=url.ParseRequestURI(uri);if err!=nil{return filterTarget{},false}
+ scope,clean,ok:=targetFromPath(u.Path);if !ok{return filterTarget{},false}
+ q,err:=url.ParseQuery(u.RawQuery);if err!=nil{return filterTarget{},false}
+ depth:=0;filtered:=false
+ for k:=range q {
+  k=strings.ToLower(k)
+  if strings.HasPrefix(k,"filter_"){depth++;filtered=true}
+  if strings.HasPrefix(k,"query_type_")||k=="emo_vendor_cat"||k=="min_price"||k=="max_price"||k=="orderby"{filtered=true}
+ }
+ return filterTarget{uri:uri,scope:scope,clean:clean,depth:depth,filtered:filtered},true
+}
+func permittedReferrer(r *http.Request,t filterTarget)bool{
+ u,err:=url.Parse(r.Referer())
+ if err!=nil||u==nil||(u.Scheme!="https"&&u.Scheme!="http")||u.User!=nil{return false}
+ hostname:=strings.ToLower(u.Hostname())
+ if hostname!="www.elmercadodeorigen.com"&&hostname!="elmercadodeorigen.com"{return false}
+ // Do not accept a custom port, a deceptive host, or a different vendor.
+ if port:=u.Port();port!=""&&port!="443"&&port!="80"{return false}
+ originScope,_,ok:=targetFromPath(u.Path)
+ if !ok{return false}
+ switch {
+ case strings.HasPrefix(t.scope,"vendor:"):
+  return originScope==t.scope
+ case strings.HasPrefix(t.scope,"category:"):
+  // Category filters can be entered from the matching category or shop.
+  return originScope==t.scope||strings.HasPrefix(originScope,"shop:")
+ case strings.HasPrefix(t.scope,"shop:"):
+  return originScope==t.scope
+ default:return false
+ }
 }
 func(g *gate)reserve(id string,cap int)(bool,int){
  g.mu.Lock();defer g.mu.Unlock()
@@ -95,21 +152,22 @@ func(g *gate)reserve(id string,cap int)(bool,int){
  b.timestamps=append(b.timestamps,now)
  return true,0
 }
-func issueChallenge(w http.ResponseWriter,r *http.Request,g *gate,uri string){
- c:=g.ticket("c",randomID(),time.Now().Add(75*time.Second).Unix(),identity(r))
+func issueChallenge(w http.ResponseWriter,r *http.Request,g *gate,t filterTarget){
+ c:=g.ticket("c",randomID(),time.Now().Add(75*time.Second).Unix(),identity(r)+"|"+t.scope)
  w.Header().Set("Content-Type","text/html; charset=utf-8")
  w.Header().Set("Cache-Control","no-store, private")
  w.Header().Set("X-Robots-Tag","noindex, nofollow")
  w.Header().Set("Referrer-Policy","same-origin")
  w.Header().Set("X-Content-Type-Options","nosniff")
- fmt.Fprintf(w,`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Verificando navegación</title><style>body{font:16px system-ui,sans-serif;max-width:34rem;margin:12vh auto;padding:1.5rem;color:#282828}a{color:#236c54}</style></head><body><h2>Verificando acceso a los filtros…</h2><p>Esta comprobación automática protege nuestra tienda frente a solicitudes masivas.</p><p id="status">Un momento, por favor.</p><p><a href="%s">Volver a la tienda sin filtros</a></p><script>fetch('%s?c=%s',{credentials:'same-origin',cache:'no-store'}).then(x=>{if(!x.ok)throw Error('No se ha podido validar la sesión');return x.json()}).then(()=>location.replace(%s)).catch(()=>{document.getElementById('status').textContent='No hemos podido verificar la navegación. Vuelve a la tienda para reintentar.'})</script></body></html>`,html.EscapeString(storeRoot(uri)),gateEndpoint,c,strconv.Quote(uri))
+ fmt.Fprintf(w,`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Verificando navegación</title><style>body{font:16px system-ui,sans-serif;max-width:34rem;margin:12vh auto;padding:1.5rem;color:#282828}a{color:#236c54}</style></head><body><h2>Verificando acceso a los filtros…</h2><p>Esta comprobación automática protege nuestra tienda frente a solicitudes masivas.</p><p id="status">Un momento, por favor.</p><p><a href="%s">Volver a la tienda sin filtros</a></p><script>fetch('%s%s',{credentials:'same-origin',cache:'no-store'}).then(x=>{if(!x.ok)throw Error('No se ha podido validar la sesión');return x.json()}).then(()=>location.replace(%s)).catch(()=>{document.getElementById('status').textContent='No hemos podido verificar la navegación. Vuelve a la tienda para reintentar.'})</script></body></html>`,html.EscapeString(t.clean),gateEndpoint+"?scope="+url.QueryEscape(t.scope)+"&c="+url.QueryEscape(c),"",strconv.Quote(t.uri))
 }
 func(g *gate)verify(w http.ResponseWriter,r *http.Request){
  w.Header().Set("Cache-Control","no-store, private")
  if r.Method!="GET"{http.Error(w,"Method not allowed",405);return}
- _,valid:=g.parseTicket(r.URL.Query().Get("c"),"c",identity(r))
+ scope:=r.URL.Query().Get("scope")
+ _,valid:=g.parseTicket(r.URL.Query().Get("c"),"c",identity(r)+"|"+scope)
  if !valid{http.Error(w,"Invalid navigation challenge",403);return}
- pass:=g.ticket("p",randomID(),time.Now().Add(20*time.Minute).Unix(),identity(r))
+ pass:=g.ticket("p",randomID(),time.Now().Add(20*time.Minute).Unix(),identity(r)+"|"+scope)
  http.SetCookie(w,&http.Cookie{Name:cookieName,Value:pass,Path:"/",MaxAge:1200,Secure:true,HttpOnly:true,SameSite:http.SameSiteLaxMode})
  w.Header().Set("Content-Type","application/json; charset=utf-8")
  io.WriteString(w,`{"ok":true}`)
@@ -117,27 +175,27 @@ func(g *gate)verify(w http.ResponseWriter,r *http.Request){
 func(g *gate)handle(w http.ResponseWriter,r *http.Request){
  if r.URL.Path==gateEndpoint{g.verify(w,r);return}
  if r.Method!="GET"&&r.Method!="HEAD"{http.Error(w,"Method not allowed",405);return}
- uri,filtered,depth:=canonicalTarget(r.Header.Get("X-Original-URI"))
- if !filtered{http.Error(w,"Invalid filter request",403);return}
+ t,ok:=canonicalTarget(r.Header.Get("X-Original-URI"))
+ if !ok||!t.filtered{http.Error(w,"Invalid filter request",403);return}
  w.Header().Set("Cache-Control","no-store, private")
  c,_:=r.Cookie(cookieName)
  id,valid:="",false
- if c!=nil{id,valid=g.parseTicket(c.Value,"p",identity(r))}
+ if c!=nil{id,valid=g.parseTicket(c.Value,"p",identity(r)+"|"+t.scope)}
  if !valid {
-  if !permittedReferrer(r){http.Redirect(w,r,storeRoot(uri),http.StatusFound);return}
-  issueChallenge(w,r,g,uri);return
+  if !permittedReferrer(r,t){http.Redirect(w,r,t.clean,http.StatusFound);return}
+  issueChallenge(w,r,g,t);return
  }
  cap,key:=12,"simple:"+id
- if depth>=2{cap,key=4,"complex:"+id}
+ if t.depth>=2{cap,key=4,"complex:"+id}
  if allowed,sec:=g.reserve(key,cap);!allowed{
   w.Header().Set("Retry-After",strconv.Itoa(sec))
   w.Header().Set("Content-Type","text/html; charset=utf-8")
   w.Header().Set("X-Robots-Tag","noindex, nofollow")
   w.WriteHeader(429)
-  fmt.Fprintf(w,`<!doctype html><html lang="es"><meta charset="utf-8"><title>Demasiadas consultas</title><body style="font:16px system-ui;margin:10vh auto;max-width:35rem;padding:1rem"><h2>Has realizado varias búsquedas seguidas</h2><p>Vuelve a intentarlo en %d segundos, o <a href="%s">consulta la tienda sin filtros</a>.</p></body></html>`,sec,html.EscapeString(storeRoot(uri)))
+  fmt.Fprintf(w,`<!doctype html><html lang="es"><meta charset="utf-8"><title>Demasiadas consultas</title><body style="font:16px system-ui;margin:10vh auto;max-width:35rem;padding:1rem"><h2>Has realizado varias búsquedas seguidas</h2><p>Vuelve a intentarlo en %d segundos, o <a href="%s">consulta la tienda sin filtros</a>.</p></body></html>`,sec,html.EscapeString(t.clean))
   return
  }
- w.Header().Set("X-Accel-Redirect",internalPrefix+uri)
+ w.Header().Set("X-Accel-Redirect",internalPrefix+t.uri)
  w.WriteHeader(200)
 }
 func main(){
