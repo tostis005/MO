@@ -1,0 +1,123 @@
+name: Deep read-only filter routing audit 2026-10-29
+on:
+  push:
+    branches: [audit/bot-protection-20261029]
+    paths: ['.github/workflows/audit-filter-routing-deep-20261029.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Collect configuration, status, and limited benign requests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          echo '=== CURRENT TIME, LOAD AND PHP WORKERS ==='
+          date -u '+UTC %F %T';uptime
+          ps -eo stat=,args= | awk '/php-fpm: pool elmercadodeorigen.com/ {n++;if ($1~/^R/)r++} END{print "PHP_POOL",n,"RUNNING",r}'
+          echo '=== EFFECTIVE VHOST DIRECTIVES, SANITIZED ==='
+          python3 - <<'PY'
+          import re
+          p='/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf'
+          s=open(p,errors='replace').read().splitlines()
+          for i,line in enumerate(s,1):
+           x=line.strip()
+           if not any(v in x for v in ('location ','if (','return ','error_page ','limit_req ','limit_conn ','proxy_cache','X-EMDO','BEGIN EMDO','END EMDO','proxy_pass','map ','rewrite ','try_files','access_log','set_real_ip','real_ip_header')):continue
+           x=re.sub(r'https?://[^\s;"]+:7081','https://[backend]:7081',x)
+           if 'proxy_pass' in x and '127.0.0.1' not in x:x='proxy_pass [Apache/Plesk upstream redacted];'
+           if len(x)>450:x=x[:450]
+           print('VHOST_DIRECTIVE',i,x)
+          PY
+          echo '=== MAPS AND RATE ZONES; NO IP ADDRESSES ==='
+          for f in /etc/nginx/conf.d/*emdo*.conf /etc/nginx/conf.d/emdo_filter_rate_limit.conf; do
+            test -f "$f" || continue
+            echo "CONF $(basename "$f")"
+            grep -E '^[[:space:]]*(map |limit_req_zone |limit_conn_zone |proxy_cache_path |~\*|default )' "$f" | cut -c1-220 | head -n 50 || true
+          done
+          echo '=== REAL HTTP PROBES: NO PRECONDITION VS CLAIMED REFERER ==='
+          BASE='https://www.elmercadodeorigen.com'
+          for item in \
+           'hidalgo_clean|/tienda/hidalgo-de-la-jara/' \
+           'hidalgo_direct|/tienda/hidalgo-de-la-jara/?emo_vendor_cat=jamones-paletas&filter_preparacion=deshuesado' \
+           'hidalgo_page2_direct|/tienda/hidalgo-de-la-jara/page/2/?emo_vendor_cat=jamones-paletas&filter_preparacion=deshuesado' \
+           '1957_direct|/tienda/1957/?filter_preparacion=deshuesado' \
+           'category_direct|/categoria-producto/jamones-paletas/?filter_preparacion=deshuesado'; do
+            IFS='|' read -r label uri <<< "$item"
+            for mode in direct claimed_referrer; do
+              if [[ "$mode" == claimed_referrer ]] && [[ "$label" == *_clean ]]; then continue; fi
+              header="$(mktemp)"
+              if [[ "$mode" == claimed_referrer ]]; then
+               metrics="$(curl -ksS --connect-timeout 3 --max-time 10 -A 'EMDO-ReadOnly-Audit/20261029' -H 'Referer: https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/' -D "$header" -o /dev/null -w 'http=%{http_code} ttfb=%{time_starttransfer}s total=%{time_total}s' "$BASE$uri" || true)"
+              else
+               metrics="$(curl -ksS --connect-timeout 3 --max-time 10 -A 'EMDO-ReadOnly-Audit/20261029' -D "$header" -o /dev/null -w 'http=%{http_code} ttfb=%{time_starttransfer}s total=%{time_total}s' "$BASE$uri" || true)"
+              fi
+              python3 - "$header" "$label" "$mode" "$metrics" <<'PY'
+          import sys
+          h=open(sys.argv[1],errors='replace').read().splitlines()
+          safe={}
+          for line in h:
+           if ':' not in line:continue
+           k,v=line.split(':',1); k=k.lower().strip();v=v.strip()
+           if k=='location':safe[k]=v.split('?',1)[0]
+           elif k in ('x-emdo-vendor-cache','x-emdo-nginx-hot-cache','x-emdo-admission-route','x-el-mercado-hot-early-cache','content-type','cache-control','retry-after','server'):safe[k]=v[:110]
+          print('PROBE',sys.argv[2],sys.argv[3],sys.argv[4],safe)
+          PY
+              rm -f "$header"
+            done
+          done
+          echo '=== CLASSIFY APACHE FACET ACTIVITY AND REFERRERS (AGGREGATES ONLY) ==='
+          nice -n 15 python3 - <<'PY'
+          import re,gzip,collections,os,urllib.parse,json
+          base='/var/www/vhosts/system/elmercadodeorigen.com/logs/'
+          rx=re.compile(rb'^\S+\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"([^"]+)"\s+(\d{3})\s+\S+\s+"([^"]*)"')
+          files=[('live',base+'access_ssl_log'),('prev',base+'access_ssl_log.processed.1.gz'),('older',base+'access_ssl_log.processed.2.gz')]
+          hours={ '27/Oct/2026:08:','27/Oct/2026:10:','27/Oct/2026:11:','28/Oct/2026:09:','28/Oct/2026:10:','28/Oct/2026:13:','29/Oct/2026:05:','29/Oct/2026:07:' }
+          for name,path in files:
+           if not os.path.isfile(path):continue
+           c=collections.Counter();refc=collections.Counter();statuspath=collections.Counter()
+           fh=gzip.open(path,'rb') if path.endswith('.gz') else open(path,'rb')
+           with fh:
+            for line in fh:
+             m=rx.match(line)
+             if not m:continue
+             ts=m.group(1).decode('ascii','replace')
+             if ts[:17] not in hours:continue
+             req=m.group(2).decode('utf8','replace').split()
+             if len(req)<2:continue
+             method,url=req[:2];pathpart,sep,q=url.partition('?')
+             if 'filter_' not in q and 'emo_vendor_cat=' not in q:continue
+             code=m.group(3).decode('ascii')
+             ref=m.group(4).decode('utf8','replace')
+             if '/hidalgo-de-la-jara/' in pathpart:
+              cat='hidalgo_exact' if pathpart.rstrip('/') in ('/tienda/hidalgo-de-la-jara','/en/tienda/hidalgo-de-la-jara','/en/store/hidalgo-de-la-jara') else 'hidalgo_other'
+             elif '/montjam/' in pathpart:cat='montjam'
+             elif '/categoria-producto/' in pathpart or '/product-category/' in pathpart:cat='category'
+             elif pathpart.startswith('/tienda/') or pathpart.startswith('/en/store/'):cat='other_store'
+             else:cat='other'
+             if ref=='-':refer='absent'
+             else:
+              u=urllib.parse.urlsplit(ref)
+              refer='internal' if u.hostname in ('www.elmercadodeorigen.com','elmercadodeorigen.com') else 'external'
+             c[(ts[:17],cat,code)]+=1
+             refc[(ts[:17],cat,code,refer)]+=1
+             # normalized path only; no values
+             statuspath[(ts[:17],cat,code,pathpart)]+=1
+           for h in sorted(hours):
+            matches=[(key[1],key[2],v) for key,v in c.items() if key[0]==h]
+            if not matches:continue
+            print('BACKEND_FACET_BY_HOUR',h, sorted(matches,key=lambda x:-x[2])[:15])
+            print('BACKEND_REFERRER_BY_HOUR',h,[(x[1],x[2],x[3],v) for x,v in refc.most_common(15) if x[0]==h])
+            print('BACKEND_TOP_PATHS',h,[(x[1],x[2],x[3],v) for x,v in statuspath.most_common(30) if x[0]==h][:12])
+          PY
+          echo 'END_READ_ONLY'
+          REMOTE
