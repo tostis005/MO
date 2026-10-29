@@ -1,0 +1,133 @@
+name: Emergency read-only PHP and edge incident diagnostic 20261029
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/incident-php-fpm-readonly-20261029.yml'
+permissions:
+  contents: write
+concurrency:
+  group: emdo-emergency-readonly-20261029
+  cancel-in-progress: false
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install SSH client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Collect server-side aggregated diagnostics without modifying production
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'python3 -' > /tmp/emdo-incident-report.json <<'PYREMOTE'
+          import os,re,json,datetime,collections,subprocess,urllib.parse
+          now=datetime.datetime.now(datetime.timezone.utc)
+          cut=now-datetime.timedelta(minutes=35)
+          root='/var/www/vhosts/system/elmercadodeorigen.com/logs'
+          rx=re.compile(r'^\S+\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"([^"]+)"\s+(\d{3})')
+          asset=re.compile(r'\.(?:png|jpe?g|webp|avif|gif|svg|ico|css|js|woff2?|mp4|pdf)$',re.I)
+          def bucket(p):
+            if p=='/':return '/'
+            if p.startswith(('/tienda/','/categoria-producto/','/producto/','/en/product-category/','/en/store/')):
+              return p[:105]
+            for prefix in ('/wp-json/','/wp-admin/','/wp-login.php','/xmlrpc.php','/wp-cron.php'):
+              if p.startswith(prefix):return prefix+'*'
+            return '/'+p.strip('/').split('/')[0][:35]+'/*'
+          reports={}
+          for filename in ('access_ssl_log','proxy_access_ssl_log','access_log','proxy_access_log'):
+            f=os.path.join(root,filename)
+            if not os.path.isfile(f):continue
+            counters=collections.Counter()
+            status=collections.Counter()
+            paths=collections.Counter()
+            params=collections.Counter()
+            minutes=collections.Counter()
+            ua=collections.Counter()
+            ips=collections.Counter()
+            total=0
+            with open(f,'rb') as fd:
+              fd.seek(0,os.SEEK_END)
+              fd.seek(max(0,fd.tell()-30000000))
+              if fd.tell():fd.readline()
+              for raw in fd:
+                m=rx.match(raw.decode('utf8','replace'))
+                if not m:continue
+                ds,req,code=m.groups()
+                try:dt=datetime.datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(datetime.timezone.utc)
+                except:continue
+                if not cut<=dt<=now+datetime.timedelta(minutes=2):continue
+                parts=req.split()
+                if len(parts)<2:continue
+                method,target=parts[:2]
+                url=urllib.parse.urlsplit(target)
+                p=url.path or '/'
+                total+=1
+                minutes[dt.strftime('%H:%M')]+=1
+                status[code]+=1
+                paths[bucket(p)]+=1
+                counters['5xx']+=code.startswith('5')
+                counters['4xx']+=code.startswith('4')
+                counters['dynamic']+=not bool(asset.search(p))
+                counters['with_query']+=bool(url.query)
+                counters['in_last5']+=dt>=now-datetime.timedelta(minutes=5)
+                counters['last5_dynamic']+=(dt>=now-datetime.timedelta(minutes=5)) and not bool(asset.search(p))
+                counters['wp_ajax']+=p.startswith('/wp-admin/admin-ajax.php')
+                counters['wp_rest']+=p.startswith('/wp-json/')
+                counters['xmlrpc']+=p.startswith('/xmlrpc.php')
+                counters['wp_cron']+=p.startswith('/wp-cron.php')
+                counters['wc_ajax']+='wc-ajax' in target
+                if url.query:
+                  try:keys=urllib.parse.parse_qs(url.query,keep_blank_values=True).keys()
+                  except:keys=[]
+                  for k in keys:
+                    k=k.lower()
+                    label=(k if k in ('orderby','min_price','max_price','s','paged','wc-ajax','emo_vendor_cat','cache-control') else ('filter_*' if k.startswith('filter_') else ('query_type_*' if k.startswith('query_type_') else 'other')))
+                    params[label]+=1
+            reports[filename]={'requests':total,'status':status,'counters':counters,
+              'top_paths':paths.most_common(24),'query_param_types':params.most_common(15),
+              'last_minutes':sorted(minutes.items())[-16:]}
+          v='/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf'
+          marker_names=['EMDO SCOPED FULL-SITE FILTER GATE 20261029','EMDO SAFE UNCACHED BYPASS GUARD 20261029','EMDO FINAL SCOPED SLASH AND HIERARCHY GUARD 20261029','EMDO SPANISH SHOP CACHE 20261028']
+          try:
+            config=open(v,encoding='utf8',errors='replace').read()
+            markers={x:(x in config) for x in marker_names}
+            markers['signed_filter_origin_limit']='zone=emdo_filter_origin_global' in config
+            markers['dynamic_bypass_rate_limit']='zone=emdo_dynamic_bypass_rate' in config
+          except Exception as e:markers={'error':type(e).__name__}
+          cmds={'php_workers':'ps -eo stat,args','nginx_status':'systemctl is-active nginx','fpm_status':'systemctl is-active plesk-php82-fpm','mysql_status':'systemctl is-active mariadb','nginx_config':'nginx -t'}
+          system={}
+          for k,cmd in cmds.items():
+            try:
+              o=subprocess.run(cmd.split(),capture_output=True,text=True,timeout=6)
+              if k=='php_workers':
+                lines=[x for x in o.stdout.splitlines() if 'php-fpm: pool elmercadodeorigen.com' in x]
+                system[k]={'count':len(lines),'running':sum(x.strip().startswith('R') for x in lines)}
+              else:system[k]={'returncode':o.returncode,'ok':o.returncode==0}
+            except Exception as e:system[k]={'error':type(e).__name__}
+          try:system['loadavg']=list(os.getloadavg());system['cpu_count']=os.cpu_count()
+          except:pass
+          print(json.dumps({'generated_utc':now.isoformat(),'window_minutes':35,'logs':reports,'guards':markers,'system':system},ensure_ascii=False,default=list))
+          PYREMOTE
+          python3 -m json.tool /tmp/emdo-incident-report.json >/dev/null
+          echo "Aggregated incident data collected; no raw logs, cookies, IPs or credentials persisted."
+      - name: Save sanitized diagnostic report to repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import os,json,base64,urllib.request
+          with open('/tmp/emdo-incident-report.json','rb') as f:data=f.read()
+          target='diagnostics/emdo-incident-php-fpm-20261029.json'
+          url='https://api.github.com/repos/'+os.environ['GH_REPO']+'/contents/'+target
+          payload=json.dumps({'message':'Record read-only aggregated production incident metrics [skip ci]','content':base64.b64encode(data).decode(),'branch':'main'}).encode()
+          req=urllib.request.Request(url,data=payload,method='PUT',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'})
+          with urllib.request.urlopen(req,timeout=25) as r:print('SANITIZED_REPORT_WRITTEN',r.status,target)
+          PY
