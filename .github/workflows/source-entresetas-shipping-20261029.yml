@@ -16,7 +16,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           python3 -m venv /tmp/en-shipping-python
-          /tmp/en-shipping-python/bin/pip -q install requests
+          /tmp/en-shipping-python/bin/pip -q install requests beautifulsoup4
           /tmp/en-shipping-python/bin/python -u .github/scripts/source-entresetas-shipping-20261029.py | tee /tmp/en-source-shipping.txt
       - name: Save public quote evidence
         if: always()

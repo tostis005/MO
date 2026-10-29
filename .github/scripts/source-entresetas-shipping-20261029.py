@@ -1,4 +1,5 @@
 import requests, re, json
+from bs4 import BeautifulSoup
 from html import unescape
 from urllib.parse import urljoin
 base='https://www.entresetas.com/'
@@ -47,3 +48,29 @@ if ids:
     j=q.json()
     print('SOURCE_RATE',country,postal,q.status_code,json.dumps({'rates':j.get('shipping_rates'),'total':j.get('totals'),'message':j.get('message')},ensure_ascii=False)[:2200],flush=True)
    except Exception as e:print('SOURCE_RATE_ERROR',country,postal,str(e)[:150],flush=True)
+
+# Classic WooCommerce shipping calculator (independent from the Store API).
+# It is safe to submit country and postal code with an anonymous cart:
+# this does not create an order or submit a payment.
+for country,state,city,postcode in [('ES','M','Madrid','28001'),('ES','P','Palencia','34001'),('ES','PM','Palma','07001'),('PT','','Lisboa','1000-001')]:
+ try:
+  resp=session.get(base+'carrito/',timeout=28)
+  soup=BeautifulSoup(resp.text,'html.parser')
+  form=soup.select_one('form.woocommerce-shipping-calculator')
+  if not form:
+   print('CLASSIC_SHIPPING_NO_FORM',resp.status_code,flush=True);break
+  fields={}
+  for field in form.select('input[name],select[name]'):
+   n=field.get('name')
+   if n and field.get('type') not in ('radio','checkbox'):
+    fields[n]=field.get('value') or ''
+  fields.update({'calc_shipping_country':country,'calc_shipping_state':state,'calc_shipping_city':city,
+                 'calc_shipping_postcode':postcode,'calc_shipping':'1'})
+  post=session.post(form.get('action') or base+'carrito/',data=fields,timeout=32)
+  html=BeautifulSoup(post.text,'html.parser')
+  row=html.select_one('tr.shipping') or html.select_one('div.woocommerce-shipping-totals')
+  text=' '.join(row.stripped_strings) if row else ''
+  print('CLASSIC_SHIPPING_QUOTE',country,postcode,'http',post.status_code,'url',post.url,
+        'shipping_summary',text[:650],'method_inputs',
+        [(x.get('id'),x.get('value')) for x in row.select('input.shipping_method')] if row else [],flush=True)
+ except Exception as exc:print('CLASSIC_SHIPPING_ERROR',country,postcode,str(exc)[:180],flush=True)
