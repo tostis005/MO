@@ -18,10 +18,10 @@ jobs:
         shell: bash
         run: |
           set +e
-          for spec in 'home|https://www.elmercadodeorigen.com/' 'shop|https://www.elmercadodeorigen.com/tienda/' 'account|https://www.elmercadodeorigen.com/mi-cuenta/' 'hidalgo_internal|https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/';do
+          for spec in 'home|https://www.elmercadodeorigen.com/' 'shop|https://www.elmercadodeorigen.com/tienda/' 'account|https://www.elmercadodeorigen.com/mi-cuenta/' 'apex|https://elmercadodeorigen.com/';do
             n="${spec%%|*}"; u="${spec#*|}"
             echo "CHECK=$n"
-            curl -sSkL -H 'Referer: https://www.elmercadodeorigen.com/tienda/' --connect-timeout 4 --max-time 12 -o /dev/null -w 'http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total}\n' "$u" || true
+            curl -sSkL --connect-timeout 4 --max-time 12 -o /dev/null -w 'http=%{http_code} ttfb=%{time_starttransfer} total=%{time_total}\n' "$u" || true
           done
       - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
       - name: Check live php utilization and emergency guard remained active
