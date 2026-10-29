@@ -35,7 +35,7 @@ jobs:
           du -sh /var/cache/nginx/emdo-vendor-v1 2>/dev/null
           find /var/cache/nginx/emdo-vendor-v1 -type f 2>/dev/null | wc -l
           echo '=== REQUESTS VIA PUBLIC HOST ==='
-          BASE=https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/
+          BASE=https://www.elmercadodeorigen.com/en/shop/
           for kind in clean clean_again clean_third; do
            HEAD=$(mktemp); BODY=$(mktemp)
            case "$kind" in
@@ -49,6 +49,14 @@ jobs:
            curl --noproxy '*' -ksS --connect-timeout 3 --max-time 14 -A 'EMDO-Anonymous-Edge-Audit/20261029' ${arg[@]} -D "$HEAD" -o "$BODY" -w "$kind status=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} bytes=%{size_download}\n" "$BASE" || true
            grep -iE '^(x-emdo-vendor-cache|x-el-mercado-hot-early-cache|vary|x-accel-expires|cache-control|set-cookie|location|x-emdo-nginx-hot-cache):' "$HEAD" | sed -E 's/^(set-cookie):.*/\1: REDACTED/' | head -n 13
            rm -f "$HEAD" "$BODY"
+          done
+          echo '=== SECOND ENGLISH PAGE CACHE ==='
+          BASE=https://www.elmercadodeorigen.com/en/shop/page/2/
+          for kind in first second third; do
+           HEAD=$(mktemp)
+           curl --noproxy '*' -ksS --connect-timeout 3 --max-time 16 -A 'EMDO-Anon-Cache-Validation/20261029' -D "$HEAD" -o /dev/null -w "$kind status=%{http_code} ttfb=%{time_starttransfer} total=%{time_total}\n" "$BASE" || true
+           grep -iE '^(x-emdo-vendor-cache|x-el-mercado-hot-early-cache|vary|cache-control|set-cookie|x-accel-expires):' "$HEAD" | sed -E 's/^(set-cookie):.*/\1: PRESENT/' | head -n 8
+           rm -f "$HEAD"
           done
           echo '=== RECENT ROOT PHP SATURATION ==='
           ps -eo stat=,args= | awk '/php-fpm: pool elmercadodeorigen.com/ {n++;if ($1~/R/)r++} END{print "PHP_WORKERS",n,"RUNNING",r}'
