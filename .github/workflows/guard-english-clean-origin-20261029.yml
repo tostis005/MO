@@ -1,0 +1,97 @@
+name: Protect uncached anonymous English shop without caching session cookies 20261029
+on:
+  push:
+    branches: [diagnostic/site-availability-20261029]
+    paths: ['.github/workflows/guard-english-clean-origin-20261029.yml']
+permissions: { contents: read }
+concurrency:
+  group: emdo-en-clean-origin-guard-20261029
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Protect anonymous uncached English shop origin and test
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          test "$(id -u)" -eq 0
+          V=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          G=/etc/nginx/conf.d/91-emdo-english-clean-anon-global-20261029.conf
+          MARK='# BEGIN EMDO ENGLISH ANONYMOUS CLEAN ORIGIN CAP 20261029'
+          test -s "$V"
+          grep -Fq 'ENGLISH SHOP CLEAN CACHE COMPLETION 20261029' "$V"
+          test ! -e "$G"
+          ! grep -Fq "$MARK" "$V"
+          nginx -t
+          BK=/root/emdo-english-anon-clean-cap-$(date -u +%Y%m%dT%H%M%SZ)
+          install -d -m 0700 "$BK"
+          cp -p "$V" "$BK/vhost_nginx.conf"
+          echo "BACKUP=$BK"
+          changed=0
+          rollback(){
+             rc=$?
+             trap - EXIT
+             if [ "$rc" != 0 ] && [ "$changed" = 1 ];then
+               cp -p "$BK/vhost_nginx.conf" "$V"
+               rm -f "$G"
+               nginx -t && systemctl reload nginx || true
+               echo 'ROLLBACK_COMPLETE'
+             fi
+             exit "$rc"
+          }
+          trap rollback EXIT
+          cat > "$G" <<'CONF'
+          # English shop sets total_page cookie; do not force a shared cache
+          # for those responses. Limit only direct anonymous clean requests,
+          # excluding in-site navigations, cart/login, unexpected cookies and
+          # parameterized filters (those have a separate global budget).
+          map "$uri|$args|$emdo_en_shop_local_referer|$emdo_vendor_skip_cache" $emdo_en_shop_clean_direct_key {
+              default "";
+              ~*^/en/shop(?:/page/[1-9][0-9]*)?/?\|\|0\|0$ "emdo-en-shop-clean-anon";
+          }
+          limit_req_zone $emdo_en_shop_clean_direct_key zone=emdo_en_shop_clean_direct_global:1m rate=6r/s;
+          limit_conn_zone $emdo_en_shop_clean_direct_key zone=emdo_en_shop_clean_direct_conn:1m;
+          CONF
+          python3 - "$V" <<'PY'
+          import sys
+          p=sys.argv[1]
+          s=open(p,encoding='utf8').read()
+          target='location @emdo_vendor_cache_origin {'
+          assert s.count(target)==1
+          mark='# BEGIN EMDO ENGLISH ANONYMOUS CLEAN ORIGIN CAP 20261029'
+          inject='\n    '+mark+'''
+              limit_req zone=emdo_en_shop_clean_direct_global burst=18 nodelay;
+              limit_conn emdo_en_shop_clean_direct_conn 6;
+              # END EMDO ENGLISH ANONYMOUS CLEAN ORIGIN CAP 20261029'''
+          s=s.replace(target,target+inject,1)
+          open(p,'w',encoding='utf8').write(s)
+          PY
+          changed=1
+          nginx -t
+          systemctl reload nginx
+          sleep 2
+          B=https://www.elmercadodeorigen.com
+          H=$(mktemp)
+          for u in /en/shop/ /en/shop/page/2/ /tienda/hidalgo-de-la-jara/;do
+             s=$(curl -ksS --connect-timeout 4 --max-time 20 -D "$H" -o /dev/null -w '%{http_code}' "$B$u")
+             echo "SAFE_PUBLIC $u $s $(grep -i '^x-emdo-vendor-cache:' "$H" | tail -n1 | tr -d '\r')"
+             test "$s" = 200
+          done
+          s=$(curl -ksS --connect-timeout 4 --max-time 12 -D "$H" -o /dev/null -w '%{http_code}' "$B/en/shop/page/8/?orderby=price")
+          echo "DIRECT_DYNAMIC_FILTER=$s";test "$s" = 302
+          s=$(curl -ksS --connect-timeout 4 --max-time 20 -H 'Cookie: woocommerce_items_in_cart=1' -D "$H" -o /dev/null -w '%{http_code}' "$B/tienda/hidalgo-de-la-jara/")
+          echo "CART=$s";test "$s" = 200
+          ! grep -qi '^x-emdo-vendor-cache: HIT' "$H"
+          nginx -t
+          echo 'ENGLISH_ANON_ORIGIN_FAILSAFE_VERIFIED; STATEFUL_COOKIES_NOT_CACHED'
+          REMOTE
