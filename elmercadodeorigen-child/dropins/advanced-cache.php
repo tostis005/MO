@@ -424,6 +424,113 @@ if ( $is_product_path ) {
 	return;
 }
 
+/**
+ * Anonymous category archives (including hierarchical categories and pagination).
+ *
+ * Nginx caches complete anonymous responses for 240 seconds. On a cold category
+ * WooCommerce may send a harmless page-count cookie, which correctly prevents
+ * the reverse proxy from storing that first response. This early file cache
+ * saves the verified *public HTML only*, so the next anonymous request can
+ * reach Nginx without a Set-Cookie header. PHP fallback TTL is 60 seconds:
+ * maximum normal freshness is approximately 240 + 60 = 300 seconds.
+ *
+ * Never store filter/sort/query requests, customer cookies, partial/404/error
+ * pages, or responses setting private/session cookies.
+ */
+$is_public_category_path = 1 === preg_match(
+	'#^/(?:categoria-producto|en/product-category)/(?:[a-z0-9][a-z0-9-]*/)*[a-z0-9][a-z0-9-]*(?:/page/[1-9][0-9]*)?/$#i',
+	$path
+);
+if ( $is_public_category_path ) {
+	$category_cache_dir  = __DIR__ . '/uploads/elmercado-category-static-v1';
+	$category_cache_file = $category_cache_dir . '/' . hash( 'sha256', $host . '|' . $path ) . '.html';
+	$category_lock_file  = $category_cache_file . '.lock';
+	$category_ttl        = 60;
+	$category_stale_ttl  = 600;
+	$category_mtime      = is_readable( $category_cache_file ) && (int) @filesize( $category_cache_file ) > 25000
+		? @filemtime( $category_cache_file ) : false;
+	$category_age        = false !== $category_mtime ? max( 0, time() - (int) $category_mtime ) : PHP_INT_MAX;
+
+	$serve_category_cache = static function ( string $status ) use ( $category_cache_file ): void {
+		if ( ! headers_sent() ) {
+			header( 'Content-Type: text/html; charset=UTF-8' );
+			header( 'Cache-Control: private, no-store, max-age=0' );
+			header( 'Vary: Cookie', false );
+			header( 'X-El-Mercado-Category-Early-Cache: ' . $status );
+		}
+		readfile( $category_cache_file );
+		exit;
+	};
+	if ( $category_age < $category_ttl ) {
+		$serve_category_cache( 'HIT' );
+	}
+	if ( ! is_dir( $category_cache_dir ) ) {
+		@mkdir( $category_cache_dir, 0755, true );
+	}
+	$category_lock_handle = is_dir( $category_cache_dir ) ? @fopen( $category_lock_file, 'c' ) : false;
+	$category_have_lock   = $category_lock_handle && @flock( $category_lock_handle, LOCK_EX | LOCK_NB );
+
+	if ( ! $category_have_lock && $category_age < $category_stale_ttl ) {
+		if ( is_resource( $category_lock_handle ) ) {
+			@fclose( $category_lock_handle );
+		}
+		$serve_category_cache( 'STALE' );
+	}
+	if ( ! headers_sent() ) {
+		header( 'X-El-Mercado-Category-Early-Cache: ' . ( $category_have_lock ? 'REVALIDATE' : 'MISS' ) );
+	}
+	ob_start(
+		static function ( $html ) use ( $category_cache_dir, $category_cache_file, $category_lock_handle, $category_have_lock ) {
+			$status = http_response_code();
+			$status = false === $status ? 200 : (int) $status;
+
+			// Only a benign existing pagination cookie may accompany a cold
+			// anonymous response. Never save HTML that issued WooCommerce or
+			// WordPress login, session, authorization or other unknown cookies.
+			$only_public_response_cookies = true;
+			foreach ( headers_list() as $response_header ) {
+				if ( 0 !== stripos( $response_header, 'Set-Cookie:' ) ) {
+					continue;
+				}
+				if ( 1 !== preg_match( '/^Set-Cookie:\s*total_page=/i', $response_header ) ) {
+					$only_public_response_cookies = false;
+					break;
+				}
+			}
+
+			$looks_like_category = is_string( $html )
+				&& 1 === preg_match( '/<body\b[^>]*\btax-product_cat\b/i', $html );
+			$can_store = $category_have_lock
+				&& 200 === $status
+				&& $only_public_response_cookies
+				&& is_string( $html )
+				&& strlen( $html ) >= 25000
+				&& $looks_like_category
+				&& false !== stripos( $html, '</html>' )
+				&& false === stripos( $html, 'WordPress database error' )
+				&& false === stripos( $html, 'There has been a critical error' )
+				&& false === stripos( $html, 'Gateway Timeout' )
+				&& false === stripos( $html, 'wp-die-message' );
+
+			if ( $can_store && is_dir( $category_cache_dir ) && is_writable( $category_cache_dir ) ) {
+				$tmp = $category_cache_file . '.tmp-' . getmypid();
+				if ( false !== @file_put_contents( $tmp, $html, LOCK_EX ) ) {
+					@rename( $tmp, $category_cache_file );
+				} else {
+					@unlink( $tmp );
+				}
+			}
+
+			if ( $category_have_lock && is_resource( $category_lock_handle ) ) {
+				@flock( $category_lock_handle, LOCK_UN );
+				@fclose( $category_lock_handle );
+			}
+			return $html;
+		}
+	);
+	return;
+}
+
 if ( '/' === $path || 0 === strpos( $path, '/en/' ) ) {
 	return;
 }
