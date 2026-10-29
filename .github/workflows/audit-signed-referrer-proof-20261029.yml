@@ -1,0 +1,76 @@
+name: Read-only signed referer verification proof 2026-10-29
+on:
+  push:
+    branches: [audit/bot-protection-20261029]
+    paths: ['.github/workflows/audit-signed-referrer-proof-20261029.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Test one benign filter flow with claimed referrer and ephemeral cookie
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          BASE=https://www.elmercadodeorigen.com
+          FILTER='/tienda/hidalgo-de-la-jara/?emo_vendor_cat=jamones-paletas&filter_preparacion=deshuesado'
+          USERAGENT='EMDO-Cookie-Flow-Audit/20261029'
+          TD="$(mktemp -d)"
+          chmod 0700 "$TD"
+          trap 'rm -rf "$TD"' EXIT
+          curl -ksS --connect-timeout 2 --max-time 8 -A "$USERAGENT" -D "$TD/direct.h" -o /dev/null "$BASE$FILTER"
+          echo 'DIRECT_FILTER_RESPONSE:'
+          grep -E '^HTTP/|^location:' "$TD/direct.h" | head -n 3 || true
+          curl -ksS --connect-timeout 2 --max-time 8 -A "$USERAGENT" -H "Referer: $BASE/tienda/hidalgo-de-la-jara/" -D "$TD/challenge.h" -o "$TD/challenge.html" "$BASE$FILTER"
+          echo 'FORGED_REFERRER_CHALLENGE_RESPONSE:'
+          grep -E '^HTTP/' "$TD/challenge.h" | head -n 2 || true
+          python3 - "$TD/challenge.html" "$TD/verify.url" <<'PY'
+          import re,sys,os
+          x=open(sys.argv[1],errors='replace').read()
+          m=re.search(r"fetch\('(/__emdo_filtergate/verify\?c=[^']+)'",x)
+          if not m:
+           print('CHALLENGE_NOT_ISSUED');sys.exit(0)
+          fd=os.open(sys.argv[2],os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
+          os.write(fd,m.group(1).encode('utf8'));os.close(fd)
+          print('CHALLENGE_ISSUED_WITH_CLAIMED_REFERER')
+          PY
+          if test -s "$TD/verify.url"; then
+            VERIFY="$(cat "$TD/verify.url")"
+            curl -ksS --connect-timeout 2 --max-time 8 -A "$USERAGENT" -b "$TD/cookies" -c "$TD/cookies" -D "$TD/verify.h" -o /dev/null "$BASE$VERIFY"
+            echo 'VERIFY_RESPONSE:';grep '^HTTP/' "$TD/verify.h" | head -n 2 || true
+            echo 'SIGNED_COOKIE_ISSUED='$(grep -c 'emdo_filter_pass' "$TD/cookies" || true)
+            curl -ksS --connect-timeout 2 --max-time 10 -A "$USERAGENT" -b "$TD/cookies" -D "$TD/with-pass.h" -o /dev/null -w 'FILTER_WITH_TOKEN_TIME=%{time_total}s\n' "$BASE$FILTER"
+            echo 'NO_REFERRER_AFTER_COOKIE_RESPONSE:'
+            grep -Ei '^HTTP/|^location:|^x-emdo-vendor-cache:|^x-el-mercado-hot-early-cache:' "$TD/with-pass.h" | sed -E 's@([?]).*$@\1[redacted]@' | head -n 8 || true
+          fi
+          echo '=== ORIGIN TRACE FOR TEST UA (NO TOKENS OR IPS) ==='
+          python3 - <<'PY'
+          import re,os,collections
+          base='/var/www/vhosts/system/elmercadodeorigen.com/logs/'
+          for name in ('access_ssl_log','proxy_access_ssl_log'):
+           path=base+name
+           sz=os.path.getsize(path)
+           a=collections.Counter()
+           with open(path,'rb') as f:
+            f.seek(max(0,sz-1000000))
+            if sz>1000000:f.readline()
+            for line in f:
+             if b'EMDO-Cookie-Flow-Audit/20261029' not in line:continue
+             m=re.search(rb'\"(GET|HEAD) ([^ ]+) [^\"]+\" (\d{3}) ',line)
+             if m:
+              route=m.group(2).decode('utf8','replace').split('?',1)[0]
+              a[(route,m.group(3).decode('ascii'))]+=1
+           print('PER_LAYER_REQUESTS',name,list(a.items()))
+          PY
+          echo 'AUDIT_COMPLETE'
+          REMOTE
