@@ -56,6 +56,13 @@ jobs:
            HEAD=$(mktemp)
            curl --noproxy '*' -ksS --connect-timeout 3 --max-time 16 -A 'EMDO-Anon-Cache-Validation/20261029' -D "$HEAD" -o /dev/null -w "$kind status=%{http_code} ttfb=%{time_starttransfer} total=%{time_total}\n" "$BASE" || true
            grep -iE '^(x-emdo-vendor-cache|x-el-mercado-hot-early-cache|vary|cache-control|set-cookie|x-accel-expires):' "$HEAD" | sed -E 's/^(set-cookie):.*/\1: PRESENT/' | head -n 8
+           python3 - "$HEAD" <<'PY'
+          import sys
+          for line in open(sys.argv[1],encoding='latin-1',errors='replace'):
+           if line.lower().startswith('set-cookie:'):
+            print('COOKIE_NAME',line.partition(':')[2].strip().partition('=')[0])
+          PY
+
            rm -f "$HEAD"
           done
           echo '=== RECENT ROOT PHP SATURATION ==='
