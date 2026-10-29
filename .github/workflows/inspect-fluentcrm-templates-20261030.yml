@@ -1,0 +1,48 @@
+name: Inspect previous FluentCRM mailing template and test methods
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-fluentcrm-templates-20261030.yml'
+      - '.github/scripts/inspect-fluentcrm-templates-20261030.php'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check read-only PHP syntax
+        run: php -l .github/scripts/inspect-fluentcrm-templates-20261030.php
+      - name: Inspect production FluentCRM campaigns (read-only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "$STAGING_HOST" && test -n "$STAGING_USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          REMOTE="/tmp/fluent-templates-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/inspect-fluentcrm-templates-20261030.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $REMOTE" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "timeout 150 /opt/plesk/php/8.2/bin/php -d memory_limit=768M /usr/local/bin/wp eval-file '$REMOTE' --path='$ROOT' --allow-root" | tee /tmp/inspect-fluent-templates.txt
+          grep -q 'FLUENT_AUDIT_COMPLETE' /tmp/inspect-fluent-templates.txt
+      - name: Archive reference
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fluent-template-audit
+          path: /tmp/inspect-fluent-templates.txt
+          retention-days: 3
