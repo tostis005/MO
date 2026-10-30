@@ -59,7 +59,7 @@ jobs:
             fi
           "
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" \
-            "/opt/plesk/php/8.2/bin/php /usr/local/bin/wp eval 'if (!function_exists(\"emdo_authenticated_envelope_from\") || !has_action(\"phpmailer_init\",\"emdo_authenticated_envelope_from\")) {fwrite(STDERR,\"MAIL_PLUGIN_NOT_LOADED\\n\");exit(3);} echo \"MAIL_PLUGIN_LOADED_VERIFIED\\n\";' --path='$ROOT' --allow-root" \
+            "/opt/plesk/php/8.2/bin/php -d memory_limit=768M /usr/local/bin/wp eval 'if (!function_exists(\"emdo_authenticated_envelope_from\") || !has_action(\"phpmailer_init\",\"emdo_authenticated_envelope_from\")) {fwrite(STDERR,\"MAIL_PLUGIN_NOT_LOADED\\n\");exit(3);} echo \"MAIL_PLUGIN_LOADED_VERIFIED\\n\";' --path='$ROOT' --allow-root --skip-plugins --skip-themes" \
             | tee /tmp/emdo-mail-envelope-verify.txt
           grep -q 'MAIL_PLUGIN_LOADED_VERIFIED' /tmp/emdo-mail-envelope-verify.txt
       - name: Save verification result
