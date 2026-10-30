@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Inspect Plesk Maildir DSNs. Read-only. No recipients are printed."""
-import os,re,sys,json,hashlib,collections,email
+import os,re,sys,json,hashlib,collections,email,datetime
+from email.utils import parsedate_to_datetime
 from email import policy
 from email.parser import BytesHeaderParser,BytesParser
 root='/var/qmail/mailnames/elmercadodeorigen.com/hola/Maildir'
@@ -69,10 +70,15 @@ for f in folders:
                   item=emails.setdefault(addr,{'statuses':set(),'messages':0,'first_ts':None,'last_ts':None,'diagnostics':set()})
                   item['statuses'].add(status)
                   item['messages']+=1
-                  d=(msg.get('Date','') or '')[:100]
-                  if d:
-                    if item['first_ts'] is None:item['first_ts']=d
-                    item['last_ts']=d
+                  try:
+                    date=parsedate_to_datetime(str(msg.get('Date','')))
+                    if date.tzinfo is None:date=date.replace(tzinfo=datetime.timezone.utc)
+                    epoch=int(date.timestamp())
+                    if 946684800 <= epoch <= int(datetime.datetime.now(datetime.timezone.utc).timestamp())+172800:
+                      if item['first_ts'] is None or epoch<item['first_ts']:item['first_ts']=epoch
+                      if item['last_ts'] is None or epoch>item['last_ts']:item['last_ts']=epoch
+                  except (ValueError,TypeError,OverflowError):
+                    pass
                   item['diagnostics'].add(diag[:110])
               elif action=='failed':
                   counters['other_failure_events']+=1
@@ -92,7 +98,7 @@ if len(sys.argv)>1:
     if not output.startswith('/tmp/emdo-bounces-') or not output.endswith('.json'):
         raise SystemExit('Invalid private manifest path')
     data=[{'email':address,'statuses':sorted(v['statuses']),'messages':v['messages'],
-           'first_date':v['first_ts'],'last_date':v['last_ts'],'diagnostics':sorted(v['diagnostics'])}
+           'first_epoch':v['first_ts'],'last_epoch':v['last_ts'],'diagnostics':sorted(v['diagnostics'])}
           for address,v in sorted(emails.items())]
     fd=os.open(output,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
     with os.fdopen(fd,'w',encoding='utf-8') as outfile:
