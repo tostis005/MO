@@ -1,0 +1,98 @@
+name: Deploy AOVE 2026/27 banner before Christmas on live home
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-home-aove-harvest-banner-20261030.yml'
+      - 'mu-plugins/emdo-home-aove-harvest-promo-20261030.php'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate banner and scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l mu-plugins/emdo-home-aove-harvest-promo-20261030.php
+          grep -Fq 'Ya está aquí la cosecha 2026/27' mu-plugins/emdo-home-aove-harvest-promo-20261030.php
+          grep -Fq 'Aceite de oliva virgen extra, recién molturado y sin filtrar.' mu-plugins/emdo-home-aove-harvest-promo-20261030.php
+          grep -Fq 'https://www.elmercadodeorigen.com/tienda/1957/' mu-plugins/emdo-home-aove-harvest-promo-20261030.php
+      - name: Install scoped MU plugin on production and refresh home cache
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "$STAGING_HOST" && test -n "$STAGING_USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          DEST="$ROOT/wp-content/mu-plugins/emdo-home-aove-harvest-promo-20261030.php"
+          TMP="/tmp/emdo-aove-harvest-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP mu-plugins/emdo-home-aove-harvest-promo-20261030.php "$STAGING_USER@$STAGING_HOST:$TMP"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $TMP" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -eu
+            test -f '$ROOT/wp-config.php'
+            /opt/plesk/php/8.2/bin/php -l '$TMP' >/dev/null
+            test ! -f '$DEST' || cmp -s '$DEST' '$TMP' || {
+              echo 'AOVE_DEPLOY_ABORT_EXISTING_DIFFERENT_FILE'; exit 8;
+            }
+            if [ ! -f '$DEST' ]; then
+              mv '$TMP' '$DEST'
+              chmod 644 '$DEST'
+            fi
+            echo AOVE_PLUGIN_INSTALLED
+          "
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" \
+            "/opt/plesk/php/8.2/bin/php -d memory_limit=768M /usr/local/bin/wp eval 'if (!function_exists(\"emdo_home_aove_banner_markup_20261030\")) {fwrite(STDERR,\"AOVE_PLUGIN_NOT_LOADED\\n\");exit(3);} echo \"AOVE_PLUGIN_LOADED\\n\";' --path='$ROOT' --allow-root --skip-plugins --skip-themes" | tee /tmp/aove-plugin-check.txt
+          grep -q 'AOVE_PLUGIN_LOADED' /tmp/aove-plugin-check.txt
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            /opt/plesk/php/8.2/bin/php -d memory_limit=768M /usr/local/bin/wp eval 'if (function_exists(\"elmercado_flush_home_cache\")) {elmercado_flush_home_cache(); echo \"AOVE_HOME_CACHE_FLUSHED\\n\";}' --path='$ROOT' --allow-root
+            /opt/plesk/php/8.2/bin/php -d memory_limit=768M /usr/local/bin/wp rocket clean --confirm --path='$ROOT' --allow-root >/dev/null 2>&1 || true
+            rm -f '$ROOT/wp-content/uploads/elmercado-home-static/index.html' '$ROOT/wp-content/cache/elmercado-home-static/index.html'
+            echo AOVE_HOME_CACHE_INVALIDATED
+          "
+      - name: Verify public home renders correct position and link
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          URL="https://www.elmercadodeorigen.com/?aove_banner_verify=${GITHUB_RUN_ID}"
+          curl -fLsS --retry 4 --retry-delay 3 --max-time 60 \
+            -A 'Mozilla/5.0 EMDO homepage banner verifier' \
+            -H 'Cache-Control: no-cache' -o /tmp/aove-home-live.html "$URL"
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          s=Path('/tmp/aove-home-live.html').read_text(errors='replace')
+          a=re.search(r'<aside\b[^>]*data-emdo-aove-harvest="2026-27"',s)
+          x=re.search(r'<aside\b[^>]*data-emdo-navidad-promo="2026"',s)
+          hero=re.search(r'<section\b[^>]*class="[^"]*\bemo-hero\b',s)
+          assert a, 'AOVE banner absent'
+          assert x, 'Christmas banner absent'
+          assert hero, 'Home hero absent'
+          assert hero.start()<a.start()<x.start(), 'Home banner ordering invalid'
+          assert len(re.findall(r'<aside\b[^>]*data-emdo-aove-harvest="2026-27"',s))==1, 'Duplicate AOVE banner'
+          chunk=s[a.start():x.start()]
+          for text in ('Ya está aquí la cosecha 2026/27','Aceite de oliva virgen extra, recién molturado y sin filtrar.','Descubrir la nueva cosecha','https://www.elmercadodeorigen.com/tienda/1957/'):
+              assert text in chunk, 'Missing required text: '+text
+          assert '#f4ead7' in s, 'AOVE warm cream CSS missing'
+          print('AOVE_PUBLIC_OK: unique banner before Christmas, after hero, CTA and contrasting CSS verified')
+          print('HOME_BYTES',len(s.encode()),'AOVE_OFFSET',a.start(),'CHRISTMAS_OFFSET',x.start())
+          PY
+          curl -fLsS --retry 2 --max-time 60 'https://www.elmercadodeorigen.com/' -o /tmp/aove-home-normal.html
+          grep -Fq 'data-emdo-aove-harvest="2026-27"' /tmp/aove-home-normal.html
+          echo AOVE_NORMAL_HOME_VISIBLE
