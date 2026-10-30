@@ -1,0 +1,72 @@
+name: Deploy authenticated sender envelope fix for shop mailing
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/emdo-authenticated-mail-envelope.php'
+      - '.github/workflows/deploy-emdo-authenticated-mail-envelope.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify narrow sender scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/emdo-authenticated-mail-envelope.php
+          grep -Fq "hola@elmercadodeorigen.com" .github/scripts/emdo-authenticated-mail-envelope.php
+          grep -Fq "phpmailer_init" .github/scripts/emdo-authenticated-mail-envelope.php
+      - name: Atomically install narrowly scoped WordPress MU plugin in production
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "$STAGING_HOST" && test -n "$STAGING_USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          DIR="$ROOT/wp-content/mu-plugins"
+          DEST="$DIR/emdo-authenticated-mail-envelope.php"
+          TMP="/tmp/emdo-auth-envelope-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/emdo-authenticated-mail-envelope.php "$STAGING_USER@$STAGING_HOST:$TMP"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $TMP" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            test -f '$ROOT/wp-config.php'
+            /opt/plesk/php/8.2/bin/php -l '$TMP' >/dev/null
+            mkdir -p '$DIR'
+            if [ -e '$DEST' ]; then
+              cmp -s '$TMP' '$DEST' || { echo 'MAIL_PLUGIN_DESTINATION_CONFLICT'; exit 7; }
+              echo 'MAIL_PLUGIN_ALREADY_MATCHES'
+            else
+              mv '$TMP' '$DEST'
+              chmod 644 '$DEST'
+              echo 'MAIL_PLUGIN_INSTALLED'
+            fi
+          "
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" \
+            "/opt/plesk/php/8.2/bin/php /usr/local/bin/wp eval 'if (!function_exists(\"emdo_authenticated_envelope_from\") || !has_action(\"phpmailer_init\",\"emdo_authenticated_envelope_from\")) {fwrite(STDERR,\"MAIL_PLUGIN_NOT_LOADED\\n\");exit(3);} echo \"MAIL_PLUGIN_LOADED_VERIFIED\\n\";' --path='$ROOT' --allow-root" \
+            | tee /tmp/emdo-mail-envelope-verify.txt
+          grep -q 'MAIL_PLUGIN_LOADED_VERIFIED' /tmp/emdo-mail-envelope-verify.txt
+      - name: Save verification result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emdo-mail-envelope-install
+          path: /tmp/emdo-mail-envelope-verify.txt
+          if-no-files-found: warn
+          retention-days: 4
