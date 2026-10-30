@@ -1,0 +1,56 @@
+name: Audit inbound bounce notices and FluentCRM statuses
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-fluentcrm-inbound-bounces-20261030.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Locate shop maildir and read FluentCRM aggregate statuses
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/audit-fluentcrm-inbound-bounces-20261030.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          REMOTE="/tmp/emdo-fluent-bounce-audit-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/audit-fluentcrm-inbound-bounces-20261030.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $REMOTE" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "timeout 120 /opt/plesk/php/8.2/bin/php -d memory_limit=768M /usr/local/bin/wp eval-file '$REMOTE' --path='$ROOT' --allow-root" | tee /tmp/bounces-audit.txt
+          grep -q 'MAILBOX_AND_FLUENT_AUDIT_COMPLETE' /tmp/bounces-audit.txt
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            for DIR in /var/qmail/mailnames/elmercadodeorigen.com/hola/Maildir /var/qmail/mailnames/elmercadodeorigen.com/hola /var/mail/vhosts/elmercadodeorigen.com/hola /var/vmail/elmercadodeorigen.com/hola; do
+              if [ -d "$DIR" ]; then
+                echo "EMDO_MAILDIR_FOUND=$DIR"
+                for SUB in cur new .Sent/cur .Sent/new .Junk/cur .Junk/new .Trash/cur .Trash/new; do
+                  if [ -d "$DIR/$SUB" ]; then
+                    echo "EMDO_MAILDIR_COUNT=$SUB $(find "$DIR/$SUB" -maxdepth 1 -type f | wc -l)"
+                  fi
+                done
+              fi
+            done
+            for LOG in /var/log/maillog /var/log/mail.log; do
+              if [ -r "$LOG" ]; then
+                echo "EMDO_MAIL_LOG_READABLE=$LOG"
+                grep -iE "to=<hola@elmercadodeorigen.com>|to=<postmaster@elmercadodeorigen.com>" "$LOG" | tail -n 4 | sed -E "s/[a-zA-Z0-9+._%-]+@[a-zA-Z0-9.-]+/REDACTED@DOMAIN/g"
+              fi
+            done
+          ' | tee /tmp/maildirs-audit.txt
