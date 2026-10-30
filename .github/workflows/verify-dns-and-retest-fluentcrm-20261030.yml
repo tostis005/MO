@@ -1,0 +1,69 @@
+name: Verify DNS SPF DMARC and retest FluentCRM AOVE
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-dns-and-retest-fluentcrm-20261030.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  verify-and-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify public SPF DMARC and DKIM across resolvers
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for NS in 1.1.1.1 8.8.8.8; do
+            echo "DNS_RESOLVER=$NS"
+            for ENTRY in "TXT elmercadodeorigen.com" "TXT _dmarc.elmercadodeorigen.com" "TXT default._domainkey.elmercadodeorigen.com" "MX elmercadodeorigen.com" "A mail.elmercadodeorigen.com"; do
+              read -r TYPE DOMAIN <<< "$ENTRY"
+              echo "DNS_ENTRY=$NS $TYPE $DOMAIN"
+              dig @"$NS" +time=4 +tries=2 +short "$TYPE" "$DOMAIN" | head -n 8
+            done
+          done
+          echo "DNS_CHECK_AUTHORITY"
+          for NS in ns1053.ui-dns.biz ns1056.ui-dns.de; do
+            for ENTRY in "TXT elmercadodeorigen.com" "TXT _dmarc.elmercadodeorigen.com"; do
+              read -r TYPE DOMAIN <<< "$ENTRY"
+              echo "DNS_ENTRY=$NS $TYPE $DOMAIN"
+              dig @"$NS" +time=4 +tries=2 +short "$TYPE" "$DOMAIN" | head -n 8
+            done
+          done
+          echo "DNS_VERIFICATION_COMPLETE"
+      - name: Send one native FluentCRM test and verify Gmail SMTP outcome
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/fluentcrm-native-dnsverified-test-20261030.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          REMOTE="/tmp/fluent-dnsverified-test-${GITHUB_RUN_ID}.php"
+          BEFORE="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wc -l < /var/log/maillog")"
+          sshpass -e scp $SCP .github/scripts/fluentcrm-native-dnsverified-test-20261030.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $REMOTE" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "timeout 120 /opt/plesk/php/8.2/bin/php -d memory_limit=768M /usr/local/bin/wp eval-file '$REMOTE' --path='$ROOT' --allow-root" | tee /tmp/1957-native-dns-test.txt
+          grep -q 'FLUENT_NATIVE_TEST_OPERATION_COMPLETE' /tmp/1957-native-dns-test.txt
+          sleep 8
+          START=$((BEFORE+1))
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "tail -n +$START /var/log/maillog | grep -iF 'jose.fraga@gmail.com' | tail -n 15 || true" | tee /tmp/1957-native-dns-smtp-result.txt
+          if grep -Eq 'dsn=2\.0\.0.*status=sent' /tmp/1957-native-dns-smtp-result.txt; then
+            echo "DNS_VERIFIED_TEST_GMAIL_SMTP_ACCEPTED"
+          else
+            echo "DNS_VERIFIED_TEST_GMAIL_SMTP_NOT_CONFIRMED"
+            exit 9
+          fi
