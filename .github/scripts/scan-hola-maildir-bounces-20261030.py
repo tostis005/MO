@@ -87,6 +87,17 @@ for f in folders:
           counters['parse_error']+=1
           if len(samples['errors'])<4:samples['errors'].append(type(exc).__name__)
 # Structured outputs for audit, without personal data. Keep manifest on remote server only.
+if len(sys.argv)>1:
+    output=sys.argv[1]
+    if not output.startswith('/tmp/emdo-bounces-') or not output.endswith('.json'):
+        raise SystemExit('Invalid private manifest path')
+    data=[{'email':address,'statuses':sorted(v['statuses']),'messages':v['messages'],
+           'first_date':v['first_ts'],'last_date':v['last_ts'],'diagnostics':sorted(v['diagnostics'])}
+          for address,v in sorted(emails.items())]
+    fd=os.open(output,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    with os.fdopen(fd,'w',encoding='utf-8') as outfile:
+        json.dump(data,outfile,ensure_ascii=False)
+    print('BOUNCE_PRIVATE_MANIFEST_WRITTEN='+str(len(data)))
 print('BOUNCE_MAILDIR_COUNTS='+json.dumps(counters,sort_keys=True))
 print('BOUNCE_DSN_STATUS_COUNTS='+json.dumps(hist.most_common(40)))
 print('BOUNCE_CONFIRMED_UNIQUE='+str(len(emails)))
