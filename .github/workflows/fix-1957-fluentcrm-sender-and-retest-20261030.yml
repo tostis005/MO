@@ -1,0 +1,68 @@
+name: Fix sender and retest 1957 FluentCRM mailing
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-1957-fluentcrm-sender-and-retest-20261030.yml'
+      - '.github/scripts/fix-1957-fluentcrm-sender-and-retest-20261030.php'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  fix-and-retest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check guarded single-test operation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/fix-1957-fluentcrm-sender-and-retest-20261030.php
+          grep -Fq "hola@elmercadodeorigen.com" .github/scripts/fix-1957-fluentcrm-sender-and-retest-20261030.php
+          grep -Fq "jose.fraga@gmail.com" .github/scripts/fix-1957-fluentcrm-sender-and-retest-20261030.php
+          grep -Fq "sendTestEmail()" .github/scripts/fix-1957-fluentcrm-sender-and-retest-20261030.php
+      - name: Update campaign sender and send one test, verify Gmail SMTP acceptance
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "$STAGING_HOST" && test -n "$STAGING_USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          REMOTE="/tmp/fix-1957-sender-${GITHUB_RUN_ID}.php"
+          BEFORE="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wc -l < /var/log/maillog")"
+          echo "MAIL_LOG_LINE_OFFSET=$BEFORE"
+          sshpass -e scp $SCP .github/scripts/fix-1957-fluentcrm-sender-and-retest-20261030.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $REMOTE" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "timeout 90 /opt/plesk/php/8.2/bin/php -d memory_limit=768M /usr/local/bin/wp eval-file '$REMOTE' --path='$ROOT' --allow-root" | tee /tmp/fix-1957-test.txt
+          grep -q 'AOVE_RETEST_OPERATION_COMPLETE' /tmp/fix-1957-test.txt
+          sleep 6
+          NEXT_LINE=$((BEFORE+1))
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "tail -n +$NEXT_LINE /var/log/maillog | grep -iF 'jose.fraga@gmail.com' | tail -n 25 || true" | tee /tmp/1957-retest-postfix.txt
+          if grep -Eq 'dsn=2\.0\.0.*status=sent' /tmp/1957-retest-postfix.txt; then
+            echo "AOVE_RETEST_GMAIL_SMTP_ACCEPTED"
+          else
+            echo "AOVE_RETEST_GMAIL_SMTP_NOT_CONFIRMED"
+            exit 19
+          fi
+      - name: Archive test and delivery report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 1957-fluentcrm-mail-retest-delivery
+          path: |
+            /tmp/fix-1957-test.txt
+            /tmp/1957-retest-postfix.txt
+          if-no-files-found: warn
+          retention-days: 4
