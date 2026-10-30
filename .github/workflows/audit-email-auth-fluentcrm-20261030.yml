@@ -1,0 +1,49 @@
+name: Audit sender authentication and FluentCRM campaign 12
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-email-auth-fluentcrm-20261030.yml'
+      - '.github/scripts/audit-email-auth-fluentcrm-20261030.php'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check public DNS email authentication
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for ns in "NS elmercadodeorigen.com" "MX elmercadodeorigen.com" "TXT elmercadodeorigen.com" "TXT _dmarc.elmercadodeorigen.com" "A mail.elmercadodeorigen.com" "PTR 247.25.223.82.in-addr.arpa" "TXT default._domainkey.elmercadodeorigen.com" "TXT mail._domainkey.elmercadodeorigen.com" "TXT selector1._domainkey.elmercadodeorigen.com" "TXT selector2._domainkey.elmercadodeorigen.com" "TXT s1._domainkey.elmercadodeorigen.com" "TXT google._domainkey.elmercadodeorigen.com"; do
+            set -- $ns
+            printf 'DNS_QUERY_%s_%s\n' "$1" "$2"
+            dig @1.1.1.1 +short "$1" "$2" | head -n 16 || true
+          done
+          echo "DNS_AUDIT_COMPLETE"
+      - name: Check production FluentCRM mailer settings
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/audit-email-auth-fluentcrm-20261030.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          REMOTE="/tmp/emdo-email-audit-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/audit-email-auth-fluentcrm-20261030.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $REMOTE" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "timeout 120 /opt/plesk/php/8.2/bin/php -d memory_limit=768M /usr/local/bin/wp eval-file '$REMOTE' --path='$ROOT' --allow-root" | tee /tmp/fluent-mail-audit.txt
+          grep -q 'FLUENT_SENDER_AUDIT_COMPLETE' /tmp/fluent-mail-audit.txt
