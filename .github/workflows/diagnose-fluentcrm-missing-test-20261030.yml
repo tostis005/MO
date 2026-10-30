@@ -1,0 +1,59 @@
+name: Diagnose missing FluentCRM test email 1957
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-fluentcrm-missing-test-20261030.yml'
+      - '.github/scripts/diagnose-fluentcrm-missing-test-20261030.php'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify read-only audit syntax
+        run: php -l .github/scripts/diagnose-fluentcrm-missing-test-20261030.php
+      - name: Inspect site mail log and outbound transport for test recipient
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "$STAGING_HOST" && test -n "$STAGING_USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          REMOTE="/tmp/diagnose-fluentcrm-test-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/diagnose-fluentcrm-missing-test-20261030.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $REMOTE" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "timeout 100 /opt/plesk/php/8.2/bin/php -d memory_limit=768M /usr/local/bin/wp eval-file '$REMOTE' --path='$ROOT' --allow-root" | tee /tmp/diagnose-mail.txt
+          grep -q 'MAIL_DELIVERY_DIAG_COMPLETE' /tmp/diagnose-mail.txt
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            for log in /var/log/maillog /var/log/mail.log /var/log/postfix/maillog /var/log/plesk/maillog; do
+              if [ -r "$log" ]; then
+                echo "MAIL_TRANSPORT_FILE=$log"
+                tail -n 30000 "$log" | grep -iF "jose.fraga@gmail.com" | tail -n 25 || true
+              fi
+            done
+          ' | tee /tmp/diagnose-server-mta.txt
+      - name: Store private audit summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnose-fluent-test-mail
+          path: |
+            /tmp/diagnose-mail.txt
+            /tmp/diagnose-server-mta.txt
+          if-no-files-found: warn
+          retention-days: 2
