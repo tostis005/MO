@@ -45,4 +45,31 @@ $state=get_option('_emdo_fluentcrm_aove_1957_20261030',[]);
 echo 'CAMPAIGN_TEST_STATE='.wp_json_encode(['test_sent_flag'=>(bool)($state['test_sent']??false),
  'test_recipient_match'=>($state['test_recipient']??'')===$target,
  'test_sent_at'=>$state['test_sent_at']??null],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+
+foreach([8,11,12] as $id){
+ $campaign=$cls::find($id);
+ if(!$campaign)continue;
+ $settings=$campaign->settings;
+ $mail=is_array($settings)?($settings['mailer_settings']??[]):[];
+ $fields=[];
+ foreach(['from_name','from_email','reply_to_email','reply_to_name','fromName','fromEmail','replyToName','replyToEmail','sender_name','sender_email'] as $field){
+  if(isset($mail[$field]))$fields[$field]=$mail[$field];
+ }
+ echo 'MAILER_SETTINGS='.wp_json_encode(['id'=>$id,'mailer_settings'=>$fields,'mailer_setting_keys'=>is_array($mail)?array_keys($mail):gettype($mail)],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+}
+foreach(['\\FluentCrm\\App\\Services\\Helper::getMailHeadersFromSettings','\\FluentCrm\\App\\Services\\Mailer::send'] as $entry){
+ try{
+ [$class,$method]=explode('::',$entry);
+ if(!class_exists($class))continue;
+ $reflection=new ReflectionMethod($class,$method);
+ $src=file($reflection->getFileName(),FILE_IGNORE_NEW_LINES);
+ echo 'MAILER_SOURCE_METHOD='.wp_json_encode(['class'=>$class,'method'=>$method,'file_basename'=>basename($reflection->getFileName())])."\n";
+ for($ln=$reflection->getStartLine();$ln<=min($reflection->getEndLine(),$reflection->getStartLine()+100);$ln++){
+  $line=(string)($src[$ln-1]??'');
+  if(preg_match('/(pass|secret|token|api.?key|auth|credential)/i',$line))continue;
+  echo 'MAILER_SOURCE_LINE='.$ln.' '.substr($line,0,200)."\n";
+ }
+ }catch(Throwable $error){echo 'MAILER_REFLECTION_ERROR='.get_class($error)."\n";}
+}
 echo "MAIL_DELIVERY_DIAG_COMPLETE\n";
+
