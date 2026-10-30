@@ -1,0 +1,32 @@
+name: Update 1957 FluentCRM greeting
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/update-1957-fluentcrm-morning-greeting-20261030.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update saved draft
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/update-1957-fluentcrm-morning-greeting-20261030.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o StrictHostKeyChecking=no -P $PORT"
+          REMOTE="/tmp/update-fluent-greeting-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/update-1957-fluentcrm-morning-greeting-20261030.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "/opt/plesk/php/8.2/bin/php -d memory_limit=768M /usr/local/bin/wp eval-file '$REMOTE' --path='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs' --allow-root"
