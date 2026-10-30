@@ -16,7 +16,8 @@ $c=$campaign_class::find(12);
 if(!$c||$c->status!=='draft'||$c->design_template!=='simple'
  ||$c->email_subject!=='Aceite recién molturado: descubre el Lechín y la Manzanilla sin filtrar'
  ||strpos((string)$c->email_body,'SINFILTRO')===false
- ||strpos((string)$c->email_body,'Buenas noches,')===false
+ ||strpos((string)$c->email_body,'Buenos días,')===false
+ ||strpos((string)$c->email_body,'Buenas noches,')!==false
  ||strpos((string)$c->email_body,'https://www.elmercadodeorigen.com/tienda/1957/')===false) {
  fwrite(STDERR,"AOVE_RETEST_ABORT_DRAFT_NOT_EXPECTED\n");exit(5);
 }
@@ -48,7 +49,7 @@ echo 'AOVE_RETEST_CAMPAIGN_SENDER_OK='.wp_json_encode([
  'campaign_id'=>12,'status'=>$c->status,'from'=>$headers['From'],
  'reply_to'=>$headers['Reply-To'],'subject'=>$c->email_subject
 ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
-$state_key='_emdo_fluentcrm_aove_1957_20261030_retest_envelope';
+$state_key='_emdo_fluentcrm_aove_1957_20261030_native_test_buenos_dias';
 $state=get_option($state_key,[]);
 if(!is_array($state))$state=[];
 if(!empty($state['sent'])){
@@ -70,16 +71,10 @@ $request=new class($recipient){
 $ref->setValue($controller,$request);
 if($request->get('email')!==$recipient || (int)$request->get('campaign_id')!==12)exit(11);
 
-add_action('phpmailer_init',static function($mailer)use($sender){
- if(strtolower((string)$mailer->From)!==$sender){
-  fwrite(STDERR,'AOVE_ENVELOPE_ABORT_UNEXPECTED_FROM '.(string)$mailer->From."\n");
-  throw new RuntimeException('Unexpected from address for AOVE test');
- }
- $mailer->Sender=$sender;
- echo 'AOVE_ENVELOPE_SET='.wp_json_encode([
-  'from'=>$mailer->From,'sender'=>$mailer->Sender,'transport'=>$mailer->Mailer
- ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
-},PHP_INT_MAX);
+if(!function_exists('emdo_authenticated_envelope_from') || !has_action('phpmailer_init','emdo_authenticated_envelope_from')){
+ fwrite(STDERR,"AOVE_RETEST_ABORT_AUTHENTICATED_ENVELOPE_NOT_INSTALLED\n");exit(15);
+}
+echo "AOVE_RETEST_FLUENTCRM_NATIVE_SEND_TEST\n";
 try{$result=$controller->sendTestEmail();}
 catch(Throwable $e){fwrite(STDERR,'AOVE_RETEST_ERROR '.get_class($e).' '.substr($e->getMessage(),0,200)."\n");exit(12);}
 $accepted=is_array($result)?($result['result']??null):null;
