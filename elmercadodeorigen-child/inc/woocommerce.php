@@ -201,3 +201,61 @@ add_filter(
 	20,
 	3
 );
+
+
+/**
+ * Suprime solo la fila «Cupones» del correo interno de nuevo pedido.
+ *
+ * No modifica los descuentos, los importes ni los correos del comprador.
+ * El filtro se activa exclusivamente mientras se renderiza la tabla del
+ * correo administrativo WC_Email_New_Order (HTML o texto plano).
+ *
+ * @param array<string, mixed> $totals Filas de totales que presenta WooCommerce.
+ * @return array<string, mixed>
+ */
+function elmercado_email_hide_new_order_coupons_row( $totals ) {
+	if ( ! is_array( $totals ) ) {
+		return $totals;
+	}
+
+	foreach ( $totals as $key => $row ) {
+		if ( ! is_array( $row ) ) {
+			continue;
+		}
+
+		$label = isset( $row['label'] )
+			? sanitize_title( html_entity_decode( wp_strip_all_tags( (string) $row['label'] ), ENT_QUOTES, 'UTF-8' ) )
+			: '';
+
+		if (
+			in_array( (string) $key, array( 'coupon', 'coupons', 'cupones' ), true )
+			|| in_array( $label, array( 'cupones', 'coupons', 'coupon' ), true )
+		) {
+			unset( $totals[ $key ] );
+		}
+	}
+
+	return $totals;
+}
+
+add_action(
+	'woocommerce_email_before_order_table',
+	static function ( $order, $sent_to_admin, $plain_text, $email ): void {
+		if ( $sent_to_admin && $email instanceof WC_Email && 'new_order' === $email->id ) {
+			add_filter( 'woocommerce_get_order_item_totals', 'elmercado_email_hide_new_order_coupons_row', PHP_INT_MAX );
+		}
+	},
+	1,
+	4
+);
+
+add_action(
+	'woocommerce_email_after_order_table',
+	static function ( $order, $sent_to_admin, $plain_text, $email ): void {
+		if ( $sent_to_admin && $email instanceof WC_Email && 'new_order' === $email->id ) {
+			remove_filter( 'woocommerce_get_order_item_totals', 'elmercado_email_hide_new_order_coupons_row', PHP_INT_MAX );
+		}
+	},
+	PHP_INT_MAX,
+	4
+);
