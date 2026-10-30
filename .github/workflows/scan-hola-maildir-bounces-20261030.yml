@@ -1,0 +1,37 @@
+name: Scan hard bounces in shop mailbox
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/scan-hola-maildir-bounces-20261030.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Analyze structured DSNs without modifying messages
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile .github/scripts/scan-hola-maildir-bounces-20261030.py
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          FILE="/tmp/emdo-dsn-scan-${GITHUB_RUN_ID}.py"
+          sshpass -e scp $SCP .github/scripts/scan-hola-maildir-bounces-20261030.py "$STAGING_USER@$STAGING_HOST:$FILE"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $FILE" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "timeout 500 python3 '$FILE'" | tee /tmp/emdo-hard-bounces-summary.txt
+          grep -q 'BOUNCE_MAILDIR_SCAN_COMPLETE' /tmp/emdo-hard-bounces-summary.txt
