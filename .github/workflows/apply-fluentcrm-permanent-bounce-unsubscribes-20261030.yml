@@ -1,0 +1,44 @@
+name: Unsubscribe validated permanent bounces from FluentCRM
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-fluentcrm-permanent-bounce-unsubscribes-20261030.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  reconcile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Safely unsubscribe matched hard-bounced FluentCRM subscribers
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/reconcile-fluentcrm-hard-bounces-20261030.php
+          python3 -m py_compile .github/scripts/scan-hola-maildir-bounces-20261030.py
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          SCAN="/tmp/emdo-bounce-scan-${GITHUB_RUN_ID}.py"
+          PHP="/tmp/emdo-bounce-reconcile-${GITHUB_RUN_ID}.php"
+          MANIFEST="/tmp/emdo-bounces-${GITHUB_RUN_ID}.json"
+          sshpass -e scp $SCP .github/scripts/scan-hola-maildir-bounces-20261030.py "$STAGING_USER@$STAGING_HOST:$SCAN"
+          sshpass -e scp $SCP .github/scripts/reconcile-fluentcrm-hard-bounces-20261030.php "$STAGING_USER@$STAGING_HOST:$PHP"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $SCAN $PHP $MANIFEST" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "timeout 480 python3 '$SCAN' '$MANIFEST'" | tee /tmp/reconcile-bounces-scan.txt
+          grep -q 'BOUNCE_MAILDIR_SCAN_COMPLETE' /tmp/reconcile-bounces-scan.txt
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "EMDO_BOUNCE_APPLY=1 EMDO_BOUNCE_MANIFEST='$MANIFEST' timeout 180 /opt/plesk/php/8.2/bin/php -d memory_limit=768M /usr/local/bin/wp eval-file '$PHP' --path='$ROOT' --allow-root" | tee /tmp/reconcile-bounces-crm.txt
+          grep -q 'BOUNCE_CRM_APPLY_COMPLETE' /tmp/reconcile-bounces-crm.txt
