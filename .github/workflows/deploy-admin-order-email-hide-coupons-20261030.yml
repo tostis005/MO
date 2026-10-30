@@ -1,0 +1,122 @@
+name: Deploy internal new-order email coupon row cleanup to production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-admin-order-email-hide-coupons-20261030.yml'
+      - 'mu-plugins/emdo-admin-order-email-hide-coupons-20261030.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emdo-admin-order-email-coupons-20261030
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate narrowly scoped email behavior
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          FILE='mu-plugins/emdo-admin-order-email-hide-coupons-20261030.php'
+          test -f "$FILE"
+          php -l "$FILE"
+          grep -Fq 'woocommerce_email_before_order_table' "$FILE"
+          grep -Fq 'woocommerce_email_after_order_table' "$FILE"
+          grep -Fq 'woocommerce_get_order_item_totals' "$FILE"
+          grep -Fq 'new_order' "$FILE"
+
+      - name: Install and verify only the new must-use plugin on production
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          : "${HOST:?Missing host}"
+          : "${USER:?Missing SSH user}"
+          : "${SSHPASS:?Missing SSH password}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          SSH_PORT="${PORT:-22}"
+          [[ "$SSH_PORT" =~ ^[0-9]{1,5}$ ]]
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$SSH_PORT" -H "$HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $SSH_PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $SSH_PORT"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          DEST="$ROOT/wp-content/mu-plugins/emdo-admin-order-email-hide-coupons-20261030.php"
+          SOURCE='mu-plugins/emdo-admin-order-email-hide-coupons-20261030.php'
+          TMP="/tmp/emdo-new-order-coupons-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP "$SOURCE" "$USER@$HOST:$TMP"
+          trap 'sshpass -e ssh $SSH "$USER@$HOST" "rm -f -- $TMP" >/dev/null 2>&1 || true' EXIT
+
+          STATE="$(sshpass -e ssh $SSH "$USER@$HOST" "sh -s -- '$ROOT' '$DEST' '$TMP'" <<'REMOTE'
+          set -eu
+          root="$1"
+          dest="$2"
+          tmp="$3"
+          test -f "$root/wp-config.php"
+          test -d "$root/wp-content/mu-plugins"
+          /opt/plesk/php/8.2/bin/php -l "$tmp" >/dev/null
+          if [ -f "$dest" ]; then
+            cmp -s "$dest" "$tmp" || { echo 'ABORT: Existing plugin differs; no overwrite.' >&2; exit 8; }
+            echo EMDO_INSTALL_STATE=EXISTING
+          else
+            install -m 0644 "$tmp" "$dest"
+            echo EMDO_INSTALL_STATE=NEW
+          fi
+          REMOTE
+          )"
+          printf '%s\n' "$STATE"
+          sha_local="$(sha256sum "$SOURCE" | cut -d' ' -f1)"
+          sha_remote="$(sshpass -e ssh $SSH "$USER@$HOST" "sha256sum '$DEST'" | cut -d' ' -f1)"
+          test "$sha_local" = "$sha_remote" || { echo 'Plugin SHA mismatch.' >&2; exit 10; }
+
+          if ! sshpass -e ssh $SSH "$USER@$HOST" "sh -s -- '$ROOT'" <<'REMOTE'
+          set -eu
+          root="$1"
+          /opt/plesk/php/8.2/bin/php -d memory_limit=768M /usr/local/bin/wp eval '
+            if ( ! function_exists( "emdo_new_order_email_without_coupons_row_20261030" ) ) {
+              fwrite( STDERR, "EMDO_PLUGIN_NOT_LOADED\n" );
+              exit( 9 );
+            }
+            $rows = array(
+              "subtotal"    => array( "label" => "Subtotal:", "value" => "100" ),
+              "coupons"     => array( "label" => "Cupones:", "value" => "PROMO" ),
+              "discount"    => array( "label" => "Descuento:", "value" => "-10" ),
+              "order_total" => array( "label" => "Total:", "value" => "90" ),
+            );
+            $filtered = emdo_new_order_email_without_coupons_row_20261030( $rows );
+            if ( isset( $filtered["coupons"] ) || ! isset( $filtered["subtotal"], $filtered["discount"], $filtered["order_total"] ) || $filtered["order_total"]["value"] !== "90" ) {
+              fwrite( STDERR, "EMDO_FILTER_INVALID_RESULT\n" );
+              exit( 8 );
+            }
+            if ( has_filter( "woocommerce_get_order_item_totals", "emdo_new_order_email_without_coupons_row_20261030" ) ) {
+              fwrite( STDERR, "EMDO_FILTER_LEAKED_OUTSIDE_EMAIL\n" );
+              exit( 7 );
+            }
+            echo "EMDO_EMAIL_COUPONS_FILTER_OK\n";
+          ' --path="$root" --allow-root --skip-plugins --skip-themes
+          REMOTE
+          then
+            if grep -q 'EMDO_INSTALL_STATE=NEW' <<< "$STATE"; then
+              sshpass -e ssh $SSH "$USER@$HOST" "rm -f '$DEST'" || true
+              echo 'Verification failed; newly created plugin rolled back.' >&2
+            fi
+            exit 1
+          fi
+          echo 'Internal new-order coupons row filter deployed and self-tested on production; no email was sent.'
