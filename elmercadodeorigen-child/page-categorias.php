@@ -52,6 +52,7 @@ $category_summaries = array(
 	'legumbres'            => 'Alubias, garbanzos y lentejas en distintas variedades, seleccionadas para guisos, potajes y otras recetas.',
 	'pescados-mariscos'    => 'Pescados y mariscos en distintos formatos, desde ahumados y huevas hasta otras especialidades del mar.',
 	'foie-pates-untables'  => 'Foie gras, patés, mousses, rillettes y otros untables para servir, compartir o acompañar.',
+	'setas-y-hongos'       => 'Setas y hongos frescos y deshidratados, además de conservas, harinas, sales, extractos e infusiones.',
 	'naranjas'             => 'Naranjas frescas de distintas variedades, seleccionadas para mesa, zumo y otros usos.',
 	'quesos'               => 'Quesos de distintas procedencias, tipos de leche, curaciones y formatos.',
 	/* Nuevas familias: textos propios en lugar de una frase repetida. */
