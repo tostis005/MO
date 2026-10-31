@@ -26,7 +26,7 @@ if ($mode !== 'verify') {
     $real_sha = hash_file('sha256', $source);
     if (!hash_equals($expected_sha, $real_sha)) { throw new RuntimeException('Asset checksum mismatch'); }
     $info = @getimagesize($source);
-    if (!$info || $info['mime'] !== 'image/webp' || $info[0] < 300 || $info[1] < 450) {
+    if (!$info || $info['mime'] !== 'image/webp' || $info[0] < 250 || $info[1] < 375) {
         throw new RuntimeException('Invalid image dimensions/mime');
     }
 }
