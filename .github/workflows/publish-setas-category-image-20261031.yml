@@ -1,0 +1,115 @@
+name: Publish approved Setas y hongos category photo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-setas-category-image-20261031.yml'
+      - '.github/scripts/publish-setas-category-image-20261031.php'
+      - '.github/assets/category-images-20261031/categoria-setas-y-hongos-20261031.webp.b64'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emdo-setas-category-photo-production-20261031
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+      EXPECTED_SHA256: acafb638f40a2839cbb9fdc3668f8f733883a38c5169a029e6ebe120a7689478
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate photo and publication script
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/publish-setas-category-image-20261031.php
+          base64 -d .github/assets/category-images-20261031/categoria-setas-y-hongos-20261031.webp.b64 > /tmp/categoria-setas-y-hongos-20261031.webp
+          printf '%s  %s\n' "$EXPECTED_SHA256" /tmp/categoria-setas-y-hongos-20261031.webp | sha256sum -c -
+          test "$(file -b --mime-type /tmp/categoria-setas-y-hongos-20261031.webp)" = 'image/webp'
+          php -r '$i=getimagesize($argv[1]); if (!$i || $i["mime"]!=="image/webp" || $i[0]<250 || $i[1]<375) exit(2); echo "Verified size: ".$i[0]."x".$i[1].PHP_EOL;' /tmp/categoria-setas-y-hongos-20261031.webp
+          test -n "${STAGING_HOST:-}" && test -n "${STAGING_USER:-}" && test -n "${SSHPASS:-}"
+
+      - name: Install SSH client and verify remote key
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          port="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$port" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Back up existing image and publish to production WordPress
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          port="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ServerAliveInterval=15 -p $port"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $port"
+          remote="/tmp/emdo-category-setas-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$remote'"
+          sshpass -e scp $SCP .github/scripts/publish-setas-category-image-20261031.php "$STAGING_USER@$STAGING_HOST:$remote/publish.php"
+          sshpass -e scp $SCP /tmp/categoria-setas-y-hongos-20261031.webp "$STAGING_USER@$STAGING_HOST:$remote/categoria-setas-y-hongos-20261031.webp"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "bash -s -- '$remote' '$EXPECTED_SHA256'" <<'REMOTE'
+          set -Eeuo pipefail
+          tmp="$1"
+          sha="$2"
+          cleanup() { rm -rf "$tmp"; }
+          trap cleanup EXIT
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp)"
+          [ -x "$php_bin" ] && [ -n "$wp_bin" ]
+          prod=''
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p="$(dirname "$cfg")"
+            site="$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+            case "$site" in
+              https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com)
+                prod="$p"; break ;;
+            esac
+          done
+          [ -n "$prod" ] || { echo 'Production WordPress not found'; exit 25; }
+          file="$tmp/categoria-setas-y-hongos-20261031.webp"
+          echo "$sha  $file" | sha256sum -c -
+          "$php_bin" -l "$tmp/publish.php"
+          run_phase() {
+            EMDO_SETAS_MODE="$1" EMDO_SETAS_ASSET="$file" EMDO_SETAS_SHA256="$sha"               timeout --kill-after=15s 280s "$php_bin" -d memory_limit=1024M "$wp_bin"               eval-file "$tmp/publish.php" --path="$prod" --allow-root --skip-plugins=woostify-sites-library
+          }
+          echo 'EMDO_SETAS_PREFLIGHT'
+          run_phase audit > "$tmp/audit.log"
+          grep '^EMDO_SETAS_IMAGE_RESULT=' "$tmp/audit.log"
+          echo 'EMDO_SETAS_APPLY'
+          run_phase apply > "$tmp/apply.log"
+          grep '^EMDO_SETAS_IMAGE_RESULT=' "$tmp/apply.log"
+          grep '^EMDO_SETAS_BACKUP=' "$tmp/apply.log" || true
+          echo 'EMDO_SETAS_VERIFY'
+          run_phase verify > "$tmp/verify.log"
+          grep '^EMDO_SETAS_IMAGE_RESULT=' "$tmp/verify.log"
+          URL="$(sed -n 's/^EMDO_SETAS_IMAGE_RESULT=//p' "$tmp/verify.log" | tail -1 | "$php_bin" -r '$j=json_decode(stream_get_contents(STDIN),true); if (!$j || empty($j["image_url"]) || ($j["category"]??"")!=="setas-y-hongos") exit(2); echo $j["image_url"];')"
+          echo "EMDO_SETAS_IMAGE_PUBLISHED=$URL"
+          REMOTE
+
+      - name: Verify public category and CDN image
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl -fLsS --retry 2 --max-time 35 "https://www.elmercadodeorigen.com/categoria-producto/setas-y-hongos/?category_photo_verification=$GITHUB_SHA" -o /tmp/emdo-setas-category.html
+          grep -Eqi 'Setas y hongos|Setas y Hongos' /tmp/emdo-setas-category.html
+          ! grep -Eqi 'Fatal error:|Uncaught Error:|There has been a critical error on this website' /tmp/emdo-setas-category.html
+          curl -fIsS --retry 2 --max-time 35 "https://www.elmercadodeorigen.com/wp-content/uploads/2026/10/categoria-setas-y-hongos-20261031.webp" | head -n 20
+          echo EMDO_SETAS_PUBLIC_PAGE_AND_IMAGE_OK
