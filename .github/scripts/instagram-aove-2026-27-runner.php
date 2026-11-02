@@ -35,15 +35,6 @@ if ( hash_equals((string)$prior, $request_id) ) {
     ), JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n";
     exit(0);
 }
-$account = emdo_ig_verify_connection();
-if ( is_wp_error($account) ) {
-    fwrite(STDERR, "Instagram account connection failed: " . $account->get_error_message() . "\n");
-    exit(7);
-}
-if ( empty($account['id']) || empty($account['username']) ) {
-    fwrite(STDERR, "Instagram account not identified.\n");
-    exit(8);
-}
 require_once ABSPATH . 'wp-admin/includes/file.php';
 require_once ABSPATH . 'wp-admin/includes/image.php';
 $existing = get_posts(array(
@@ -84,6 +75,18 @@ $image_url = wp_get_attachment_url($attachment_id);
 if ( ! $image_url || 'https' !== wp_parse_url($image_url, PHP_URL_SCHEME) ) {
     fwrite(STDERR, "Uploaded image has no public HTTPS URL.\n");
     exit(12);
+}
+$account = emdo_ig_verify_connection();
+if ( is_wp_error($account) || empty($account['id']) || empty($account['username']) ) {
+    $reason = is_wp_error($account) ? $account->get_error_message() : 'Instagram account not identified.';
+    echo 'EMDO_IG_RESULT:' . wp_json_encode(array(
+        'status' => 'uploaded_pending_instagram_auth',
+        'request_id' => $request_id,
+        'image_url' => $image_url,
+        'wordpress_attachment_id' => (int)$attachment_id,
+        'reason' => $reason
+    ), JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n";
+    exit(0);
 }
 $published = emdo_instagram_publish_image($image_url, $post['caption']);
 if ( is_wp_error($published) ) {

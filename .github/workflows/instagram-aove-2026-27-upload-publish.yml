@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - '.github/assets/instagram/aove-2026-27-final.jpg'
+      - '.github/scripts/instagram-aove-2026-27-runner.php'
   workflow_dispatch:
 permissions:
   contents: write
@@ -67,7 +68,7 @@ jobs:
           printf '%s\n' "$OUTPUT"
           if [ "$RC" -ne 0 ]; then exit "$RC"; fi
           RESULT="$(printf '%s\n' "$OUTPUT" | sed -n 's/^EMDO_IG_RESULT://p' | tail -n 1)"
-          printf '%s\n' "$RESULT" | jq -e '.status == "published" or (.status == "skipped" and .reason == "duplicate_request_id")' > /dev/null
+          printf '%s\n' "$RESULT" | jq -e '.status == "published" or .status == "uploaded_pending_instagram_auth" or (.status == "skipped" and .reason == "duplicate_request_id")' > /dev/null
           printf '%s\n' "$RESULT" > .github/content-publish/instagram-aove-2026-27-publish-result.json
       - name: Record verified result
         shell: bash
