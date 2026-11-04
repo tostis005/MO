@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO — Franja aceite nueva cosecha 2026/27
  * Description: Un banner editorial antes de la franja navideña de la portada.
- * Version: 1.0.1
+ * Version: 1.0.2
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
@@ -16,8 +16,8 @@ function emdo_home_aove_banner_markup_20261030(): string {
     $target = 'https://www.elmercadodeorigen.com/tienda/1957/';
     return '<aside class="emdo-aove-harvest" style="display:block;clear:both;position:relative;width:100%;margin:0;padding:0;border-top:1px solid #e5d8bb;border-bottom:1px solid #e0d3b5;background:#f4ead7;color:#294331;box-sizing:border-box" data-emdo-aove-harvest="2026-27"'
         . ' aria-label="Aceite de oliva de la cosecha 2026/27">'
-        . '<div class="emdo-aove-harvest__inner" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;width:calc(100% - 40px);max-width:1180px;margin:0 auto;padding:24px 0;box-sizing:border-box">'
-        . '<div class="emdo-aove-harvest__copy" style="display:flex;flex:1 1 330px;flex-direction:column;gap:5px;min-width:0;box-sizing:border-box">'
+        . '<div class="emdo-aove-harvest__inner" style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:16px;width:calc(100% - 40px);max-width:1180px;margin:0 auto;padding:24px 0;box-sizing:border-box">'
+        . '<div class="emdo-aove-harvest__copy" style="display:flex;flex:1 1 auto;flex-direction:column;gap:5px;min-width:0;box-sizing:border-box">'
         . '<strong class="emdo-aove-harvest__title" style="display:block;margin:0;padding:0;color:#294331;font-size:clamp(17px,1.7vw,22px);font-weight:700;line-height:1.28">Ya está aquí la cosecha 2026/27</strong>'
         . '<span class="emdo-aove-harvest__description" style="display:block;margin:0;padding:0;color:#425644;font-size:13px;font-weight:400;line-height:1.45">Aceite de oliva virgen extra, recién molturado y sin filtrar.</span>'
         . '</div>'
@@ -104,7 +104,7 @@ add_action( 'wp_head', static function (): void {
 }
 .emdo-aove-harvest .emdo-aove-harvest__link:hover,
 .emdo-aove-harvest .emdo-aove-harvest__link:focus-visible{
- color:#fff!important;background:#396b4c;border-color:#396b4c
+ color:#fff!important;background:#396b4c!important;border-color:#396b4c!important
 }
 .emdo-aove-harvest .emdo-aove-harvest__link:focus-visible{
  outline:2px solid #294d37;outline-offset:3px
