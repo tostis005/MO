@@ -36,7 +36,12 @@ jobs:
           test -n "$STAGING_HOST" && test -n "$STAGING_USER" && test -n "$SSHPASS"
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
-          git show HEAD^:mu-plugins/emdo-home-aove-harvest-promo-20261030.php > /tmp/emdo-aove-previous.php
+          # Known-good original banner, pinned by commit and Git blob SHA.
+          # Avoid HEAD^: GitHub Actions checks out only one commit by default.
+          curl -fsSL --retry 3 --max-time 30 \
+            'https://raw.githubusercontent.com/tostis005/MO/ece5a455889c5f0cf49b6b8a8df1029a9109fd52/mu-plugins/emdo-home-aove-harvest-promo-20261030.php' \
+            -o /tmp/emdo-aove-previous.php
+          test "$(git hash-object /tmp/emdo-aove-previous.php)" = '45f84fdbfdc0990b002cb7458ca0ed5c92dbe749'
           PORT="${STAGING_PORT:-22}"
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
