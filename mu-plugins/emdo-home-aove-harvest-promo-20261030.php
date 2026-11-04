@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO — Franja aceite nueva cosecha 2026/27
  * Description: Un banner editorial antes de la franja navideña de la portada.
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
@@ -14,14 +14,14 @@ function emdo_home_aove_banner_allowed_20261030(): bool {
 
 function emdo_home_aove_banner_markup_20261030(): string {
     $target = 'https://www.elmercadodeorigen.com/tienda/1957/';
-    return '<aside class="emdo-aove-harvest" data-emdo-aove-harvest="2026-27"'
+    return '<aside class="emdo-aove-harvest" style="display:block;clear:both;position:relative;width:100%;margin:0;padding:0;border-top:1px solid #e5d8bb;border-bottom:1px solid #e0d3b5;background:#f4ead7;color:#294331;box-sizing:border-box" data-emdo-aove-harvest="2026-27"'
         . ' aria-label="Aceite de oliva de la cosecha 2026/27">'
-        . '<div class="emdo-aove-harvest__inner">'
-        . '<div class="emdo-aove-harvest__copy">'
-        . '<strong class="emdo-aove-harvest__title">Ya está aquí la cosecha 2026/27</strong>'
-        . '<span class="emdo-aove-harvest__description">Aceite de oliva virgen extra, recién molturado y sin filtrar.</span>'
+        . '<div class="emdo-aove-harvest__inner" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;width:calc(100% - 40px);max-width:1180px;margin:0 auto;padding:24px 0;box-sizing:border-box">'
+        . '<div class="emdo-aove-harvest__copy" style="display:flex;flex:1 1 330px;flex-direction:column;gap:5px;min-width:0;box-sizing:border-box">'
+        . '<strong class="emdo-aove-harvest__title" style="display:block;margin:0;padding:0;color:#294331;font-size:clamp(17px,1.7vw,22px);font-weight:700;line-height:1.28">Ya está aquí la cosecha 2026/27</strong>'
+        . '<span class="emdo-aove-harvest__description" style="display:block;margin:0;padding:0;color:#425644;font-size:13px;font-weight:400;line-height:1.45">Aceite de oliva virgen extra, recién molturado y sin filtrar.</span>'
         . '</div>'
-        . '<a class="emdo-aove-harvest__link" href="' . esc_url( $target ) . '">'
+        . '<a class="emdo-aove-harvest__link" style="display:inline-flex;align-items:center;justify-content:center;gap:7px;flex:0 0 auto;width:auto;max-width:100%;min-height:41px;margin:0;padding:10px 18px;border:1px solid #294d37;border-radius:4px;background:#294d37;color:#fff!important;font-size:13px;line-height:1.3;font-weight:700;text-decoration:none!important;text-align:center;white-space:normal;box-sizing:border-box" href="' . esc_url( $target ) . '">'
         . 'Descubrir la nueva cosecha <span aria-hidden="true">→</span></a>'
         . '</div></aside>';
 }
@@ -57,6 +57,8 @@ add_filter( 'the_content', static function ( $content ) {
 }, 90 );
 
 /**
+ * The inline styles above are a resilient baseline when page caching or
+ * optimization delivers the banner without its head style block.
  * Critical, scoped CSS in the original page head. No new request or JS,
  * compact sizing and unique warm background distinct from Christmas green.
  */
