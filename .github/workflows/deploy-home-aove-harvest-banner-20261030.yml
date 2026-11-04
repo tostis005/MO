@@ -7,6 +7,9 @@ on:
       - 'mu-plugins/emdo-home-aove-harvest-promo-20261030.php'
   workflow_dispatch:
 permissions: {contents: read}
+concurrency:
+  group: emdo-aove-live-deploy
+  cancel-in-progress: false
 jobs:
   deploy:
     runs-on: ubuntu-24.04
@@ -33,6 +36,7 @@ jobs:
           test -n "$STAGING_HOST" && test -n "$STAGING_USER" && test -n "$SSHPASS"
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          git show HEAD^:mu-plugins/emdo-home-aove-harvest-promo-20261030.php > /tmp/emdo-aove-previous.php
           PORT="${STAGING_PORT:-22}"
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
@@ -42,20 +46,26 @@ jobs:
           ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
           DEST="$ROOT/wp-content/mu-plugins/emdo-home-aove-harvest-promo-20261030.php"
           TMP="/tmp/emdo-aove-harvest-${GITHUB_RUN_ID}.php"
+          PREV="/tmp/emdo-aove-previous-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP mu-plugins/emdo-home-aove-harvest-promo-20261030.php "$STAGING_USER@$STAGING_HOST:$TMP"
-          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $TMP" >/dev/null 2>&1 || true' EXIT
+          sshpass -e scp $SCP /tmp/emdo-aove-previous.php "$STAGING_USER@$STAGING_HOST:$PREV"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $TMP $PREV" >/dev/null 2>&1 || true' EXIT
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
             set -eu
             test -f '$ROOT/wp-config.php'
             /opt/plesk/php/8.2/bin/php -l '$TMP' >/dev/null
-            test ! -f '$DEST' || cmp -s '$DEST' '$TMP' || {
-              echo 'AOVE_DEPLOY_ABORT_EXISTING_DIFFERENT_FILE'; exit 8;
-            }
-            if [ ! -f '$DEST' ]; then
+            if [ -f '$DEST' ] && cmp -s '$DEST' '$TMP'; then
+              echo AOVE_PLUGIN_ALREADY_CURRENT
+            elif [ -f '$DEST' ] && ! cmp -s '$DEST' '$PREV'; then
+              echo 'AOVE_DEPLOY_ABORT_UNKNOWN_PRODUCTION_VERSION'; exit 8
+            else
+              if [ -f '$DEST' ]; then
+                cp -p '$DEST' '$DEST.rollback-${GITHUB_RUN_ID}.bak'
+              fi
               mv '$TMP' '$DEST'
               chmod 644 '$DEST'
+              echo AOVE_PLUGIN_ATOMICALLY_UPDATED
             fi
-            echo AOVE_PLUGIN_INSTALLED
           "
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" \
             "/opt/plesk/php/8.2/bin/php -d memory_limit=768M /usr/local/bin/wp eval 'if (!function_exists(\"emdo_home_aove_banner_markup_20261030\")) {fwrite(STDERR,\"AOVE_PLUGIN_NOT_LOADED\\n\");exit(3);} echo \"AOVE_PLUGIN_LOADED\\n\";' --path='$ROOT' --allow-root --skip-plugins --skip-themes" | tee /tmp/aove-plugin-check.txt
@@ -90,6 +100,8 @@ jobs:
           for text in ('Ya está aquí la cosecha 2026/27','Aceite de oliva virgen extra, recién molturado y sin filtrar.','Descubrir la nueva cosecha','https://www.elmercadodeorigen.com/tienda/1957/'):
               assert text in chunk, 'Missing required text: '+text
           assert '#f4ead7' in s, 'AOVE warm cream CSS missing'
+          assert 'style="display:block;clear:both;' in chunk, 'AOVE independent inline styles missing'
+          assert 'style="display:inline-flex;align-items:center;' in chunk, 'AOVE inline button styles missing'
           print('AOVE_PUBLIC_OK: unique banner before Christmas, after hero, CTA and contrasting CSS verified')
           print('HOME_BYTES',len(s.encode()),'AOVE_OFFSET',a.start(),'CHRISTMAS_OFFSET',x.start())
           PY
