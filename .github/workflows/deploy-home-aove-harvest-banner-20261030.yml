@@ -42,6 +42,11 @@ jobs:
             'https://raw.githubusercontent.com/tostis005/MO/ece5a455889c5f0cf49b6b8a8df1029a9109fd52/mu-plugins/emdo-home-aove-harvest-promo-20261030.php' \
             -o /tmp/emdo-aove-previous.php
           test "$(git hash-object /tmp/emdo-aove-previous.php)" = '45f84fdbfdc0990b002cb7458ca0ed5c92dbe749'
+          # Also allow the first resilient-style revision during this hotfix sequence.
+          curl -fsSL --retry 3 --max-time 30 \
+            'https://raw.githubusercontent.com/tostis005/MO/aca80d455731a3a88a019b7d82fb79ac0aaded93/mu-plugins/emdo-home-aove-harvest-promo-20261030.php' \
+            -o /tmp/emdo-aove-first-fix.php
+          test "$(git hash-object /tmp/emdo-aove-first-fix.php)" = '63e4b382faca8a5d3321894a803e3e2025032f15'
           PORT="${STAGING_PORT:-22}"
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
@@ -52,16 +57,18 @@ jobs:
           DEST="$ROOT/wp-content/mu-plugins/emdo-home-aove-harvest-promo-20261030.php"
           TMP="/tmp/emdo-aove-harvest-${GITHUB_RUN_ID}.php"
           PREV="/tmp/emdo-aove-previous-${GITHUB_RUN_ID}.php"
+          PREV2="/tmp/emdo-aove-first-fix-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP mu-plugins/emdo-home-aove-harvest-promo-20261030.php "$STAGING_USER@$STAGING_HOST:$TMP"
           sshpass -e scp $SCP /tmp/emdo-aove-previous.php "$STAGING_USER@$STAGING_HOST:$PREV"
-          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $TMP $PREV" >/dev/null 2>&1 || true' EXIT
+          sshpass -e scp $SCP /tmp/emdo-aove-first-fix.php "$STAGING_USER@$STAGING_HOST:$PREV2"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $TMP $PREV $PREV2" >/dev/null 2>&1 || true' EXIT
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
             set -eu
             test -f '$ROOT/wp-config.php'
             /opt/plesk/php/8.2/bin/php -l '$TMP' >/dev/null
             if [ -f '$DEST' ] && cmp -s '$DEST' '$TMP'; then
               echo AOVE_PLUGIN_ALREADY_CURRENT
-            elif [ -f '$DEST' ] && ! cmp -s '$DEST' '$PREV'; then
+            elif [ -f '$DEST' ] && ! cmp -s '$DEST' '$PREV' && ! cmp -s '$DEST' '$PREV2'; then
               echo 'AOVE_DEPLOY_ABORT_UNKNOWN_PRODUCTION_VERSION'; exit 8
             else
               if [ -f '$DEST' ]; then
