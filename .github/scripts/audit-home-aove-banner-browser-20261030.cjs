@@ -25,7 +25,9 @@ const {chromium}=require('playwright-core');
    });
    console.log('AOVE_BROWSER_'+label.toUpperCase()+'='+JSON.stringify(m));
    if(m.count!==1||!m.hero||m.aove.y+2<m.hero.bottom||m.aove.bottom>m.christmas.y+3||
-      m.bg===m.christmasBg||m.inner.w>m.vw||m.cta.right>m.vw||!m.link.endsWith('/tienda/1957/'))throw Error('AOVE browser layout check failed '+label);
+      m.bg!=='rgb(244, 234, 215)'||m.ctaBg!=='rgb(41, 77, 55)'||
+      m.bg===m.christmasBg||m.cta.w<150||m.cta.h<35||
+      m.inner.w>m.vw||m.cta.right>m.vw||!m.link.endsWith('/tienda/1957/'))throw Error('AOVE browser layout check failed '+label);
    if(label==='mobile'&&(m.cta.y+2<m.desc.bottom||m.title.w>m.vw))throw Error('AOVE mobile overlaps');
    await page.locator('aside.emdo-aove-harvest').screenshot({path:'/tmp/aove-'+label+'.png'});
    await page.close();
