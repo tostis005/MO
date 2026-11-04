@@ -113,3 +113,11 @@ jobs:
           curl -fLsS --retry 2 --max-time 60 'https://www.elmercadodeorigen.com/' -o /tmp/aove-home-normal.html
           grep -Fq 'data-emdo-aove-harvest="2026-27"' /tmp/aove-home-normal.html
           echo AOVE_NORMAL_HOME_VISIBLE
+      - name: Verify banner appearance in desktop and mobile browser
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm install --no-save --no-audit --no-fund playwright-core@1.56.1 >/dev/null
+          export CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          test -n "$CHROME"
+          node .github/scripts/audit-home-aove-banner-browser-20261030.cjs
