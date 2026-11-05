@@ -182,10 +182,38 @@ final class MDO_Club_Ledger {
 		}
 		return '' !== $secret ? $secret : wp_salt( 'auth' );
 	}
+	/**
+	 * New cards use only 20 digits (~66 bits of possible codes).
+	 * Derived from a dedicated persistent HMAC key: no sequential/guessable ID,
+	 * stable across mail retries, with no cleartext gift code stored in the DB.
+	 */
 	public static function gift_code( int $order_id, int $item_id ): string {
-		// HMAC determinista: permite el reenvío sin almacenar códigos en claro.
+		$raw = hash_hmac( 'sha256', $order_id . ':' . $item_id, self::gift_secret(), true );
+		$digits = '';
+		for ( $i = 0; $i < 20; $i++ ) {
+			$digits .= (string) ( ord( $raw[ $i ] ) % 10 );
+		}
+		return $digits;
+	}
+	/**
+	 * Original issued cards retain their old code. Their hashes are already
+	 * stored in the DB, so changing the visible code unconditionally would
+	 * invalidate cards sent before this upgrade.
+	 */
+	private static function legacy_gift_code( int $order_id, int $item_id ): string {
 		$token = strtoupper( substr( hash_hmac( 'sha256', $order_id . ':' . $item_id, self::gift_secret() ), 0, 24 ) );
 		return 'CLUB-' . implode( '-', str_split( $token, 4 ) );
+	}
+	public static function issued_gift_code( int $order_id, int $item_id ): string {
+		global $wpdb;
+		$stored_hash = $wpdb->get_var( $wpdb->prepare(
+			'SELECT code_hash FROM ' . self::table( 'gifts' ) . ' WHERE order_id=%d AND item_id=%d',
+			$order_id, $item_id
+		) );
+		if ( is_string( $stored_hash ) && hash_equals( $stored_hash, self::gift_hash( self::legacy_gift_code( $order_id, $item_id ) ) ) ) {
+			return self::legacy_gift_code( $order_id, $item_id );
+		}
+		return self::gift_code( $order_id, $item_id );
 	}
 	public static function gift_hash( string $code ): string {
 		return hash( 'sha256', preg_replace( '/[^A-Z0-9]/', '', strtoupper( $code ) ) );
@@ -209,7 +237,10 @@ final class MDO_Club_Ledger {
 		return is_array( $row ) ? $row : null;
 	}
 	public static function redeem( int $user_id, string $code ): bool {
-		if ( $user_id <= 0 || ! preg_match( '/^CLUB-[A-F0-9-]{24,32}$/i', $code ) ) { return false; }
+		$code = trim( $code );
+		// Codes issued since November 2026 contain only digits. Old cards
+		// with the CLUB- prefix remain redeemable and cannot be invalidated.
+		if ( $user_id <= 0 || ! preg_match( '/^(?:[0-9]{20}|CLUB-(?:[A-F0-9]{4}-){5}[A-F0-9]{4})$/i', $code ) ) { return false; }
 		global $wpdb;
 		$wpdb->query( 'START TRANSACTION' );
 		$row = $wpdb->get_row( $wpdb->prepare(
