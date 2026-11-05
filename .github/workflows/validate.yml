@@ -131,6 +131,10 @@ jobs:
         shell: bash
         run: php tests/seo-expired-special-20261012.php
 
+      - name: Validate 2026/27 harvest commercial SEO and CTA
+        shell: bash
+        run: php tests/seo-harvest-commerce-20261105.php
+
       - name: Validate unique Spanish category descriptions
         shell: bash
         run: php tests/seo-category-dedup-20261025.php
