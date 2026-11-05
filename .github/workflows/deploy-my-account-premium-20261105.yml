@@ -60,9 +60,10 @@ jobs:
           SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $SSH_PORT"
           TMP="/tmp/emdo-my-account-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP mu-plugins/mdo-my-account-premium-20261105.php "$USER@$HOST:$TMP"
-          sshpass -e ssh $SSH "$USER@$HOST" "sh -s -- '$TMP'" <<'REMOTE'
+          sshpass -e ssh $SSH "$USER@$HOST" "sh -s -- '$TMP' '$GITHUB_RUN_ID'" <<'REMOTE'
           set -eu
           TMP="$1"
+          DEPLOY_RUN_ID="$2"
           ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
           PHP='/opt/plesk/php/8.2/bin/php'
           WP='/usr/local/bin/wp'
@@ -75,7 +76,7 @@ jobs:
             *) echo "Refusing unknown site"; exit 5 ;;
           esac
           test -d "$ROOT/wp-content/mu-plugins"
-          if [ -f "$DEST" ]; then cp "$DEST" "$DEST.bak-${GITHUB_RUN_ID}"; fi
+          if [ -f "$DEST" ]; then cp "$DEST" "$DEST.bak-${DEPLOY_RUN_ID}"; fi
           install -m 0644 "$TMP" "$DEST"
           rm -f "$TMP"
           "$PHP" -l "$DEST" >/dev/null
