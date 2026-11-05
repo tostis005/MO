@@ -61,6 +61,18 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends python3-bs4 >/dev/null
+          # Some public routes respond 404 to an arbitrary verification query.
+          # Fail closed if the canonical, query-free URL also fails. This does not
+          # relax title/description/canonical assertions after fetching.
+          fetch_live() {
+            local url="$1" output="$2" clean="${1%%\?*}"
+            if ! curl -fLsS --retry 1 --retry-delay 1 --connect-timeout 10 --max-time 40 \
+              -H 'Cache-Control: no-cache' "$url" -o "$output"; then
+              echo "SEO_PUBLIC_QUERY_FALLBACK: $clean"
+              curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 --max-time 40 \
+                -H 'Cache-Control: no-cache' "$clean" -o "$output"
+            fi
+          }
           ACEITES="https://www.elmercadodeorigen.com/categoria-producto/aceites/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           HARVEST5="https://www.elmercadodeorigen.com/producto/cosecha-26-27-sin-filtrar-aceite-de-oliva-virgen-extra-5l-extraccion-en-frio/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           HARVEST15="https://www.elmercadodeorigen.com/producto/sin-filtrar-nueva-campana-26-27-aceite-de-oliva-virgen-extra-15x1l/?mdo_commerce_verify=${GITHUB_RUN_ID}"
@@ -75,26 +87,26 @@ jobs:
           JAMON_CEBO50="https://www.elmercadodeorigen.com/producto/jamon-cebo-de-campo-iberico-50-montjam/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           TENDERLOIN="https://www.elmercadodeorigen.com/en/product/beef-tenderloin/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           EVOO15="https://www.elmercadodeorigen.com/en/product/extra-virgin-olive-oil-15-x-1l/?mdo_commerce_verify=${GITHUB_RUN_ID}"
-          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ACEITES" -o /tmp/aceites.html
-          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$HARVEST5" -o /tmp/harvest5.html
-          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$HARVEST15" -o /tmp/harvest15.html
-          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$HARVEST500" -o /tmp/harvest500.html
-          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$SOB" -o /tmp/sob.html
-          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$AGUJA" -o /tmp/aguja.html
-          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$PITO" -o /tmp/pito.html
-          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$JAMON" -o /tmp/jamon.html
-          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$JAMON50" -o /tmp/jamon50.html
-          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ENTRECOTE" -o /tmp/entrecote.html
-          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$PADRON" -o /tmp/padron.html
-          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$JAMON_CEBO50" -o /tmp/jamon-cebo50.html
-          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$TENDERLOIN" -o /tmp/tenderloin.html
-          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EVOO15" -o /tmp/evoo15.html
+          fetch_live "$ACEITES" /tmp/aceites.html
+          fetch_live "$HARVEST5" /tmp/harvest5.html
+          fetch_live "$HARVEST15" /tmp/harvest15.html
+          fetch_live "$HARVEST500" /tmp/harvest500.html
+          fetch_live "$SOB" /tmp/sob.html
+          fetch_live "$AGUJA" /tmp/aguja.html
+          fetch_live "$PITO" /tmp/pito.html
+          fetch_live "$JAMON" /tmp/jamon.html
+          fetch_live "$JAMON50" /tmp/jamon50.html
+          fetch_live "$ENTRECOTE" /tmp/entrecote.html
+          fetch_live "$PADRON" /tmp/padron.html
+          fetch_live "$JAMON_CEBO50" /tmp/jamon-cebo50.html
+          fetch_live "$TENDERLOIN" /tmp/tenderloin.html
+          fetch_live "$EVOO15" /tmp/evoo15.html
           HOME="https://www.elmercadodeorigen.com/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           VERDURAS="https://www.elmercadodeorigen.com/categoria-producto/hortalizas-verduras/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           CARNES="https://www.elmercadodeorigen.com/categoria-producto/carnes/?mdo_commerce_verify=${GITHUB_RUN_ID}"
-          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$HOME" -o /tmp/home-transactional.html
-          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$VERDURAS" -o /tmp/verduras-transactional.html
-          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$CARNES" -o /tmp/carnes-transactional.html
+          fetch_live "$HOME" /tmp/home-transactional.html
+          fetch_live "$VERDURAS" /tmp/verduras-transactional.html
+          fetch_live "$CARNES" /tmp/carnes-transactional.html
           /usr/bin/python3 - <<'PY'
           from bs4 import BeautifulSoup
 
