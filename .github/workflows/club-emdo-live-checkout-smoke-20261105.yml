@@ -1,0 +1,68 @@
+name: Club EMDO checkout live smoke (no payment)
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/club-emdo-live-checkout-smoke-20261105.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Test anonymous gift-cart to checkout, without placing an order
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://www.elmercadodeorigen.com'
+          PAGE="$BASE/tarjetas-regalo/?emdo_smoke=1"
+          JAR=/tmp/club-emdo-cookies.txt
+          HTTP=$(curl -kLsS --retry 2 --connect-timeout 15 --max-time 65 \
+            -A 'Mozilla/5.0 (compatible; ClubEMDOCheckoutQA/1.0)' \
+            -H 'Cache-Control: no-cache' -c "$JAR" -b "$JAR" \
+            -o /tmp/club-gift.html -w '%{http_code}' "$PAGE")
+          echo "GIFT_PAGE_HTTP=$HTTP"
+          test "$HTTP" = 200
+          if ! grep -Eq 'name="action" value="mdo_club_purchase"' /tmp/club-gift.html; then
+            echo 'FAIL: current gift purchase form is missing'
+            exit 3
+          fi
+          NONCE=$(grep -Eo 'name="_wpnonce" value="[a-fA-F0-9]+"' /tmp/club-gift.html | head -n1 | cut -d '"' -f4)
+          if [ -z "$NONCE" ]; then echo 'FAIL: missing public gift-form nonce'; exit 4; fi
+          echo 'GIFT_FORM_WITH_NONCE=yes'
+          HTTP=$(curl -kSs --retry 1 --connect-timeout 15 --max-time 65 \
+            -A 'Mozilla/5.0 (compatible; ClubEMDOCheckoutQA/1.0)' \
+            -H 'Cache-Control: no-cache' -e "$PAGE" -b "$JAR" -c "$JAR" \
+            -D /tmp/club-submit.headers -o /tmp/club-submit.html -w '%{http_code}' \
+            --data-urlencode "_wpnonce=$NONCE" \
+            --data-urlencode 'action=mdo_club_purchase' \
+            --data-urlencode 'mdo_club_form=buy' \
+            --data-urlencode 'kind=gift' \
+            --data-urlencode 'amount=25' \
+            --data-urlencode 'recipient_email=checkout-smoke@example.invalid' \
+            "$BASE/wp-admin/admin-post.php")
+          echo "GIFT_POST_HTTP=$HTTP"
+          LOCATION=$(tr -d '\r' < /tmp/club-submit.headers | grep -i '^location: ' | tail -n1 | cut -d' ' -f2- || true)
+          echo "GIFT_POST_LOCATION=$LOCATION"
+          if [ "$HTTP" != 303 ]; then
+            echo "FAIL: expected checkout redirect after gift POST"
+            exit 5
+          fi
+          case "$LOCATION" in
+            /checkout/*|/finalizar-compra/*) CHECKOUT="$BASE$LOCATION" ;;
+            https://www.elmercadodeorigen.com/*|https://elmercadodeorigen.com/*) CHECKOUT="$LOCATION" ;;
+            *) echo "FAIL: unexpected redirect location"; exit 6 ;;
+          esac
+          HTTP=$(curl -kLsS --retry 1 --connect-timeout 15 --max-time 65 --max-redirs 5 \
+            -A 'Mozilla/5.0 (compatible; ClubEMDOCheckoutQA/1.0)' \
+            -H 'Cache-Control: no-cache' -e "$PAGE" -b "$JAR" -c "$JAR" \
+            -o /tmp/club-checkout.html -w '%{http_code}' "$CHECKOUT")
+          echo "CHECKOUT_HTTP=$HTTP"
+          test "$HTTP" = 200
+          if ! grep -Eiq '(Tarjeta regalo Club EMDO|Tarjeta regalo)' /tmp/club-checkout.html; then
+            echo 'FAIL: gift product is not displayed in WooCommerce checkout'
+            exit 7
+          fi
+          echo 'GIFT_CHECKOUT_WITH_PRODUCT=yes'
+          echo 'SMOKE_OK: checkout reached; no order was submitted and no payment was made.'
