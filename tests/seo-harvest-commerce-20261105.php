@@ -38,6 +38,11 @@ if ( ( $map['/categoria-producto/aceites/']['title'] ?? '' ) !== 'Comprar Aceite
     fwrite( STDERR, "Unexpected change to evergreen Aceites metadata\n" );
     exit( 1 );
 }
+if ( ( $map['/tienda/1957/']['title'] ?? '' ) !== 'Aceite de Oliva Virgen Extra 1957 | Cosecha 2026/27'
+    || ! str_contains( $map['/tienda/1957/']['description'] ?? '', 'productor 1957' ) ) {
+    fwrite( STDERR, "Missing 1957 vendor commercial SEO metadata\n" );
+    exit( 1 );
+}
 $banner = emdo_home_aove_banner_markup_20261030();
 if ( ! str_contains( $banner, 'href="https://www.elmercadodeorigen.com/tienda/1957/"' )
     || str_contains( $banner, 'href="https://www.elmercadodeorigen.com/categoria-producto/aceites/"' ) ) {
