@@ -1,6 +1,6 @@
 <?php
 /**
- * Club: saldo como aportación previa (tender), no como cupón ni descuento fiscal.
+ * Club EMDO: saldo como aportación previa (tender), no como cupón ni descuento fiscal.
  *
  * Compatible exclusivamente con el checkout clásico de WooCommerce.
  * La adaptación WCFM, la pasarela y los documentos fiscales deben comprobarse
@@ -27,7 +27,7 @@ final class MDO_Club_Checkout {
 		add_action( 'woocommerce_admin_order_data_after_order_details', array( __CLASS__, 'admin_notice' ) );
 	}
 	private static function active(): bool {
-		return MDO_Club::enabled( 'checkout' ) && is_user_logged_in() && function_exists( 'WC' );
+		return MDO_Club EMDO::enabled( 'checkout' ) && is_user_logged_in() && function_exists( 'WC' );
 	}
 	private static function cart_has_prepaid( $cart ): bool {
 		if ( ! $cart ) { return false; }
@@ -79,7 +79,7 @@ final class MDO_Club_Checkout {
 		<div class="mdo-club-checkout" style="padding:16px;margin:12px 0;background:#f6f0e4;border-radius:13px;color:#244634">
 			<label for="mdo_club_use" style="display:flex;gap:9px;align-items:center;cursor:pointer">
 				<input id="mdo_club_use" type="checkbox" name="mdo_club_use" value="1" <?php checked( $checked ); ?>>
-				<strong>Usar saldo Club</strong> · <?php echo wp_kses_post( wc_price( MDO_Club_Ledger::money( $balance ) ) ); ?> disponibles
+				<strong>Usar saldo Club EMDO</strong> · <?php echo wp_kses_post( wc_price( MDO_Club_Ledger::money( $balance ) ) ); ?> disponibles
 			</label>
 			<label for="mdo_club_amount" style="display:block;margin:10px 0 3px">Importe que quieres utilizar (€)</label>
 			<input id="mdo_club_amount" type="number" name="mdo_club_amount" min="0" max="<?php echo esc_attr( MDO_Club_Ledger::money( $max ) ); ?>" step="0.01"
@@ -90,14 +90,14 @@ final class MDO_Club_Checkout {
 		<?php
 	}
 	public static function gift_form(): void {
-		if ( ! is_checkout() || is_order_received_page() || ! MDO_Club::enabled( 'prepaid' ) ) { return; }
+		if ( ! is_checkout() || is_order_received_page() || ! MDO_Club EMDO::enabled( 'prepaid' ) ) { return; }
 		if ( ! is_user_logged_in() ) {
-			echo '<p class="woocommerce-info">¿Tienes una tarjeta regalo Club? Inicia sesión para canjearla desde Mi monedero.</p>';
+			echo '<p class="woocommerce-info">¿Tienes una tarjeta regalo Club EMDO? Inicia sesión para canjearla desde Mi monedero.</p>';
 			return;
 		}
 		?>
 		<div class="mdo-club-gift-checkout" style="padding:14px;margin:12px 0;background:#fff9ed;border-radius:12px">
-			<strong>¿Tienes una tarjeta regalo Club?</strong>
+			<strong>¿Tienes una tarjeta regalo Club EMDO?</strong>
 			<p>Canjea aquí una o varias tarjetas. Sus importes se sumarán a tu monedero.</p>
 			<form method="post" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
 				<?php wp_nonce_field( 'mdo_club_redeem' ); ?>
@@ -177,7 +177,7 @@ final class MDO_Club_Checkout {
 					'value' => wc_price( MDO_Club_Ledger::money( $full ), array( 'currency' => $order->get_currency() ) ),
 				);
 				$rows['mdo_club_wallet'] = array(
-					'label' => 'Pagado con monedero Club:',
+					'label' => 'Pagado con monedero Club EMDO:',
 					'value' => '−' . wc_price( MDO_Club_Ledger::money( $wallet ), array( 'currency' => $order->get_currency() ) ),
 				);
 				$value['label'] = 'Importe pagado al finalizar:';
@@ -190,7 +190,7 @@ final class MDO_Club_Checkout {
 		$full = (int) $order->get_meta( '_mdo_club_full_total_cents' );
 		$wallet = (int) $order->get_meta( '_mdo_club_wallet_cents' );
 		if ( $full <= 0 || $wallet <= 0 ) { return; }
-		echo '<p><strong>Club · conciliación:</strong> valor del pedido a facturar por el productor: '
+		echo '<p><strong>Club EMDO · conciliación:</strong> valor del pedido a facturar por el productor: '
 			. wp_kses_post( wc_price( MDO_Club_Ledger::money( $full ) ) )
 			. '. Monedero: ' . wp_kses_post( wc_price( MDO_Club_Ledger::money( $wallet ) ) )
 			. '. Pago externo: ' . wp_kses_post( wc_price( MDO_Club_Ledger::money( MDO_Club_Ledger::cents( $order->get_total() ) ) ) )
