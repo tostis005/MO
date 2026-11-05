@@ -71,8 +71,8 @@ jobs:
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
             set -eu
             test -f '$ROOT/wp-config.php' && test -f '$TWO' && test -f '$THREE'
-            test \\"\\$(git hash-object '$TWO')\\" = '494d61736d6fb8eb9c53d81708c41641616d88a1'
-            test \\"\\$(git hash-object '$THREE')\\" = 'b4a1e098f948fe35ea0ffc46c740dacfd1567c4e'
+            test \"\$(git hash-object '$TWO')\" = '494d61736d6fb8eb9c53d81708c41641616d88a1'
+            test \"\$(git hash-object '$THREE')\" = 'b4a1e098f948fe35ea0ffc46c740dacfd1567c4e'
             /opt/plesk/php/8.2/bin/php -l '$TMP_TWO' >/dev/null
             /opt/plesk/php/8.2/bin/php -l '$TMP_THREE' >/dev/null
             mkdir -p '$BAK'
