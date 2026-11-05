@@ -131,6 +131,10 @@ jobs:
         shell: bash
         run: php tests/seo-expired-special-20261012.php
 
+      - name: Validate 1957 legacy-to-new AOVE buying routes
+        shell: bash
+        run: php tests/emdo-1957-legacy-harvest-crosslinks-20261105.php
+
       - name: Validate scoped editorial commerce links
         shell: bash
         run: php tests/editorial-commerce-links-20261105.php
