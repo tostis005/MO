@@ -25,6 +25,12 @@ final class MDO_Club_Checkout {
 		add_action( 'woocommerce_email_before_order_table', array( __CLASS__, 'before_email' ), 1, 4 );
 		add_action( 'woocommerce_email_after_order_table', array( __CLASS__, 'after_email' ), PHP_INT_MAX, 4 );
 		add_filter( 'woocommerce_get_order_item_totals', array( __CLASS__, 'email_totals' ), 90, 3 );
+		// Checkout simplificado SOLO para una tarjeta regalo o recarga virtual.
+		add_filter( 'woocommerce_checkout_fields', array( __CLASS__, 'digital_checkout_fields' ), 999 );
+		add_filter( 'woocommerce_cart_needs_shipping', array( __CLASS__, 'prepaid_needs_no_shipping' ), 999 );
+		add_filter( 'woocommerce_cart_needs_shipping_address', array( __CLASS__, 'prepaid_needs_no_shipping' ), 999 );
+		add_filter( 'woocommerce_enable_order_notes_field', array( __CLASS__, 'prepaid_order_notes' ), 999 );
+		add_action( 'woocommerce_before_checkout_billing_form', array( __CLASS__, 'digital_checkout_intro' ), 5 );
 		add_action( 'woocommerce_admin_order_data_after_order_details', array( __CLASS__, 'admin_notice' ) );
 	}
 	private static function active(): bool {
@@ -36,6 +42,64 @@ final class MDO_Club_Checkout {
 			if ( ! empty( $item['mdo_club_kind'] ) ) { return true; }
 		}
 		return false;
+	}
+	/** Only a single validated gift/top-up item may use the shorter checkout. */
+	public static function prepaid_only_cart(): bool {
+		if ( ! function_exists( 'WC' ) || ! WC()->cart || ! MDO_Club::enabled( 'prepaid' ) ) {
+			return false;
+		}
+		$items = WC()->cart->get_cart();
+		if ( 1 !== count( $items ) ) { return false; }
+		$item = reset( $items );
+		$kind = sanitize_key( $item['mdo_club_kind'] ?? '' );
+		if ( ! in_array( $kind, array( 'gift', 'wallet' ), true )
+			|| 1 !== (int) ( $item['quantity'] ?? 0 )
+			|| (int) ( $item['product_id'] ?? 0 ) !== (int) get_option( 'mdo_club_product_' . $kind )
+			|| (int) ( $item['mdo_club_amount_cents'] ?? 0 ) < 1000
+			|| (int) ( $item['mdo_club_amount_cents'] ?? 0 ) > 50000 ) {
+			return false;
+		}
+		return true;
+	}
+	/**
+	 * Preserve essential purchase identity and billing country. Gateways can
+	 * require this information for tax, card validation and fraud checks.
+	 * Only core optional billing-address fields are removed; integrations
+	 * may still add their own fields.
+	 */
+	public static function digital_checkout_fields( array $fields ): array {
+		if ( ! self::prepaid_only_cart() ) { return $fields; }
+		foreach ( array(
+			'billing_company', 'billing_address_1', 'billing_address_2',
+			'billing_city', 'billing_state', 'billing_postcode', 'billing_phone',
+		) as $key ) {
+			unset( $fields['billing'][ $key ] );
+		}
+		if ( isset( $fields['billing']['billing_first_name'] ) ) {
+			$fields['billing']['billing_first_name']['label'] = 'Nombre';
+		}
+		if ( isset( $fields['billing']['billing_last_name'] ) ) {
+			$fields['billing']['billing_last_name']['label'] = 'Apellidos';
+		}
+		if ( isset( $fields['billing']['billing_email'] ) ) {
+			$fields['billing']['billing_email']['label'] = 'Correo electrónico para el pedido';
+		}
+		if ( isset( $fields['billing']['billing_country'] ) ) {
+			$fields['billing']['billing_country']['label'] = 'País de facturación';
+		}
+		$fields['shipping'] = array();
+		unset( $fields['order']['order_comments'] );
+		return $fields;
+	}
+	public static function prepaid_needs_no_shipping( bool $needs_shipping ): bool {
+		return self::prepaid_only_cart() ? false : $needs_shipping;
+	}
+	public static function prepaid_order_notes( bool $enabled ): bool {
+		return self::prepaid_only_cart() ? false : $enabled;
+	}
+	public static function digital_checkout_intro(): void {
+		if ( ! self::prepaid_only_cart() ) { return; }
+		echo '<div class="woocommerce-info mdo-club-checkout-digital" role="note">Compra digital: no necesitas dirección de envío. Completa los datos básicos y elige cómo pagar.</div>';
 	}
 	private static function wallet_limit( int $total_cents ): int {
 		return max( 0, min( $total_cents, MDO_Club_Ledger::balance( get_current_user_id() ) ) );
