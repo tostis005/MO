@@ -72,7 +72,7 @@ affirm($wc->cart->items[0]['product_id']===901 && $wc->cart->items[0]['mdo_club_
 $wc->cart->items=[['product_id'=>123,'quantity'=>1]];
 $options['mdo_club_product_gift']=0;
 affirm(!MDO_Club::prepare_prepaid_cart('gift',5000,'recipient@example.test',''), 'Unavailable digital product refuses purchase');
-affirm($wc->cart->items[0]['product_id']===123, 'Unavailable gift does not erase customer's existing cart');
+affirm($wc->cart->items[0]['product_id']===123, "Unavailable gift does not erase customer cart");
 $options['mdo_club_product_gift']=902;
 $wc->cart->items=[['product_id'=>902,'quantity'=>1,'mdo_club_kind'=>'gift','mdo_club_amount_cents'=>5000]];
 
