@@ -8,6 +8,12 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 final class MDO_Club {
 	private static bool $adding_club = false;
 	public static function enabled( string $feature ): bool {
+		// La configuración puede guardarse antes del despliegue, pero nunca
+		// mover dinero en producción por accidente. Staging define esta
+		// constante después de validar explícitamente el entorno.
+		if ( ! defined( 'MDO_CLUB_RELEASE_APPROVED' ) || true !== MDO_CLUB_RELEASE_APPROVED ) {
+			return false;
+		}
 		return 'yes' === get_option( 'mdo_club_' . $feature . '_enabled', 'no' );
 	}
 	public static function percent(): float {
@@ -52,9 +58,18 @@ final class MDO_Club {
 	public static function settings(): void {
 		if ( ! current_user_can( 'manage_woocommerce' ) ) { return; }
 		$percent = self::percent();
+		$ready = defined( 'MDO_CLUB_RELEASE_APPROVED' ) && true === MDO_CLUB_RELEASE_APPROVED;
+		global $wpdb;
+		$wallet_cents = (int) $wpdb->get_var( 'SELECT COALESCE(SUM(balance_cents),0) FROM ' . MDO_Club_Ledger::table( 'wallets' ) );
+		$gift_cents = (int) $wpdb->get_var( 'SELECT COALESCE(SUM(amount_cents),0) FROM ' . MDO_Club_Ledger::table( 'gifts' ) . ' WHERE redeemed_user_id=0' );
+		$pending_cards = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . MDO_Club_Ledger::table( 'gifts' ) . ' WHERE redeemed_user_id=0' );
 		?>
 		<div class="wrap"><h1>Club EMDO</h1>
 			<p>Configura el porcentaje de recompensa. Los pagos anticipados y el uso de saldo no se habilitan hasta validar pasarela, impuestos, reembolsos y liquidaciones.</p>
+			<?php if ( ! $ready ) : ?><div class="notice notice-warning inline"><p><strong>Club EMDO bloqueado para transacciones:</strong> falta habilitación técnica explícita <code>MDO_CLUB_RELEASE_APPROVED</code> tras auditoría y pruebas en staging. Guardar los ajustes no lo activará.</p></div><?php endif; ?>
+			<p><strong>Saldo vivo de clientes:</strong> <?php echo wp_kses_post( wc_price( MDO_Club_Ledger::money( $wallet_cents ) ) ); ?>
+				· <strong>Tarjetas sin canjear:</strong> <?php echo wp_kses_post( wc_price( MDO_Club_Ledger::money( $gift_cents ) ) ); ?> (<?php echo (int) $pending_cards; ?>).
+				Son pasivos pendientes de consumo, no ventas de productos.</p>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<?php wp_nonce_field( 'mdo_club_settings' ); ?>
 				<input type="hidden" name="action" value="mdo_club_save">
@@ -67,7 +82,7 @@ final class MDO_Club {
 						<label><input type="checkbox" name="rewards_enabled" value="yes" <?php checked( self::enabled( 'rewards' ) ); ?>> Activar recompensas</label><br>
 						<label><input type="checkbox" name="prepaid_enabled" value="yes" <?php checked( self::enabled( 'prepaid' ) ); ?>> Activar venta de recargas y tarjetas regalo</label><br>
 						<label><input type="checkbox" name="checkout_enabled" value="yes" <?php checked( self::enabled( 'checkout' ) ); ?>> Activar aplicación de saldo en checkout clásico</label>
-						<p class="description"><strong>No activar pagos sin pruebas de extremo a extremo.</strong> No existe identificación fiable de Edenred en la pasarela actual. Esta opción no constituye autorización de Edenred.</p>
+						<p class="description"><strong>No activar pagos sin pruebas de extremo a extremo.</strong> La constante de desbloqueo técnico no equivale a autorización contractual o fiscal de Edenred.</p>
 					</td></tr>
 				</table>
 				<?php submit_button( 'Guardar configuración' ); ?>
