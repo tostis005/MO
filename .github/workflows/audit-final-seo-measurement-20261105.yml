@@ -1,0 +1,73 @@
+name: Final read-only GA4 attribution and SEO Padron audit 20261105
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/audit-final-seo-measurement-20261105.php'
+      - '.github/scripts/audit-public-ga4-seo-20261105.py'
+      - '.github/workflows/audit-final-seo-measurement-20261105.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP/Python source validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/audit-final-seo-measurement-20261105.php
+          python3 -m py_compile .github/scripts/audit-public-ga4-seo-20261105.py
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass python3-bs4 >/dev/null
+      - name: Aggregate native WooCommerce attribution and inspect measurement options
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          : "${STAGING_HOST:?}" "${STAGING_USER:?}" "${SSHPASS:?}"
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          REMOTE="/tmp/emdo-final-seo-qa-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/audit-final-seo-measurement-20261105.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f /tmp/emdo-final-seo-qa-${GITHUB_RUN_ID}.php" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "bash -s -- '$ROOT' '$REMOTE'" > /tmp/emdo-final-wp-audit.log <<'REMOTE_SCRIPT'
+          set -eu
+          ROOT="$1"
+          SCRIPT="$2"
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          test -f "$ROOT/wp-config.php" && test -f "$SCRIPT"
+          "$PHP" -l "$SCRIPT" >/dev/null
+          echo 'EMDO_MEASUREMENT_PLUGINS_BEGIN'
+          timeout 45 "$PHP" -d memory_limit=768M "$WP" plugin list --fields=name,status,version --format=csv --path="$ROOT" --allow-root 2>/dev/null | grep -Ei '(^name|analytics|google|site-kit|tag-manager|gtm|pixel|merchant|woocommerce|conversion|tracking)' | head -n 80 || true
+          echo 'EMDO_MEASUREMENT_PLUGINS_END'
+          timeout 90 "$PHP" -d memory_limit=768M "$WP" eval-file "$SCRIPT" --path="$ROOT" --allow-root 2>&1
+          REMOTE_SCRIPT
+          cat /tmp/emdo-final-wp-audit.log
+      - name: Inspect public GA4 script signals and English Padron URL
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          /usr/bin/python3 .github/scripts/audit-public-ga4-seo-20261105.py | tee /tmp/emdo-public-seo-ga4-audit.log
+      - name: Archive audit without customer-level data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emdo-final-seo-measurement-audit
+          path: |
+            /tmp/emdo-final-wp-audit.log
+            /tmp/emdo-public-seo-ga4-audit.log
+          if-no-files-found: warn
+          retention-days: 14
