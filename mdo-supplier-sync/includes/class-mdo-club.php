@@ -87,7 +87,48 @@ final class MDO_Club {
 				<?php submit_button( 'Guardar configuración' ); ?>
 			</form>
 			<p><strong>Publicación:</strong> se generan borradores de las páginas «Club EMDO» y «Tarjetas regalo». Publícalos al validar todo el circuito.</p>
+			<?php self::render_reconciliation(); ?>
 		</div>
+		<?php
+	}
+	/**
+	 * Conciliación de pagos mixtos. No sustituye los informes fiscales
+	 * ni los importes de comisión/liquidación que calcule WCFM.
+	 */
+	private static function render_reconciliation(): void {
+		if ( ! function_exists( 'wc_get_orders' ) ) { return; }
+		$orders = wc_get_orders( array(
+			'limit' => 20,
+			'orderby' => 'date',
+			'order' => 'DESC',
+			'meta_key' => '_mdo_club_wallet_cents',
+			'meta_value' => 0,
+			'meta_compare' => '>',
+		) );
+		?>
+		<h2>Conciliación: últimos pedidos con monedero</h2>
+		<p>El productor debe facturar el valor completo del pedido; el pago bancario de WooCommerce puede ser inferior por el saldo Club aplicado. Es imprescindible cuadrarlo con las liquidaciones de WCFM.</p>
+		<table class="widefat striped">
+			<thead><tr><th>Pedido</th><th>Cliente</th><th>Venta facturable</th><th>Monedero</th><th>Pasarela</th><th>Cuadre</th></tr></thead>
+			<tbody>
+			<?php if ( ! $orders ) : ?><tr><td colspan="6">Sin pagos con monedero todavía.</td></tr><?php endif; ?>
+			<?php foreach ( $orders as $order ) :
+				$full = (int) $order->get_meta( '_mdo_club_full_total_cents' );
+				$wallet = (int) $order->get_meta( '_mdo_club_wallet_cents' );
+				$gateway = MDO_Club_Ledger::cents( $order->get_total() );
+				$matched = $full > 0 && $full === $wallet + $gateway;
+				?>
+				<tr>
+					<td><a href="<?php echo esc_url( $order->get_edit_order_url() ); ?>">#<?php echo (int) $order->get_id(); ?></a> · <?php echo esc_html( $order->get_status() ); ?></td>
+					<td><?php echo esc_html( $order->get_billing_email() ); ?></td>
+					<td><?php echo wp_kses_post( wc_price( MDO_Club_Ledger::money( $full ) ) ); ?></td>
+					<td><?php echo wp_kses_post( wc_price( MDO_Club_Ledger::money( $wallet ) ) ); ?></td>
+					<td><?php echo wp_kses_post( wc_price( MDO_Club_Ledger::money( $gateway ) ) ); ?></td>
+					<td><?php echo $matched ? '<strong style="color:#17713b">Cuadrado</strong>' : '<strong style="color:#b32d2e">REVISAR</strong>'; ?></td>
+				</tr>
+			<?php endforeach; ?>
+			</tbody>
+		</table>
 		<?php
 	}
 	public static function save_settings(): void {
