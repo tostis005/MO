@@ -235,7 +235,7 @@ final class MDO_Club {
 		<div class="mdo-club mdo-club-gifts">
 			<div class="mdo-club-hero"><span>UN DETALLE CON ORIGEN</span><h2>Tarjetas regalo Club EMDO</h2>
 			<p>Regala la libertad de elegir productos auténticos de nuestros productores.</p>
-			<div class="mdo-club-gift-visual"><small>EL MERCADO DE ORIGEN</small><strong>Una tarjeta, muchos sabores.</strong><span>Tarjeta regalo Club EMDO</span></div></div>
+			<div class="mdo-club-gift-visual"><img src="<?php echo esc_url( self::gift_art_url() ); ?>" alt="Tarjeta regalo de El Mercado de Origen, con la dirección elmercadodeorigen.com" width="720" height="480" loading="eager" decoding="async"></div></div>
 			<section class="mdo-club-card"><h3>Elige tu regalo</h3>
 				<p>El destinatario recibirá un correo con su tarjeta y un código único. Podrá canjearla en Mi cuenta y acumular varias.</p>
 				<?php self::purchase_form( 'gift' ); ?>
@@ -312,11 +312,12 @@ final class MDO_Club {
 		.mdo-club-card h3{color:#224334;margin:0 0 10px}.mdo-club-card p{line-height:1.6}
 		.mdo-club form label{display:block;font-weight:600;margin:12px 0 8px}
 		.mdo-club input,.mdo-club textarea{width:100%;max-width:100%;box-sizing:border-box;padding:11px;border:1px solid #d7ddd4;border-radius:9px;background:#fff}
-		.mdo-club .button{background:#28513c;color:#fff;border:0;border-radius:10px;padding:10px 14px;display:inline-block;margin:6px 5px 0 0;cursor:pointer}
+		.mdo-club .button{background:#28513c;color:#fff;border:0;border-radius:10px;padding:10px 14px;display:inline-flex;align-items:center;justify-content:center;text-align:center;vertical-align:middle;line-height:1.35;min-height:42px;margin:6px 5px 0 0;cursor:pointer;box-sizing:border-box}
+		.mdo-club .mdo-club-card>a.button{display:inline-flex!important;align-items:center!important;justify-content:center!important;text-align:center!important}
 		.mdo-club-amounts .button{background:#f4eee3;color:#234b37}.mdo-club-note{font-style:italic}
 		.mdo-club table{width:100%;border-collapse:collapse}.mdo-club td,.mdo-club th{padding:10px;border-bottom:1px solid #eee;text-align:left}
-		.mdo-club-gift-visual{max-width:390px;margin:22px 0 0;padding:24px;border-radius:15px;background:linear-gradient(125deg,#e7b66e,#f8dfb2 50%,#d7a75f);color:#1f4735;display:grid;gap:14px;box-shadow:0 14px 30px rgba(0,0,0,.16)}
-		.mdo-club-gift-visual strong{font-family:Georgia,serif;font-size:24px}.mdo-club-gift-visual small{font-size:11px;letter-spacing:.13em}
+		.mdo-club-gift-visual{width:min(100%,720px);margin:25px auto 0;border-radius:18px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.25);background:#ead9bd}
+		.mdo-club-gift-visual img{display:block;width:100%;max-width:100%;height:auto;border-radius:18px}
 		@media(max-width:700px){.mdo-club-columns{grid-template-columns:1fr}.mdo-club-hero{padding:24px}.mdo-club-card{padding:16px}}
 		</style><?php
 	}
@@ -492,6 +493,9 @@ final class MDO_Club {
 			}
 		}
 	}
+	private static function gift_art_url(): string {
+		return plugins_url( 'assets/club-emdo-tarjeta-regalo.jpg', MDO_SUPPLIER_SYNC_FILE );
+	}
 	private static function send_gift( string $email, int $order_id, int $item_id, int $cents, string $message ): bool {
 		$code = MDO_Club_Ledger::gift_code( $order_id, $item_id );
 		$site = home_url( '/' );
@@ -502,7 +506,8 @@ final class MDO_Club {
 			. '<div style="font-size:12px;letter-spacing:2px">EL MERCADO DE ORIGEN</div>'
 			. '<h1 style="font-family:Georgia,serif;font-size:32px;color:#fff">Un regalo con origen</h1>'
 			. '<p style="color:#f2e6d1">Alguien ha pensado en ti.</p></div>'
-			. '<div style="margin:25px;padding:28px;border-radius:15px;background:linear-gradient(120deg,#e5bc76,#f9e7c6);color:#234533">'
+			. '<div style="padding:22px 22px 0;text-align:center"><img src="' . esc_url( self::gift_art_url() ) . '" alt="Tarjeta regalo de El Mercado de Origen - elmercadodeorigen.com" width="556" style="width:100%;max-width:556px;height:auto;display:block;border:0;border-radius:12px;margin:0 auto"></div>'
+			. '<div style="margin:25px;padding:28px;border-radius:15px;background:#f4e8d3;color:#234533;text-align:center">'
 			. '<div style="letter-spacing:2px;font-size:12px">TARJETA REGALO · CLUB EMDO</div>'
 			. '<div style="font-family:Georgia,serif;font-size:36px;margin:16px 0">' . esc_html( wp_strip_all_tags( self::funds_html( $cents ) ) ) . '</div>'
 			. '<div style="font-size:16px;letter-spacing:1px;font-weight:bold">' . esc_html( $code ) . '</div></div>'
