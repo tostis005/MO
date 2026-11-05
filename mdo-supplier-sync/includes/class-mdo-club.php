@@ -33,7 +33,6 @@ final class MDO_Club {
 		add_action( 'woocommerce_checkout_create_order_line_item', array( __CLASS__, 'line_metadata' ), 10, 4 );
 		add_action( 'woocommerce_payment_complete', array( __CLASS__, 'issue_prepaid' ), 20 );
 		add_action( 'woocommerce_order_status_completed', array( __CLASS__, 'award_reward' ), 30 );
-		add_action( 'woocommerce_order_status_processing', array( __CLASS__, 'issue_paid_fallback' ), 30 );
 		add_filter( 'woocommerce_email_enabled_new_order', array( __CLASS__, 'skip_supplier_email' ), 20, 2 );
 		add_action( 'admin_menu', array( __CLASS__, 'admin_menu' ), 25 );
 		add_action( 'admin_post_mdo_club_save', array( __CLASS__, 'save_settings' ) );
@@ -390,10 +389,6 @@ final class MDO_Club {
 			if ( in_array( $item->get_meta( '_mdo_club_kind' ), array( 'wallet', 'gift' ), true ) ) { return true; }
 		}
 		return false;
-	}
-	public static function issue_paid_fallback( int $order_id ): void {
-		$order = wc_get_order( $order_id );
-		if ( $order && $order->is_paid() && 'cod' !== $order->get_payment_method() ) { self::issue_prepaid( $order_id ); }
 	}
 	public static function issue_prepaid( int $order_id ): void {
 		$order = wc_get_order( $order_id );
