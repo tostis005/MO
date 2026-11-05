@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO GSC Commerce SEO 2026-09-29
  * Description: Data-led SERP titles and descriptions for high-impression commerce URLs from Google Search Console.
- * Version: 2026.11.05.1
+ * Version: 2026.11.05.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -47,6 +47,11 @@ function mdo_gsc_commerce_map_20260929(): array {
         '/categoria-producto/carnes/' => array(
             'title' => 'Comprar carne online a productores | El Mercado de Origen',
             'description' => 'Compra carne online de productores y especialistas seleccionados. Consulta la procedencia, los cortes, las condiciones de entrega y la disponibilidad actual.',
+        ),
+        // Producer-specific campaign page: homepage CTA remains on this 1957 store (not general oils).
+        '/tienda/1957/' => array(
+            'title' => 'Aceite de Oliva Virgen Extra 1957 | Cosecha 2026/27',
+            'description' => 'Compra aceite de oliva virgen extra del productor 1957. Descubre la cosecha 2026/27 sin filtrar en garrafas de 5 L y packs de botellas. Consulta variedades y precios.',
         ),
         '/categoria-producto/aceites/' => array(
             'title' => 'Comprar Aceite de Oliva Virgen Extra | El Mercado de Origen',
