@@ -189,12 +189,15 @@ final class MDO_Club {
 	public static function account(): void {
 		$user = get_current_user_id();
 		if ( ! $user ) { echo '<p>Inicia sesión para ver tu monedero.</p>'; return; }
-		$balance = MDO_Club_Ledger::balance( $user );
+		$breakdown = MDO_Club_Ledger::breakdown( $user );
+		$balance = $breakdown['total'];
 		self::styles();
 		?>
 		<div class="mdo-club">
 			<div class="mdo-club-hero"><span>EL MERCADO DE ORIGEN · CLUB EMDO</span><h2>Mi monedero</h2>
 				<p>Saldo disponible para tus próximos pedidos</p><strong><?php echo wp_kses_post( self::funds_html( $balance ) ); ?></strong>
+				<div class="mdo-club-balance-breakdown"><span>Recargas y tarjetas regalo: <?php echo wp_kses_post( self::funds_html( $breakdown['prepaid'] ) ); ?></span>
+				<span>Recompensas: <?php echo wp_kses_post( self::funds_html( $breakdown['rewards'] ) ); ?></span></div>
 			</div>
 			<div class="mdo-club-columns">
 				<section class="mdo-club-card"><h3>Recargar saldo</h3><p>Elige cuánto quieres añadir a tu monedero.</p>
@@ -300,7 +303,7 @@ final class MDO_Club {
 		.mdo-club-hero{background:#193e30;color:#fff7e8;border-radius:20px;padding:34px;margin-bottom:22px}
 		.mdo-club-hero>span{font-size:11px;letter-spacing:.17em;font-weight:750;opacity:.8}
 		.mdo-club-hero h2{color:#fff7e8;margin:12px 0;font-size:clamp(26px,4vw,42px)}
-		.mdo-club-hero p{color:#edf1e7}.mdo-club-hero>strong{font-size:32px;color:#fff}
+		.mdo-club-hero p{color:#edf1e7}.mdo-club-hero>strong{font-size:32px;color:#fff}.mdo-club-balance-breakdown{display:flex;flex-wrap:wrap;gap:16px;margin-top:14px;font-size:13px;color:#e8f1e7}
 		.mdo-club-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 		.mdo-club-card{padding:22px;margin-bottom:16px;background:#fffdfa;border:1px solid #eee7dc;border-radius:16px}
 		.mdo-club-card h3{color:#224334;margin:0 0 10px}.mdo-club-card p{line-height:1.6}
