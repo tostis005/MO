@@ -27,7 +27,7 @@ final class MDO_Club_Checkout {
 		add_action( 'woocommerce_admin_order_data_after_order_details', array( __CLASS__, 'admin_notice' ) );
 	}
 	private static function active(): bool {
-		return MDO_Club EMDO::enabled( 'checkout' ) && is_user_logged_in() && function_exists( 'WC' );
+		return MDO_Club::enabled( 'checkout' ) && is_user_logged_in() && function_exists( 'WC' );
 	}
 	private static function cart_has_prepaid( $cart ): bool {
 		if ( ! $cart ) { return false; }
@@ -90,7 +90,7 @@ final class MDO_Club_Checkout {
 		<?php
 	}
 	public static function gift_form(): void {
-		if ( ! is_checkout() || is_order_received_page() || ! MDO_Club EMDO::enabled( 'prepaid' ) ) { return; }
+		if ( ! is_checkout() || is_order_received_page() || ! MDO_Club::enabled( 'prepaid' ) ) { return; }
 		if ( ! is_user_logged_in() ) {
 			echo '<p class="woocommerce-info">¿Tienes una tarjeta regalo Club EMDO? Inicia sesión para canjearla desde Mi monedero.</p>';
 			return;
