@@ -7,6 +7,7 @@ on:
       - 'tests/club-emdo-checks.php'
       - 'tests/club-emdo-unit.php'
       - 'tests/club-emdo-full-wallet-unit.php'
+      - 'tests/club-emdo-manual-payments-unit.php'
       - '.github/workflows/club-emdo-ci.yml'
   workflow_dispatch:
 jobs:
@@ -27,3 +28,5 @@ jobs:
         run: php tests/club-emdo-unit.php
       - name: Rewards and manual refund regression tests
         run: php tests/club-emdo-full-wallet-unit.php
+      - name: Offline payment and completion tests
+        run: php tests/club-emdo-manual-payments-unit.php
