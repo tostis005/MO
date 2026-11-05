@@ -66,6 +66,7 @@ jobs:
           ctx=ssl.create_default_context(); stamp=str(time.time_ns())
           paths=[
             '/categoria-producto/aceites/', '/en/product-category/oils/',
+            '/categoria-producto/setas-y-hongos/',
             '/categoria-producto/jamones-paletas/', '/en/product-category/hams-and-shoulders/',
             '/categoria-producto/embutidos-y-curados/', '/en/product-category/cured-meats/',
             '/categoria-producto/packs-y-lotes/', '/en/product-category/packs-and-bundles/',
@@ -79,6 +80,7 @@ jobs:
           native_only={
             '/categoria-producto/legumbres/': 'Alubias, garbanzos y lentejas en distintas variedades, seleccionadas',
             '/categoria-producto/aceites/': 'Compra aceite de oliva virgen extra online',
+            '/categoria-producto/setas-y-hongos/': 'Compra setas y hongos online',
             '/categoria-producto/jamones-paletas/': 'Descubre nuestra selección de jamones y paletas de productores españoles',
           }
           from html.parser import HTMLParser
@@ -94,7 +96,7 @@ jobs:
               if self.active: self.fragments.append(data)
           failures=[]
           for path in paths:
-            req=urllib.request.Request(base+path+'?emdo_category_desc_verify='+stamp,headers={'User-Agent':'EMDO-Category-Description-Verify/2026-08-21'})
+            req=urllib.request.Request(base+path+'?emdo_category_desc_verify='+stamp,headers={'User-Agent':'Mozilla/5.0 EMDO-Category-Description-Verify/2026-11-05','Cache-Control':'no-cache'})
             try:
               with urllib.request.urlopen(req,timeout=45,context=ctx) as r:
                 status=r.status; body=r.read().decode('utf-8','replace')
