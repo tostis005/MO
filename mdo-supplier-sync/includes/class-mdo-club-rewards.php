@@ -143,7 +143,7 @@ final class MDO_Club_Rewards {
 		$enabled = self::enabled();
 		$totals = MDO_Club_Rewards_Ledger::totals();
 		$search = isset( $_GET['s'] ) ? sanitize_text_field( wp_unslash( $_GET['s'] ) ) : '';
-		$search = mb_substr( $search, 0, 100 );
+		$search = substr( $search, 0, 100 );
 		$page = isset( $_GET['pnum'] ) ? max( 1, absint( $_GET['pnum'] ) ) : 1;
 		$detail_id = isset( $_GET['club_user'] ) ? absint( $_GET['club_user'] ) : 0;
 		$args = array( 'number' => 25, 'paged' => $page, 'orderby' => 'registered', 'order' => 'DESC', 'count_total' => true );
@@ -270,8 +270,8 @@ final class MDO_Club_Rewards {
 		$raw = isset( $_POST['club_amount'] ) ? sanitize_text_field( wp_unslash( $_POST['club_amount'] ) ) : '';
 		$delta = MDO_Club_Rewards_Ledger::parse_adjustment( $raw );
 		$reason = isset( $_POST['club_reason'] ) ? sanitize_text_field( wp_unslash( $_POST['club_reason'] ) ) : '';
-		$reason = mb_substr( $reason, 0, 200 );
-		if ( ! get_user_by( 'id', $user_id ) || 0 === $delta || mb_strlen( $reason ) < 5 ) {
+		$reason = substr( $reason, 0, 200 );
+		if ( ! get_user_by( 'id', $user_id ) || 0 === $delta || strlen( $reason ) < 5 ) {
 			$status = 'invalid';
 		} else {
 			$event_key = 'adjust:' . wp_generate_uuid4();
