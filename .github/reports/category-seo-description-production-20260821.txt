@@ -1,6 +1,8 @@
 CATEGORY|/categoria-producto/aceites/|HTTP=200|DESCRIPTION_MARKER=False|BYTES=1118177
 NATIVE_DESCRIPTION|/categoria-producto/aceites/|COUNT=0
 CATEGORY|/en/product-category/oils/|HTTP=200|DESCRIPTION_MARKER=True|BYTES=1106369
+CATEGORY|/categoria-producto/setas-y-hongos/|HTTP=200|DESCRIPTION_MARKER=False|BYTES=1209942
+NATIVE_DESCRIPTION|/categoria-producto/setas-y-hongos/|COUNT=0
 CATEGORY|/categoria-producto/jamones-paletas/|HTTP=200|DESCRIPTION_MARKER=False|BYTES=1223279
 NATIVE_DESCRIPTION|/categoria-producto/jamones-paletas/|COUNT=1
 CATEGORY|/en/product-category/hams-and-shoulders/|HTTP=200|DESCRIPTION_MARKER=True|BYTES=1202837
@@ -20,3 +22,4 @@ CATEGORY|/en/product-category/pulses/|HTTP=200|DESCRIPTION_MARKER=True|BYTES=108
 PAGINATION|HTTP=200|DESCRIPTION_MARKER=False
 FAILURES:
 - /categoria-producto/aceites/ native description count 0 != 1
+- /categoria-producto/setas-y-hongos/ native description count 0 != 1
