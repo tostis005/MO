@@ -75,6 +75,11 @@ jobs:
             exit 9
           fi
           echo 'GIFT_CHECKOUT_PAYMENT_OPTIONS=yes'
+          if grep -Fq 'Compra digital: no necesitas dirección de envío.' /tmp/club-checkout.html; then
+            echo 'DIGITAL_CHECKOUT_NOTICE=yes'
+          else
+            echo 'DIGITAL_CHECKOUT_NOTICE=no'
+          fi
           if grep -Eq 'id="billing_address_1"|id="billing_postcode"|id="shipping_address_1"' /tmp/club-checkout.html; then
             echo 'FAIL: digital checkout still asks for postal or shipping information'
             for field in billing_address_1 billing_postcode shipping_address_1; do
