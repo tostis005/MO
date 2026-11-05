@@ -1,0 +1,51 @@
+name: Audit live Club EMDO deployment
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/audit-club-emdo-live-20261105.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify live EMDO version and public Club pages (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$HOST" && test -n "$USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$HOST" > ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH "$USER@$HOST" 'sh -s' <<'REMOTE'
+          set -eu
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          test -f "$ROOT/wp-config.php"
+          VERSION=$("$PHP" -d memory_limit=512M "$WP" plugin get mdo-supplier-sync --field=version --path="$ROOT" --allow-root)
+          STATUS=$("$PHP" -d memory_limit=512M "$WP" plugin get mdo-supplier-sync --field=status --path="$ROOT" --allow-root)
+          echo "EMDO_VERSION=$VERSION STATUS=$STATUS"
+          if [ "$VERSION" != '1.0.73' ] || [ "$STATUS" != 'active' ]; then exit 2; fi
+          "$PHP" -d memory_limit=512M "$WP" eval '
+            foreach (["mdo_club_page"=>"club","mdo_club_gift_page"=>"tarjetas-regalo"] as $key=>$slug) {
+              $id = (int)get_option($key);
+              $p = $id ? get_post($id) : null;
+              echo "PAGE=".$slug." STATUS=".($p ? $p->post_status : "missing")."\n";
+            }
+            foreach (["rewards","prepaid","checkout"] as $feature) {
+              echo "FEATURE=".$feature." ENABLED=".(MDO_Club::enabled($feature)?"yes":"no")."\n";
+            }
+          ' --path="$ROOT" --allow-root
+          REMOTE
