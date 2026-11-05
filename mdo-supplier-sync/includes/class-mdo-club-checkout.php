@@ -22,7 +22,6 @@ final class MDO_Club_Checkout {
 		add_action( 'woocommerce_order_status_cancelled', array( __CLASS__, 'release_wallet' ), 20 );
 		add_action( 'woocommerce_order_status_failed', array( __CLASS__, 'schedule_failed_expiry' ), 20 );
 		add_action( 'mdo_club_cancel_failed_order', array( __CLASS__, 'cancel_expired_failed_order' ), 10, 1 );
-		add_action( 'woocommerce_order_status_refunded', array( __CLASS__, 'release_wallet' ), 20 );
 		add_action( 'woocommerce_email_before_order_table', array( __CLASS__, 'before_email' ), 1, 4 );
 		add_action( 'woocommerce_email_after_order_table', array( __CLASS__, 'after_email' ), PHP_INT_MAX, 4 );
 		add_filter( 'woocommerce_get_order_item_totals', array( __CLASS__, 'email_totals' ), 90, 3 );
@@ -148,7 +147,7 @@ final class MDO_Club_Checkout {
 	 */
 	public static function schedule_failed_expiry( int $order_id ): void {
 		$order = wc_get_order( $order_id );
-		if ( ! $order || 'yes' !== $order->get_meta( '_mdo_club_reserved' ) ) { return; }
+		if ( ! $order || $order->is_paid() || $order->get_date_paid() || 'yes' !== $order->get_meta( '_mdo_club_reserved' ) ) { return; }
 		if ( ! wp_next_scheduled( 'mdo_club_cancel_failed_order', array( $order_id ) ) ) {
 			wp_schedule_single_event( time() + DAY_IN_SECONDS, 'mdo_club_cancel_failed_order', array( $order_id ) );
 		}
