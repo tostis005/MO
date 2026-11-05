@@ -169,6 +169,7 @@ add_action(
 		MDO_Specials::init();
 		MDO_Specials_Router::init();
 		MDO_Promotions::init();
+		MDO_Club_Ledger::maybe_install();
 		MDO_Club::init();
 		MDO_Club_Checkout::init();
 		MDO_Home_Featured_Special::init();
