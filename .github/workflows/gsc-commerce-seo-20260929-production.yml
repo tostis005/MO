@@ -185,12 +185,15 @@ jobs:
               assert actual_path == canonical_path, f'{label}: unexpected canonical {actual_path!r}'
               assert h1s, f'{label}: missing H1'
 
+          # Since the 25-Oct category dedupe, WooCommerce renders the Spanish
+          # Aceites term description natively, without the former extra wrapper.
+          # Verify the meaningful content once rather than requiring an obsolete CSS class.
           aceites = BeautifulSoup(open('/tmp/aceites.html', encoding='utf-8').read(), 'html.parser')
-          editorial = aceites.select_one('.emdo-seo-category-description')
-          assert editorial is not None, 'ACEITES: persisted category editorial description missing'
-          editorial_text = editorial.get_text(' ', strip=True)
-          print('ACEITES editorial_chars=', len(editorial_text))
-          assert len(editorial_text) >= 200, 'ACEITES: category editorial description unexpectedly thin'
+          category_copy = aceites.get_text(' ', strip=True)
+          required_phrase = 'El aceite de oliva virgen extra es un zumo 100% natural'
+          copy_count = category_copy.count(required_phrase)
+          print('ACEITES native_editorial_occurrences=', copy_count)
+          assert copy_count == 1, f'ACEITES: missing or duplicated native category copy: {copy_count}'
           PY
 
       - name: Verify HTTP consolidation and legacy alias
