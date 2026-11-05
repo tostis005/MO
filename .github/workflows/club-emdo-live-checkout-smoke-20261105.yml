@@ -1,0 +1,103 @@
+name: Club EMDO checkout live smoke (no payment)
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/club-emdo-live-checkout-smoke-20261105.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Test anonymous gift-cart to checkout, without placing an order
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://www.elmercadodeorigen.com'
+          PAGE="$BASE/tarjetas-regalo/?emdo_smoke=1"
+          JAR=/tmp/club-emdo-cookies.txt
+          HTTP=$(curl -kLsS --retry 2 --connect-timeout 15 --max-time 65 \
+            -A 'Mozilla/5.0 (compatible; ClubEMDOCheckoutQA/1.0)' \
+            -H 'Cache-Control: no-cache' -c "$JAR" -b "$JAR" \
+            -o /tmp/club-gift.html -w '%{http_code}' "$PAGE")
+          echo "GIFT_PAGE_HTTP=$HTTP"
+          test "$HTTP" = 200
+          if ! grep -Eq 'name="action" value="mdo_club_purchase"' /tmp/club-gift.html; then
+            echo 'FAIL: current gift purchase form is missing'
+            exit 3
+          fi
+          NONCE=$(grep -Eo 'name="_wpnonce" value="[a-fA-F0-9]+"' /tmp/club-gift.html | head -n1 | cut -d '"' -f4)
+          if [ -z "$NONCE" ]; then echo 'FAIL: missing public gift-form nonce'; exit 4; fi
+          echo 'GIFT_FORM_WITH_NONCE=yes'
+          HTTP=$(curl -kSs --retry 1 --connect-timeout 15 --max-time 65 \
+            -A 'Mozilla/5.0 (compatible; ClubEMDOCheckoutQA/1.0)' \
+            -H 'Cache-Control: no-cache' -e "$PAGE" -b "$JAR" -c "$JAR" \
+            -D /tmp/club-submit.headers -o /tmp/club-submit.html -w '%{http_code}' \
+            --data-urlencode "_wpnonce=$NONCE" \
+            --data-urlencode 'action=mdo_club_purchase' \
+            --data-urlencode 'mdo_club_form=buy' \
+            --data-urlencode 'kind=gift' \
+            --data-urlencode 'amount=25' \
+            --data-urlencode 'recipient_email=checkout-smoke@example.invalid' \
+            "$BASE/wp-admin/admin-post.php")
+          echo "GIFT_POST_HTTP=$HTTP"
+          LOCATION=$(tr -d '\r' < /tmp/club-submit.headers | grep -i '^location: ' | tail -n1 | cut -d' ' -f2- || true)
+          echo "GIFT_POST_LOCATION=$LOCATION"
+          if [ "$HTTP" != 303 ]; then
+            echo "FAIL: expected checkout redirect after gift POST"
+            exit 5
+          fi
+          case "$LOCATION" in
+            /checkout/*|/finalizar-compra/*) CHECKOUT="$BASE$LOCATION" ;;
+            https://www.elmercadodeorigen.com/*|https://elmercadodeorigen.com/*) CHECKOUT="$LOCATION" ;;
+            *) echo "FAIL: unexpected redirect location"; exit 6 ;;
+          esac
+          HTTP=$(curl -kLsS --retry 1 --connect-timeout 15 --max-time 65 --max-redirs 5 \
+            -A 'Mozilla/5.0 (compatible; ClubEMDOCheckoutQA/1.0)' \
+            -H 'Cache-Control: no-cache' -e "$PAGE" -b "$JAR" -c "$JAR" \
+            -o /tmp/club-checkout.html -w '%{http_code}' "$CHECKOUT")
+          echo "CHECKOUT_HTTP=$HTTP"
+          test "$HTTP" = 200
+          if ! grep -Eiq '(Tarjeta regalo Club EMDO|Tarjeta regalo)' /tmp/club-checkout.html; then
+            echo 'FAIL: gift product is not displayed in WooCommerce checkout'
+            exit 7
+          fi
+          echo 'GIFT_CHECKOUT_WITH_PRODUCT=yes'
+          if ! grep -Eq '25[,.]00' /tmp/club-checkout.html; then
+            echo 'FAIL: selected 25-euro amount is missing from checkout'
+            exit 8
+          fi
+          echo 'GIFT_CHECKOUT_AMOUNT_25=yes'
+          if ! grep -Eq 'name="payment_method"' /tmp/club-checkout.html; then
+            echo 'FAIL: WooCommerce checkout does not show payment methods'
+            exit 9
+          fi
+          echo 'GIFT_CHECKOUT_PAYMENT_OPTIONS=yes'
+          if grep -Fq 'Compra digital: no necesitas dirección de envío.' /tmp/club-checkout.html; then
+            echo 'DIGITAL_CHECKOUT_NOTICE=yes'
+          else
+            echo 'DIGITAL_CHECKOUT_NOTICE=no'
+          fi
+          if grep -Eq 'id="billing_address_1"|id="billing_postcode"|id="shipping_address_1"' /tmp/club-checkout.html; then
+            echo 'FAIL: digital checkout still asks for postal or shipping information'
+            for field in billing_address_1 billing_postcode shipping_address_1; do
+              count=$(grep -Eoc "id=\"$field\"" /tmp/club-checkout.html || true)
+              echo "VISIBLE_FIELD_${field}_COUNT=$count"
+              grep -Eo ".{0,80}id=\"$field\".{0,120}" /tmp/club-checkout.html | head -n 1 | cut -c1-260 || true
+            done
+            exit 10
+          fi
+          echo 'GIFT_CHECKOUT_NO_POSTAL_SHIPPING_FIELDS=yes'
+          if ! grep -Eq 'id="billing_email"|name="billing_email"' /tmp/club-checkout.html; then
+            echo 'FAIL: email for receipt is missing'
+            exit 11
+          fi
+          echo 'GIFT_CHECKOUT_EMAIL_FIELD=yes'
+          if grep -q 'name="mdo_club_replace_cart"' /tmp/club-gift.html; then
+            echo 'FAIL: standalone cart confirmation checkbox is still on gift page'
+            exit 12
+          fi
+          echo 'GIFT_PAGE_NO_CART_CHECKBOX=yes'
+          echo 'SMOKE_OK: gift, amount and payment methods appear in simplified checkout; no order or payment.'
