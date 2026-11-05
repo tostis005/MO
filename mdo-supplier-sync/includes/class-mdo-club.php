@@ -22,6 +22,8 @@ final class MDO_Club {
 		add_action( 'wp_loaded', array( __CLASS__, 'handle_forms' ), 25 );
 		add_filter( 'woocommerce_add_to_cart_validation', array( __CLASS__, 'validate_cart' ), 20, 2 );
 		add_action( 'woocommerce_before_calculate_totals', array( __CLASS__, 'price_topups' ), 20 );
+		add_action( 'woocommerce_check_cart_items', array( __CLASS__, 'check_prepaid_cart' ) );
+		add_filter( 'woocommerce_available_payment_gateways', array( __CLASS__, 'prepaid_gateways' ), 999 );
 		add_action( 'woocommerce_checkout_create_order_line_item', array( __CLASS__, 'line_metadata' ), 10, 4 );
 		add_action( 'woocommerce_payment_complete', array( __CLASS__, 'issue_prepaid' ), 20 );
 		add_action( 'woocommerce_order_status_completed', array( __CLASS__, 'award_reward' ), 30 );
@@ -108,7 +110,7 @@ final class MDO_Club {
 			$product->set_status( 'publish' );
 			$product->set_catalog_visibility( 'hidden' );
 			$product->set_virtual( true );
-			$product->set_sold_individually( false );
+			$product->set_sold_individually( true );
 			$product->set_tax_status( 'none' ); // Bono polivalente: pendiente de validación fiscal.
 			$product->set_regular_price( '1.00' ); // Sobrescrito con la cantidad validada de la sesión.
 			$product->update_meta_data( '_mdo_club_kind', $kind );
@@ -306,6 +308,46 @@ final class MDO_Club {
 			}
 		}
 		return $valid;
+	}
+	public static function check_prepaid_cart(): void {
+		if ( ! function_exists( 'WC' ) || ! WC()->cart ) { return; }
+		$items = WC()->cart->get_cart();
+		$prepaid = array_filter( $items, static function( $item ) {
+			return ! empty( $item['mdo_club_kind'] );
+		} );
+		if ( ! $prepaid ) { return; }
+		if ( ! self::enabled( 'prepaid' ) || 1 !== count( $items ) ) {
+			wc_add_notice( 'Las recargas y tarjetas regalo requieren un pedido separado.', 'error' );
+		}
+		foreach ( $prepaid as $item ) {
+			$kind = sanitize_key( $item['mdo_club_kind'] );
+			$cents = (int) ( $item['mdo_club_amount_cents'] ?? 0 );
+			$email = sanitize_email( $item['mdo_club_recipient'] ?? '' );
+			if (
+				1 !== (int) $item['quantity']
+				|| self::product_kind( (int) $item['product_id'] ) !== $kind
+				|| $cents < 1000 || $cents > 50000
+				|| ( 'wallet' === $kind && ! is_user_logged_in() )
+				|| ( 'gift' === $kind && ! is_email( $email ) )
+			) {
+				wc_add_notice( 'Los datos de la tarjeta regalo o recarga no son válidos.', 'error' );
+				break;
+			}
+		}
+	}
+	public static function prepaid_gateways( array $gateways ): array {
+		if ( ! function_exists( 'WC' ) || ! WC()->cart ) { return $gateways; }
+		$prepaid = false;
+		foreach ( WC()->cart->get_cart() as $item ) {
+			if ( ! empty( $item['mdo_club_kind'] ) ) { $prepaid = true; break; }
+		}
+		if ( ! $prepaid ) { return $gateways; }
+		// Solo métodos de cobro inmediato con confirmación automática.
+		// La pasarela bancaria / Edenred requiere revisión específica antes de habilitar la venta.
+		foreach ( array( 'cod', 'bacs', 'cheque' ) as $gateway_id ) {
+			unset( $gateways[ $gateway_id ] );
+		}
+		return $gateways;
 	}
 	public static function price_topups( $cart ): void {
 		if ( is_admin() && ! wp_doing_ajax() ) { return; }
