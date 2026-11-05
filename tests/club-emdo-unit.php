@@ -74,9 +74,11 @@ expect( 0 === MDO_Club_Ledger::cents( '-5' ), 'Negative amount' );
 expect( '25.05' === MDO_Club_Ledger::money( 2505 ), 'Cents to euros' );
 expect( 1 === (int) MDO_Club::percent(), 'Default reward percentage' );
 $code = MDO_Club_Ledger::gift_code( 111, 222 );
-expect( (bool) preg_match( '/^CLUB-(?:[A-F0-9]{4}-){5}[A-F0-9]{4}$/', $code ), 'Gift code format' );
+expect( (bool) preg_match( '/^[0-9]{20}$/', $code ), 'Gift code is 20 digits with no prefix' );
 expect( hash_equals( MDO_Club_Ledger::gift_hash( $code ), MDO_Club_Ledger::gift_hash( strtolower( $code ) ) ), 'Gift normalization' );
 expect( $code === MDO_Club_Ledger::gift_code( 111, 222 ), 'Resend stable after key is persisted' );
+expect( $code !== MDO_Club_Ledger::gift_code( 111, 223 ), 'Codes differ between gift items' );
+expect( MDO_Club_Ledger::gift_hash( $code ) !== MDO_Club_Ledger::gift_hash( MDO_Club_Ledger::gift_code( 111, 223 ) ), 'Different gift codes yield different hashes' );
 
 $cart = new Club_Test_Cart();
 $wc->session->set( 'mdo_club_requested_cents', 8000 );
