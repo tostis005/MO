@@ -1,0 +1,33 @@
+name: Deploy Aceites commercial category copy 2026-11-05
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/seo-aceites-category-copy-20261105.php'
+      - '.github/scripts/deploy-seo-aceites-category-20261105.sh'
+      - '.github/workflows/deploy-seo-aceites-category-20261105.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency:
+  group: seo-aceites-term-copy-20261105
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate script syntax
+        shell: bash
+        run: |
+          set -e
+          bash -n .github/scripts/deploy-seo-aceites-category-20261105.sh
+          php -l .github/scripts/seo-aceites-category-copy-20261105.php
+      - name: Back up, update and verify the Aceites term in production
+        shell: bash
+        run: bash .github/scripts/deploy-seo-aceites-category-20261105.sh
