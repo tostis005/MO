@@ -1,0 +1,103 @@
+name: Deploy 1957 legacy-to-current AOVE product links
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/emdo-1957-legacy-harvest-crosslinks-20261105.php'
+      - 'tests/emdo-1957-legacy-harvest-crosslinks-20261105.php'
+      - '.github/workflows/deploy-1957-legacy-harvest-crosslinks-20261105.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency:
+  group: emdo-1957-legacy-links-20261105
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Offline regression on targeted guide links
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/emdo-1957-legacy-harvest-crosslinks-20261105.php
+          php tests/emdo-1957-legacy-harvest-crosslinks-20261105.php
+      - name: Deploy read-only scoped MU plugin to production
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "$STAGING_HOST" && test -n "$STAGING_USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass python3-bs4 >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          DEST="$ROOT/wp-content/mu-plugins/emdo-1957-legacy-harvest-crosslinks-20261105.php"
+          TMP="/tmp/emdo-editorial-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP mu-plugins/emdo-1957-legacy-harvest-crosslinks-20261105.php "$STAGING_USER@$STAGING_HOST:$TMP"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -eu
+            test -f '$ROOT/wp-config.php'
+            /opt/plesk/php/8.2/bin/php -l '$TMP' >/dev/null
+            if [ -f '$DEST' ]; then
+              cmp -s '$DEST' '$TMP' || { echo EMDO_LEGACY1957_ABORT_UNKNOWN_VERSION;exit 9; }
+              echo EMDO_LEGACY1957_ALREADY_CURRENT
+            else
+              install -m 0644 '$TMP' '$DEST'
+              echo EMDO_LEGACY1957_INSTALLED
+            fi
+          " | tee /tmp/emdo-editorial-deploy.log
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$TMP'" || true
+          if grep -Fxq EMDO_LEGACY1957_INSTALLED /tmp/emdo-editorial-deploy.log; then
+            echo 'LEGACY1957_INSTALLED=1' >> "$GITHUB_ENV"
+          fi
+      - name: Verify 5 guides linking to eligible products in HTML
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          /usr/bin/python3 - <<'PY'
+          import urllib.request
+          from bs4 import BeautifulSoup
+          pairs={
+            'aceite-de-oliva-virgen-extra-5l':'cosecha-26-27-sin-filtrar-aceite-de-oliva-virgen-extra-5l-extraccion-en-frio',
+            'aceite-de-oliva-virgen-extra-1l':'sin-filtrar-nueva-campana-26-27-aceite-de-oliva-virgen-extra-15x1l',
+            'aceite-de-oliva-virgen-extra-500ml-2':'aceite-de-oliva-virgen-extra-12x500ml-pet-sin-filtrar-nueva-campana-26-27'
+          }
+          for old,new in pairs.items():
+            url='https://www.elmercadodeorigen.com/producto/'+old+'/?legacy_1957_qa=${GITHUB_RUN_ID}'
+            request=urllib.request.Request(url,headers={'Cache-Control':'no-cache','User-Agent':'Mozilla/5.0 EMDO-1957-legacy-qa'})
+            with urllib.request.urlopen(request,timeout=70) as response:
+              assert response.status==200,(old,response.status)
+              soup=BeautifulSoup(response.read(),'html.parser')
+            panels=soup.select('aside[data-emdo-1957-harvest-link-20261105="1"]')
+            assert len(panels)==1,(old,'missing or duplicated legacy bridge',len(panels))
+            hrefs=[x.get('href','') for x in panels[0].select('a[href]')]
+            assert len(hrefs)==1 and '/producto/'+new+'/' in hrefs[0],(old,hrefs)
+            assert soup.select_one('form.variations_form'),(old,'original buyable variation form absent')
+            print('EMDO_LEGACY1957_LIVE_OK',old,'to',new)
+          PY
+      - name: Remove only newly deployed module if QA fails
+        if: failure() && env.LEGACY1957_INSTALLED == '1'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          DEST='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/emdo-1957-legacy-harvest-crosslinks-20261105.php'
+          EXPECTED="$(sha256sum mu-plugins/emdo-1957-legacy-harvest-crosslinks-20261105.php | cut -d' ' -f1)"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            ACTUAL=\\$(sha256sum '$DEST' | cut -d' ' -f1)
+            test \\"\\$ACTUAL\\" = '$EXPECTED' || exit 9
+            rm -f '$DEST'
+            echo EMDO_LEGACY1957_ROLLED_BACK
+          "
