@@ -55,14 +55,14 @@ jobs:
               install -m 0644 '$TMP' '$DEST'
               echo AOVE_OPTIONS_INSTALLED
             fi
-          "
+          " | tee /tmp/aove-options-install.log
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$TMP'" || true
           # Rollback only if this job actually installed a new plugin.
           # No pre-existing plugin is deleted after a QA failure.
           if ! sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -e '$DEST'"; then
             echo "Plugin missing after install" >&2; exit 1
           fi
-          echo "true" > /tmp/aove-2026-options-deployed-by-run
+          grep -Fxq "AOVE_OPTIONS_INSTALLED" /tmp/aove-options-install.log && echo "true" > /tmp/aove-2026-options-deployed-by-run || true
 
       - name: Validate live selectors and additional-info table
         shell: bash
