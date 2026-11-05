@@ -89,6 +89,8 @@ final class MDO_Club {
 				</table>
 				<?php submit_button( 'Guardar configuración' ); ?>
 			</form>
+			<p><a class="button button-secondary" href="<?php echo esc_url( admin_url( 'admin.php?page=mdo-club-balances' ) ); ?>">Ver y ajustar saldos de usuarios</a></p>
+			<p><strong>Devoluciones:</strong> no se ajusta automáticamente ningún saldo por reembolso. Revisar cada caso desde Saldos Club EMDO.</p>
 			<p><strong>Publicación:</strong> se generan borradores de las páginas «Club EMDO» y «Tarjetas regalo». Publícalos al validar todo el circuito.</p>
 			<?php self::render_reconciliation(); ?>
 		</div>
@@ -507,7 +509,7 @@ final class MDO_Club {
 	public static function award_reward( int $order_id ): void {
 		if ( ! self::enabled( 'rewards' ) ) { return; }
 		$order = wc_get_order( $order_id );
-		if ( ! $order || ! $order->is_paid() || ! $order->get_date_paid() || self::is_prepaid( $order ) || ! $order->get_customer_id() || ! get_user_by( 'id', (int) $order->get_customer_id() ) ) { return; }
+		if ( ! $order || ! $order->is_paid() || ! $order->get_date_paid() || self::is_prepaid( $order ) || ! $order->get_customer_id() || ! get_user_by( 'id', (int) $order->get_customer_id() ) || (int) $order->get_meta( '_mdo_club_award_cents' ) > 0 ) { return; }
 		$eligible = 0;
 		foreach ( $order->get_items( 'line_item' ) as $item ) {
 			if ( self::product_kind( (int) $item->get_product_id() ) ) { continue; }
