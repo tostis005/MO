@@ -33,7 +33,9 @@ final class MDO_Club {
 		add_filter( 'woocommerce_available_payment_gateways', array( __CLASS__, 'prepaid_gateways' ), 999 );
 		add_action( 'woocommerce_checkout_create_order_line_item', array( __CLASS__, 'line_metadata' ), 10, 4 );
 		add_action( 'woocommerce_payment_complete', array( __CLASS__, 'issue_prepaid' ), 20 );
-		add_action( 'woocommerce_order_status_completed', array( __CLASS__, 'award_reward' ), 30 );
+		add_action( 'woocommerce_payment_complete', array( __CLASS__, 'award_reward' ), 35 );
+		add_action( 'woocommerce_order_status_processing', array( __CLASS__, 'award_reward' ), 35 );
+		add_action( 'woocommerce_order_status_completed', array( __CLASS__, 'award_reward' ), 35 );
 		add_filter( 'woocommerce_email_enabled_new_order', array( __CLASS__, 'skip_supplier_email' ), 20, 2 );
 		add_action( 'admin_menu', array( __CLASS__, 'admin_menu' ), 25 );
 		add_action( 'admin_post_mdo_club_save', array( __CLASS__, 'save_settings' ) );
@@ -189,15 +191,13 @@ final class MDO_Club {
 	public static function account(): void {
 		$user = get_current_user_id();
 		if ( ! $user ) { echo '<p>Inicia sesión para ver tu monedero.</p>'; return; }
-		$breakdown = MDO_Club_Ledger::breakdown( $user );
-		$balance = $breakdown['total'];
+		$balance = MDO_Club_Ledger::balance( $user );
 		self::styles();
 		?>
 		<div class="mdo-club">
 			<div class="mdo-club-hero"><span>EL MERCADO DE ORIGEN · CLUB EMDO</span><h2>Mi monedero</h2>
 				<p>Saldo disponible para tus próximos pedidos</p><strong><?php echo wp_kses_post( self::funds_html( $balance ) ); ?></strong>
-				<div class="mdo-club-balance-breakdown"><span>Recargas y tarjetas regalo: <?php echo wp_kses_post( self::funds_html( $breakdown['prepaid'] ) ); ?></span>
-				<span>Recompensas: <?php echo wp_kses_post( self::funds_html( $breakdown['rewards'] ) ); ?></span></div>
+				<p>Un solo saldo que suma recompensas, recargas y tarjetas regalo.</p>
 			</div>
 			<div class="mdo-club-columns">
 				<section class="mdo-club-card"><h3>Recargar saldo</h3><p>Elige cuánto quieres añadir a tu monedero.</p>
@@ -495,7 +495,7 @@ final class MDO_Club {
 			. '<h1 style="font-family:Georgia,serif;font-size:32px;color:#fff">Un regalo con origen</h1>'
 			. '<p style="color:#f2e6d1">Alguien ha pensado en ti.</p></div>'
 			. '<div style="margin:25px;padding:28px;border-radius:15px;background:linear-gradient(120deg,#e5bc76,#f9e7c6);color:#234533">'
-			. '<div style="letter-spacing:2px;font-size:12px">TARJETA REGALO · CLUB EMDO EMDO</div>'
+			. '<div style="letter-spacing:2px;font-size:12px">TARJETA REGALO · CLUB EMDO</div>'
 			. '<div style="font-family:Georgia,serif;font-size:36px;margin:16px 0">' . esc_html( wp_strip_all_tags( self::funds_html( $cents ) ) ) . '</div>'
 			. '<div style="font-size:16px;letter-spacing:1px;font-weight:bold">' . esc_html( $code ) . '</div></div>'
 			. ( $message ? '<p style="margin:25px;color:#355140">' . nl2br( esc_html( $message ) ) . '</p>' : '' )
@@ -507,7 +507,7 @@ final class MDO_Club {
 	public static function award_reward( int $order_id ): void {
 		if ( ! self::enabled( 'rewards' ) ) { return; }
 		$order = wc_get_order( $order_id );
-		if ( ! $order || ! $order->is_paid() || self::is_prepaid( $order ) || ! $order->get_customer_id() ) { return; }
+		if ( ! $order || ! $order->is_paid() || ! $order->get_date_paid() || self::is_prepaid( $order ) || ! $order->get_customer_id() || ! get_user_by( 'id', (int) $order->get_customer_id() ) ) { return; }
 		$eligible = 0;
 		foreach ( $order->get_items( 'line_item' ) as $item ) {
 			if ( self::product_kind( (int) $item->get_product_id() ) ) { continue; }
@@ -525,10 +525,12 @@ final class MDO_Club {
 	public static function refund_notice( int $order_id, int $refund_id ): void {
 		$order = wc_get_order( $order_id );
 		if ( ! $order ) { return; }
-		if ( self::is_prepaid( $order ) ) {
-			$order->add_order_note( 'ATENCIÓN Club: reembolso de saldo prepago / tarjeta regalo. Revisar si ha sido canjeado y conciliar manualmente el importe antes de cerrar la devolución.' );
-		} elseif ( (int) $order->get_meta( '_mdo_club_award_cents' ) > 0 ) {
-			$order->add_order_note( 'ATENCIÓN Club: este pedido generó recompensas. Revisar posible reversión por reembolso.' );
+		if ( self::is_prepaid( $order )
+			|| (int) $order->get_meta( '_mdo_club_award_cents' ) > 0
+			|| (int) $order->get_meta( '_mdo_club_wallet_cents' ) > 0 ) {
+			$order->add_order_note(
+				'Club EMDO: hay saldo o tarjetas regalo implicados. El reembolso NO modifica automáticamente el monedero. Revisar el caso y, si procede, ajustar manualmente el saldo en EMDO > Saldos Club EMDO.'
+			);
 		}
 	}
 }
