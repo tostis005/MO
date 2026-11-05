@@ -28,7 +28,7 @@ jobs:
           php -l mu-plugins/emdo-home-aove-harvest-promo-20261030.php
           grep -Fq 'Ya está aquí la cosecha 2026/27' mu-plugins/emdo-home-aove-harvest-promo-20261030.php
           grep -Fq 'Aceite de oliva virgen extra, recién molturado y sin filtrar.' mu-plugins/emdo-home-aove-harvest-promo-20261030.php
-          grep -Fq 'https://www.elmercadodeorigen.com/categoria-producto/aceites/' mu-plugins/emdo-home-aove-harvest-promo-20261030.php
+          grep -Fq 'https://www.elmercadodeorigen.com/tienda/1957/' mu-plugins/emdo-home-aove-harvest-promo-20261030.php
       - name: Install scoped MU plugin on production and refresh home cache
         shell: bash
         run: |
@@ -52,6 +52,11 @@ jobs:
             'https://raw.githubusercontent.com/tostis005/MO/3ca56be5c1cec0eca015e78c187dd4d7c16e139f/mu-plugins/emdo-home-aove-harvest-promo-20261030.php' \
             -o /tmp/emdo-aove-before-seo.php
           test "$(git hash-object /tmp/emdo-aove-before-seo.php)" = 'bae3afe5f25faec1aad025356d844bc4abac39e9'
+          # Exact version installed by #423; allow only this approved predecessor.
+          curl -fsSL --retry 3 --max-time 30 \
+            'https://raw.githubusercontent.com/tostis005/MO/3c40de5af8a5771244a4789c2e1eebf863283765/mu-plugins/emdo-home-aove-harvest-promo-20261030.php' \
+            -o /tmp/emdo-aove-current-category.php
+          test "$(git hash-object /tmp/emdo-aove-current-category.php)" = 'dc0d81d3805ce0b0a1352f9eecbd55efad453578'
           PORT="${STAGING_PORT:-22}"
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
@@ -64,18 +69,20 @@ jobs:
           PREV="/tmp/emdo-aove-previous-${GITHUB_RUN_ID}.php"
           PREV2="/tmp/emdo-aove-first-fix-${GITHUB_RUN_ID}.php"
           BEFORE="/tmp/emdo-aove-before-seo-${GITHUB_RUN_ID}.php"
+          CURRENT="/tmp/emdo-aove-current-category-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP mu-plugins/emdo-home-aove-harvest-promo-20261030.php "$STAGING_USER@$STAGING_HOST:$TMP"
           sshpass -e scp $SCP /tmp/emdo-aove-previous.php "$STAGING_USER@$STAGING_HOST:$PREV"
           sshpass -e scp $SCP /tmp/emdo-aove-first-fix.php "$STAGING_USER@$STAGING_HOST:$PREV2"
           sshpass -e scp $SCP /tmp/emdo-aove-before-seo.php "$STAGING_USER@$STAGING_HOST:$BEFORE"
-          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $TMP $PREV $PREV2 $BEFORE" >/dev/null 2>&1 || true' EXIT
+          sshpass -e scp $SCP /tmp/emdo-aove-current-category.php "$STAGING_USER@$STAGING_HOST:$CURRENT"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $TMP $PREV $PREV2 $BEFORE $CURRENT" >/dev/null 2>&1 || true' EXIT
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
             set -eu
             test -f '$ROOT/wp-config.php'
             /opt/plesk/php/8.2/bin/php -l '$TMP' >/dev/null
             if [ -f '$DEST' ] && cmp -s '$DEST' '$TMP'; then
               echo AOVE_PLUGIN_ALREADY_CURRENT
-            elif [ -f '$DEST' ] && ! cmp -s '$DEST' '$PREV' && ! cmp -s '$DEST' '$PREV2' && ! cmp -s '$DEST' '$BEFORE'; then
+            elif [ -f '$DEST' ] && ! cmp -s '$DEST' '$PREV' && ! cmp -s '$DEST' '$PREV2' && ! cmp -s '$DEST' '$BEFORE' && ! cmp -s '$DEST' '$CURRENT'; then
               echo 'AOVE_DEPLOY_ABORT_UNKNOWN_PRODUCTION_VERSION'; exit 8
             else
               if [ -f '$DEST' ]; then
@@ -116,7 +123,7 @@ jobs:
           assert hero.start()<a.start()<x.start(), 'Home banner ordering invalid'
           assert len(re.findall(r'<aside\b[^>]*data-emdo-aove-harvest="2026-27"',s))==1, 'Duplicate AOVE banner'
           chunk=s[a.start():x.start()]
-          for text in ('Ya está aquí la cosecha 2026/27','Aceite de oliva virgen extra, recién molturado y sin filtrar.','Descubrir la nueva cosecha','https://www.elmercadodeorigen.com/categoria-producto/aceites/'):
+          for text in ('Ya está aquí la cosecha 2026/27','Aceite de oliva virgen extra, recién molturado y sin filtrar.','Descubrir la nueva cosecha','https://www.elmercadodeorigen.com/tienda/1957/'):
               assert text in chunk, 'Missing required text: '+text
           assert '#f4ead7' in s, 'AOVE warm cream CSS missing'
           assert 'style="display:block;clear:both;' in chunk, 'AOVE independent inline styles missing'

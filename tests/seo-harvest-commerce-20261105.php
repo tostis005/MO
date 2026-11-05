@@ -39,9 +39,9 @@ if ( ( $map['/categoria-producto/aceites/']['title'] ?? '' ) !== 'Comprar Aceite
     exit( 1 );
 }
 $banner = emdo_home_aove_banner_markup_20261030();
-if ( ! str_contains( $banner, 'href="https://www.elmercadodeorigen.com/categoria-producto/aceites/"' )
-    || str_contains( $banner, 'href="https://www.elmercadodeorigen.com/tienda/1957/"' ) ) {
-    fwrite( STDERR, "Harvest banner does not point to commercial category\n" );
+if ( ! str_contains( $banner, 'href="https://www.elmercadodeorigen.com/tienda/1957/"' )
+    || str_contains( $banner, 'href="https://www.elmercadodeorigen.com/categoria-producto/aceites/"' ) ) {
+    fwrite( STDERR, "Harvest banner does not point to 1957 producer store\n" );
     exit( 1 );
 }
 echo "HARVEST_COMMERCIAL_SEO_TESTS_OK\n";
