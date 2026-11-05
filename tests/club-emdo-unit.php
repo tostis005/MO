@@ -25,6 +25,17 @@ function wp_salt( string $scheme = 'auth' ): string { return 'fallback'; }
 function wc_format_decimal( $number, int $dp = 2 ): string {
 	return number_format( (float) str_replace( ',', '.', (string) $number ), $dp, '.', '' );
 }
+function wc_price( $amount, array $args = array() ): string {
+	return number_format( (float) $amount, 2, '.', '' ) . ' €';
+}
+class WC_Email { public string $id = 'new_order'; }
+class WC_Order {
+	private array $meta;
+	public function __construct( array $meta ) { $this->meta = $meta; }
+	public function get_meta( string $key ) { return $this->meta[ $key ] ?? ''; }
+	public function get_currency(): string { return 'EUR'; }
+	public function get_total(): string { return '8.00'; }
+}
 function get_current_user_id(): int { return 42; }
 function is_user_logged_in(): bool { global $logged_in; return $logged_in; }
 class Club_Test_DB {
@@ -81,4 +92,22 @@ expect( 88.0 === MDO_Club_Checkout::total_after_wallet( 88.0, $cart ), 'No walle
 $cart->items = array();
 $options['mdo_club_checkout_enabled'] = 'no';
 expect( 88.0 === MDO_Club_Checkout::total_after_wallet( 88.0, $cart ), 'Feature flag closed prevents wallet spend' );
+
+$order = new WC_Order( array(
+	'_mdo_club_wallet_cents' => 8000,
+	'_mdo_club_full_total_cents' => 8800,
+) );
+$rows = array(
+	'cart_subtotal' => array( 'label' => 'Subtotal:', 'value' => '88.00 €' ),
+	'order_total' => array( 'label' => 'Total:', 'value' => '8.00 €' ),
+);
+MDO_Club_Checkout::before_email( $order, true, false, new WC_Email() );
+$producer = MDO_Club_Checkout::email_totals( $rows, $order, 'incl' );
+expect( 'Total a facturar:' === $producer['order_total']['label'], 'Producer email invoice label' );
+expect( '88.00 €' === $producer['order_total']['value'], 'Producer email amount must be complete' );
+MDO_Club_Checkout::after_email( $order, true, false, new WC_Email() );
+$customer = MDO_Club_Checkout::email_totals( $rows, $order, 'incl' );
+expect( '88.00 €' === $customer['mdo_club_value']['value'], 'Customer sees full order value' );
+expect( '−80.00 €' === $customer['mdo_club_wallet']['value'], 'Customer sees applied balance' );
+expect( '8.00 €' === $customer['order_total']['value'], 'Customer sees remaining bank charge' );
 echo "Club EMDO unit checks: OK\n";
