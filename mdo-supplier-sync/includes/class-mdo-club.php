@@ -51,7 +51,7 @@ final class MDO_Club {
 		if ( ! current_user_can( 'manage_woocommerce' ) ) { return; }
 		$percent = self::percent();
 		?>
-		<div class="wrap"><h1>EMDO · Club</h1>
+		<div class="wrap"><h1>EMDO · Club EMDO</h1>
 			<p>Configura el porcentaje de recompensa. Los pagos anticipados y el uso de saldo no se habilitan hasta validar pasarela, impuestos, reembolsos y liquidaciones.</p>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<?php wp_nonce_field( 'mdo_club_settings' ); ?>
@@ -89,7 +89,7 @@ final class MDO_Club {
 		if ( ! current_user_can( 'manage_woocommerce' ) || ! class_exists( 'WooCommerce' ) ) { return; }
 		MDO_Club_Ledger::maybe_install();
 		foreach ( array(
-			'mdo_club_page' => array( 'club', 'Club', '[mdo_club_landing]' ),
+			'mdo_club_page' => array( 'club', 'Club EMDO', '[mdo_club_landing]' ),
 			'mdo_club_gift_page' => array( 'tarjetas-regalo', 'Tarjetas regalo', '[mdo_club_gift_cards]' ),
 		) as $option => $data ) {
 			if ( get_option( $option ) ) { continue; }
@@ -135,7 +135,7 @@ final class MDO_Club {
 		self::styles();
 		?>
 		<div class="mdo-club">
-			<div class="mdo-club-hero"><span>EL MERCADO DE ORIGEN · CLUB</span><h2>Mi monedero</h2>
+			<div class="mdo-club-hero"><span>EL MERCADO DE ORIGEN · CLUB EMDO</span><h2>Mi monedero</h2>
 				<p>Saldo disponible para tus próximos pedidos</p><strong><?php echo wp_kses_post( self::funds_html( $balance ) ); ?></strong>
 			</div>
 			<div class="mdo-club-columns">
@@ -182,7 +182,7 @@ final class MDO_Club {
 	}
 	public static function landing(): string {
 		ob_start(); self::styles(); ?>
-		<div class="mdo-club"><div class="mdo-club-hero"><span>EL MERCADO DE ORIGEN</span><h2>Club</h2><p>Comprar bien también tiene recompensa.</p></div>
+		<div class="mdo-club"><div class="mdo-club-hero"><span>EL MERCADO DE ORIGEN</span><h2>Club EMDO</h2><p>Comprar bien también tiene recompensa.</p></div>
 			<section class="mdo-club-card"><h3>Recupera <?php echo esc_html( (string) self::percent() ); ?> % en tus compras</h3><p>Una vez completado tu pedido, recibes saldo en tu monedero para gastar en futuras compras válidas.</p>
 			<p>También puedes guardar saldo y canjear varias tarjetas regalo en tu monedero.</p>
 			<a class="button" href="<?php echo esc_url( wc_get_page_permalink( 'myaccount' ) ); ?>">Ir a Mi cuenta</a>
@@ -372,14 +372,14 @@ final class MDO_Club {
 			. '<h1 style="font-family:Georgia,serif;font-size:32px;color:#fff">Un regalo con origen</h1>'
 			. '<p style="color:#f2e6d1">Alguien ha pensado en ti.</p></div>'
 			. '<div style="margin:25px;padding:28px;border-radius:15px;background:linear-gradient(120deg,#e5bc76,#f9e7c6);color:#234533">'
-			. '<div style="letter-spacing:2px;font-size:12px">TARJETA REGALO · CLUB</div>'
+			. '<div style="letter-spacing:2px;font-size:12px">TARJETA REGALO · CLUB EMDO EMDO</div>'
 			. '<div style="font-family:Georgia,serif;font-size:36px;margin:16px 0">' . esc_html( wp_strip_all_tags( self::funds_html( $cents ) ) ) . '</div>'
 			. '<div style="font-size:16px;letter-spacing:1px;font-weight:bold">' . esc_html( $code ) . '</div></div>'
 			. ( $message ? '<p style="margin:25px;color:#355140">' . nl2br( esc_html( $message ) ) . '</p>' : '' )
 			. '<p style="padding:0 25px;color:#365242">Crea una cuenta o inicia sesión, abre Mi monedero y canjea el código. Puedes acumular varias tarjetas regalo.</p>'
 			. '<p style="padding:0 25px 28px"><a href="' . esc_url( $account ) . '" style="background:#28533c;color:#fff;padding:14px 22px;text-decoration:none;border-radius:9px;display:inline-block">Canjear tarjeta</a></p>'
 			. '<p style="padding:0 25px 25px;font-size:12px;color:#7d8b80">' . esc_html( $site ) . '</p></div></div>';
-		return wp_mail( $email, 'Tienes una tarjeta regalo de El Mercado de Origen', $body, array( 'Content-Type: text/html; charset=UTF-8' ) );
+		return wp_mail( $email, 'Tu tarjeta regalo de Club EMDO', $body, array( 'Content-Type: text/html; charset=UTF-8' ) );
 	}
 	public static function award_reward( int $order_id ): void {
 		if ( ! self::enabled( 'rewards' ) ) { return; }
