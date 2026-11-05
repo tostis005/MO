@@ -8,7 +8,7 @@
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 final class MDO_Club_Ledger {
-	const VERSION = '1';
+	const VERSION = '2';
 	public static function table( string $name ): string {
 		global $wpdb;
 		return $wpdb->prefix . 'mdo_club_' . $name;
@@ -33,6 +33,8 @@ final class MDO_Club_Ledger {
 			kind varchar(32) NOT NULL,
 			event_key varchar(128) NOT NULL,
 			order_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			admin_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			note varchar(255) NOT NULL DEFAULT '',
 			created_at datetime NOT NULL,
 			PRIMARY KEY  (id),
 			UNIQUE KEY event_key (event_key),
@@ -75,13 +77,13 @@ final class MDO_Club_Ledger {
 	 * Cambia saldo de forma atómica. Devuelve false si no hay fondos o falla SQL.
 	 * Con $inside_transaction=true la transacción es responsabilidad del llamante.
 	 */
-	public static function change( int $user_id, int $delta, string $event, string $kind, int $order_id = 0, bool $inside_transaction = false ): bool {
+	public static function change( int $user_id, int $delta, string $event, string $kind, int $order_id = 0, bool $inside_transaction = false, int $admin_id = 0, string $note = '' ): bool {
 		if ( $user_id <= 0 || 0 === $delta || '' === $event ) { return false; }
 		global $wpdb;
 		if ( ! $inside_transaction ) { $wpdb->query( 'START TRANSACTION' ); }
 		$insert = $wpdb->query( $wpdb->prepare(
-			'INSERT IGNORE INTO ' . self::table( 'ledger' ) . ' (user_id,amount_cents,kind,event_key,order_id,created_at) VALUES (%d,%d,%s,%s,%d,%s)',
-			$user_id, $delta, $kind, $event, $order_id, current_time( 'mysql', true )
+			'INSERT IGNORE INTO ' . self::table( 'ledger' ) . ' (user_id,amount_cents,kind,event_key,order_id,admin_id,note,created_at) VALUES (%d,%d,%s,%s,%d,%d,%s,%s)',
+			$user_id, $delta, $kind, $event, $order_id, $admin_id, substr( $note, 0, 255 ), current_time( 'mysql', true )
 		) );
 		if ( false === $insert ) {
 			if ( ! $inside_transaction ) { $wpdb->query( 'ROLLBACK' ); }
@@ -138,11 +140,35 @@ final class MDO_Club_Ledger {
 			'total' => $total,
 		);
 	}
+	/** @param int[] $user_ids @return array<int,int> */
+	public static function balances_for_users( array $user_ids ): array {
+		$user_ids = array_values( array_unique( array_filter( array_map( 'absint', $user_ids ) ) ) );
+		if ( ! $user_ids ) { return array(); }
+		global $wpdb;
+		$holders = implode( ',', array_fill( 0, count( $user_ids ), '%d' ) );
+		$rows = $wpdb->get_results( $wpdb->prepare(
+			'SELECT user_id,balance_cents FROM ' . self::table( 'wallets' ) . ' WHERE user_id IN (' . $holders . ')',
+			$user_ids
+		), ARRAY_A ) ?: array();
+		$balances = array_fill_keys( $user_ids, 0 );
+		foreach ( $rows as $row ) {
+			$balances[ (int) $row['user_id'] ] = (int) $row['balance_cents'];
+		}
+		return $balances;
+	}
+	public static function totals(): array {
+		global $wpdb;
+		$row = $wpdb->get_row(
+			'SELECT COALESCE(SUM(balance_cents),0) AS balance_cents, COALESCE(SUM(CASE WHEN balance_cents>0 THEN 1 ELSE 0 END),0) AS positive_wallets FROM ' . self::table( 'wallets' ),
+			ARRAY_A
+		);
+		return is_array( $row ) ? $row : array( 'balance_cents' => 0, 'positive_wallets' => 0 );
+	}
 	public static function movements( int $user_id, int $limit = 25 ): array {
 		global $wpdb;
 		if ( $user_id <= 0 ) { return array(); }
 		return $wpdb->get_results( $wpdb->prepare(
-			'SELECT amount_cents,kind,order_id,created_at FROM ' . self::table( 'ledger' ) . ' WHERE user_id=%d ORDER BY id DESC LIMIT %d',
+			'SELECT amount_cents,kind,order_id,admin_id,note,created_at FROM ' . self::table( 'ledger' ) . ' WHERE user_id=%d ORDER BY id DESC LIMIT %d',
 			$user_id, min( 50, max( 1, $limit ) )
 		), ARRAY_A ) ?: array();
 	}
