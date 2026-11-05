@@ -77,6 +77,11 @@ jobs:
           echo 'GIFT_CHECKOUT_PAYMENT_OPTIONS=yes'
           if grep -Eq 'id="billing_address_1"|id="billing_postcode"|id="shipping_address_1"' /tmp/club-checkout.html; then
             echo 'FAIL: digital checkout still asks for postal or shipping information'
+            for field in billing_address_1 billing_postcode shipping_address_1; do
+              count=$(grep -Eoc "id=\"$field\"" /tmp/club-checkout.html || true)
+              echo "VISIBLE_FIELD_${field}_COUNT=$count"
+              grep -Eo ".{0,80}id=\"$field\".{0,120}" /tmp/club-checkout.html | head -n 1 | cut -c1-260 || true
+            done
             exit 10
           fi
           echo 'GIFT_CHECKOUT_NO_POSTAL_SHIPPING_FIELDS=yes'
