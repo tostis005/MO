@@ -65,4 +65,14 @@ jobs:
             exit 7
           fi
           echo 'GIFT_CHECKOUT_WITH_PRODUCT=yes'
-          echo 'SMOKE_OK: checkout reached; no order was submitted and no payment was made.'
+          if ! grep -Eq '25[,.]00' /tmp/club-checkout.html; then
+            echo 'FAIL: selected 25-euro amount is missing from checkout'
+            exit 8
+          fi
+          echo 'GIFT_CHECKOUT_AMOUNT_25=yes'
+          if ! grep -Eq 'name="payment_method"' /tmp/club-checkout.html; then
+            echo 'FAIL: WooCommerce checkout does not show payment methods'
+            exit 9
+          fi
+          echo 'GIFT_CHECKOUT_PAYMENT_OPTIONS=yes'
+          echo 'SMOKE_OK: gift and 25 EUR reach checkout with payment methods; no order or payment.'
