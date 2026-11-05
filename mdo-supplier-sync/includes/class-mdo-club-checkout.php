@@ -20,6 +20,8 @@ final class MDO_Club_Checkout {
 		add_action( 'woocommerce_checkout_create_order', array( __CLASS__, 'save_order_tender' ), 10, 2 );
 		add_action( 'woocommerce_checkout_order_created', array( __CLASS__, 'reserve_wallet' ), 20 );
 		add_action( 'woocommerce_order_status_cancelled', array( __CLASS__, 'release_wallet' ), 20 );
+		add_action( 'woocommerce_order_status_failed', array( __CLASS__, 'schedule_failed_expiry' ), 20 );
+		add_action( 'mdo_club_cancel_failed_order', array( __CLASS__, 'cancel_expired_failed_order' ), 10, 1 );
 		add_action( 'woocommerce_order_status_refunded', array( __CLASS__, 'release_wallet' ), 20 );
 		add_action( 'woocommerce_email_before_order_table', array( __CLASS__, 'before_email' ), 1, 4 );
 		add_action( 'woocommerce_email_after_order_table', array( __CLASS__, 'after_email' ), PHP_INT_MAX, 4 );
@@ -138,6 +140,27 @@ final class MDO_Club_Checkout {
 		}
 		$order->update_meta_data( '_mdo_club_reserved', 'yes' );
 		$order->save();
+	}
+	/**
+	 * Mantener la reserva mientras se permite reintentar un pago fallido.
+	 * Tras 24 h, si el pedido sigue fallido y sin pagar, se cancela y libera.
+	 * Nunca liberar y permitir a la vez el reintento del mismo pedido.
+	 */
+	public static function schedule_failed_expiry( int $order_id ): void {
+		$order = wc_get_order( $order_id );
+		if ( ! $order || 'yes' !== $order->get_meta( '_mdo_club_reserved' ) ) { return; }
+		if ( ! wp_next_scheduled( 'mdo_club_cancel_failed_order', array( $order_id ) ) ) {
+			wp_schedule_single_event( time() + DAY_IN_SECONDS, 'mdo_club_cancel_failed_order', array( $order_id ) );
+		}
+		$order->add_order_note( 'Club EMDO: saldo reservado durante 24 horas por fallo de pago. Si no se completa el pago, el pedido se cancelará y liberará la reserva.' );
+	}
+	public static function cancel_expired_failed_order( int $order_id ): void {
+		$order = wc_get_order( $order_id );
+		if ( ! $order || ! $order->has_status( 'failed' ) || $order->is_paid()
+			|| 'yes' !== $order->get_meta( '_mdo_club_reserved' ) ) {
+			return;
+		}
+		$order->update_status( 'cancelled', 'Club EMDO: cancelación automática tras 24 horas de pago fallido. El saldo reservado se devuelve al monedero.' );
 	}
 	public static function release_wallet( int $order_id ): void {
 		$order = wc_get_order( $order_id );
