@@ -62,6 +62,9 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends python3-bs4 >/dev/null
           ACEITES="https://www.elmercadodeorigen.com/categoria-producto/aceites/?mdo_commerce_verify=${GITHUB_RUN_ID}"
+          HARVEST5="https://www.elmercadodeorigen.com/producto/cosecha-26-27-sin-filtrar-aceite-de-oliva-virgen-extra-5l-extraccion-en-frio/?mdo_commerce_verify=${GITHUB_RUN_ID}"
+          HARVEST15="https://www.elmercadodeorigen.com/producto/sin-filtrar-nueva-campana-26-27-aceite-de-oliva-virgen-extra-15x1l/?mdo_commerce_verify=${GITHUB_RUN_ID}"
+          HARVEST500="https://www.elmercadodeorigen.com/producto/aceite-de-oliva-virgen-extra-12x500ml-pet-sin-filtrar-nueva-campana-26-27/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           SOB="https://www.elmercadodeorigen.com/producto/sobrasada-de-bellota-100-iberica/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           AGUJA="https://www.elmercadodeorigen.com/producto/filetes-aguja-de-ternera/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           PITO="https://www.elmercadodeorigen.com/producto/pito-de-vacuno-fileteado/?mdo_commerce_verify=${GITHUB_RUN_ID}"
@@ -73,6 +76,9 @@ jobs:
           TENDERLOIN="https://www.elmercadodeorigen.com/en/product/beef-tenderloin/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           EVOO15="https://www.elmercadodeorigen.com/en/product/extra-virgin-olive-oil-15-x-1l/?mdo_commerce_verify=${GITHUB_RUN_ID}"
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ACEITES" -o /tmp/aceites.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$HARVEST5" -o /tmp/harvest5.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$HARVEST15" -o /tmp/harvest15.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$HARVEST500" -o /tmp/harvest500.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$SOB" -o /tmp/sob.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$AGUJA" -o /tmp/aguja.html
           curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$PITO" -o /tmp/pito.html
@@ -94,6 +100,9 @@ jobs:
 
           checks = [
               ('ACEITES','/tmp/aceites.html','Comprar Aceite de Oliva Virgen Extra | El Mercado de Origen','targeted','Compra aceite de oliva virgen extra directamente a productores seleccionados','/categoria-producto/aceites/'),
+              ('HARVEST5','/tmp/harvest5.html','Aceite de Oliva Virgen Extra 5L | Cosecha 26/27 | 1957','targeted','Compra AOVE de cosecha 2026/27 en garrafa de 5 litros.','/producto/cosecha-26-27-sin-filtrar-aceite-de-oliva-virgen-extra-5l-extraccion-en-frio/'),
+              ('HARVEST15','/tmp/harvest15.html','Aceite de Oliva Virgen Extra 15×1L | Cosecha 26/27','targeted','Compra aceite de oliva virgen extra de cosecha 26/27 en 15 botellas de 1 litro.','/producto/sin-filtrar-nueva-campana-26-27-aceite-de-oliva-virgen-extra-15x1l/'),
+              ('HARVEST500','/tmp/harvest500.html','Aceite de Oliva Virgen Extra 12×500ml | Cosecha 26/27','targeted','Compra AOVE de nueva cosecha 26/27 en 12 botellas PET de 500 ml.','/producto/aceite-de-oliva-virgen-extra-12x500ml-pet-sin-filtrar-nueva-campana-26-27/'),
               ('SOB','/tmp/sob.html','Comprar Sobrasada de Bellota 100% Ibérica','targeted','Compra sobrasada de bellota 100% ibérica','/producto/sobrasada-de-bellota-100-iberica/'),
               ('AGUJA','/tmp/aguja.html','Filetes de Aguja de Ternera | 1 kg | Tolecarnes','targeted','Filetes de aguja de ternera jugosos','/producto/filetes-aguja-de-ternera/'),
               ('PITO','/tmp/pito.html','Comprar Pito de Vacuno Fileteado | Tolecarnes','targeted','Pito de vacuno fileteado','/producto/pito-de-vacuno-fileteado/'),
