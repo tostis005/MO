@@ -1,0 +1,103 @@
+name: Deploy vendor 1957 unique meta description on active child theme
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/inc/vendor-home-verification-three.php'
+      - 'elmercadodeorigen-child/inc/vendor-home-verification-two.php'
+      - '.github/workflows/deploy-1957-vendor-meta-20261105.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency:
+  group: emdo-producer-theme-1957-meta
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint precisely-scoped PHP modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/vendor-home-verification-two.php
+          php -l elmercadodeorigen-child/inc/vendor-home-verification-three.php
+          grep -Fq 'vendor-home-verification-two.php' elmercadodeorigen-child/functions.php
+          grep -Fq 'vendor-home-verification-three.php' elmercadodeorigen-child/functions.php
+      - name: Guarded deploy, verify meta uniqueness and rollback on failure
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "$STAGING_HOST" && test -n "$STAGING_USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass python3-bs4 >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          CHILD="$ROOT/wp-content/themes/elmercadodeorigen-child/inc"
+          TWO="$CHILD/vendor-home-verification-two.php"
+          THREE="$CHILD/vendor-home-verification-three.php"
+          BAK="/tmp/emdo-vendor-1957-meta-${GITHUB_RUN_ID}"
+          TMP_TWO="/tmp/vendor-two-${GITHUB_RUN_ID}.php"
+          TMP_THREE="/tmp/vendor-three-${GITHUB_RUN_ID}.php"
+          APPLIED=0
+          cleanup() {
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$TMP_TWO' '$TMP_THREE'" >/dev/null 2>&1 || true
+          }
+          rollback() {
+            code=$?
+            trap - ERR
+            if [ "$APPLIED" = 1 ]; then
+              echo "::error::1957 meta QA failed; restoring previous two child theme modules"
+              sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" \
+                "test -f '$BAK/two.php' && test -f '$BAK/three.php' && cp -p '$BAK/two.php' '$TWO' && cp -p '$BAK/three.php' '$THREE'" || true
+            fi
+            exit "$code"
+          }
+          trap cleanup EXIT
+          trap rollback ERR
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/vendor-home-verification-two.php "$STAGING_USER@$STAGING_HOST:$TMP_TWO"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/vendor-home-verification-three.php "$STAGING_USER@$STAGING_HOST:$TMP_THREE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -eu
+            test -f '$ROOT/wp-config.php' && test -f '$TWO' && test -f '$THREE'
+            test \\"\\$(git hash-object '$TWO')\\" = '494d61736d6fb8eb9c53d81708c41641616d88a1'
+            test \\"\\$(git hash-object '$THREE')\\" = 'b4a1e098f948fe35ea0ffc46c740dacfd1567c4e'
+            /opt/plesk/php/8.2/bin/php -l '$TMP_TWO' >/dev/null
+            /opt/plesk/php/8.2/bin/php -l '$TMP_THREE' >/dev/null
+            mkdir -p '$BAK'
+            cp -p '$TWO' '$BAK/two.php'
+            cp -p '$THREE' '$BAK/three.php'
+          "
+          APPLIED=1
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -eu
+            install -m 0644 '$TMP_TWO' '$TWO'
+            install -m 0644 '$TMP_THREE' '$THREE'
+            /opt/plesk/php/8.2/bin/php /usr/local/bin/wp cache flush --path='$ROOT' --allow-root >/dev/null 2>&1 || true
+            echo EMDO_1957_META_FILES_UPDATED
+          "
+          URL="https://www.elmercadodeorigen.com/tienda/1957/?vendor_meta_verify=${GITHUB_RUN_ID}"
+          curl -fLsS --retry 3 --retry-delay 2 --max-time 65 -H 'Cache-Control: no-cache' "$URL" -o /tmp/vendor-1957-meta.html
+          /usr/bin/python3 - <<'PY'
+          from bs4 import BeautifulSoup
+          soup=BeautifulSoup(open('/tmp/vendor-1957-meta.html',encoding='utf-8').read(),'html.parser')
+          metas=soup.select('meta[name="description"]')
+          assert len(metas)==1,('meta description count',len(metas),[x.get('content','') for x in metas])
+          desc=metas[0].get('content','')
+          assert desc.startswith('Compra aceite de oliva virgen extra del productor 1957.'),desc
+          canonical=soup.find('link',rel='canonical')
+          assert canonical and canonical.get('href','').endswith('/tienda/1957/')
+          print('VENDOR_1957_UNIQUE_META_DESCRIPTION_PUBLIC_OK')
+          PY
+          echo EMDO_1957_VENDOR_META_DEPLOY_VERIFIED
