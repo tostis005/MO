@@ -279,9 +279,7 @@ final class MDO_Club {
 				<label>Correo de la persona que recibirá la tarjeta<input type="email" name="recipient_email" maxlength="190" required></label>
 				<label>Mensaje (opcional)<textarea name="gift_message" maxlength="350" rows="3"></textarea></label>
 			<?php endif; ?>
-			<?php if ( function_exists( 'WC' ) && WC()->cart && ! WC()->cart->is_empty() ) : ?>
-				<label class="mdo-club-replace-cart"><input type="checkbox" name="mdo_club_replace_cart" value="yes"> Mi carrito ya tiene otros productos. Quiero comprar esto en un pedido separado y vaciar ese carrito.</label>
-			<?php endif; ?>
+			<p class="mdo-club-separate-note">Esta compra se hace por separado de otros productos. Al continuar, tu carrito tendrá solo <?php echo 'gift' === $kind ? 'esta tarjeta regalo' : 'esta recarga'; ?>.</p>
 			<button class="button alt" type="submit"><?php echo 'gift' === $kind ? 'Continuar al pago' : 'Recargar y continuar al pago'; ?></button>
 		</form>
 		<?php self::amount_script(); ?>
@@ -326,6 +324,7 @@ final class MDO_Club {
 		.mdo-club .button{background:#28513c;color:#fff;border:0;border-radius:10px;padding:10px 14px;display:inline-block;margin:6px 5px 0 0;cursor:pointer}
 		.mdo-club .mdo-club-card>a.button{display:inline-flex!important;align-items:center!important;justify-content:center!important;text-align:center!important}
 		.mdo-club-amounts .button{background:#f4eee3;color:#234b37}.mdo-club-note{font-style:italic}
+		.mdo-club-separate-note{margin:13px 0 4px;font-size:12px;line-height:1.5;color:#5c6f62}
 		.mdo-club table{width:100%;border-collapse:collapse}.mdo-club td,.mdo-club th{padding:10px;border-bottom:1px solid #eee;text-align:left}
 		.mdo-club-gift-visual{width:min(100%,720px);margin:25px auto 0;border-radius:18px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.25);background:#ead9bd}
 		.mdo-club-gift-visual img{display:block;width:100%;max-width:100%;height:auto;border-radius:18px}
@@ -373,25 +372,22 @@ final class MDO_Club {
 			WC()->session->set_customer_session_cookie( true );
 		}
 	}
-	public static function prepare_prepaid_cart( string $kind, int $amount, string $email, string $message, bool $replace_cart = false ): bool {
+	public static function prepare_prepaid_cart( string $kind, int $amount, string $email, string $message ): bool {
 		self::ensure_cart_session();
 		if ( ! WC()->cart ) {
 			wc_add_notice( 'No se pudo iniciar el carrito. Inténtalo de nuevo.', 'error' );
 			return false;
-		}
-		if ( ! WC()->cart->is_empty() ) {
-			if ( ! $replace_cart ) {
-				wc_add_notice( 'Ya tienes otros productos en el carrito. Marca la casilla para empezar un pedido separado de tarjeta regalo o recarga.', 'error' );
-				return false;
-			}
-			// Never remove existing products unless the customer confirmed.
-			WC()->cart->empty_cart();
 		}
 		$product_id = (int) get_option( 'mdo_club_product_' . $kind );
 		$product = $product_id > 0 ? wc_get_product( $product_id ) : false;
 		if ( ! $product || ! $product->is_purchasable() || ! $product->is_virtual() ) {
 			wc_add_notice( 'No se ha podido preparar la tarjeta o recarga. Contacta con nosotros.', 'error' );
 			return false;
+		}
+		// Every prepaid product starts a new standalone order. Validate first
+		// so an unavailable item cannot destroy the customer's existing cart.
+		if ( ! WC()->cart->is_empty() ) {
+			WC()->cart->empty_cart();
 		}
 		self::$adding_club = true;
 		try {
@@ -422,7 +418,6 @@ final class MDO_Club {
 		$amount = MDO_Club_Ledger::cents( wp_unslash( $_POST['amount'] ?? 0 ) );
 		$email = sanitize_email( wp_unslash( $_POST['recipient_email'] ?? '' ) );
 		$message = sanitize_textarea_field( wp_unslash( $_POST['gift_message'] ?? '' ) );
-		$replace_cart = 'yes' === sanitize_key( wp_unslash( $_POST['mdo_club_replace_cart'] ?? '' ) );
 		$fallback = 'gift' === $kind
 			? get_permalink( (int) get_option( 'mdo_club_gift_page' ) )
 			: wc_get_account_endpoint_url( 'monedero' );
@@ -433,7 +428,7 @@ final class MDO_Club {
 			|| ( 'gift' === $kind && ! is_email( $email ) )
 			|| ( 'wallet' === $kind && ! is_user_logged_in() ) ) {
 			wc_add_notice( 'Revisa el importe (de 10 a 500 €) y el correo del destinatario.', 'error' );
-		} elseif ( self::prepare_prepaid_cart( $kind, $amount, $email, $message, $replace_cart ) ) {
+		} elseif ( self::prepare_prepaid_cart( $kind, $amount, $email, $message ) ) {
 			wp_safe_redirect( wc_get_checkout_url(), 303 );
 			exit;
 		}
