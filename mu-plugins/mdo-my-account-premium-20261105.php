@@ -251,6 +251,23 @@ body.woocommerce-account .woocommerce-MyAccount-content .mdo-club {max-width:100
 body.woocommerce-account .woocommerce-MyAccount-content .mdo-club-hero {
 	border-radius:18px!important;padding:clamp(23px,3vw,31px)!important;
 	margin-bottom:20px!important;background:linear-gradient(120deg,#163d2e,#326247)!important;
+	color:#f9f6ec!important;
+	border:1px solid rgba(255,255,255,.13)!important;
+	box-shadow:0 18px 44px rgba(18,57,39,.15);
+}
+body.woocommerce-account .woocommerce-MyAccount-content .mdo-club .mdo-club-hero :is(h2,h3,p,span,strong,small,b,em),
+body.woocommerce-account .woocommerce-MyAccount-content .mdo-club .mdo-club-hero .amount,
+body.woocommerce-account .woocommerce-MyAccount-content .mdo-club .mdo-club-hero .woocommerce-Price-currencySymbol {
+	color:#fffdf5!important;-webkit-text-fill-color:#fffdf5!important;text-shadow:none!important;
+}
+body.woocommerce-account .woocommerce-MyAccount-content .mdo-club .mdo-club-hero > span {
+	color:#e4d3ac!important;-webkit-text-fill-color:#e4d3ac!important;opacity:1!important;font-size:11px;letter-spacing:.13em;
+}
+body.woocommerce-account .woocommerce-MyAccount-content .mdo-club .mdo-club-hero > p {
+	color:#e4ede4!important;-webkit-text-fill-color:#e4ede4!important;opacity:1!important;
+}
+body.woocommerce-account .woocommerce-MyAccount-content .mdo-club .mdo-club-hero > strong {
+	display:block;margin:12px 0;font-size:clamp(29px,4vw,37px);line-height:1.25;
 }
 body.woocommerce-account .woocommerce-MyAccount-content .mdo-club-card {
 	border:1px solid var(--emdo-account-line)!important;border-radius:16px!important;
@@ -391,3 +408,19 @@ add_action( 'woocommerce_before_customer_login_form', static function (): void {
 	echo '<div class="emdo-account-login-intro"><strong>Bienvenido a El Mercado de Origen</strong>';
 	echo '<p>Accede a tus pedidos, direcciones y recompensas de Club EMDO desde un mismo lugar.</p></div>';
 }, 5 );
+
+
+/**
+ * Hide legacy account entries which aren't part of the customer journey.
+ * This affects WooCommerce's My Account menu only. Underlying routes,
+ * admin controls and integrations stay untouched.
+ */
+add_filter( 'woocommerce_account_menu_items', static function( array $items ): array {
+	foreach ( $items as $endpoint => $label ) {
+		$name = strtolower( (string) $endpoint . ' ' . wp_strip_all_tags( (string) $label ) );
+		if ( preg_match( '/afiliad|afiliat|affiliate|consulta|consultation|enquir|product[\s_-]*feed|feed[\s_-]*product/i', $name ) ) {
+			unset( $items[ $endpoint ] );
+		}
+	}
+	return $items;
+}, PHP_INT_MAX );
