@@ -45,13 +45,13 @@ final class MDO_Club {
 		return $result;
 	}
 	public static function admin_menu(): void {
-		add_submenu_page( 'mdo-supplier-sync', 'Club', 'Club', 'manage_woocommerce', 'mdo-club', array( __CLASS__, 'settings' ) );
+		add_submenu_page( 'mdo-supplier-sync', 'Club EMDO', 'Club EMDO', 'manage_woocommerce', 'mdo-club', array( __CLASS__, 'settings' ) );
 	}
 	public static function settings(): void {
 		if ( ! current_user_can( 'manage_woocommerce' ) ) { return; }
 		$percent = self::percent();
 		?>
-		<div class="wrap"><h1>EMDO · Club EMDO</h1>
+		<div class="wrap"><h1>Club EMDO</h1>
 			<p>Configura el porcentaje de recompensa. Los pagos anticipados y el uso de saldo no se habilitan hasta validar pasarela, impuestos, reembolsos y liquidaciones.</p>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<?php wp_nonce_field( 'mdo_club_settings' ); ?>
@@ -70,7 +70,7 @@ final class MDO_Club {
 				</table>
 				<?php submit_button( 'Guardar configuración' ); ?>
 			</form>
-			<p><strong>Publicación:</strong> se generan borradores de las páginas «Club» y «Tarjetas regalo». Publícalos al validar todo el circuito.</p>
+			<p><strong>Publicación:</strong> se generan borradores de las páginas «Club EMDO» y «Tarjetas regalo». Publícalos al validar todo el circuito.</p>
 		</div>
 		<?php
 	}
@@ -100,7 +100,7 @@ final class MDO_Club {
 			) );
 			if ( $id && ! is_wp_error( $id ) ) { update_option( $option, (int) $id, false ); }
 		}
-		foreach ( array( 'wallet' => 'Recarga de monedero Club', 'gift' => 'Tarjeta regalo Club' ) as $kind => $title ) {
+		foreach ( array( 'wallet' => 'Recarga de monedero Club EMDO', 'gift' => 'Tarjeta regalo Club EMDO' ) as $kind => $title ) {
 			$option = 'mdo_club_product_' . $kind;
 			if ( wc_get_product( (int) get_option( $option ) ) ) { continue; }
 			$product = new WC_Product_Simple();
@@ -169,9 +169,9 @@ final class MDO_Club {
 		self::styles();
 		?>
 		<div class="mdo-club mdo-club-gifts">
-			<div class="mdo-club-hero"><span>UN DETALLE CON ORIGEN</span><h2>Tarjetas regalo</h2>
+			<div class="mdo-club-hero"><span>UN DETALLE CON ORIGEN</span><h2>Tarjetas regalo Club EMDO</h2>
 			<p>Regala la libertad de elegir productos auténticos de nuestros productores.</p>
-			<div class="mdo-club-gift-visual"><small>EL MERCADO DE ORIGEN</small><strong>Una tarjeta, muchos sabores.</strong><span>Tarjeta regalo Club</span></div></div>
+			<div class="mdo-club-gift-visual"><small>EL MERCADO DE ORIGEN</small><strong>Una tarjeta, muchos sabores.</strong><span>Tarjeta regalo Club EMDO</span></div></div>
 			<section class="mdo-club-card"><h3>Elige tu regalo</h3>
 				<p>El destinatario recibirá un correo con su tarjeta y un código único. Podrá canjearla en Mi cuenta y acumular varias.</p>
 				<?php self::purchase_form( 'gift' ); ?>
