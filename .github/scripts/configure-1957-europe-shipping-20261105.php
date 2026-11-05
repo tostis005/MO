@@ -5,7 +5,7 @@
  * Never alter other vendors, destination coverage, quantity formula, taxes,
  * other 1957 shipping rates, or global WooCommerce shipping zones.
  *
- * 1957_EU_SHIPPING_MODE=audit|apply|verify
+ * MDO_1957_EU_SHIPPING_MODE=audit|apply|verify
  */
 if (!defined('ABSPATH') || !defined('WP_CLI') || !WP_CLI ||
     !class_exists('WooCommerce') || !class_exists('WCFMmp_Shipping_Zone')) {
@@ -47,7 +47,7 @@ $targets=[
     21=>['name'=>'Rep. Checa','country'=>'CZ'],
     22=>['name'=>'Polonia','country'=>'PL'],
 ];
-$mode=getenv('1957_EU_SHIPPING_MODE') ?: 'audit';
+$mode=getenv('MDO_1957_EU_SHIPPING_MODE') ?: 'audit';
 if (!in_array($mode,['audit','apply','verify'],true)) {
     throw new RuntimeException('Invalid shipping operation mode.');
 }
