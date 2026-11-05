@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO Category SEO Description
  * Description: Renders the persisted ES/EN description on public product-category archives.
- * Version: 2026.08.21.2
+ * Version: 2026.11.05.1
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
@@ -59,6 +59,7 @@ function emdo_category_seo_render_description( string $position ): void {
         'legumbres',
         'aceites',
         'jamones-paletas',
+        'setas-y-hongos',
     ) ) ) {
         return;
     }
