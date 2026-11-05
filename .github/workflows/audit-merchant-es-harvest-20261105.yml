@@ -1,0 +1,31 @@
+name: Audit Google Merchant ES feed for 1957 harvest 2026/27
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/audit-merchant-es-harvest-20261105.py'
+      - '.github/workflows/audit-merchant-es-harvest-20261105.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate script source
+        shell: bash
+        run: python3 -m py_compile .github/scripts/audit-merchant-es-harvest-20261105.py
+      - name: Read live ES Google Merchant feed
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 .github/scripts/audit-merchant-es-harvest-20261105.py | tee /tmp/emdo-merchant-es-audit.log
+      - name: Archive findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: merchant-es-1957-audit
+          path: /tmp/emdo-merchant-es-audit.log
+          retention-days: 15
+          if-no-files-found: warn
