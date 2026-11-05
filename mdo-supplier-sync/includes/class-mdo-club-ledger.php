@@ -55,6 +55,9 @@ final class MDO_Club_Ledger {
 		update_option( 'mdo_club_schema_version', self::VERSION, false );
 	}
 	public static function cents( $amount ): int {
+		if ( ! is_scalar( $amount ) || ! is_numeric( str_replace( ',', '.', (string) $amount ) ) ) {
+			return 0;
+		}
 		return max( 0, (int) round( (float) wc_format_decimal( $amount, 2 ) * 100 ) );
 	}
 	public static function money( int $cents ): string {
@@ -113,9 +116,19 @@ final class MDO_Club_Ledger {
 			$user_id, min( 50, max( 1, $limit ) )
 		), ARRAY_A ) ?: array();
 	}
+	private static function gift_secret(): string {
+		// Clave dedicada y persistente: cambiar las sales de WordPress no invalida
+		// tarjetas ya emitidas. No compartir este secreto ni exportarlo.
+		$secret = (string) get_option( 'mdo_club_gift_secret', '' );
+		if ( '' === $secret ) {
+			add_option( 'mdo_club_gift_secret', wp_generate_password( 64, true, true ), '', 'no' );
+			$secret = (string) get_option( 'mdo_club_gift_secret', '' );
+		}
+		return '' !== $secret ? $secret : wp_salt( 'auth' );
+	}
 	public static function gift_code( int $order_id, int $item_id ): string {
-		// HMAC determinista: puede reenviarse sin almacenar el código en claro.
-		$token = strtoupper( substr( hash_hmac( 'sha256', $order_id . ':' . $item_id, wp_salt( 'auth' ) ), 0, 24 ) );
+		// HMAC determinista: permite el reenvío sin almacenar códigos en claro.
+		$token = strtoupper( substr( hash_hmac( 'sha256', $order_id . ':' . $item_id, self::gift_secret() ), 0, 24 ) );
 		return 'CLUB-' . implode( '-', str_split( $token, 4 ) );
 	}
 	public static function gift_hash( string $code ): string {
