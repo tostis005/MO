@@ -20,7 +20,7 @@ function esc_html($v) { return htmlspecialchars($v,ENT_QUOTES,'UTF-8'); }
 function esc_attr($v) { return esc_html($v); }
 function wpautop($v) { return '<p>'.$v.'</p>'; }
 require __DIR__ . '/../mu-plugins/emdo-category-seo-description.php';
-foreach (array('legumbres','aceites','jamones-paletas','cafe-de-especialidad','cremas-de-cacao') as $slug) {
+foreach (array('legumbres','aceites','jamones-paletas','cafe-de-especialidad','cremas-de-cacao','setas-y-hongos') as $slug) {
     $GLOBALS['test_category']=$slug;
     $_SERVER['REQUEST_URI']='/categoria-producto/'.$slug.'/';
     ob_start(); emdo_category_seo_render_description('above'); emdo_category_seo_render_description('below');
