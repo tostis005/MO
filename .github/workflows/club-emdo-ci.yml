@@ -8,6 +8,7 @@ on:
       - 'tests/club-emdo-unit.php'
       - 'tests/club-emdo-full-wallet-unit.php'
       - 'tests/club-emdo-manual-payments-unit.php'
+      - 'tests/club-emdo-purchase-flow-unit.php'
       - 'tests/club-emdo-gift-design.php'
       - 'mdo-supplier-sync/assets/club-emdo-tarjeta-regalo.jpg.b64'
       - '.github/workflows/club-emdo-ci.yml'
@@ -32,5 +33,7 @@ jobs:
         run: php tests/club-emdo-full-wallet-unit.php
       - name: Offline payment and completion tests
         run: php tests/club-emdo-manual-payments-unit.php
+      - name: Gift purchase and wallet top-up checkout redirect
+        run: php tests/club-emdo-purchase-flow-unit.php
       - name: Gift card artwork, email and landing links
         run: php tests/club-emdo-gift-design.php
