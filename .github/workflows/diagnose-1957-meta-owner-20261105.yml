@@ -1,0 +1,62 @@
+name: Diagnose public 1957 SEO description ownership read-only
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/diagnose-1957-meta-owner-20261105.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Find generator of generic vendor description without modifying files
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "$STAGING_HOST" && test -n "$STAGING_USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -eu
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          echo 'VENDOR_META_GENERIC_PHRASE_FILE_MATCHES:'
+          for directory in "$ROOT/wp-content/mu-plugins" "$ROOT/wp-content/themes" "$ROOT/wp-content/plugins"; do
+            if test -d "$directory"; then
+              timeout 60 grep -RIlF --include='*.php' 'Compra directamente los productos de este productor' "$directory" 2>/dev/null | head -n 12 || true
+            fi
+          done
+          echo 'VENDOR_SEO_RELEVANT_HOOKS:'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          "$PHP" "$WP" eval '
+            global $wp_filter;
+            foreach (array("aioseo_description","wpseo_metadesc","seopress_titles_desc","wp_head") as $hook) {
+              $obj = $wp_filter[$hook] ?? null;
+              if (!$obj || empty($obj->callbacks)) continue;
+              foreach ($obj->callbacks as $priority=>$list) {
+                foreach ($list as $record) {
+                  $cb=$record["function"] ?? null;
+                  if (is_string($cb)) $name=$cb;
+                  elseif (is_array($cb)) $name=(is_object($cb[0])?get_class($cb[0]):(string)$cb[0])."::".$cb[1];
+                  elseif ($cb instanceof Closure) $name="Closure";
+                  else $name="unknown";
+                  if ($hook!=="wp_head" || preg_match("/seo|meta|vendor|wcfm|description|aioseo/i",$name)) {
+                     echo $hook," | ",$priority," | ",$name,"\n";
+                  }
+                }
+              }
+            }
+          ' --path="$ROOT" --allow-root --skip-themes 2>/dev/null | head -n 130 || true
+          echo 'VENDOR_META_AUDIT_READ_ONLY_DONE'
+          REMOTE
