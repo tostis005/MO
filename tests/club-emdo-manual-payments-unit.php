@@ -37,7 +37,8 @@ class MDO_Club_Ledger {
 		self::$gifts[$order.':'.$item] = [$amount,$email];
 		return true;
 	}
-	public static function gift_code(int $order, int $item): string { return 'CLUB-TEST-'.$order.'-'.$item; }
+	public static function gift_code(int $order, int $item): string { return str_pad((string) ($order * 100 + $item), 20, '0', STR_PAD_LEFT); }
+	public static function issued_gift_code(int $order, int $item): string { return self::gift_code($order, $item); }
 }
 class WC_Order {
 	public array $notes = [];
@@ -114,6 +115,8 @@ MDO_Club::issue_prepaid(502);
 expect_true(count(MDO_Club_Ledger::$gifts)===1, 'Completed gift order creates unique card');
 expect_true(count($sent)===1, 'Repeated completion does not duplicate gift email');
 expect_true($sent[0]['email']==='friend@example.test', 'Gift email is sent to designated recipient');
+expect_true((bool)preg_match('/[0-9]{20}/', $sent[0]['body']), 'Gift email contains 20-digit numeric code');
+expect_true(!str_contains($sent[0]['body'], 'CLUB-TEST'), 'Gift email has no old code prefix');
 expect_true(str_contains($sent[0]['body'], 'club-emdo-tarjeta-regalo.jpg'), 'Gift email uses same hosted premium image as purchase page');
 
 $orders[503] = new WC_Order(503,true,[40=>new WC_Order_Item_Product(40,'gift',10000,'friend@example.test')],'50.00');

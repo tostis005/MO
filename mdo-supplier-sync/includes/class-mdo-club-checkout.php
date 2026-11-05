@@ -103,7 +103,7 @@ final class MDO_Club_Checkout {
 			<form method="post" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
 				<?php wp_nonce_field( 'mdo_club_redeem' ); ?>
 				<input type="hidden" name="mdo_club_form" value="redeem">
-				<input type="text" name="gift_code" maxlength="64" placeholder="Código CLUB-…" required style="flex:1;min-width:190px">
+				<input type="text" name="gift_code" maxlength="64" placeholder="Código de 20 números" inputmode="numeric" autocomplete="off" required style="flex:1;min-width:190px">
 				<button type="submit" class="button">Canjear tarjeta</button>
 			</form>
 		</div>

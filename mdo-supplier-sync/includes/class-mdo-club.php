@@ -26,6 +26,8 @@ final class MDO_Club {
 		add_shortcode( 'mdo_club_gift_cards', array( __CLASS__, 'gift_page' ) );
 		add_shortcode( 'mdo_club_landing', array( __CLASS__, 'landing' ) );
 		add_action( 'wp_loaded', array( __CLASS__, 'handle_forms' ), 25 );
+		add_action( 'admin_post_mdo_club_purchase', array( __CLASS__, 'handle_purchase_post' ) );
+		add_action( 'admin_post_nopriv_mdo_club_purchase', array( __CLASS__, 'handle_purchase_post' ) );
 		add_filter( 'woocommerce_add_to_cart_validation', array( __CLASS__, 'validate_cart' ), 20, 2 );
 		add_action( 'woocommerce_before_calculate_totals', array( __CLASS__, 'price_topups' ), 20 );
 		add_action( 'woocommerce_check_cart_items', array( __CLASS__, 'check_prepaid_cart' ) );
@@ -196,6 +198,7 @@ final class MDO_Club {
 		if ( ! $user ) { echo '<p>Inicia sesión para ver tu monedero.</p>'; return; }
 		$balance = MDO_Club_Ledger::balance( $user );
 		self::styles();
+		if ( function_exists( 'wc_print_notices' ) ) { wc_print_notices(); }
 		?>
 		<div class="mdo-club">
 			<div class="mdo-club-hero"><span>EL MERCADO DE ORIGEN · CLUB EMDO</span><h2>Mi monedero</h2>
@@ -231,13 +234,14 @@ final class MDO_Club {
 	public static function gift_page(): string {
 		ob_start();
 		self::styles();
+		if ( function_exists( 'wc_print_notices' ) ) { wc_print_notices(); }
 		?>
 		<div class="mdo-club mdo-club-gifts">
 			<div class="mdo-club-hero"><span>UN DETALLE CON ORIGEN</span><h2>Tarjetas regalo Club EMDO</h2>
-			<p>Regala la libertad de elegir productos auténticos de nuestros productores.</p>
+			<p>Regala una tarjeta para comprar en El Mercado de Origen.</p>
 			<div class="mdo-club-gift-visual"><img src="<?php echo esc_url( self::gift_art_url() ); ?>" alt="Tarjeta regalo de El Mercado de Origen, con la dirección elmercadodeorigen.com" width="720" height="480" loading="eager" decoding="async"></div></div>
 			<section class="mdo-club-card"><h3>Elige tu regalo</h3>
-				<p>El destinatario recibirá un correo con su tarjeta y un código único. Podrá canjearla en Mi cuenta y acumular varias.</p>
+				<p>Elige el importe y a quién se la enviamos. Recibirá la tarjeta por correo y podrá usar su código en Mi monedero.</p>
 				<?php self::purchase_form( 'gift' ); ?>
 			</section>
 		</div>
@@ -264,7 +268,8 @@ final class MDO_Club {
 		if ( ! self::enabled( 'prepaid' ) ) { echo '<p class="mdo-club-note">Las recargas y tarjetas regalo estarán disponibles próximamente.</p>'; return; }
 		if ( 'wallet' === $kind && ! is_user_logged_in() ) { echo '<p>Inicia sesión para recargar tu monedero.</p>'; return; }
 		?>
-		<form method="post" class="mdo-club-buy">
+		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="mdo-club-buy">
+			<input type="hidden" name="action" value="mdo_club_purchase">
 			<?php wp_nonce_field( 'mdo_club_buy' ); ?>
 			<input type="hidden" name="mdo_club_form" value="buy">
 			<input type="hidden" name="kind" value="<?php echo esc_attr( $kind ); ?>">
@@ -274,7 +279,10 @@ final class MDO_Club {
 				<label>Correo de la persona que recibirá la tarjeta<input type="email" name="recipient_email" maxlength="190" required></label>
 				<label>Mensaje (opcional)<textarea name="gift_message" maxlength="350" rows="3"></textarea></label>
 			<?php endif; ?>
-			<button class="button alt" type="submit"><?php echo 'gift' === $kind ? 'Comprar tarjeta regalo' : 'Añadir saldo'; ?></button>
+			<?php if ( function_exists( 'WC' ) && WC()->cart && ! WC()->cart->is_empty() ) : ?>
+				<label class="mdo-club-replace-cart"><input type="checkbox" name="mdo_club_replace_cart" value="yes"> Mi carrito ya tiene otros productos. Quiero comprar esto en un pedido separado y vaciar ese carrito.</label>
+			<?php endif; ?>
+			<button class="button alt" type="submit"><?php echo 'gift' === $kind ? 'Continuar al pago' : 'Recargar y continuar al pago'; ?></button>
 		</form>
 		<?php self::amount_script(); ?>
 		<?php
@@ -286,7 +294,7 @@ final class MDO_Club {
 		<form method="post" class="mdo-club-redeem">
 			<?php wp_nonce_field( 'mdo_club_redeem' ); ?>
 			<input type="hidden" name="mdo_club_form" value="redeem">
-			<label>Código de tarjeta regalo<input type="text" name="gift_code" maxlength="64" placeholder="CLUB-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" required></label>
+			<label>Código de tarjeta regalo<input type="text" name="gift_code" maxlength="64" placeholder="Introduce los 20 números" inputmode="numeric" autocomplete="off" required></label>
 			<button type="submit" class="button">Canjear tarjeta</button>
 		</form>
 		<?php
@@ -307,6 +315,9 @@ final class MDO_Club {
 		.mdo-club-hero>span{font-size:11px;letter-spacing:.17em;font-weight:750;opacity:.8}
 		.mdo-club-hero h2{color:#fff7e8;margin:12px 0;font-size:clamp(26px,4vw,42px)}
 		.mdo-club-hero p{color:#edf1e7}.mdo-club-hero>strong{font-size:32px;color:#fff}.mdo-club-balance-breakdown{display:flex;flex-wrap:wrap;gap:16px;margin-top:14px;font-size:13px;color:#e8f1e7}
+		.mdo-club .mdo-club-hero,.mdo-club .mdo-club-hero :is(h2,h3,p,span,strong,small,b,.amount,.woocommerce-Price-currencySymbol){color:#fffdf5!important;-webkit-text-fill-color:#fffdf5!important}
+		.mdo-club .mdo-club-hero>span{color:#e5d6b4!important;-webkit-text-fill-color:#e5d6b4!important}
+		.mdo-club .mdo-club-hero>p{color:#e5eee5!important;-webkit-text-fill-color:#e5eee5!important}
 		.mdo-club-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 		.mdo-club-card{padding:22px;margin-bottom:16px;background:#fffdfa;border:1px solid #eee7dc;border-radius:16px}
 		.mdo-club-card h3{color:#224334;margin:0 0 10px}.mdo-club-card p{line-height:1.6}
@@ -321,46 +332,114 @@ final class MDO_Club {
 		@media(max-width:700px){.mdo-club-columns{grid-template-columns:1fr}.mdo-club-hero{padding:24px}.mdo-club-card{padding:16px}}
 		</style><?php
 	}
+	/**
+	 * New purchase forms post to /wp-admin/admin-post.php to bypass page
+	 * caches. The old same-page POST remains supported for cached HTML.
+	 */
+	public static function handle_purchase_post(): void {
+		if ( ! function_exists( 'WC' ) ) {
+			wp_die( 'WooCommerce no está disponible.' );
+		}
+		self::submit_purchase();
+	}
 	public static function handle_forms(): void {
 		if ( empty( $_POST['mdo_club_form'] ) || ! function_exists( 'WC' ) ) { return; }
 		$action = sanitize_key( wp_unslash( $_POST['mdo_club_form'] ) );
 		if ( 'redeem' === $action ) {
+			self::ensure_cart_session();
 			check_admin_referer( 'mdo_club_redeem' );
-			if ( ! self::enabled( 'prepaid' ) || ! is_user_logged_in() ) { wc_add_notice( 'Inicia sesión para canjear la tarjeta.', 'error' ); }
-			elseif ( MDO_Club_Ledger::redeem( get_current_user_id(), sanitize_text_field( wp_unslash( $_POST['gift_code'] ?? '' ) ) ) ) {
+			if ( ! self::enabled( 'prepaid' ) || ! is_user_logged_in() ) {
+				wc_add_notice( 'Inicia sesión para canjear la tarjeta.', 'error' );
+			} elseif ( MDO_Club_Ledger::redeem( get_current_user_id(), sanitize_text_field( wp_unslash( $_POST['gift_code'] ?? '' ) ) ) ) {
 				wc_add_notice( 'Tarjeta regalo incorporada a tu monedero.', 'success' );
-			} else { wc_add_notice( 'El código no es válido o ya fue canjeado.', 'error' ); }
-			wp_safe_redirect( wp_get_referer() ?: wc_get_page_permalink( 'myaccount' ) ); exit;
+			} else {
+				wc_add_notice( 'El código no es válido o ya fue canjeado.', 'error' );
+			}
+			wp_safe_redirect( wp_get_referer() ?: wc_get_page_permalink( 'myaccount' ) );
+			exit;
 		}
-		if ( 'buy' !== $action ) { return; }
+		// Support purchases submitted from older cached Club pages.
+		if ( 'buy' === $action && empty( $_POST['action'] ) ) {
+			self::submit_purchase();
+		}
+	}
+	private static function ensure_cart_session(): void {
+		if ( ! function_exists( 'WC' ) ) { return; }
+		if ( function_exists( 'wc_load_cart' ) && ( ! WC()->cart || ! WC()->session ) ) {
+			wc_load_cart();
+		}
+		// Guest purchases need a cookie before the checkout redirect.
+		if ( WC()->session && method_exists( WC()->session, 'set_customer_session_cookie' ) ) {
+			WC()->session->set_customer_session_cookie( true );
+		}
+	}
+	public static function prepare_prepaid_cart( string $kind, int $amount, string $email, string $message, bool $replace_cart = false ): bool {
+		self::ensure_cart_session();
+		if ( ! WC()->cart ) {
+			wc_add_notice( 'No se pudo iniciar el carrito. Inténtalo de nuevo.', 'error' );
+			return false;
+		}
+		if ( ! WC()->cart->is_empty() ) {
+			if ( ! $replace_cart ) {
+				wc_add_notice( 'Ya tienes otros productos en el carrito. Marca la casilla para empezar un pedido separado de tarjeta regalo o recarga.', 'error' );
+				return false;
+			}
+			// Never remove existing products unless the customer confirmed.
+			WC()->cart->empty_cart();
+		}
+		$product_id = (int) get_option( 'mdo_club_product_' . $kind );
+		$product = $product_id > 0 ? wc_get_product( $product_id ) : false;
+		if ( ! $product || ! $product->is_purchasable() || ! $product->is_virtual() ) {
+			wc_add_notice( 'No se ha podido preparar la tarjeta o recarga. Contacta con nosotros.', 'error' );
+			return false;
+		}
+		self::$adding_club = true;
+		try {
+			$added = WC()->cart->add_to_cart( $product_id, 1, 0, array(), array(
+				'mdo_club_kind' => $kind,
+				'mdo_club_amount_cents' => $amount,
+				'mdo_club_recipient' => $email,
+				'mdo_club_message' => $message,
+				'mdo_club_unique' => wp_generate_uuid4(),
+			) );
+		} finally {
+			self::$adding_club = false;
+		}
+		if ( ! $added ) {
+			wc_add_notice( 'No se pudo añadir la tarjeta regalo o recarga al carrito. Inténtalo de nuevo.', 'error' );
+			return false;
+		}
+		WC()->cart->calculate_totals();
+		if ( WC()->session && method_exists( WC()->session, 'save_data' ) ) {
+			WC()->session->save_data();
+		}
+		return true;
+	}
+	private static function submit_purchase(): void {
 		check_admin_referer( 'mdo_club_buy' );
-		if ( ! self::enabled( 'prepaid' ) ) { wc_add_notice( 'Las recargas no están disponibles.', 'error' ); return; }
+		self::ensure_cart_session();
 		$kind = sanitize_key( wp_unslash( $_POST['kind'] ?? '' ) );
 		$amount = MDO_Club_Ledger::cents( wp_unslash( $_POST['amount'] ?? 0 ) );
 		$email = sanitize_email( wp_unslash( $_POST['recipient_email'] ?? '' ) );
 		$message = sanitize_textarea_field( wp_unslash( $_POST['gift_message'] ?? '' ) );
-		if ( ! in_array( $kind, array( 'wallet', 'gift' ), true ) || $amount < 1000 || $amount > 50000
+		$replace_cart = 'yes' === sanitize_key( wp_unslash( $_POST['mdo_club_replace_cart'] ?? '' ) );
+		$fallback = 'gift' === $kind
+			? get_permalink( (int) get_option( 'mdo_club_gift_page' ) )
+			: wc_get_account_endpoint_url( 'monedero' );
+		if ( ! self::enabled( 'prepaid' ) ) {
+			wc_add_notice( 'Las tarjetas regalo y recargas no están disponibles ahora mismo.', 'error' );
+		} elseif ( ! in_array( $kind, array( 'wallet', 'gift' ), true )
+			|| $amount < 1000 || $amount > 50000
 			|| ( 'gift' === $kind && ! is_email( $email ) )
 			|| ( 'wallet' === $kind && ! is_user_logged_in() ) ) {
-			wc_add_notice( 'Revisa el importe (10–500 €) y los datos.', 'error' );
-			return;
+			wc_add_notice( 'Revisa el importe (de 10 a 500 €) y el correo del destinatario.', 'error' );
+		} elseif ( self::prepare_prepaid_cart( $kind, $amount, $email, $message, $replace_cart ) ) {
+			wp_safe_redirect( wc_get_checkout_url(), 303 );
+			exit;
 		}
-		if ( ! WC()->cart ) { wc_load_cart(); }
-		if ( ! WC()->cart || ! WC()->cart->is_empty() ) {
-			wc_add_notice( 'Por seguridad, compra las recargas y tarjetas regalo en un pedido separado.', 'error' );
-			return;
-		}
-		$product_id = (int) get_option( 'mdo_club_product_' . $kind );
-		if ( ! $product_id || ! wc_get_product( $product_id ) ) { wc_add_notice( 'El producto Club aún no está configurado.', 'error' ); return; }
-		self::$adding_club = true;
-		$added = WC()->cart->add_to_cart( $product_id, 1, 0, array(), array(
-			'mdo_club_kind' => $kind, 'mdo_club_amount_cents' => $amount,
-			'mdo_club_recipient' => $email, 'mdo_club_message' => $message,
-			'mdo_club_unique' => wp_generate_uuid4(),
-		) );
-		self::$adding_club = false;
-		if ( $added ) { wp_safe_redirect( wc_get_checkout_url() ); exit; }
-		wc_add_notice( 'No se pudo añadir el saldo al pedido.', 'error' );
+		$destination = wp_get_referer() ?: $fallback;
+		wp_safe_redirect( $destination, 303 );
+		exit;
 	}
 	public static function validate_cart( bool $valid, int $product_id ): bool {
 		$kind = self::product_kind( $product_id );
@@ -497,7 +576,7 @@ final class MDO_Club {
 		return plugins_url( 'assets/club-emdo-tarjeta-regalo.jpg', MDO_SUPPLIER_SYNC_FILE );
 	}
 	private static function send_gift( string $email, int $order_id, int $item_id, int $cents, string $message ): bool {
-		$code = MDO_Club_Ledger::gift_code( $order_id, $item_id );
+		$code = MDO_Club_Ledger::issued_gift_code( $order_id, $item_id );
 		$site = home_url( '/' );
 		$account = wc_get_page_permalink( 'myaccount' );
 		$body = '<div style="background:#f6f2e8;padding:32px 12px;font-family:Arial,sans-serif">'
@@ -510,7 +589,7 @@ final class MDO_Club {
 			. '<div style="margin:25px;padding:28px;border-radius:15px;background:#f4e8d3;color:#234533;text-align:center">'
 			. '<div style="letter-spacing:2px;font-size:12px">TARJETA REGALO · CLUB EMDO</div>'
 			. '<div style="font-family:Georgia,serif;font-size:36px;margin:16px 0">' . esc_html( wp_strip_all_tags( self::funds_html( $cents ) ) ) . '</div>'
-			. '<div style="font-size:16px;letter-spacing:1px;font-weight:bold">' . esc_html( $code ) . '</div></div>'
+			. '<div style="font-size:20px;letter-spacing:2px;font-weight:bold;white-space:normal;overflow-wrap:anywhere">' . esc_html( $code ) . '</div></div>'
 			. ( $message ? '<p style="margin:25px;color:#355140">' . nl2br( esc_html( $message ) ) . '</p>' : '' )
 			. '<p style="padding:0 25px;color:#365242">Crea una cuenta o inicia sesión, abre Mi monedero y canjea el código. Puedes acumular varias tarjetas regalo.</p>'
 			. '<p style="padding:0 25px 28px"><a href="' . esc_url( $account ) . '" style="background:#28533c;color:#fff;padding:14px 22px;text-decoration:none;border-radius:9px;display:inline-block">Canjear tarjeta</a></p>'
