@@ -1,0 +1,82 @@
+name: Audit live Club EMDO deployment
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/audit-club-emdo-live-20261105.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify actual published Club EMDO pages and purchase switches (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$HOST" && test -n "$USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$HOST" > ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH "$USER@$HOST" 'sh -s' <<'REMOTE'
+          set -eu
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          test -f "$ROOT/wp-config.php"
+          VERSION=$("$PHP" -d memory_limit=512M "$WP" plugin get mdo-supplier-sync --field=version --path="$ROOT" --allow-root)
+          STATUS=$("$PHP" -d memory_limit=512M "$WP" plugin get mdo-supplier-sync --field=status --path="$ROOT" --allow-root)
+          echo "EMDO_VERSION=$VERSION STATUS=$STATUS"
+          if [ "$VERSION" != '1.0.74' ] || [ "$STATUS" != 'active' ]; then exit 2; fi
+          "$PHP" -d memory_limit=512M "$WP" eval '
+            foreach (["mdo_club_page"=>"club","mdo_club_gift_page"=>"tarjetas-regalo"] as $key=>$slug) {
+              $id = (int)get_option($key);
+              $p = $id ? get_post($id) : null;
+              echo "PAGE=".$slug." STATUS=".($p ? $p->post_status : "missing")."\n";
+            }
+            $checkout_id = (int) get_option("woocommerce_checkout_page_id");
+            $checkout = get_post($checkout_id);
+            echo "CHECKOUT=" . ($checkout && has_shortcode($checkout->post_content,"woocommerce_checkout") ? "classic" : ($checkout && has_block("woocommerce/checkout", $checkout) ? "blocks" : "other")) . "\\n";
+            $gateways = WC()->payment_gateways()->get_available_payment_gateways();
+            echo "GATEWAY_IDS=" . implode(",", array_keys($gateways)) . "\\n";
+            echo "WCFM_PRESENT=" . (class_exists("WCFMmp") || function_exists("wcfmmp_get_store") ? "yes" : "unknown") . "\\n";
+            foreach (["mdo_club_product_wallet","mdo_club_product_gift"] as $option) {
+              $product = wc_get_product((int)get_option($option));
+              echo "PRODUCT=" . $option . " AVAILABLE=" . ($product ? "yes" : "no") . "\\n";
+            }
+            foreach (["rewards","prepaid","checkout"] as $feature) {
+              echo "FEATURE=".$feature." ENABLED=".(MDO_Club::enabled($feature)?"yes":"no")."\n";
+            }
+          ' --path="$ROOT" --allow-root
+          "$PHP" -d memory_limit=512M "$WP" eval '
+            foreach (["mdo_club_page","mdo_club_gift_page"] as $key) {
+              $p=get_post((int)get_option($key));
+              if (!$p || "publish"!==$p->post_status) { echo "FAIL_PAGE=".$key."\n"; exit(11); }
+              echo "LIVE_PAGE_URL=".get_permalink($p->ID)."\n";
+            }
+            foreach (["rewards","prepaid","checkout"] as $feature) {
+              if (!MDO_Club::enabled($feature)) { echo "FAIL_FEATURE=".$feature."\n"; exit(12); }
+            }
+            foreach (["mdo_club_product_wallet","mdo_club_product_gift"] as $key) {
+              $product=wc_get_product((int)get_option($key));
+              if (!$product || !$product->is_virtual()) {echo "FAIL_PRODUCT=".$key."\n"; exit(13);}
+            }
+            echo "LIVE_CLUB_READY=yes\n";
+          ' --path="$ROOT" --allow-root
+          CARD="$ROOT/wp-content/plugins/mdo-supplier-sync/assets/club-emdo-tarjeta-regalo.jpg"
+          test -s "$CARD"
+          test "$(sha256sum "$CARD" | awk '{print $1}')" = 'f34b1e2aa850d3f1eb2e7dcb588e65828260136d83e19eb57817a249dec64e3f'
+          grep -Fq 'display:inline-flex!important' "$ROOT/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-club.php"
+          grep -Fq "self::gift_art_url()" "$ROOT/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-club.php"
+          echo 'LIVE_GIFT_ART_SHA_OK=yes'
+          REMOTE
