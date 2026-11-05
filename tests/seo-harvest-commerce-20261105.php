@@ -5,6 +5,7 @@
  */
 define( 'ABSPATH', __DIR__ );
 function add_action( $name, $callback, $priority = 10 ) {}
+function add_filter( $name, $callback, $priority = 10 ) {}
 function esc_url( $value ) { return $value; }
 
 require __DIR__ . '/../mu-plugins/mdo-gsc-commerce-seo-20260929.php';
