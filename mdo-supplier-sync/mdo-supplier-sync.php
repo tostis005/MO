@@ -92,6 +92,9 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-reviews-external-dedup
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-reviews-route.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-reviews-public.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-reviews-moderation.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-club-ledger.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-club.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-club-checkout.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/openai/class-mdo-openai-commerce.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/openai/class-mdo-openai-catalog-hardening.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/openai/class-mdo-openai-strict-snapshot.php';
@@ -166,6 +169,8 @@ add_action(
 		MDO_Specials::init();
 		MDO_Specials_Router::init();
 		MDO_Promotions::init();
+		MDO_Club::init();
+		MDO_Club_Checkout::init();
 		MDO_Home_Featured_Special::init();
 		MDO_Reviews::init();
 		MDO_Reviews_Admin_Inline::init();
