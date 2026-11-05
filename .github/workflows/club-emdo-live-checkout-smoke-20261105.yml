@@ -75,4 +75,19 @@ jobs:
             exit 9
           fi
           echo 'GIFT_CHECKOUT_PAYMENT_OPTIONS=yes'
-          echo 'SMOKE_OK: gift and 25 EUR reach checkout with payment methods; no order or payment.'
+          if grep -Eq 'id="billing_address_1"|id="billing_postcode"|id="shipping_address_1"' /tmp/club-checkout.html; then
+            echo 'FAIL: digital checkout still asks for postal or shipping information'
+            exit 10
+          fi
+          echo 'GIFT_CHECKOUT_NO_POSTAL_SHIPPING_FIELDS=yes'
+          if ! grep -Eq 'id="billing_email"|name="billing_email"' /tmp/club-checkout.html; then
+            echo 'FAIL: email for receipt is missing'
+            exit 11
+          fi
+          echo 'GIFT_CHECKOUT_EMAIL_FIELD=yes'
+          if grep -q 'name="mdo_club_replace_cart"' /tmp/club-gift.html; then
+            echo 'FAIL: standalone cart confirmation checkbox is still on gift page'
+            exit 12
+          fi
+          echo 'GIFT_PAGE_NO_CART_CHECKBOX=yes'
+          echo 'SMOKE_OK: gift, amount and payment methods appear in simplified checkout; no order or payment.'
