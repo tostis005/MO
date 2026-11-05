@@ -3,6 +3,7 @@
 declare(strict_types=1);
 define('ABSPATH', __DIR__);
 define('MDO_CLUB_RELEASE_APPROVED', true);
+define('MDO_SUPPLIER_SYNC_FILE', __DIR__ . '/../mdo-supplier-sync/mdo-supplier-sync.php');
 $options = ['mdo_club_prepaid_enabled' => 'yes'];
 $orders = [];
 $sent = [];
@@ -11,6 +12,7 @@ function wc_get_order(int $id) { global $orders; return $orders[$id] ?? null; }
 function sanitize_email($s): string { return strtolower(trim((string)$s)); }
 function is_email($s): bool { return (bool)filter_var($s, FILTER_VALIDATE_EMAIL); }
 function home_url($s=''): string { return 'https://example.test'.$s; }
+function plugins_url($relative, $plugin): string { return 'https://example.test/wp-content/plugins/mdo-supplier-sync/' . ltrim($relative, '/'); }
 function wc_get_page_permalink($p): string { return 'https://example.test/mi-cuenta/'; }
 function wc_price($number): string { return number_format((float)$number, 2, '.', '').' €'; }
 function wp_strip_all_tags($s): string { return strip_tags((string)$s); }
@@ -112,6 +114,7 @@ MDO_Club::issue_prepaid(502);
 expect_true(count(MDO_Club_Ledger::$gifts)===1, 'Completed gift order creates unique card');
 expect_true(count($sent)===1, 'Repeated completion does not duplicate gift email');
 expect_true($sent[0]['email']==='friend@example.test', 'Gift email is sent to designated recipient');
+expect_true(str_contains($sent[0]['body'], 'club-emdo-tarjeta-regalo.jpg'), 'Gift email uses same hosted premium image as purchase page');
 
 $orders[503] = new WC_Order(503,true,[40=>new WC_Order_Item_Product(40,'gift',10000,'friend@example.test')],'50.00');
 MDO_Club::issue_prepaid(503);

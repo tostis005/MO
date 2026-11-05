@@ -103,6 +103,15 @@ jobs:
           tar -xzf "$REMOTE_ARCHIVE" -C "$PROD_PATH/wp-content/plugins"
           rm -f "$REMOTE_ARCHIVE"
 
+          # Artwork is stored as ASCII base64 in Git so the existing connector
+          # can ship the same AI-rendered gift card to the site and emails.
+          CARD_SOURCE="$PLUGIN_DIR/assets/club-emdo-tarjeta-regalo.jpg.b64"
+          CARD_IMAGE="$PLUGIN_DIR/assets/club-emdo-tarjeta-regalo.jpg"
+          test -s "$CARD_SOURCE"
+          base64 --decode "$CARD_SOURCE" > "$CARD_IMAGE"
+          echo "f34b1e2aa850d3f1eb2e7dcb588e65828260136d83e19eb57817a249dec64e3f  $CARD_IMAGE" | sha256sum --check --status
+          "$php_bin" -r 'if (getimagesize($argv[1])["mime"] !== "image/jpeg") exit(4);' "$CARD_IMAGE"
+          chmod 0644 "$CARD_IMAGE"
           find "$PLUGIN_DIR" -type f -name '*.php' -print0 | xargs -0 -n1 "$php_bin" -l >/dev/null
           test "$(sha256sum "$PLUGIN_DIR/mdo-supplier-sync.php" | awk '{print $1}')" = "$EXPECTED_MAIN_SHA"
           test "$(sha256sum "$PLUGIN_DIR/includes/class-mdo-reviews-trustpilot-scraper.php" | awk '{print $1}')" = "$EXPECTED_TP_SHA"
