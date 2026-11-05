@@ -29,6 +29,7 @@ final class MDO_Club {
 		add_filter( 'woocommerce_add_to_cart_validation', array( __CLASS__, 'validate_cart' ), 20, 2 );
 		add_action( 'woocommerce_before_calculate_totals', array( __CLASS__, 'price_topups' ), 20 );
 		add_action( 'woocommerce_check_cart_items', array( __CLASS__, 'check_prepaid_cart' ) );
+		add_filter( 'woocommerce_coupon_is_valid', array( __CLASS__, 'no_coupons_for_prepaid' ), 20, 2 );
 		add_filter( 'woocommerce_available_payment_gateways', array( __CLASS__, 'prepaid_gateways' ), 999 );
 		add_action( 'woocommerce_checkout_create_order_line_item', array( __CLASS__, 'line_metadata' ), 10, 4 );
 		add_action( 'woocommerce_payment_complete', array( __CLASS__, 'issue_prepaid' ), 20 );
@@ -364,6 +365,13 @@ final class MDO_Club {
 		}
 		return $valid;
 	}
+	public static function no_coupons_for_prepaid( bool $valid, $coupon ): bool {
+		if ( ! function_exists( 'WC' ) || ! WC()->cart ) { return $valid; }
+		foreach ( WC()->cart->get_cart() as $item ) {
+			if ( ! empty( $item['mdo_club_kind'] ) ) { return false; }
+		}
+		return $valid;
+	}
 	public static function check_prepaid_cart(): void {
 		if ( ! function_exists( 'WC' ) || ! WC()->cart ) { return; }
 		$items = WC()->cart->get_cart();
@@ -371,7 +379,7 @@ final class MDO_Club {
 			return ! empty( $item['mdo_club_kind'] );
 		} );
 		if ( ! $prepaid ) { return; }
-		if ( ! self::enabled( 'prepaid' ) || 1 !== count( $items ) ) {
+		if ( ! self::enabled( 'prepaid' ) || 1 !== count( $items ) || WC()->cart->get_applied_coupons() ) {
 			wc_add_notice( 'Las recargas y tarjetas regalo requieren un pedido separado.', 'error' );
 		}
 		foreach ( $prepaid as $item ) {
@@ -434,7 +442,26 @@ final class MDO_Club {
 	public static function issue_prepaid( int $order_id ): void {
 		$order = wc_get_order( $order_id );
 		if ( ! $order || ! $order->is_paid() || ! self::is_prepaid( $order ) ) { return; }
-		foreach ( $order->get_items() as $item_id => $item ) {
+		// No emitir dinero si el cliente pagó menos que el valor comprado.
+		// Protege frente a cupones, edición de cantidades, ajustes manuales y
+		// otras extensiones que cambien el total incluso tras validar el carrito.
+		$lines = $order->get_items( 'line_item' );
+		if ( 1 !== count( $lines ) || $order->get_items( 'coupon' ) ) {
+			$order->add_order_note( 'BLOQUEO Club EMDO: el pedido de saldo contiene líneas adicionales o descuentos.' );
+			return;
+		}
+		$only_item = reset( $lines );
+		$declared_cents = (int) $only_item->get_meta( '_mdo_club_amount_cents' );
+		if (
+			1 !== (int) $only_item->get_quantity()
+			|| $declared_cents < 1000 || $declared_cents > 50000
+			|| MDO_Club_Ledger::cents( $only_item->get_total() + $only_item->get_total_tax() ) !== $declared_cents
+			|| MDO_Club_Ledger::cents( $order->get_total() ) !== $declared_cents
+		) {
+			$order->add_order_note( 'BLOQUEO Club EMDO: el importe pagado no coincide con el saldo solicitado. Revisar y reembolsar manualmente; no se ha emitido saldo.' );
+			return;
+		}
+		foreach ( $lines as $item_id => $item ) {
 			$kind = $item->get_meta( '_mdo_club_kind' );
 			$cents = (int) $item->get_meta( '_mdo_club_amount_cents' );
 			if ( ! in_array( $kind, array( 'gift', 'wallet' ), true ) || $cents < 1000 ) { continue; }
