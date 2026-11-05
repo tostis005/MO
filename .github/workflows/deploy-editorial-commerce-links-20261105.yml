@@ -1,0 +1,113 @@
+name: Deploy contextual blog-to-commerce links 2026-11-05
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/emdo-editorial-commerce-links-20261105.php'
+      - 'tests/editorial-commerce-links-20261105.php'
+      - '.github/workflows/deploy-editorial-commerce-links-20261105.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency:
+  group: emdo-editorial-commerce-20261105
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Offline regression on targeted guide links
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/emdo-editorial-commerce-links-20261105.php
+          php tests/editorial-commerce-links-20261105.php
+      - name: Deploy read-only scoped MU plugin to production
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "$STAGING_HOST" && test -n "$STAGING_USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass python3-bs4 >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          DEST="$ROOT/wp-content/mu-plugins/emdo-editorial-commerce-links-20261105.php"
+          TMP="/tmp/emdo-editorial-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP mu-plugins/emdo-editorial-commerce-links-20261105.php "$STAGING_USER@$STAGING_HOST:$TMP"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -eu
+            test -f '$ROOT/wp-config.php'
+            /opt/plesk/php/8.2/bin/php -l '$TMP' >/dev/null
+            if [ -f '$DEST' ]; then
+              cmp -s '$DEST' '$TMP' || { echo EMDO_EDITORIAL_ABORT_UNKNOWN_VERSION;exit 9; }
+              echo EMDO_EDITORIAL_ALREADY_CURRENT
+            else
+              install -m 0644 '$TMP' '$DEST'
+              echo EMDO_EDITORIAL_INSTALLED
+            fi
+          " | tee /tmp/emdo-editorial-deploy.log
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$TMP'" || true
+          if grep -Fxq EMDO_EDITORIAL_INSTALLED /tmp/emdo-editorial-deploy.log; then
+            echo 'EDITORIAL_INSTALLED=1' >> "$GITHUB_ENV"
+          fi
+      - name: Verify 5 guides linking to eligible products in HTML
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          /usr/bin/python3 - <<'PY'
+          import urllib.request
+          from bs4 import BeautifulSoup
+          guides={
+            'aove-filtrado-o-sin-filtrar-diferencias':[
+              'cosecha-26-27-sin-filtrar-aceite-de-oliva-virgen-extra-5l-extraccion-en-frio',
+              'aceite-de-oliva-virgen-extra-12x500ml-pet-sin-filtrar-nueva-campana-26-27'],
+            'aove-garrafa-5-litros-cuando-compensa-como-conservar':[
+              'cosecha-26-27-sin-filtrar-aceite-de-oliva-virgen-extra-5l-extraccion-en-frio'],
+            'brida-negra-roja-verde-blanca-jamon-iberico':[
+              'jamon-de-bellota-100-iberico','jamon-cebo-de-campo-iberico-50-montjam'],
+            '50-75-100-iberico-que-significa-porcentaje-raza-etiqueta':[
+              'jamon-de-bellota-100-iberico','jamon-cebo-de-campo-iberico-50-montjam'],
+            'jamon-o-paleta-diferencias-cual-elegir':[
+              'jamon-bellota-100-iberico','paleta-bellota-100-iberica']
+          }
+          for slug,expected_paths in guides.items():
+            url='https://www.elmercadodeorigen.com/'+slug+'/?emdo_editorial_verify=${GITHUB_RUN_ID}'
+            request=urllib.request.Request(url,headers={'Cache-Control':'no-cache','User-Agent':'Mozilla/5.0 EMDO-editorial-qa'})
+            with urllib.request.urlopen(request,timeout=65) as response:
+              assert response.status==200,(slug,response.status)
+              html=response.read()
+            soup=BeautifulSoup(html,'html.parser')
+            targets=soup.select('aside[data-emdo-editorial-commerce-20261105="1"]')
+            assert len(targets)==1,(slug,'missing or duplicate article CTA',len(targets))
+            links=[a.get('href','') for a in targets[0].select('a[href]')]
+            for expected in expected_paths:
+              assert any('/'+expected+'/' in href for href in links),(slug,expected,links)
+            assert soup.select_one('h1'),(slug,'lost headline')
+            print('EDITORIAL_SHOP_LINKS_PUBLIC_OK',slug,len(links))
+          PY
+      - name: Remove only newly deployed module if QA fails
+        if: failure() && env.EDITORIAL_INSTALLED == '1'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          DEST='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/emdo-editorial-commerce-links-20261105.php'
+          EXPECTED="$(sha256sum mu-plugins/emdo-editorial-commerce-links-20261105.php | cut -d' ' -f1)"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            ACTUAL=\\$(sha256sum '$DEST' | cut -d' ' -f1)
+            test \\"\\$ACTUAL\\" = '$EXPECTED' || exit 9
+            rm -f '$DEST'
+            echo EMDO_EDITORIAL_ROLLED_BACK
+          "
