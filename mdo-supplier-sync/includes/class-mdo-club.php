@@ -158,7 +158,7 @@ final class MDO_Club {
 			$existing = get_page_by_path( $data[0] );
 			$id = $existing ? $existing->ID : wp_insert_post( array(
 				'post_title' => $data[1], 'post_name' => $data[0], 'post_content' => $data[2],
-				'post_type' => 'page', 'post_status' => 'draft',
+				'post_type' => 'page', 'post_status' => 'publish',
 			) );
 			if ( $id && ! is_wp_error( $id ) ) { update_option( $option, (int) $id, false ); }
 		}
