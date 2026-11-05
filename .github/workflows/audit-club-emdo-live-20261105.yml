@@ -44,6 +44,16 @@ jobs:
               $p = $id ? get_post($id) : null;
               echo "PAGE=".$slug." STATUS=".($p ? $p->post_status : "missing")."\n";
             }
+            $checkout_id = (int) get_option("woocommerce_checkout_page_id");
+            $checkout = get_post($checkout_id);
+            echo "CHECKOUT=" . ($checkout && has_shortcode($checkout->post_content,"woocommerce_checkout") ? "classic" : ($checkout && has_block("woocommerce/checkout", $checkout) ? "blocks" : "other")) . "\\n";
+            $gateways = WC()->payment_gateways()->get_available_payment_gateways();
+            echo "GATEWAY_IDS=" . implode(",", array_keys($gateways)) . "\\n";
+            echo "WCFM_PRESENT=" . (class_exists("WCFMmp") || function_exists("wcfmmp_get_store") ? "yes" : "unknown") . "\\n";
+            foreach (["mdo_club_product_wallet","mdo_club_product_gift"] as $option) {
+              $product = wc_get_product((int)get_option($option));
+              echo "PRODUCT=" . $option . " AVAILABLE=" . ($product ? "yes" : "no") . "\\n";
+            }
             foreach (["rewards","prepaid","checkout"] as $feature) {
               echo "FEATURE=".$feature." ENABLED=".(MDO_Club::enabled($feature)?"yes":"no")."\n";
             }
