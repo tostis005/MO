@@ -183,6 +183,9 @@ jobs:
               actual_path = urlsplit(canonical.get('href', '')).path if canonical else ''
               h1s = soup.find_all('h1')
               print(label, 'title=', title, 'description=', desc, 'canonical_path=', actual_path, 'h1_count=', len(h1s))
+              if label == 'VENDOR1957':
+                  vendor_descriptions = soup.find_all('meta', attrs={'name':'description'})
+                  assert len(vendor_descriptions) == 1, f'{label}: expected exactly one meta description, got {len(vendor_descriptions)}'
               assert title.startswith(expected_title), f'{label}: expected commercial title, got {title!r}'
               assert desc.startswith(expected_desc), f'{label}: expected commercial description, got {desc!r}'
               assert actual_path == canonical_path, f'{label}: unexpected canonical {actual_path!r}'
