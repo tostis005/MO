@@ -18,7 +18,10 @@ add_action(
 
 		$request_path = isset( $_SERVER['REQUEST_URI'] ) ? wp_parse_url( sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ), PHP_URL_PATH ) : '';
 		if ( is_string( $request_path ) && preg_match( '#^/tienda/[^/]+/#', $request_path ) ) {
-			echo '<meta name="description" content="Compra directamente los productos de este productor y conoce su historia en El Mercado de Origen.">' . "\n";
+			$description = '/tienda/1957/' === trailingslashit( $request_path )
+				? 'Compra aceite de oliva virgen extra del productor 1957. Descubre la cosecha 2026/27 sin filtrar en garrafas de 5 L y packs de botellas. Consulta variedades y precios.'
+				: 'Compra directamente los productos de este productor y conoce su historia en El Mercado de Origen.';
+			echo '<meta name="description" content="' . esc_attr( $description ) . '">' . "\n";
 		}
 		?>
 		<style id="elmercado-vendor-home-verification-three">

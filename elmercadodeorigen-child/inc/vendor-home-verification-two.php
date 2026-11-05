@@ -16,7 +16,11 @@ add_action(
 			return;
 		}
 
-		if ( is_tax( 'dc_vendor_shop' ) ) {
+		$request_path = isset( $_SERVER['REQUEST_URI'] )
+			? (string) wp_parse_url( (string) wp_unslash( $_SERVER['REQUEST_URI'] ), PHP_URL_PATH )
+			: '';
+		// 1957 has an exact campaign-specific description in vendor-home-verification-three.php.
+		if ( is_tax( 'dc_vendor_shop' ) && '/tienda/1957/' !== trailingslashit( $request_path ) ) {
 			echo '<meta name="description" content="Compra directamente los productos de este productor y conoce su historia en El Mercado de Origen.">' . "\n";
 		}
 		?>
