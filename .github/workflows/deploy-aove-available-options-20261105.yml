@@ -57,11 +57,18 @@ jobs:
             fi
           "
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$TMP'" || true
+          # Rollback only if this job actually installed a new plugin.
+          # No pre-existing plugin is deleted after a QA failure.
+          if ! sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -e '$DEST'"; then
+            echo "Plugin missing after install" >&2; exit 1
+          fi
+          echo "true" > /tmp/aove-2026-options-deployed-by-run
+
       - name: Validate live selectors and additional-info table
         shell: bash
         run: |
           set -Eeuo pipefail
-          python3 - <<'PY'
+          /usr/bin/python3 - <<'PY'
           from bs4 import BeautifulSoup
           import urllib.request
           urls={
@@ -86,3 +93,20 @@ jobs:
               assert 'DE NUEVA CAMPAÑA 23/24' not in info,(label,'old campaign text remains')
               print('AOVE_OPTIONS_PUBLIC_OK',label,options)
           PY
+      - name: Roll back this batch if public option QA fails
+        if: failure()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # Only remove exact plugin bytes; leave the rest of WooCommerce untouched.
+          test -f /tmp/aove-2026-options-deployed-by-run || exit 0
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          DEST='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/emdo-aove-2026-available-options.php'
+          EXPECTED="$(sha256sum mu-plugins/emdo-aove-2026-available-options.php | cut -d' ' -f1)"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            ACTUAL=\$(sha256sum '$DEST' | cut -d' ' -f1)
+            test \"\$ACTUAL\" = '$EXPECTED' || exit 9
+            rm -f '$DEST'
+            echo AOVE_OPTIONS_PLUGIN_ROLLED_BACK
+          "
