@@ -108,6 +108,36 @@ final class MDO_Club_Ledger {
 		if ( ! $inside_transaction ) { $wpdb->query( 'COMMIT' ); }
 		return true;
 	}
+	/**
+	 * Desglose contable del saldo disponible.
+	 * Política: al usar el monedero se consume primero saldo promocional;
+	 * solo después, saldo comprado (recargas y tarjetas regalo).
+	 * La devolución de una compra revierte el gasto total, sin alterar el
+	 * historial contable. Ambas cantidades siempre suman el saldo actual.
+	 *
+	 * @return array{prepaid:int,rewards:int,total:int}
+	 */
+	public static function breakdown( int $user_id ): array {
+		$total = self::balance( $user_id );
+		if ( $total <= 0 ) { return array( 'prepaid' => 0, 'rewards' => 0, 'total' => 0 ); }
+		global $wpdb;
+		$rows = $wpdb->get_row( $wpdb->prepare(
+			'SELECT
+				COALESCE(SUM(CASE WHEN kind=%s THEN amount_cents ELSE 0 END),0) AS reward_credits,
+				COALESCE(SUM(CASE WHEN kind IN (%s,%s) THEN amount_cents ELSE 0 END),0) AS prepaid_credits,
+				COALESCE(SUM(CASE WHEN kind IN (%s,%s) THEN amount_cents ELSE 0 END),0) AS spend_net
+			FROM ' . self::table( 'ledger' ) . ' WHERE user_id=%d',
+			'reward', 'wallet', 'gift', 'spend', 'release', $user_id
+		), ARRAY_A );
+		$rewards_issued = max( 0, (int) ( $rows['reward_credits'] ?? 0 ) );
+		$net_spent = max( 0, -(int) ( $rows['spend_net'] ?? 0 ) );
+		$rewards = min( $total, max( 0, $rewards_issued - $net_spent ) );
+		return array(
+			'prepaid' => $total - $rewards,
+			'rewards' => $rewards,
+			'total' => $total,
+		);
+	}
 	public static function movements( int $user_id, int $limit = 25 ): array {
 		global $wpdb;
 		if ( $user_id <= 0 ) { return array(); }
