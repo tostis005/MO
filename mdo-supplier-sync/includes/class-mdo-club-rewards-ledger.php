@@ -77,7 +77,7 @@ final class MDO_Club_Rewards_Ledger {
 		$inserted = $wpdb->query( $wpdb->prepare(
 			'INSERT IGNORE INTO ' . self::entries_table() .
 			' (user_id,delta_cents,type,event_key,order_id,admin_id,note,created_at) VALUES (%d,%d,%s,%s,%d,%d,%s,%s)',
-			$user_id, $delta, $type, $event_key, $order_id, $admin_id, mb_substr( $note, 0, 255 ), current_time( 'mysql', true )
+			$user_id, $delta, $type, $event_key, $order_id, $admin_id, substr( $note, 0, 255 ), current_time( 'mysql', true )
 		) );
 		if ( false === $inserted ) {
 			$wpdb->query( 'ROLLBACK' );
