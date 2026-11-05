@@ -1,0 +1,99 @@
+name: Deploy premium Mi cuenta experience
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-my-account-premium-20261105.php'
+      - '.github/workflows/deploy-my-account-premium-20261105.yml'
+  pull_request:
+    paths:
+      - 'mu-plugins/mdo-my-account-premium-20261105.php'
+      - '.github/workflows/deploy-my-account-premium-20261105.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: emdo-my-account-premium-deploy
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP syntax and account-only scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-my-account-premium-20261105.php
+          grep -Fq "is_account_page()" mu-plugins/mdo-my-account-premium-20261105.php
+          grep -Fq "woocommerce_account_dashboard" mu-plugins/mdo-my-account-premium-20261105.php
+          grep -Fq "woocommerce_before_customer_login_form" mu-plugins/mdo-my-account-premium-20261105.php
+          grep -Fq "prefers-reduced-motion" mu-plugins/mdo-my-account-premium-20261105.php
+          grep -Fq "woocommerce-MyAccount-navigation" mu-plugins/mdo-my-account-premium-20261105.php
+          ! grep -Eq 'update_option|wp_update_post|wc_create_order|wp_delete_post|woocommerce_calculated_total' mu-plugins/mdo-my-account-premium-20261105.php
+  deploy:
+    needs: validate
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install scoped account experience in production
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$HOST" && test -n "$USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          SSH_PORT="${PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$SSH_PORT" -H "$HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $SSH_PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $SSH_PORT"
+          TMP="/tmp/emdo-my-account-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP mu-plugins/mdo-my-account-premium-20261105.php "$USER@$HOST:$TMP"
+          sshpass -e ssh $SSH "$USER@$HOST" "sh -s -- '$TMP'" <<'REMOTE'
+          set -eu
+          TMP="$1"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          DEST="$ROOT/wp-content/mu-plugins/mdo-my-account-premium-20261105.php"
+          test -f "$ROOT/wp-config.php" && test -f "$TMP"
+          "$PHP" -l "$TMP" >/dev/null
+          URL=$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)
+          case "$URL" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
+            *) echo "Refusing unknown site"; exit 5 ;;
+          esac
+          test -d "$ROOT/wp-content/mu-plugins"
+          if [ -f "$DEST" ]; then cp "$DEST" "$DEST.bak-${GITHUB_RUN_ID}"; fi
+          install -m 0644 "$TMP" "$DEST"
+          rm -f "$TMP"
+          "$PHP" -l "$DEST" >/dev/null
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            if (!function_exists("is_account_page") || !class_exists("WooCommerce")) { exit(4); }
+            if (false === has_action("woocommerce_account_dashboard")) { exit(6); }
+            if (false === has_action("woocommerce_before_customer_login_form")) { exit(7); }
+            echo "ACCOUNT_HOOKS_ACTIVE=yes\n";
+          ' --path="$ROOT" --allow-root
+          "$PHP" -d memory_limit=512M "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          "$PHP" -d memory_limit=512M "$WP" rocket clean --confirm --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          echo 'EMDO_MY_ACCOUNT_PREMIUM_DEPLOY_OK'
+          REMOTE
+      - name: Verify public login/registration page remains healthy
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=$(curl -LsS --connect-timeout 10 --max-time 45 -o /tmp/account-page.html -w '%{http_code}' 'https://www.elmercadodeorigen.com/mi-cuenta/')
+          test "$code" = 200
+          grep -Eiq '(woocommerce|Acceder|Registrarse|Mi cuenta)' /tmp/account-page.html
+          echo 'EMDO_ACCOUNT_PUBLIC_OK'
