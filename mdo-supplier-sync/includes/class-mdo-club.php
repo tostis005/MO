@@ -7,14 +7,14 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 final class MDO_Club {
 	private static bool $adding_club = false;
-	public static function enabled( string $feature ): bool {
-		// La configuración puede guardarse antes del despliegue, pero nunca
-		// mover dinero en producción por accidente. Staging define esta
-		// constante después de validar explícitamente el entorno.
-		if ( ! defined( 'MDO_CLUB_RELEASE_APPROVED' ) || true !== MDO_CLUB_RELEASE_APPROVED ) {
-			return false;
-		}
+	public static function configured( string $feature ): bool {
 		return 'yes' === get_option( 'mdo_club_' . $feature . '_enabled', 'no' );
+	}
+	public static function enabled( string $feature ): bool {
+		// El interruptor de lanzamiento es independiente de lo configurado.
+		return defined( 'MDO_CLUB_RELEASE_APPROVED' )
+			&& true === MDO_CLUB_RELEASE_APPROVED
+			&& self::configured( $feature );
 	}
 	public static function percent(): float {
 		return min( 5, max( 0, (float) get_option( 'mdo_club_reward_percent', '1' ) ) );
@@ -46,10 +46,10 @@ final class MDO_Club {
 	public static function menu_item( array $items ): array {
 		$result = array();
 		foreach ( $items as $key => $label ) {
-			if ( 'customer-logout' === $key ) { $result['monedero'] = 'Mi monedero'; }
+			if ( 'customer-logout' === $key ) { $result['monedero'] = 'Club EMDO'; }
 			$result[ $key ] = $label;
 		}
-		if ( ! isset( $result['monedero'] ) ) { $result['monedero'] = 'Mi monedero'; }
+		if ( ! isset( $result['monedero'] ) ) { $result['monedero'] = 'Club EMDO'; }
 		return $result;
 	}
 	public static function admin_menu(): void {
@@ -79,9 +79,9 @@ final class MDO_Club {
 						<p class="description">Valor inicial: 1 %. Solo líneas de productos; no portes, recargas ni tarjetas regalo. Se acredita al completar el pedido.</p>
 					</td></tr>
 					<tr><th>Activación</th><td>
-						<label><input type="checkbox" name="rewards_enabled" value="yes" <?php checked( self::enabled( 'rewards' ) ); ?>> Activar recompensas</label><br>
-						<label><input type="checkbox" name="prepaid_enabled" value="yes" <?php checked( self::enabled( 'prepaid' ) ); ?>> Activar venta de recargas y tarjetas regalo</label><br>
-						<label><input type="checkbox" name="checkout_enabled" value="yes" <?php checked( self::enabled( 'checkout' ) ); ?>> Activar aplicación de saldo en checkout clásico</label>
+						<label><input type="checkbox" name="rewards_enabled" value="yes" <?php checked( self::configured( 'rewards' ) ); ?>> Activar recompensas</label><br>
+						<label><input type="checkbox" name="prepaid_enabled" value="yes" <?php checked( self::configured( 'prepaid' ) ); ?>> Activar venta de recargas y tarjetas regalo</label><br>
+						<label><input type="checkbox" name="checkout_enabled" value="yes" <?php checked( self::configured( 'checkout' ) ); ?>> Activar aplicación de saldo en checkout clásico</label>
 						<p class="description"><strong>No activar pagos sin pruebas de extremo a extremo.</strong> La constante de desbloqueo técnico no equivale a autorización contractual o fiscal de Edenred.</p>
 					</td></tr>
 				</table>
@@ -205,7 +205,7 @@ final class MDO_Club {
 					<p><a href="<?php echo esc_url( get_permalink( (int) get_option( 'mdo_club_gift_page' ) ) ); ?>">Comprar tarjeta regalo</a></p>
 				</section>
 			</div>
-			<section class="mdo-club-card"><h3>Mis recompensas</h3><p>Recibe <?php echo esc_html( (string) self::percent() ); ?> % de las compras válidas, una vez completadas. Las recompensas se acumulan en el mismo monedero.</p></section>
+			<section class="mdo-club-card"><h3>Mis recompensas</h3><p><?php if ( self::enabled( 'rewards' ) ) : ?>Recibe <?php echo esc_html( (string) self::percent() ); ?> % de las compras válidas, una vez completadas. Las recompensas se acumulan en el mismo monedero.<?php else : ?>Próximamente: acumula recompensas con tus compras para gastar en próximos pedidos.<?php endif; ?></p></section>
 			<section class="mdo-club-card"><h3>Movimientos</h3>
 				<table><thead><tr><th>Fecha</th><th>Concepto</th><th>Importe</th></tr></thead><tbody>
 				<?php foreach ( MDO_Club_Ledger::movements( $user ) as $line ) : ?>
@@ -241,7 +241,7 @@ final class MDO_Club {
 	public static function landing(): string {
 		ob_start(); self::styles(); ?>
 		<div class="mdo-club"><div class="mdo-club-hero"><span>EL MERCADO DE ORIGEN</span><h2>Club EMDO</h2><p>Comprar bien también tiene recompensa.</p></div>
-			<section class="mdo-club-card"><h3>Recupera <?php echo esc_html( (string) self::percent() ); ?> % en tus compras</h3><p>Una vez completado tu pedido, recibes saldo en tu monedero para gastar en futuras compras válidas.</p>
+			<section class="mdo-club-card"><h3><?php echo self::enabled( 'rewards' ) ? 'Recupera ' . esc_html( (string) self::percent() ) . ' % en tus compras' : 'Tus compras tendrán recompensa'; ?></h3><p><?php echo self::enabled( 'rewards' ) ? 'Una vez completado tu pedido, recibes saldo en tu monedero para gastar en futuras compras válidas.' : 'Estamos preparando las ventajas de Club EMDO.'; ?></p>
 			<p>También puedes guardar saldo y canjear varias tarjetas regalo en tu monedero.</p>
 			<a class="button" href="<?php echo esc_url( wc_get_page_permalink( 'myaccount' ) ); ?>">Ir a Mi cuenta</a>
 			<a class="button" href="<?php echo esc_url( get_permalink( (int) get_option( 'mdo_club_gift_page' ) ) ); ?>">Tarjetas regalo</a></section></div>
