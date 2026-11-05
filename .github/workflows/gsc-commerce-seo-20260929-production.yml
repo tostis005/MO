@@ -190,7 +190,7 @@ jobs:
           # Verify the meaningful content once rather than requiring an obsolete CSS class.
           aceites = BeautifulSoup(open('/tmp/aceites.html', encoding='utf-8').read(), 'html.parser')
           category_copy = aceites.get_text(' ', strip=True)
-          required_phrase = 'El aceite de oliva virgen extra es un zumo 100% natural'
+          required_phrase = 'Compra aceite de oliva virgen extra online'
           copy_count = category_copy.count(required_phrase)
           print('ACEITES native_editorial_occurrences=', copy_count)
           assert copy_count == 1, f'ACEITES: missing or duplicated native category copy: {copy_count}'
