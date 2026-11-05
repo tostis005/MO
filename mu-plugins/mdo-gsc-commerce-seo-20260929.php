@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO GSC Commerce SEO 2026-09-29
  * Description: Data-led SERP titles and descriptions for high-impression commerce URLs from Google Search Console.
- * Version: 2026.09.30.2
+ * Version: 2026.11.05.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -51,6 +51,19 @@ function mdo_gsc_commerce_map_20260929(): array {
         '/categoria-producto/aceites/' => array(
             'title' => 'Comprar Aceite de Oliva Virgen Extra | El Mercado de Origen',
             'description' => 'Compra aceite de oliva virgen extra directamente a productores seleccionados. Compara formatos, precios y opciones disponibles con origen claro.',
+        ),
+        // Current 2026/27 oils: format-specific purchase intent; products offer both filtered and unfiltered choices.
+        '/producto/cosecha-26-27-sin-filtrar-aceite-de-oliva-virgen-extra-5l-extraccion-en-frio/' => array(
+            'title' => 'Aceite de Oliva Virgen Extra 5L | Cosecha 26/27 | 1957',
+            'description' => 'Compra AOVE de cosecha 2026/27 en garrafa de 5 litros. Elige variedad y opción tradicional o sin filtrar según disponibilidad. Envío incluido.',
+        ),
+        '/producto/sin-filtrar-nueva-campana-26-27-aceite-de-oliva-virgen-extra-15x1l/' => array(
+            'title' => 'Aceite de Oliva Virgen Extra 15×1L | Cosecha 26/27',
+            'description' => 'Compra aceite de oliva virgen extra de cosecha 26/27 en 15 botellas de 1 litro. Variedades y opciones tradicionales o sin filtrar. Envío incluido.',
+        ),
+        '/producto/aceite-de-oliva-virgen-extra-12x500ml-pet-sin-filtrar-nueva-campana-26-27/' => array(
+            'title' => 'Aceite de Oliva Virgen Extra 12×500ml | Cosecha 26/27',
+            'description' => 'Compra AOVE de nueva cosecha 26/27 en 12 botellas PET de 500 ml. Elige entre opciones tradicionales y sin filtrar según disponibilidad. Envío incluido.',
         ),
         '/producto/sobrasada-de-bellota-100-iberica/' => array(
             'title' => 'Comprar Sobrasada de Bellota 100% Ibérica',
