@@ -286,7 +286,7 @@ final class MDO_Club {
 		<form method="post" class="mdo-club-redeem">
 			<?php wp_nonce_field( 'mdo_club_redeem' ); ?>
 			<input type="hidden" name="mdo_club_form" value="redeem">
-			<label>Código de tarjeta regalo<input type="text" name="gift_code" maxlength="64" placeholder="CLUB-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" required></label>
+			<label>Código de tarjeta regalo<input type="text" name="gift_code" maxlength="64" placeholder="Introduce los 20 números" inputmode="numeric" autocomplete="off" required></label>
 			<button type="submit" class="button">Canjear tarjeta</button>
 		</form>
 		<?php
@@ -497,7 +497,7 @@ final class MDO_Club {
 		return plugins_url( 'assets/club-emdo-tarjeta-regalo.jpg', MDO_SUPPLIER_SYNC_FILE );
 	}
 	private static function send_gift( string $email, int $order_id, int $item_id, int $cents, string $message ): bool {
-		$code = MDO_Club_Ledger::gift_code( $order_id, $item_id );
+		$code = MDO_Club_Ledger::issued_gift_code( $order_id, $item_id );
 		$site = home_url( '/' );
 		$account = wc_get_page_permalink( 'myaccount' );
 		$body = '<div style="background:#f6f2e8;padding:32px 12px;font-family:Arial,sans-serif">'
@@ -510,7 +510,7 @@ final class MDO_Club {
 			. '<div style="margin:25px;padding:28px;border-radius:15px;background:#f4e8d3;color:#234533;text-align:center">'
 			. '<div style="letter-spacing:2px;font-size:12px">TARJETA REGALO · CLUB EMDO</div>'
 			. '<div style="font-family:Georgia,serif;font-size:36px;margin:16px 0">' . esc_html( wp_strip_all_tags( self::funds_html( $cents ) ) ) . '</div>'
-			. '<div style="font-size:16px;letter-spacing:1px;font-weight:bold">' . esc_html( $code ) . '</div></div>'
+			. '<div style="font-size:20px;letter-spacing:2px;font-weight:bold;white-space:normal;overflow-wrap:anywhere">' . esc_html( $code ) . '</div></div>'
 			. ( $message ? '<p style="margin:25px;color:#355140">' . nl2br( esc_html( $message ) ) . '</p>' : '' )
 			. '<p style="padding:0 25px;color:#365242">Crea una cuenta o inicia sesión, abre Mi monedero y canjea el código. Puedes acumular varias tarjetas regalo.</p>'
 			. '<p style="padding:0 25px 28px"><a href="' . esc_url( $account ) . '" style="background:#28533c;color:#fff;padding:14px 22px;text-decoration:none;border-radius:9px;display:inline-block">Canjear tarjeta</a></p>'
