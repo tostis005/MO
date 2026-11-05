@@ -312,7 +312,7 @@ final class MDO_Club {
 		.mdo-club-card h3{color:#224334;margin:0 0 10px}.mdo-club-card p{line-height:1.6}
 		.mdo-club form label{display:block;font-weight:600;margin:12px 0 8px}
 		.mdo-club input,.mdo-club textarea{width:100%;max-width:100%;box-sizing:border-box;padding:11px;border:1px solid #d7ddd4;border-radius:9px;background:#fff}
-		.mdo-club .button{background:#28513c;color:#fff;border:0;border-radius:10px;padding:10px 14px;display:inline-flex;align-items:center;justify-content:center;text-align:center;vertical-align:middle;line-height:1.35;min-height:42px;margin:6px 5px 0 0;cursor:pointer;box-sizing:border-box}
+		.mdo-club .button{background:#28513c;color:#fff;border:0;border-radius:10px;padding:10px 14px;display:inline-block;margin:6px 5px 0 0;cursor:pointer}
 		.mdo-club .mdo-club-card>a.button{display:inline-flex!important;align-items:center!important;justify-content:center!important;text-align:center!important}
 		.mdo-club-amounts .button{background:#f4eee3;color:#234b37}.mdo-club-note{font-style:italic}
 		.mdo-club table{width:100%;border-collapse:collapse}.mdo-club td,.mdo-club th{padding:10px;border-bottom:1px solid #eee;text-align:left}
