@@ -23,6 +23,7 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-database.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-club-ledger.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-club.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-club-checkout.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-club-admin.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-supplier-repository.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-pricing.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-iberico-variations.php';
@@ -121,6 +122,7 @@ add_action(
 		MDO_Club_Ledger::maybe_install();
 		MDO_Club::init();
 		MDO_Club_Checkout::init();
+		if ( is_admin() ) { MDO_Club_Admin::init(); }
 		MDO_Reviews_Schema::maybe_install();
 		MDO_Reviews_Vendors::init();
 		MDO_Description_Migration::run_once();
