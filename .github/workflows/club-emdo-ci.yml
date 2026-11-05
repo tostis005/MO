@@ -1,0 +1,29 @@
+name: Club EMDO - syntax and safeguards
+on:
+  pull_request:
+    paths:
+      - 'mdo-supplier-sync/includes/class-mdo-club*.php'
+      - 'mdo-supplier-sync/mdo-supplier-sync.php'
+      - 'tests/club-emdo-checks.php'
+      - 'tests/club-emdo-unit.php'
+      - 'tests/club-emdo-full-wallet-unit.php'
+      - '.github/workflows/club-emdo-ci.yml'
+  workflow_dispatch:
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP syntax
+        run: |
+          php -l mdo-supplier-sync/mdo-supplier-sync.php
+          php -l mdo-supplier-sync/includes/class-mdo-club.php
+          php -l mdo-supplier-sync/includes/class-mdo-club-ledger.php
+          php -l mdo-supplier-sync/includes/class-mdo-club-checkout.php
+          php -l mdo-supplier-sync/includes/class-mdo-club-admin.php
+      - name: Source safeguards
+        run: php tests/club-emdo-checks.php
+      - name: Partial and full wallet regression tests
+        run: php tests/club-emdo-unit.php
+      - name: Rewards and manual refund regression tests
+        run: php tests/club-emdo-full-wallet-unit.php
