@@ -1,0 +1,104 @@
+name: Activate Club EMDO for direct-link testing
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/activate-club-emdo-20261105.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: club-emdo-test-activation
+  cancel-in-progress: false
+jobs:
+  activate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Club EMDO code and activation switch
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/emdo-club-test-release-20261105.php
+          php tests/club-emdo-unit.php
+          php tests/club-emdo-full-wallet-unit.php
+          php tests/club-emdo-manual-payments-unit.php
+      - name: Publish unlinked pages and enable Club EMDO features
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$HOST" && test -n "$USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          SSH_PORT="${PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$SSH_PORT" -H "$HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $SSH_PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $SSH_PORT"
+          TMP="/tmp/emdo-club-activate-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP mu-plugins/emdo-club-test-release-20261105.php "$USER@$HOST:$TMP"
+          sshpass -e ssh $SSH "$USER@$HOST" "sh -s -- '$TMP'" <<'REMOTE'
+          set -eu
+          TMP="$1"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          DEST="$ROOT/wp-content/mu-plugins/emdo-club-test-release-20261105.php"
+          test -f "$ROOT/wp-config.php"
+          test -f "$ROOT/wp-content/plugins/mdo-supplier-sync/tools/club-publish-pages.php"
+          "$PHP" -l "$TMP" >/dev/null
+          SITEURL=$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)
+          case "$SITEURL" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
+            *) echo 'Refusing unexpected site'; exit 2 ;;
+          esac
+          VERSION=$("$PHP" -d memory_limit=512M "$WP" plugin get mdo-supplier-sync --field=version --path="$ROOT" --allow-root)
+          test "$VERSION" = '1.0.73'
+          ADMIN_ID=$("$PHP" -d memory_limit=512M "$WP" user list --role=administrator --field=ID --format=ids --path="$ROOT" --allow-root | awk '{print $1}')
+          test -n "$ADMIN_ID"
+          "$PHP" -d memory_limit=768M "$WP" eval-file \
+            "$ROOT/wp-content/plugins/mdo-supplier-sync/tools/club-publish-pages.php" \
+            --path="$ROOT" --user="$ADMIN_ID" --allow-root
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            if (!class_exists("MDO_Club") || !class_exists("WooCommerce")) { exit(4); }
+            $page = get_post((int)get_option("woocommerce_checkout_page_id"));
+            if (!$page || !has_shortcode($page->post_content,"woocommerce_checkout")) { exit(5); }
+            foreach(["mdo_club_product_wallet","mdo_club_product_gift"] as $opt) {
+              $p=wc_get_product((int)get_option($opt));
+              if(!$p || !$p->is_virtual() || "hidden"!==$p->get_catalog_visibility()) { exit(6); }
+            }
+          ' --path="$ROOT" --allow-root
+          "$PHP" -d memory_limit=512M "$WP" option update mdo_club_reward_percent 1 --path="$ROOT" --allow-root >/dev/null
+          for kind in rewards prepaid checkout; do
+            "$PHP" -d memory_limit=512M "$WP" option update "mdo_club_${kind}_enabled" yes --path="$ROOT" --allow-root >/dev/null
+          done
+          if [ -f "$DEST" ] && ! cmp -s "$DEST" "$TMP"; then
+            echo 'Unexpected existing Club release switch; refusing to overwrite.'
+            exit 7
+          fi
+          if [ ! -f "$DEST" ]; then
+            install -m 0644 "$TMP" "$DEST"
+          fi
+          rm -f "$TMP"
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            foreach(["rewards","prepaid","checkout"] as $name) {
+              if(!MDO_Club::enabled($name)) { fwrite(STDERR,"CLUB_DISABLED: ".$name."\n"); exit(8); }
+            }
+            foreach(["mdo_club_page","mdo_club_gift_page"] as $option) {
+              $p=get_post((int)get_option($option));
+              if(!$p || "publish"!==$p->post_status) { exit(9); }
+              echo "CLUB_URL=".get_permalink($p->ID)."\n";
+            }
+            echo "CLUB_EMDO_ENABLED\n";
+          ' --path="$ROOT" --allow-root
+          "$PHP" -d memory_limit=512M "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          REMOTE
