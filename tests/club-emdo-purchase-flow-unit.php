@@ -83,4 +83,44 @@ affirm(str_contains($src,'admin-post.php'),'Purchase forms bypass public page ca
 affirm(!str_contains($src, 'name="mdo_club_replace_cart"'), 'No standalone-order confirmation checkbox remains');
 affirm(str_contains($src,'wp_safe_redirect( wc_get_checkout_url(), 303 )'),'Successful purchases redirect to normal Woo checkout');
 affirm(str_contains($src,'wc_print_notices()'),'Purchase errors display to customer');
+
+// The shorter checkout is scoped to exactly one Club virtual prepaid product.
+function sanitize_key($value): string { return preg_replace('/[^a-z0-9_-]/', '', strtolower((string)$value)); }
+require_once dirname(__DIR__).'/mdo-supplier-sync/includes/class-mdo-club-checkout.php';
+$billing = [];
+foreach ([
+	'billing_first_name','billing_last_name','billing_company','billing_address_1',
+	'billing_address_2','billing_city','billing_state','billing_postcode','billing_phone',
+	'billing_email','billing_country','billing_tax_id'
+] as $key) {
+	$billing[$key] = ['label' => $key, 'required' => true];
+}
+$fields = [
+	'billing' => $billing,
+	'shipping' => ['shipping_address_1' => ['required' => true]],
+	'order' => ['order_comments' => ['required' => false]],
+	'account' => ['account_password' => ['required' => false]],
+];
+affirm(MDO_Club_Checkout::prepaid_only_cart(), 'Exactly one gift card qualifies for digital checkout');
+$short = MDO_Club_Checkout::digital_checkout_fields($fields);
+foreach (['billing_company','billing_address_1','billing_address_2','billing_city','billing_state','billing_postcode','billing_phone'] as $field) {
+	affirm(!isset($short['billing'][$field]), 'Digital checkout hides redundant field: ' . $field);
+}
+foreach (['billing_first_name','billing_last_name','billing_email','billing_country','billing_tax_id'] as $field) {
+	affirm(isset($short['billing'][$field]), 'Essential or custom gateway/billing field is retained: ' . $field);
+}
+affirm($short['shipping'] === [], 'No shipping address required for gift card');
+affirm(!isset($short['order']['order_comments']), 'No delivery notes on prepaid checkout');
+affirm(isset($short['account']['account_password']), 'Guest account rules remain unchanged');
+affirm(MDO_Club_Checkout::prepaid_needs_no_shipping(true) === false, 'No delivery needed for virtual prepaid');
+affirm(MDO_Club_Checkout::prepaid_order_notes(true) === false, 'No unnecessary delivery notes');
+$wc->cart->items = [['product_id' => 123,'quantity'=>1]];
+affirm(!MDO_Club_Checkout::prepaid_only_cart(), 'Ordinary products keep standard checkout');
+affirm(MDO_Club_Checkout::digital_checkout_fields($fields) === $fields, 'Ordinary checkout fields unchanged');
+affirm(MDO_Club_Checkout::prepaid_needs_no_shipping(true) === true, 'Ordinary goods preserve shipping');
+$wc->cart->items = [['product_id'=>902,'quantity'=>1,'mdo_club_kind'=>'gift','mdo_club_amount_cents'=>5000], ['product_id'=>123,'quantity'=>1]];
+affirm(!MDO_Club_Checkout::prepaid_only_cart(), 'Mixed carts do not get special checkout');
+affirm(MDO_Club_Checkout::digital_checkout_fields($fields) === $fields, 'Mixed cart keeps full billing form');
+$wc->cart->items = [['product_id'=>902,'quantity'=>1,'mdo_club_kind'=>'gift','mdo_club_amount_cents'=>5000]];
+affirm(MDO_Club_Checkout::prepaid_only_cart(), 'Restored gift cart qualifies for simplified checkout');
 echo "Club EMDO purchase-to-checkout unit tests: OK\n";
