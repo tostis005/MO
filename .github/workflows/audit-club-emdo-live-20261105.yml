@@ -17,7 +17,7 @@ jobs:
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Verify live EMDO version and public Club pages (read-only)
+      - name: Verify actual published Club EMDO pages and purchase switches (read-only)
         shell: bash
         run: |
           set -euo pipefail
@@ -57,5 +57,20 @@ jobs:
             foreach (["rewards","prepaid","checkout"] as $feature) {
               echo "FEATURE=".$feature." ENABLED=".(MDO_Club::enabled($feature)?"yes":"no")."\n";
             }
+          ' --path="$ROOT" --allow-root
+          "$PHP" -d memory_limit=512M "$WP" eval '
+            foreach (["mdo_club_page","mdo_club_gift_page"] as $key) {
+              $p=get_post((int)get_option($key));
+              if (!$p || "publish"!==$p->post_status) { echo "FAIL_PAGE=".$key."\n"; exit(11); }
+              echo "LIVE_PAGE_URL=".get_permalink($p->ID)."\n";
+            }
+            foreach (["rewards","prepaid","checkout"] as $feature) {
+              if (!MDO_Club::enabled($feature)) { echo "FAIL_FEATURE=".$feature."\n"; exit(12); }
+            }
+            foreach (["mdo_club_product_wallet","mdo_club_product_gift"] as $key) {
+              $product=wc_get_product((int)get_option($key));
+              if (!$product || !$product->is_virtual()) {echo "FAIL_PRODUCT=".$key."\n"; exit(13);}
+            }
+            echo "LIVE_CLUB_READY=yes\n";
           ' --path="$ROOT" --allow-root
           REMOTE
