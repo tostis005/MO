@@ -26,7 +26,7 @@ final class MDO_Club_Checkout {
 		add_action( 'woocommerce_email_after_order_table', array( __CLASS__, 'after_email' ), PHP_INT_MAX, 4 );
 		add_filter( 'woocommerce_get_order_item_totals', array( __CLASS__, 'email_totals' ), 90, 3 );
 		// Checkout simplificado SOLO para una tarjeta regalo o recarga virtual.
-		add_filter( 'woocommerce_checkout_fields', array( __CLASS__, 'digital_checkout_fields' ), 999 );
+		add_filter( 'woocommerce_checkout_fields', array( __CLASS__, 'digital_checkout_fields' ), PHP_INT_MAX );
 		add_filter( 'woocommerce_cart_needs_shipping', array( __CLASS__, 'prepaid_needs_no_shipping' ), 999 );
 		add_filter( 'woocommerce_cart_needs_shipping_address', array( __CLASS__, 'prepaid_needs_no_shipping' ), 999 );
 		add_filter( 'woocommerce_enable_order_notes_field', array( __CLASS__, 'prepaid_order_notes' ), 999 );
