@@ -1,0 +1,35 @@
+name: Audit SEO sitemaps and vendor 1957 heading DOM
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/audit-sitemaps-1957-headings-20261105.py'
+      - '.github/workflows/audit-sitemaps-1957-headings-20261105.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test audit and install parser
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/scripts/audit-sitemaps-1957-headings-20261105.py
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends python3-bs4 >/dev/null
+      - name: Verify live sitemaps, robots and 1957 headings
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          /usr/bin/python3 .github/scripts/audit-sitemaps-1957-headings-20261105.py | tee /tmp/emdo-sitemaps-audit.jsonl
+      - name: Save report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emdo-seo-indexability-1957
+          path: /tmp/emdo-sitemaps-audit.jsonl
+          if-no-files-found: warn
+          retention-days: 14
