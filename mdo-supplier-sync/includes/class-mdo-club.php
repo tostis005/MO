@@ -33,6 +33,7 @@ final class MDO_Club {
 		add_filter( 'woocommerce_available_payment_gateways', array( __CLASS__, 'prepaid_gateways' ), 999 );
 		add_action( 'woocommerce_checkout_create_order_line_item', array( __CLASS__, 'line_metadata' ), 10, 4 );
 		add_action( 'woocommerce_payment_complete', array( __CLASS__, 'issue_prepaid' ), 20 );
+		add_action( 'woocommerce_order_status_completed', array( __CLASS__, 'issue_prepaid' ), 20 );
 		add_action( 'woocommerce_payment_complete', array( __CLASS__, 'award_reward' ), 35 );
 		add_action( 'woocommerce_order_status_processing', array( __CLASS__, 'award_reward' ), 35 );
 		add_action( 'woocommerce_order_status_completed', array( __CLASS__, 'award_reward' ), 35 );
@@ -410,9 +411,11 @@ final class MDO_Club {
 			if ( ! empty( $item['mdo_club_kind'] ) ) { $prepaid = true; break; }
 		}
 		if ( ! $prepaid ) { return $gateways; }
-		// Solo métodos de cobro inmediato con confirmación automática.
-		// La pasarela bancaria / Edenred requiere revisión específica antes de habilitar la venta.
-		foreach ( array( 'cod', 'bacs', 'cheque' ) as $gateway_id ) {
+		// Mostrar los medios disponibles en la tienda, incluyendo transferencia y Bizum.
+		// Solo se excluye contra reembolso: no tiene sentido para productos virtuales.
+		// La transferencia o cualquier método manual exige confirmar el cobro
+		// cambiando el pedido a Completado antes de emitir saldo o tarjeta regalo.
+		foreach ( array( 'cod' ) as $gateway_id ) {
 			unset( $gateways[ $gateway_id ] );
 		}
 		return $gateways;
@@ -447,6 +450,9 @@ final class MDO_Club {
 	public static function issue_prepaid( int $order_id ): void {
 		$order = wc_get_order( $order_id );
 		if ( ! $order || ! $order->is_paid() || ! self::is_prepaid( $order ) ) { return; }
+		// Las pasarelas online invocan payment_complete; en transferencia/Bizum
+		// manual, el administrador confirma el pago al completar el pedido.
+		// Nunca se emite saldo desde un pedido pendiente o en espera.
 		// No emitir dinero si el cliente pagó menos que el valor comprado.
 		// Protege frente a cupones, edición de cantidades, ajustes manuales y
 		// otras extensiones que cambien el total incluso tras validar el carrito.
