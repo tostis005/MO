@@ -315,6 +315,9 @@ final class MDO_Club {
 		.mdo-club-hero>span{font-size:11px;letter-spacing:.17em;font-weight:750;opacity:.8}
 		.mdo-club-hero h2{color:#fff7e8;margin:12px 0;font-size:clamp(26px,4vw,42px)}
 		.mdo-club-hero p{color:#edf1e7}.mdo-club-hero>strong{font-size:32px;color:#fff}.mdo-club-balance-breakdown{display:flex;flex-wrap:wrap;gap:16px;margin-top:14px;font-size:13px;color:#e8f1e7}
+		.mdo-club .mdo-club-hero,.mdo-club .mdo-club-hero :is(h2,h3,p,span,strong,small,b,.amount,.woocommerce-Price-currencySymbol){color:#fffdf5!important;-webkit-text-fill-color:#fffdf5!important}
+		.mdo-club .mdo-club-hero>span{color:#e5d6b4!important;-webkit-text-fill-color:#e5d6b4!important}
+		.mdo-club .mdo-club-hero>p{color:#e5eee5!important;-webkit-text-fill-color:#e5eee5!important}
 		.mdo-club-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 		.mdo-club-card{padding:22px;margin-bottom:16px;background:#fffdfa;border:1px solid #eee7dc;border-radius:16px}
 		.mdo-club-card h3{color:#224334;margin:0 0 10px}.mdo-club-card p{line-height:1.6}
