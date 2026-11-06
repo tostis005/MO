@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 /** Cargar exclusivamente en Mi cuenta, nunca en checkout, tienda o panel de vendedores. */
 add_action( 'wp_enqueue_scripts', static function (): void {
 	if ( ! function_exists( 'is_account_page' ) || ! is_account_page() ) { return; }
-	wp_register_style( 'emdo-mi-cuenta-ux', false, array(), '20261105.1' );
+	wp_register_style( 'emdo-mi-cuenta-ux', false, array(), '20261106.2' );
 	wp_enqueue_style( 'emdo-mi-cuenta-ux' );
 	wp_add_inline_style( 'emdo-mi-cuenta-ux', <<<'CSS'
 /* EL MERCADO DE ORIGEN · MI CUENTA 2026
