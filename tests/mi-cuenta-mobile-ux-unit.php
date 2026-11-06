@@ -134,7 +134,7 @@ $checks = [
 ];
 foreach($checks as $needle=>$explanation) {$assert(str_contains($css,$needle),$explanation);}
 $assert(str_contains($css,'form:has(textarea[name="wcfm_cus_add_note"])'), 'Custom note form layout is scoped by the exact field');
-$assert(str_contains($css,'input[name="wcfm_cus_add_note_file"]'), 'WCFM Ultimate original file upload name is targeted');
+$assert(str_contains($src,'input[name="wcfm_cus_add_note_file"]'), 'WCFM Ultimate original file input targeted by the real translation fallback');
 $assert(str_contains($css,'input[type="file"]'), 'Note attachment input has responsive styling');
 $assert(str_contains($css,'input[type="submit"]'), 'Note submit button remains legible');
 $assert(!str_contains($css, 'scroll-snap-type:x proximity'), 'Old horizontal menu scrolling removed');
