@@ -740,3 +740,142 @@ add_filter( 'woocommerce_account_menu_items', static function( array $items ): a
 	}
 	return $items;
 }, PHP_INT_MAX );
+
+
+/**
+ * Traducciones de respaldo para la parte privada de WooCommerce.
+ * Algunas plantillas o extensiones pueden renderizar etiquetas en inglés
+ * aunque la tienda esté en castellano. Se aplican solo a textos exactos
+ * de interfaz en Mi cuenta; nunca traducimos nombres de productos,
+ * observaciones de pedidos ni contenido escrito por clientes.
+ */
+add_filter( 'gettext', static function( string $translation, string $text, string $domain ): string {
+	if ( ! function_exists( 'is_account_page' ) || ! is_account_page() ) {
+		return $translation;
+	}
+	if ( ! in_array( $domain, array( 'woocommerce', 'woostify' ), true ) ) {
+		return $translation;
+	}
+	static $labels = array(
+		'My account' => 'Mi cuenta',
+		'Dashboard' => 'Inicio',
+		'Orders' => 'Pedidos',
+		'Order' => 'Pedido',
+		'Order details' => 'Detalles del pedido',
+		'Order Details' => 'Detalles del pedido',
+		'Order updates' => 'Actualizaciones del pedido',
+		'Order notes' => 'Notas del pedido',
+		'Order received' => 'Pedido recibido',
+		'Order again' => 'Volver a comprar',
+		'Order number' => 'Número de pedido',
+		'Order number:' => 'Número de pedido:',
+		'Order date' => 'Fecha del pedido',
+		'Order status' => 'Estado del pedido',
+		'Order #%1$s was placed on %2$s and is currently %3$s.' => 'El pedido n.º %1$s se realizó el %2$s y su estado actual es %3$s.',
+		'No order has been made yet.' => 'Todavía no has realizado ningún pedido.',
+		'Browse products' => 'Ver productos',
+		'Date' => 'Fecha',
+		'Status' => 'Estado',
+		'Total' => 'Total',
+		'Subtotal' => 'Subtotal',
+		'Product' => 'Producto',
+		'Products' => 'Productos',
+		'Quantity' => 'Cantidad',
+		'Qty' => 'Cant.',
+		'Actions' => 'Acciones',
+		'View' => 'Ver',
+		'View order' => 'Ver pedido',
+		'Pay' => 'Pagar',
+		'Cancel' => 'Cancelar',
+		'Downloads' => 'Descargas',
+		'Download' => 'Descargar',
+		'Addresses' => 'Direcciones',
+		'Billing address' => 'Dirección de facturación',
+		'Shipping address' => 'Dirección de envío',
+		'Billing details' => 'Datos de facturación',
+		'Shipping details' => 'Datos de envío',
+		'Billing & Shipping' => 'Facturación y envío',
+		'Customer details' => 'Datos del cliente',
+		'Payment method' => 'Método de pago',
+		'Payment methods' => 'Métodos de pago',
+		'Payment details' => 'Datos de pago',
+		'Shipping' => 'Envío',
+		'Discount' => 'Descuento',
+		'Tax' => 'Impuestos',
+		'Note' => 'Nota',
+		'Customer note' => 'Nota del cliente',
+		'Account details' => 'Datos personales',
+		'Edit account' => 'Editar cuenta',
+		'Save changes' => 'Guardar cambios',
+		'Edit' => 'Editar',
+		'Log out' => 'Cerrar sesión',
+		'Log in' => 'Acceder',
+		'Register' => 'Registrarse',
+		'Lost your password?' => '¿Has olvidado tu contraseña?',
+		'Pending payment' => 'Pendiente de pago',
+		'Processing' => 'En preparación',
+		'On hold' => 'En espera',
+		'Completed' => 'Completado',
+		'Cancelled' => 'Cancelado',
+		'Failed' => 'Fallido',
+		'Refunded' => 'Reembolsado',
+	);
+	// Don't clobber an existing Spanish translation (or a text with different
+	// meaning); only use the fallback when the label is still English.
+	return $translation === $text && isset( $labels[ $text ] )
+		? $labels[ $text ] : $translation;
+}, 30, 3 );
+
+/** Consistent Spanish headings and responsive data-title labels in orders. */
+add_filter( 'woocommerce_account_orders_columns', static function( array $columns ): array {
+	if ( ! function_exists( 'is_account_page' ) || ! is_account_page() ) {
+		return $columns;
+	}
+	$labels = array(
+		'order-number' => 'Pedido',
+		'order-date' => 'Fecha',
+		'order-status' => 'Estado',
+		'order-total' => 'Total',
+		'order-actions' => 'Acciones',
+	);
+	foreach ( $columns as $key => $value ) {
+		if ( isset( $labels[ $key ] ) ) {
+			$columns[ $key ] = $labels[ $key ];
+		}
+	}
+	return $columns;
+}, 99 );
+
+/** Keep the account menu labels predictable in the Spanish customer area. */
+add_filter( 'woocommerce_account_menu_items', static function( array $items ): array {
+	if ( ! function_exists( 'is_account_page' ) || ! is_account_page() ) {
+		return $items;
+	}
+	$labels = array(
+		'dashboard' => 'Inicio',
+		'orders' => 'Mis pedidos',
+		'downloads' => 'Descargas',
+		'edit-address' => 'Direcciones',
+		'payment-methods' => 'Métodos de pago',
+		'edit-account' => 'Datos personales',
+		'monedero' => 'Club EMDO',
+		'customer-logout' => 'Cerrar sesión',
+	);
+	foreach ( $items as $endpoint => $label ) {
+		if ( isset( $labels[ $endpoint ] ) ) {
+			$items[ $endpoint ] = $labels[ $endpoint ];
+		}
+	}
+	return $items;
+}, 99 );
+
+/** Clear return path when opening a previously placed order. */
+add_action( 'woocommerce_order_details_before_order_table', static function( $order ): void {
+	if ( ! function_exists( 'is_account_page' ) || ! is_account_page()
+		|| ! function_exists( 'is_wc_endpoint_url' ) || ! is_wc_endpoint_url( 'view-order' )
+		|| ! function_exists( 'wc_get_account_endpoint_url' ) ) {
+		return;
+	}
+	echo '<a class="emdo-account-order-back" href="' . esc_url( wc_get_account_endpoint_url( 'orders' ) ) . '">'
+		. '<span aria-hidden="true">←</span> Volver a mis pedidos</a>';
+}, 5, 1 );
