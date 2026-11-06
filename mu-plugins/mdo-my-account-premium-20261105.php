@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 /** Cargar exclusivamente en Mi cuenta, nunca en checkout, tienda o panel de vendedores. */
 add_action( 'wp_enqueue_scripts', static function (): void {
 	if ( ! function_exists( 'is_account_page' ) || ! is_account_page() ) { return; }
-	wp_register_style( 'emdo-mi-cuenta-ux', false, array(), '20261106.4' );
+	wp_register_style( 'emdo-mi-cuenta-ux', false, array(), '20261106.5' );
 	wp_enqueue_style( 'emdo-mi-cuenta-ux' );
 	wp_add_inline_style( 'emdo-mi-cuenta-ux', <<<'CSS'
 /* EL MERCADO DE ORIGEN · MI CUENTA 2026
@@ -668,7 +668,7 @@ body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-OrderUpdate
 
 /* Nota de cliente añadida por una personalización de pedido (no pertenece
    al catálogo de etiquetas de WooCommerce). Siempre un formulario vertical. */
-body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) {
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="wcfm_cus_add_note"]) {
 	display:block!important;
 	width:100%!important;
 	max-width:100%!important;
@@ -680,8 +680,8 @@ body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="
 	border-radius:16px!important;
 	box-sizing:border-box!important;
 }
-body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) table.woocommerce-table,
-body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) tbody {
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="wcfm_cus_add_note"]) table.woocommerce-table,
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="wcfm_cus_add_note"]) tbody {
 	display:block!important;
 	width:100%!important;
 	min-width:0!important;
@@ -694,7 +694,7 @@ body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="
 	table-layout:auto!important;
 	overflow:visible!important;
 }
-body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) table.woocommerce-table tr {
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="wcfm_cus_add_note"]) table.woocommerce-table tr {
 	display:block!important;
 	width:100%!important;
 	min-width:0!important;
@@ -705,10 +705,10 @@ body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="
 	border:0!important;
 	box-sizing:border-box!important;
 }
-body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) table.woocommerce-table tr:last-child {
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="wcfm_cus_add_note"]) table.woocommerce-table tr:last-child {
 	margin-bottom:0!important;
 }
-body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) table.woocommerce-table :is(th,td) {
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="wcfm_cus_add_note"]) table.woocommerce-table :is(th,td) {
 	display:block!important;
 	float:none!important;
 	width:100%!important;
@@ -725,21 +725,21 @@ body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="
 	overflow-wrap:break-word!important;
 	box-sizing:border-box!important;
 }
-body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) table.woocommerce-table th {
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="wcfm_cus_add_note"]) table.woocommerce-table th {
 	margin-bottom:8px!important;
 	color:#2a4a38!important;
 	font-size:14px!important;
 	font-weight:750!important;
 	line-height:1.4!important;
 }
-body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) label {
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="wcfm_cus_add_note"]) label {
 	display:block!important;
 	margin:0!important;
 	color:#2a4a38!important;
 	font-weight:750!important;
 	line-height:1.45!important;
 }
-body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) textarea[name="cus_add_note"] {
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="wcfm_cus_add_note"]) textarea[name="wcfm_cus_add_note"] {
 	display:block!important;
 	width:100%!important;
 	min-width:0!important;
@@ -756,7 +756,7 @@ body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="
 	resize:vertical!important;
 	box-sizing:border-box!important;
 }
-body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) input[type="file"] {
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="wcfm_cus_add_note"]) input[type="file"] {
 	display:block!important;
 	width:100%!important;
 	min-width:0!important;
@@ -771,7 +771,7 @@ body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="
 	box-sizing:border-box!important;
 	white-space:normal!important;
 }
-body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) input[type="file"]::file-selector-button {
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="wcfm_cus_add_note"]) input[type="file"]::file-selector-button {
 	padding:8px 10px;
 	margin-right:10px;
 	border:0;
@@ -782,7 +782,7 @@ body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="
 	font-weight:750;
 	cursor:pointer;
 }
-body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) input[type="submit"] {
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="wcfm_cus_add_note"]) input[type="submit"] {
 	display:inline-flex!important;
 	align-items:center!important;
 	justify-content:center!important;
@@ -802,7 +802,7 @@ body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="
 	white-space:normal!important;
 	cursor:pointer!important;
 }
-body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) input[type="submit"]:hover {
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="wcfm_cus_add_note"]) input[type="submit"]:hover {
 	background:#153d29!important;
 }
 
@@ -894,7 +894,7 @@ add_action( 'wp', static function(): void {
 	// It can recursively load options/translations and exhaust PHP memory.
 	if ( ! function_exists( 'is_account_page' ) || ! is_account_page() ) { return; }
 	add_filter( 'gettext', static function( string $translation, string $text, string $domain ): string {
-	if ( ! in_array( $domain, array( 'woocommerce', 'woostify' ), true ) ) {
+	if ( ! in_array( $domain, array( 'woocommerce', 'woostify', 'wc-frontend-manager-ultimate' ), true ) ) {
 		return $translation;
 	}
 	static $labels = array(
@@ -903,6 +903,12 @@ add_action( 'wp', static function(): void {
 		'Orders' => 'Pedidos',
 		'Order' => 'Pedido',
 		'Order details' => 'Detalles del pedido',
+		'Add your note' => 'Añadir una nota al pedido',
+		'Add Note' => 'Mensaje',
+		'Upload File' => 'Adjuntar archivo (opcional)',
+		'Submit' => 'Enviar nota',
+		'See Attachment' => 'Ver archivo adjunto',
+		'Your note succesfully submitted.' => 'Tu nota se ha enviado correctamente.',
 		'Order Details' => 'Detalles del pedido',
 		'Order updates' => 'Actualizaciones del pedido',
 		'Order notes' => 'Notas del pedido',
@@ -1042,11 +1048,11 @@ add_action( 'wp_footer', static function(): void {
 	function translateOrderNote() {
 		var root = document.querySelector('.woocommerce-MyAccount-content');
 		if (!root) return;
-		var field = root.querySelector('textarea[name="cus_add_note"],textarea#cus_add_note');
+		var field = root.querySelector('textarea[name="wcfm_cus_add_note"],textarea#wcfm_cus_add_note');
 		if (!field || !field.form) return;
 		var form = field.form;
-		var upload = form.querySelector('input[name="cus_add_note_file"],input#cus_add_note_file');
-		var submit = form.querySelector('input[name="cus_note_submit"],input#cus_note_submit');
+		var upload = form.querySelector('input[name="wcfm_cus_add_note_file"],input#wcfm_cus_add_note_file');
+		var submit = form.querySelector('input[name="wcfm_cus_note_submit"],input#wcfm_cus_note_submit');
 		if (!submit) return;
 		root.querySelectorAll('h1,h2,h3,h4').forEach(function (heading) {
 			if (heading.textContent.trim() === 'Add your note') {
