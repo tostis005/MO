@@ -89,7 +89,7 @@ $note_script=(string)ob_get_clean();
 $assert(str_contains($note_script,'emdo-account-order-note-es'), 'Custom order notes script loaded only on order details');
 foreach ([
 	'Añadir una nota al pedido','Mensaje','Adjuntar archivo (opcional)','Enviar nota',
-	'textarea[name="cus_add_note"]', 'cus_add_note_file','cus_note_submit',
+	'textarea[name="wcfm_cus_add_note"]', 'wcfm_cus_add_note_file','wcfm_cus_note_submit',
 ] as $expected) {
 	$assert(str_contains($note_script,$expected),'Missing custom note translation: '.$expected);
 }
@@ -120,7 +120,7 @@ $checks = [
 	'@media(prefers-reduced-motion:reduce)' => 'Accessible motion preferences maintained',
 ];
 foreach($checks as $needle=>$explanation) {$assert(str_contains($css,$needle),$explanation);}
-$assert(str_contains($css,'form:has(textarea[name="cus_add_note"])'), 'Custom note form layout is scoped by the exact field');
+$assert(str_contains($css,'form:has(textarea[name="wcfm_cus_add_note"])'), 'Custom note form layout is scoped by the exact field');
 $assert(str_contains($css,'input[type="file"]'), 'Note attachment input has responsive styling');
 $assert(str_contains($css,'input[type="submit"]'), 'Note submit button remains legible');
 $assert(!str_contains($css, 'scroll-snap-type:x proximity'), 'Old horizontal menu scrolling removed');
