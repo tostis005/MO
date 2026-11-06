@@ -749,10 +749,11 @@ add_filter( 'woocommerce_account_menu_items', static function( array $items ): a
  * de interfaz en Mi cuenta; nunca traducimos nombres de productos,
  * observaciones de pedidos ni contenido escrito por clientes.
  */
-add_filter( 'gettext', static function( string $translation, string $text, string $domain ): string {
-	if ( ! function_exists( 'is_account_page' ) || ! is_account_page() ) {
-		return $translation;
-	}
+add_action( 'wp', static function(): void {
+	// Never add a global gettext filter while WordPress/WooCommerce is booting.
+	// It can recursively load options/translations and exhaust PHP memory.
+	if ( ! function_exists( 'is_account_page' ) || ! is_account_page() ) { return; }
+	add_filter( 'gettext', static function( string $translation, string $text, string $domain ): string {
 	if ( ! in_array( $domain, array( 'woocommerce', 'woostify' ), true ) ) {
 		return $translation;
 	}
@@ -824,7 +825,8 @@ add_filter( 'gettext', static function( string $translation, string $text, strin
 	// meaning); only use the fallback when the label is still English.
 	return $translation === $text && isset( $labels[ $text ] )
 		? $labels[ $text ] : $translation;
-}, 30, 3 );
+	}, 30, 3 );
+}, 20 );
 
 /** Consistent Spanish headings and responsive data-title labels in orders. */
 add_filter( 'woocommerce_account_orders_columns', static function( array $columns ): array {
