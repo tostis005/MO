@@ -171,11 +171,23 @@ body.woocommerce-account .woocommerce-MyAccount-content .emdo-account-tile:focus
 .emdo-account-tile__end {margin-left:auto;font-size:18px;line-height:1.2;color:#7b947f;}
 .emdo-account-hub__banner {
 	display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;
-	margin-top:17px;padding:20px 22px;background:linear-gradient(115deg,#183e30,#2e6244);
+	margin-top:17px;padding:22px 25px;background:linear-gradient(115deg,#183e30,#2e6244);
 	color:#fff;border-radius:17px;
 }
-.emdo-account-hub__banner strong {display:block;color:#fff!important;font-size:20px;line-height:1.2;margin:0 0 4px;}
-.emdo-account-hub__banner span {display:block;color:#d7e5d9;font-size:13px;line-height:1.5;}
+.emdo-account-hub__banner-copy {display:flex;flex-direction:column;gap:11px;min-width:0;flex:1 1 230px;}
+.emdo-account-hub__banner-title {display:block;color:#fff!important;font-size:19px!important;line-height:1.3!important;font-weight:800!important;margin:0!important;}
+.emdo-account-hub__banner-balance {display:flex;align-items:baseline;gap:11px;flex-wrap:wrap;min-width:0;}
+.emdo-account-hub__balance-caption {display:inline!important;font-size:12px!important;color:#d6e7d9!important;line-height:1.5!important;font-weight:550!important;}
+.emdo-account-hub__balance-value {
+	display:inline-block!important;white-space:nowrap!important;color:#fffdf5!important;
+	font-size:clamp(24px,3vw,30px)!important;font-weight:800!important;line-height:1.15!important;
+}
+.emdo-account-hub__balance-value .woocommerce-Price-amount,
+.emdo-account-hub__balance-value .woocommerce-Price-amount bdi,
+.emdo-account-hub__balance-value .woocommerce-Price-currencySymbol {
+	display:inline!important;white-space:nowrap!important;float:none!important;
+	font-size:inherit!important;line-height:inherit!important;color:#fffdf5!important;
+}
 body.woocommerce-account .woocommerce-MyAccount-content .emdo-account-hub__banner a {
 	display:inline-flex!important;align-items:center;justify-content:center;min-height:43px;
 	padding:11px 16px!important;border-radius:10px!important;background:#fff9ea!important;
@@ -395,10 +407,12 @@ add_action( 'woocommerce_account_dashboard', static function (): void {
 	$gift_url = $gift_page_id && 'publish' === get_post_status( $gift_page_id )
 		? get_permalink( $gift_page_id )
 		: home_url( '/tarjetas-regalo/' );
-	echo '<div class="emdo-account-hub__banner"><div>';
-	echo '<strong>Club EMDO' . ( null !== $balance ? ' · ' . $balance : '' ) . '</strong>';
-	echo '<span>Compra con origen, disfruta de recompensas y comparte buenos regalos.</span></div>';
-	echo '<a href="' . esc_url( $gift_url ) . '">Descubrir tarjetas regalo</a></div>';
+	echo '<div class="emdo-account-hub__banner"><div class="emdo-account-hub__banner-copy">';
+	echo '<strong class="emdo-account-hub__banner-title">Club EMDO</strong>';
+	if ( null !== $balance ) {
+		echo '<div class="emdo-account-hub__banner-balance"><span class="emdo-account-hub__balance-caption">Saldo disponible</span><span class="emdo-account-hub__balance-value">' . $balance . '</span></div>';
+	}
+	echo '</div><a href="' . esc_url( $gift_url ) . '">Ver tarjetas regalo</a></div>';
 	echo '</section>';
 }, 25 );
 
