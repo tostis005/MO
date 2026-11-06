@@ -11,6 +11,7 @@ on:
       - 'tests/club-emdo-purchase-flow-unit.php'
       - 'tests/club-emdo-gift-design.php'
       - 'tests/club-emdo-ui-cleanup.php'
+      - 'tests/club-emdo-cta-unit.php'
       - 'tests/club-emdo-admin-gifts-unit.php'
       - 'mdo-supplier-sync/assets/club-emdo-tarjeta-regalo.jpg.b64'
       - '.github/workflows/club-emdo-ci.yml'
@@ -43,3 +44,5 @@ jobs:
         run: php tests/club-emdo-ui-cleanup.php
       - name: Gift card reporting and privacy regression
         run: php tests/club-emdo-admin-gifts-unit.php
+      - name: Dashboard and gift action buttons
+        run: php tests/club-emdo-cta-unit.php
