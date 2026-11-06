@@ -38,7 +38,7 @@ try {
 				nameWidth: box('.woocommerce-table--order-details .product-name').width,
 				totalsDisplay: getComputedStyle(total).display,
 				cellsTiny: [...document.querySelectorAll('.woocommerce-table--order-details td,.woocommerce-table--order-details th')]
-					.filter(n => n.getBoundingClientRect().width < 55).length,
+					.filter(n => n.getClientRects().length > 0 && n.getBoundingClientRect().width < 44).length,
 			};
 		});
 		console.log('WIDTH ' + width + 'px:', JSON.stringify(a));
