@@ -75,7 +75,7 @@ a{color:#24513a}h1{font-size:30px}h2{font-size:25px}
 </div></div></main>
 <?php
 // Use the exact script embedded in the plugin, not a rewritten mock.
-if ( ! preg_match( '/echo <<<\x27HTML\x27\\n(<script id="emdo-account-order-note-es">[\\s\\S]*?<\\/script>)\\nHTML;/', $source, $note_script ) ) {
+if ( ! preg_match( '~echo <<<\x27HTML\x27\s*(<script id="emdo-account-order-note-es">[\s\S]*?</script>)\s*HTML;~', $source, $note_script ) ) {
 	throw new RuntimeException( 'Missing real order-note translation script' );
 }
 echo $note_script[1];
