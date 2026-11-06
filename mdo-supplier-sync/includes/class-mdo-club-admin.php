@@ -193,8 +193,20 @@ final class MDO_Club_Admin {
 		$search = isset( $_GET['gs'] ) ? substr( sanitize_text_field( wp_unslash( $_GET['gs'] ) ), 0, 100 ) : '';
 		$status = isset( $_GET['gstatus'] ) ? sanitize_key( wp_unslash( $_GET['gstatus'] ) ) : '';
 		if ( ! in_array( $status, array( '', 'unredeemed', 'redeemed' ), true ) ) { $status = ''; }
+		$sort = isset( $_GET['gsort'] ) ? sanitize_key( wp_unslash( $_GET['gsort'] ) ) : 'date';
+		if ( ! in_array( $sort, array( 'date', 'order', 'recipient', 'amount', 'status', 'redeemed_at' ), true ) ) { $sort = 'date'; }
+		$direction = isset( $_GET['gdir'] ) && 'asc' === sanitize_key( wp_unslash( $_GET['gdir'] ) ) ? 'asc' : 'desc';
+		$min_input = isset( $_GET['gmin'] ) ? substr( sanitize_text_field( wp_unslash( $_GET['gmin'] ) ), 0, 20 ) : '';
+		$max_input = isset( $_GET['gmax'] ) ? substr( sanitize_text_field( wp_unslash( $_GET['gmax'] ) ), 0, 20 ) : '';
+		$min_cents = '' === $min_input ? 0 : MDO_Club_Ledger::cents( $min_input );
+		$max_cents = '' === $max_input ? 0 : MDO_Club_Ledger::cents( $max_input );
+		$filters = array(
+			'tab' => 'gifts', 'gs' => $search, 'gstatus' => $status,
+			'gmin' => $min_input, 'gmax' => $max_input,
+			'gsort' => $sort, 'gdir' => $direction,
+		);
 		$stats = MDO_Club_Ledger::gift_report_totals();
-		$report = MDO_Club_Ledger::gift_report( $page, 25, $search, $status );
+		$report = MDO_Club_Ledger::gift_report( $page, 25, $search, $status, $sort, $direction, $min_cents, $max_cents );
 		$rows = $report['rows'];
 		?>
 		<div class="wrap" id="mdo-club-admin-panel">
@@ -235,8 +247,25 @@ final class MDO_Club_Admin {
 					<option value="unredeemed" <?php selected( $status, 'unredeemed' ); ?>>Sin canjear</option>
 					<option value="redeemed" <?php selected( $status, 'redeemed' ); ?>>Canjeadas</option>
 				</select>
-				<button class="button" type="submit">Filtrar</button>
-				<?php if ( '' !== $search || '' !== $status ) : ?>
+				<label for="mdo-club-gift-min">Desde (€)</label>
+				<input id="mdo-club-gift-min" type="number" min="0" max="10000" step="0.01" name="gmin" value="<?php echo esc_attr( $min_input ); ?>" style="width:90px">
+				<label for="mdo-club-gift-max">Hasta (€)</label>
+				<input id="mdo-club-gift-max" type="number" min="0" max="10000" step="0.01" name="gmax" value="<?php echo esc_attr( $max_input ); ?>" style="width:90px">
+				<label for="mdo-club-gift-sort">Ordenar por</label>
+				<select id="mdo-club-gift-sort" name="gsort">
+					<option value="date" <?php selected( $sort, 'date' ); ?>>Fecha de emisión</option>
+					<option value="order" <?php selected( $sort, 'order' ); ?>>Pedido</option>
+					<option value="recipient" <?php selected( $sort, 'recipient' ); ?>>Destinatario</option>
+					<option value="amount" <?php selected( $sort, 'amount' ); ?>>Importe</option>
+					<option value="status" <?php selected( $sort, 'status' ); ?>>Estado de canje</option>
+					<option value="redeemed_at" <?php selected( $sort, 'redeemed_at' ); ?>>Fecha de canje</option>
+				</select>
+				<select name="gdir" aria-label="Sentido de ordenación">
+					<option value="desc" <?php selected( $direction, 'desc' ); ?>>Descendente</option>
+					<option value="asc" <?php selected( $direction, 'asc' ); ?>>Ascendente</option>
+				</select>
+				<button class="button button-primary" type="submit">Aplicar filtros</button>
+				<?php if ( '' !== $search || '' !== $status || '' !== $min_input || '' !== $max_input || 'date' !== $sort || 'desc' !== $direction ) : ?>
 					<a class="button button-secondary" href="<?php echo esc_url( self::url( array( 'tab' => 'gifts' ) ) ); ?>">Limpiar</a>
 				<?php endif; ?>
 			</form>
@@ -244,8 +273,14 @@ final class MDO_Club_Admin {
 			<div class="mdo-club-gift-table-wrap">
 			<table class="widefat striped mdo-club-gift-table">
 				<thead><tr>
-					<th>Fecha de emisión</th><th>Pedido</th><th>Comprador</th><th>Destinatario</th>
-					<th>Importe</th><th>Estado</th><th>Canjeada por</th><th>Correo enviado</th>
+					<?php self::sort_th( 'Fecha de emisión', 'date', $sort, $direction, 'gsort', 'gdir', $filters ); ?>
+					<?php self::sort_th( 'Pedido', 'order', $sort, $direction, 'gsort', 'gdir', $filters ); ?>
+					<th>Comprador</th>
+					<?php self::sort_th( 'Destinatario', 'recipient', $sort, $direction, 'gsort', 'gdir', $filters ); ?>
+					<?php self::sort_th( 'Importe', 'amount', $sort, $direction, 'gsort', 'gdir', $filters ); ?>
+					<?php self::sort_th( 'Estado', 'status', $sort, $direction, 'gsort', 'gdir', $filters ); ?>
+					<?php self::sort_th( 'Canjeada por', 'redeemed_at', $sort, $direction, 'gsort', 'gdir', $filters ); ?>
+					<th>Correo enviado</th>
 				</tr></thead>
 				<tbody>
 				<?php if ( ! $rows ) : ?><tr><td colspan="8">No hay tarjetas regalo para los filtros seleccionados.</td></tr><?php endif; ?>
@@ -310,9 +345,7 @@ final class MDO_Club_Admin {
 			if ( $total_pages > 1 ) {
 				echo '<div class="tablenav"><div class="tablenav-pages">';
 				echo wp_kses_post( paginate_links( array(
-					'base' => add_query_arg( 'gp', '%#%', self::url( array(
-						'tab' => 'gifts', 'gs' => $search, 'gstatus' => $status,
-					) ) ),
+					'base' => add_query_arg( 'gp', '%#%', self::url( $filters ) ),
 					'format' => '', 'current' => $page, 'total' => $total_pages,
 				) ) );
 				echo '</div></div>';
