@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 /** Cargar exclusivamente en Mi cuenta, nunca en checkout, tienda o panel de vendedores. */
 add_action( 'wp_enqueue_scripts', static function (): void {
 	if ( ! function_exists( 'is_account_page' ) || ! is_account_page() ) { return; }
-	wp_register_style( 'emdo-mi-cuenta-ux', false, array(), '20261106.2' );
+	wp_register_style( 'emdo-mi-cuenta-ux', false, array(), '20261106.3' );
 	wp_enqueue_style( 'emdo-mi-cuenta-ux' );
 	wp_add_inline_style( 'emdo-mi-cuenta-ux', <<<'CSS'
 /* EL MERCADO DE ORIGEN · MI CUENTA 2026
@@ -130,7 +130,7 @@ body.woocommerce-account .woocommerce-MyAccount-content {
 	border:1px solid var(--emdo-account-line)!important;
 	border-radius:21px!important;
 	box-shadow:0 16px 48px rgba(23,63,49,.055)!important;
-	overflow-wrap:anywhere;
+	overflow-wrap:break-word;
 }
 body.woocommerce-account .woocommerce-MyAccount-content > p {font-size:15px;line-height:1.8;color:#54675c;}
 body.woocommerce-account .woocommerce-MyAccount-content > p:first-child {color:#304739;}
@@ -342,15 +342,15 @@ body.woocommerce-account:not(.logged-in) .woocommerce .woocommerce-privacy-polic
 	body.woocommerce-account .site-content .woocommerce:has(> .woocommerce-MyAccount-navigation) {display:block!important;}
 	body.woocommerce-account .woocommerce-MyAccount-navigation {position:static!important;margin-bottom:18px!important;padding:12px!important;}
 	body.woocommerce-account .woocommerce-MyAccount-navigation::before {padding:8px 9px 12px;}
-	body.woocommerce-account .woocommerce-MyAccount-navigation ul {display:flex!important;overflow-x:auto;gap:8px;padding:2px 2px 6px!important;scroll-snap-type:x proximity;scrollbar-width:thin;}
-	body.woocommerce-account .woocommerce-MyAccount-navigation li {flex:none;scroll-snap-align:start;}
-	body.woocommerce-account .woocommerce-MyAccount-navigation li a {white-space:nowrap;min-height:41px;padding:9px 12px!important;font-size:13px!important;}
+	body.woocommerce-account .woocommerce-MyAccount-navigation ul {display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;padding:0!important;overflow:visible!important;scroll-snap-type:none!important;}
+	body.woocommerce-account .woocommerce-MyAccount-navigation li {min-width:0!important;float:none!important;display:block!important;}
+	body.woocommerce-account .woocommerce-MyAccount-navigation li a {min-width:0!important;width:100%!important;white-space:normal!important;min-height:44px;padding:10px 12px!important;font-size:13px!important;line-height:1.4!important;overflow-wrap:break-word!important;}
 	body.woocommerce-account .woocommerce-MyAccount-navigation-link--customer-logout {border-top:0!important;margin-top:0!important;padding-top:0!important;}
 	body.woocommerce-account .woocommerce-MyAccount-content {padding:20px!important;}
 	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-Addresses {grid-template-columns:1fr;}
 	body.woocommerce-account:not(.logged-in) .woocommerce .u-columns.col2-set {grid-template-columns:1fr!important;}
-	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-orders-table {display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;}
-	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-order-details table {display:block;overflow-x:auto;}
+	/* Pedidos: tarjetas verticales. Reemplaza la tabla móvil con contenido legible. */
+	/* Detalle: tabla normalizada a filas flexibles más abajo. */
 }
 @media(max-width:560px){
 	body.woocommerce-account .site-content .woocommerce {font-size:14px;}
@@ -364,6 +364,308 @@ body.woocommerce-account:not(.logged-in) .woocommerce .woocommerce-privacy-polic
 	body.woocommerce-account .woocommerce-MyAccount-content .mdo-club table {display:block;max-width:100%;overflow-x:auto;}
 	body.woocommerce-account .woocommerce-MyAccount-content .mdo-club .mdo-club-amounts .button {flex:1 1 auto;}
 }
+
+/* Mi cuenta: pulido transversal de tablas, pedidos y navegación. */
+body.woocommerce-account .woocommerce-MyAccount-content,
+body.woocommerce-account .woocommerce-MyAccount-content table,
+body.woocommerce-account .woocommerce-MyAccount-content :is(th,td,p,li,dd,dt,a,span) {
+	word-break:normal!important;
+	overflow-wrap:break-word;
+}
+body.woocommerce-account .woocommerce-MyAccount-content table :is(th,td) {
+	min-width:0;
+	vertical-align:middle;
+	white-space:normal;
+}
+body.woocommerce-account .woocommerce-MyAccount-content :is(.woocommerce-order-details,.woocommerce-customer-details,.woocommerce-order-downloads,.woocommerce-OrderUpdates) {
+	min-width:0;
+	max-width:100%;
+}
+body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-order-details .woocommerce-table__product-name a {
+	text-decoration:none;
+	font-weight:750;
+	line-height:1.55;
+}
+body.woocommerce-account .woocommerce-MyAccount-content :is(.woocommerce-OrderUpdate,.woocommerce-Address) {
+	overflow-wrap:break-word;
+}
+body.woocommerce-account .woocommerce-MyAccount-content :is(.woocommerce-MyAccount-downloads-file,.woocommerce-MyAccount-paymentMethods) {
+	max-width:100%;
+}
+body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-customer-details address,
+body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-customer-details .woocommerce-column {
+	min-width:0;
+	max-width:100%;
+	white-space:normal;
+	overflow-wrap:break-word;
+}
+body.woocommerce-account .woocommerce-MyAccount-content .emdo-account-order-back {
+	display:inline-flex;align-items:center;gap:6px;margin:0 0 18px;
+	padding:8px 12px;border:1px solid #dfebe0;border-radius:10px;
+	background:#f4f8f3;text-decoration:none!important;font-size:13px;font-weight:750;
+}
+body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-order-details .wc-item-meta {
+	margin:8px 0 0!important;padding:0!important;
+	list-style:none;
+}
+body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-order-details .wc-item-meta li {
+	display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline;margin:3px 0;line-height:1.6;
+}
+body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-order-details .wc-item-meta :is(strong,.wc-item-meta-label) {
+	margin:0;font-weight:700;color:#496755;
+}
+body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-order-details .wc-item-meta p {
+	margin:0!important;overflow-wrap:anywhere;
+}
+body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-OrderUpdates li {
+	padding:12px 15px;background:#fafbf8;border-radius:12px;margin:10px 0;
+}
+@media(max-width:1023px) {
+	body.woocommerce-account .site-content .woocommerce:has(> .woocommerce-MyAccount-navigation) {
+		display:block!important;
+		width:100%!important;
+		max-width:100%!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-navigation {
+		position:static!important;
+		width:100%!important;
+		margin:0 0 19px!important;
+		padding:14px!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-navigation::before {padding:7px 9px 11px;}
+	body.woocommerce-account .woocommerce-MyAccount-navigation ul {
+		display:grid!important;
+		grid-template-columns:repeat(3,minmax(0,1fr))!important;
+		gap:8px!important;
+		padding:0!important;
+		margin:0!important;
+		overflow:visible!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-navigation li {
+		display:block!important;
+		float:none!important;
+		min-width:0!important;
+		margin:0!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-navigation li a {
+		display:flex!important;align-items:center!important;
+		min-width:0!important;width:100%!important;
+		min-height:44px!important;
+		padding:10px 12px!important;
+		white-space:normal!important;
+		overflow-wrap:break-word!important;
+		word-break:normal!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content {
+		max-width:100%!important;
+	}
+}
+@media(max-width:767px) {
+	body.woocommerce-account .woocommerce-MyAccount-navigation ul {
+		grid-template-columns:repeat(2,minmax(0,1fr))!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content {
+		padding:clamp(16px,4vw,23px)!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content :is(.woocommerce-orders-table,.woocommerce-table--order-details) {
+		width:100%!important;max-width:100%!important;
+		display:block!important;
+		overflow:visible!important;
+		border:0!important;background:transparent!important;
+		border-radius:0!important;
+		table-layout:auto!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content :is(.woocommerce-orders-table,.woocommerce-table--order-details) thead {
+		display:none!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content :is(.woocommerce-orders-table,.woocommerce-table--order-details) tbody {
+		display:grid!important;
+		gap:12px!important;
+		width:100%!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-orders-table tbody tr {
+		display:flex!important;
+		flex-direction:column!important;
+		width:100%!important;
+		border:1px solid #e1e7dd!important;
+		background:#fff!important;
+		border-radius:15px!important;
+		box-shadow:0 5px 17px rgba(21,63,43,.045);
+		overflow:hidden;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-orders-table tbody td {
+		display:flex!important;
+		align-items:center!important;
+		justify-content:space-between!important;
+		flex-wrap:wrap!important;
+		gap:8px 14px!important;
+		width:100%!important;
+		max-width:100%!important;
+		padding:11px 15px!important;
+		margin:0!important;
+		border:0!important;
+		border-bottom:1px solid #f0f1eb!important;
+		text-align:right!important;
+		box-sizing:border-box!important;
+		font-size:14px!important;
+		line-height:1.55!important;
+		white-space:normal!important;
+		word-break:normal!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-orders-table tbody td:last-child {
+		border-bottom:0!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-orders-table tbody td::before {
+		content:attr(data-title)!important;
+		display:block!important;
+		float:none!important;
+		flex:0 1 auto!important;
+		min-width:0!important;
+		margin:0!important;
+		font-size:12px!important;
+		font-weight:750!important;
+		color:#607266!important;
+		text-align:left!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-orders-table tbody .woocommerce-orders-table__cell-order-number {
+		background:#f5f8f3!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-orders-table tbody .woocommerce-orders-table__cell-order-number a {
+		font-size:16px!important;font-weight:850!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-orders-table tbody .woocommerce-orders-table__cell-order-actions {
+		justify-content:flex-end!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-orders-table tbody .woocommerce-orders-table__cell-order-actions::before {
+		margin-right:auto!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-orders-table tbody .woocommerce-orders-table__cell-order-actions .button {
+		min-height:39px!important;white-space:normal!important;
+	}
+	/* Detalle del pedido: dos columnas flexibles, sin palabras verticales. */
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-table--order-details tbody tr {
+		display:grid!important;
+		grid-template-columns:minmax(0,1fr) max-content!important;
+		align-items:start!important;
+		gap:6px 12px!important;
+		width:100%!important;
+		padding:14px 15px!important;
+		margin:0!important;
+		border:1px solid #e4e9df!important;
+		border-radius:13px!important;
+		background:#fff!important;
+		box-sizing:border-box!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-table--order-details tbody :is(th,td) {
+		display:block!important;
+		width:auto!important;min-width:0!important;max-width:100%!important;
+		padding:0!important;border:0!important;
+		text-align:left!important;
+		word-break:normal!important;
+		white-space:normal!important;
+		line-height:1.65!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-table--order-details tbody .product-total {
+		text-align:right!important;white-space:nowrap!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-table--order-details tfoot {
+		display:block!important;
+		margin-top:13px!important;
+		width:100%!important;
+		border:1px solid #e4e9df!important;
+		border-radius:13px!important;
+		overflow:hidden!important;
+		background:#f8faf6!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-table--order-details tfoot tr {
+		display:grid!important;
+		grid-template-columns:minmax(0,1fr) minmax(90px,auto)!important;
+		align-items:baseline!important;
+		gap:12px!important;
+		padding:12px 15px!important;
+		margin:0!important;
+		border-bottom:1px solid #e9ede6!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-table--order-details tfoot tr:last-child {
+		border-bottom:0!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-table--order-details tfoot :is(th,td) {
+		display:block!important;width:auto!important;min-width:0!important;
+		padding:0!important;margin:0!important;
+		border:0!important;word-break:normal!important;
+		white-space:normal!important;font-size:14px!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-table--order-details tfoot th {
+		text-align:left!important;color:#496253!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-table--order-details tfoot td {
+		text-align:right!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-table--order-details :is(.woocommerce-Price-amount, .woocommerce-Price-amount bdi, .woocommerce-Price-currencySymbol) {
+		white-space:nowrap!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-order-details > h2,
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-customer-details > h2 {
+		font-size:clamp(20px,5.4vw,26px)!important;
+		overflow-wrap:break-word!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-customer-details .woocommerce-columns {
+		display:grid!important;grid-template-columns:1fr!important;gap:15px!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-customer-details .woocommerce-column {
+		width:100%!important;float:none!important;
+		margin:0!important;padding:0!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-customer-details address {
+		padding:17px!important;background:#fafbf7;
+		border:1px solid #e3e9df;border-radius:13px;
+	}
+	/* Tablas adicionales de extensiones: desplazamiento del bloque, nunca
+	   convertir las celdas en columnas microscópicas. */
+	body.woocommerce-account .woocommerce-MyAccount-content :is(.woocommerce-MyAccount-downloads,.woocommerce-MyAccount-paymentMethods,.woocommerce-table--order-downloads) {
+		display:block!important;
+		max-width:100%!important;
+		overflow-x:auto!important;
+		-webkit-overflow-scrolling:touch;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .mdo-club {
+		max-width:100%!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .mdo-club-columns {
+		grid-template-columns:minmax(0,1fr)!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .mdo-club-card {
+		min-width:0!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .mdo-club table {
+		display:block!important;
+		max-width:100%!important;
+		overflow-x:auto!important;
+		-webkit-overflow-scrolling:touch;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .mdo-club :is(input,textarea,select) {
+		max-width:100%!important;
+		box-sizing:border-box!important;
+	}
+}
+@media(max-width:400px) {
+	body.woocommerce-account .woocommerce-MyAccount-navigation {
+		padding:11px!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-navigation ul {gap:6px!important;}
+	body.woocommerce-account .woocommerce-MyAccount-navigation li a {
+		padding:10px 9px!important;
+		font-size:12.5px!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-table--order-details tbody tr {
+		grid-template-columns:minmax(0,1fr)!important;
+	}
+	body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-table--order-details tbody .product-total {
+		text-align:left!important;
+		margin-top:2px!important;
+	}
+}
+
 @media(prefers-reduced-motion:reduce){
 	body.woocommerce-account .emdo-account-tile,
 	body.woocommerce-account .woocommerce-MyAccount-navigation li a {transition:none!important;}
@@ -438,3 +740,142 @@ add_filter( 'woocommerce_account_menu_items', static function( array $items ): a
 	}
 	return $items;
 }, PHP_INT_MAX );
+
+
+/**
+ * Traducciones de respaldo para la parte privada de WooCommerce.
+ * Algunas plantillas o extensiones pueden renderizar etiquetas en inglés
+ * aunque la tienda esté en castellano. Se aplican solo a textos exactos
+ * de interfaz en Mi cuenta; nunca traducimos nombres de productos,
+ * observaciones de pedidos ni contenido escrito por clientes.
+ */
+add_filter( 'gettext', static function( string $translation, string $text, string $domain ): string {
+	if ( ! function_exists( 'is_account_page' ) || ! is_account_page() ) {
+		return $translation;
+	}
+	if ( ! in_array( $domain, array( 'woocommerce', 'woostify' ), true ) ) {
+		return $translation;
+	}
+	static $labels = array(
+		'My account' => 'Mi cuenta',
+		'Dashboard' => 'Inicio',
+		'Orders' => 'Pedidos',
+		'Order' => 'Pedido',
+		'Order details' => 'Detalles del pedido',
+		'Order Details' => 'Detalles del pedido',
+		'Order updates' => 'Actualizaciones del pedido',
+		'Order notes' => 'Notas del pedido',
+		'Order received' => 'Pedido recibido',
+		'Order again' => 'Volver a comprar',
+		'Order number' => 'Número de pedido',
+		'Order number:' => 'Número de pedido:',
+		'Order date' => 'Fecha del pedido',
+		'Order status' => 'Estado del pedido',
+		'Order #%1$s was placed on %2$s and is currently %3$s.' => 'El pedido n.º %1$s se realizó el %2$s y su estado actual es %3$s.',
+		'No order has been made yet.' => 'Todavía no has realizado ningún pedido.',
+		'Browse products' => 'Ver productos',
+		'Date' => 'Fecha',
+		'Status' => 'Estado',
+		'Total' => 'Total',
+		'Subtotal' => 'Subtotal',
+		'Product' => 'Producto',
+		'Products' => 'Productos',
+		'Quantity' => 'Cantidad',
+		'Qty' => 'Cant.',
+		'Actions' => 'Acciones',
+		'View' => 'Ver',
+		'View order' => 'Ver pedido',
+		'Pay' => 'Pagar',
+		'Cancel' => 'Cancelar',
+		'Downloads' => 'Descargas',
+		'Download' => 'Descargar',
+		'Addresses' => 'Direcciones',
+		'Billing address' => 'Dirección de facturación',
+		'Shipping address' => 'Dirección de envío',
+		'Billing details' => 'Datos de facturación',
+		'Shipping details' => 'Datos de envío',
+		'Billing & Shipping' => 'Facturación y envío',
+		'Customer details' => 'Datos del cliente',
+		'Payment method' => 'Método de pago',
+		'Payment methods' => 'Métodos de pago',
+		'Payment details' => 'Datos de pago',
+		'Shipping' => 'Envío',
+		'Discount' => 'Descuento',
+		'Tax' => 'Impuestos',
+		'Note' => 'Nota',
+		'Customer note' => 'Nota del cliente',
+		'Account details' => 'Datos personales',
+		'Edit account' => 'Editar cuenta',
+		'Save changes' => 'Guardar cambios',
+		'Edit' => 'Editar',
+		'Log out' => 'Cerrar sesión',
+		'Log in' => 'Acceder',
+		'Register' => 'Registrarse',
+		'Lost your password?' => '¿Has olvidado tu contraseña?',
+		'Pending payment' => 'Pendiente de pago',
+		'Processing' => 'En preparación',
+		'On hold' => 'En espera',
+		'Completed' => 'Completado',
+		'Cancelled' => 'Cancelado',
+		'Failed' => 'Fallido',
+		'Refunded' => 'Reembolsado',
+	);
+	// Don't clobber an existing Spanish translation (or a text with different
+	// meaning); only use the fallback when the label is still English.
+	return $translation === $text && isset( $labels[ $text ] )
+		? $labels[ $text ] : $translation;
+}, 30, 3 );
+
+/** Consistent Spanish headings and responsive data-title labels in orders. */
+add_filter( 'woocommerce_account_orders_columns', static function( array $columns ): array {
+	if ( ! function_exists( 'is_account_page' ) || ! is_account_page() ) {
+		return $columns;
+	}
+	$labels = array(
+		'order-number' => 'Pedido',
+		'order-date' => 'Fecha',
+		'order-status' => 'Estado',
+		'order-total' => 'Total',
+		'order-actions' => 'Acciones',
+	);
+	foreach ( $columns as $key => $value ) {
+		if ( isset( $labels[ $key ] ) ) {
+			$columns[ $key ] = $labels[ $key ];
+		}
+	}
+	return $columns;
+}, 99 );
+
+/** Keep the account menu labels predictable in the Spanish customer area. */
+add_filter( 'woocommerce_account_menu_items', static function( array $items ): array {
+	if ( ! function_exists( 'is_account_page' ) || ! is_account_page() ) {
+		return $items;
+	}
+	$labels = array(
+		'dashboard' => 'Inicio',
+		'orders' => 'Mis pedidos',
+		'downloads' => 'Descargas',
+		'edit-address' => 'Direcciones',
+		'payment-methods' => 'Métodos de pago',
+		'edit-account' => 'Datos personales',
+		'monedero' => 'Club EMDO',
+		'customer-logout' => 'Cerrar sesión',
+	);
+	foreach ( $items as $endpoint => $label ) {
+		if ( isset( $labels[ $endpoint ] ) ) {
+			$items[ $endpoint ] = $labels[ $endpoint ];
+		}
+	}
+	return $items;
+}, 99 );
+
+/** Clear return path when opening a previously placed order. */
+add_action( 'woocommerce_order_details_before_order_table', static function( $order ): void {
+	if ( ! function_exists( 'is_account_page' ) || ! is_account_page()
+		|| ! function_exists( 'is_wc_endpoint_url' ) || ! is_wc_endpoint_url( 'view-order' )
+		|| ! function_exists( 'wc_get_account_endpoint_url' ) ) {
+		return;
+	}
+	echo '<a class="emdo-account-order-back" href="' . esc_url( wc_get_account_endpoint_url( 'orders' ) ) . '">'
+		. '<span aria-hidden="true">←</span> Volver a mis pedidos</a>';
+}, 5, 1 );
