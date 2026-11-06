@@ -1,0 +1,75 @@
+name: Export Hidalgo catalog for TikTok (read-only)
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/export-hidalgo-tiktok-catalog-20261106.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check script and SSH access
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/export-hidalgo-tiktok-20261106.php
+          test -n "$HOST" && test -n "$USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          P="${PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$P" -H "$HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Export live WooCommerce Hidalgo catalog without database writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          P="${PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -p $P"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -P $P"
+          REMOTE="/tmp/emdo-hidalgo-tiktok-${GITHUB_RUN_ID}.php"
+          REMOTE_JSON="/tmp/emdo-hidalgo-tiktok-${GITHUB_RUN_ID}.json"
+          sshpass -e scp $SCP .github/scripts/export-hidalgo-tiktok-20261106.php "$USER@$HOST:$REMOTE"
+          sshpass -e ssh $SSH "$USER@$HOST" "bash -s -- '$REMOTE' '$REMOTE_JSON'" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+          SCRIPT="$1"
+          OUTPUT="$2"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          test -f "$ROOT/wp-config.php"
+          SITE=$("$PHP" "$WP" option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)
+          case "$SITE" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
+            *) echo "Unexpected production site" >&2; exit 4 ;;
+          esac
+          "$PHP" -d memory_limit=768M -d display_errors=0 "$WP" eval-file "$SCRIPT" --path="$ROOT" --allow-root > "$OUTPUT"
+          "$PHP" -r '$j=json_decode(file_get_contents($argv[1]),true); if(!is_array($j)||empty($j["products"])) exit(5); echo "EXPORTED parents=".$j["parent_count"]." variants=".$j["variation_count"]."\n";' "$OUTPUT"
+          REMOTE_SCRIPT
+          sshpass -e scp $SCP "$USER@$HOST:$REMOTE_JSON" hidalgo-tiktok-export.json
+          sshpass -e ssh $SSH "$USER@$HOST" "rm -f '$REMOTE' '$REMOTE_JSON'" || true
+          python3 - <<'PY'
+          import json
+          with open('hidalgo-tiktok-export.json') as f: d=json.load(f)
+          assert d['parent_count']==len(d['products'])
+          print('CHECK: parents=%d, variants=%d' % (d['parent_count'],d['variation_count']))
+          PY
+      - name: Upload GitHub artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hidalgo-tiktok-export
+          path: hidalgo-tiktok-export.json
+          retention-days: 7
+          if-no-files-found: warn
