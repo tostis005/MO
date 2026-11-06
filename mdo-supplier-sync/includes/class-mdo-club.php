@@ -218,7 +218,6 @@ final class MDO_Club {
 				</section>
 				<section class="mdo-club-card"><h3>Canjear tarjeta regalo</h3><p>Convierte una o varias tarjetas regalo en saldo acumulable.</p>
 					<?php self::redeem_form(); ?>
-					<p><a href="<?php echo esc_url( get_permalink( (int) get_option( 'mdo_club_gift_page' ) ) ); ?>">Comprar tarjeta regalo</a></p>
 				</section>
 			</div>
 			<section class="mdo-club-card"><h3>Mis recompensas</h3><p><?php if ( self::enabled( 'rewards' ) ) : ?>Recibe <?php echo esc_html( (string) self::percent() ); ?> % de las compras válidas, una vez completadas. Las recompensas se acumulan en el mismo monedero.<?php else : ?>Próximamente: acumula recompensas con tus compras para gastar en próximos pedidos.<?php endif; ?></p></section>
@@ -299,7 +298,10 @@ final class MDO_Club {
 			<?php wp_nonce_field( 'mdo_club_redeem' ); ?>
 			<input type="hidden" name="mdo_club_form" value="redeem">
 			<label>Código de tarjeta regalo<input type="text" name="gift_code" maxlength="64" placeholder="Introduce los 20 números" inputmode="numeric" autocomplete="off" required></label>
-			<button type="submit" class="button">Canjear tarjeta</button>
+			<div class="mdo-club-redeem__actions">
+				<button type="submit" class="button">Canjear</button>
+				<a class="button" href="<?php echo esc_url( get_permalink( (int) get_option( 'mdo_club_gift_page' ) ) ); ?>">Comprar tarjeta</a>
+			</div>
 		</form>
 		<?php
 	}
@@ -358,6 +360,22 @@ final class MDO_Club {
 		.mdo-club form label{display:block;font-weight:600;margin:12px 0 8px}
 		.mdo-club input,.mdo-club textarea{width:100%;max-width:100%;box-sizing:border-box;padding:11px;border:1px solid #d7ddd4;border-radius:9px;background:#fff}
 		.mdo-club .button{background:#28513c;color:#fff;border:0;border-radius:10px;padding:10px 14px;display:inline-block;margin:6px 5px 0 0;cursor:pointer}
+		/* Acciones equivalentes: canjear saldo existente o comprar tarjeta nueva. */
+		.mdo-club .mdo-club-redeem__actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;width:100%;margin-top:18px}
+		.mdo-club .mdo-club-redeem__actions > :is(button.button,a.button){
+			display:flex!important;align-items:center!important;justify-content:center!important;
+			width:100%!important;min-width:0!important;min-height:48px!important;
+			padding:10px 12px!important;margin:0!important;
+			border:1px solid #28513c!important;border-radius:10px!important;
+			background:#28513c!important;color:#fff!important;
+			font-weight:750!important;font-size:13px!important;line-height:1.35!important;
+			text-align:center!important;text-decoration:none!important;
+			white-space:normal!important;box-sizing:border-box!important;
+		}
+		.mdo-club .mdo-club-redeem__actions > :is(button.button,a.button):hover,
+		.mdo-club .mdo-club-redeem__actions > :is(button.button,a.button):focus-visible{background:#1d3e2d!important;color:#fff!important}
+		@media(max-width:360px){.mdo-club .mdo-club-redeem__actions{gap:8px}.mdo-club .mdo-club-redeem__actions > :is(button.button,a.button){padding:10px 7px!important;font-size:12px!important}}
+
 		.mdo-club .mdo-club-card>a.button{display:inline-flex!important;align-items:center!important;justify-content:center!important;text-align:center!important}
 		.mdo-club-amounts .button{background:#f4eee3;color:#234b37}.mdo-club-note{font-style:italic}
 		.mdo-club table{width:100%;border-collapse:collapse}.mdo-club td,.mdo-club th{padding:10px;border-bottom:1px solid #eee;text-align:left}

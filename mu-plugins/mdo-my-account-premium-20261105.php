@@ -845,16 +845,15 @@ add_action( 'woocommerce_account_dashboard', static function (): void {
 	if ( class_exists( 'MDO_Club_Ledger' ) && function_exists( 'wc_price' ) ) {
 		$balance = wp_kses_post( wc_price( MDO_Club_Ledger::money( MDO_Club_Ledger::balance( get_current_user_id() ) ) ) );
 	}
-	$gift_page_id = (int) get_option( 'mdo_club_gift_page', 0 );
-	$gift_url = $gift_page_id && 'publish' === get_post_status( $gift_page_id )
-		? get_permalink( $gift_page_id )
-		: home_url( '/tarjetas-regalo/' );
+	// The main dashboard CTA opens the complete Club experience:
+	// balance, rewards, top-ups and gift-card redemption.
+	$club_url = wc_get_account_endpoint_url( 'monedero' );
 	echo '<div class="emdo-account-hub__banner"><div class="emdo-account-hub__banner-copy">';
 	echo '<strong class="emdo-account-hub__banner-title">Club EMDO</strong>';
 	if ( null !== $balance ) {
 		echo '<div class="emdo-account-hub__banner-balance"><span class="emdo-account-hub__balance-caption">Saldo disponible</span><span class="emdo-account-hub__balance-value">' . $balance . '</span></div>';
 	}
-	echo '</div><a href="' . esc_url( $gift_url ) . '">Ver tarjetas regalo</a></div>';
+	echo '</div><a href="' . esc_url( $club_url ) . '">Ir a Club EMDO</a></div>';
 	echo '</section>';
 }, 25 );
 
