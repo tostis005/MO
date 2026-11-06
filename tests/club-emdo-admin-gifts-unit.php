@@ -130,7 +130,7 @@ foreach ( array(
 	'Tarjetas regalo adquiridas',
 	'Canjeada por',
 	'Correo enviado',
-	'Filtrar',
+	'Aplicar filtros',
 	'Sin canjear',
 	'manage_woocommerce',
 	'wc_get_order(',
