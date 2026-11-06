@@ -42,7 +42,7 @@ jobs:
           esac
           VERSION=$("$PHP" -d memory_limit=512M "$WP" plugin get mdo-supplier-sync --field=version --path="$ROOT" --allow-root)
           STATUS=$("$PHP" -d memory_limit=512M "$WP" plugin get mdo-supplier-sync --field=status --path="$ROOT" --allow-root)
-          test "$VERSION" = '1.0.79' && test "$STATUS" = 'active'
+          test "$VERSION" = '1.0.80' && test "$STATUS" = 'active'
           "$PHP" -d memory_limit=768M "$WP" eval '
             if (!class_exists("MDO_Club_Ledger") || !class_exists("MDO_Club_Admin")) {
               fwrite(STDERR,"REPORT_CLASSES_MISSING\n"); exit(4);
@@ -63,6 +63,28 @@ jobs:
               if($order && !method_exists($order,"get_edit_order_url")) { exit(10); }
             }
             if(!method_exists("MDO_Club_Admin","render")) { exit(11); }
+            $all=MDO_Club_Ledger::wallet_report(1,25,"","all","balance","desc");
+            $positive=MDO_Club_Ledger::wallet_report(1,25,"","positive","balance","desc");
+            $zero=MDO_Club_Ledger::wallet_report(1,25,"","zero","name","asc");
+            if($all["total"]!==($positive["total"]+$zero["total"])) { exit(12); }
+            $previous=PHP_INT_MAX;
+            foreach($positive["rows"] as $row) {
+              $balance=(int)$row["balance_cents"];
+              if($balance<=0 || $balance>$previous) { exit(13); }
+              $previous=$balance;
+            }
+            foreach($zero["rows"] as $row) {
+              if((int)$row["balance_cents"]!==0) { exit(14); }
+            }
+            $sorted=MDO_Club_Ledger::gift_report(1,25,"","","amount","desc",0,0);
+            if(!isset($sorted["total"],$sorted["rows"])) { exit(15); }
+            $previous=PHP_INT_MAX;
+            foreach($sorted["rows"] as $gift) {
+              if((int)$gift["amount_cents"]>$previous) {exit(16);}
+              $previous=(int)$gift["amount_cents"];
+            }
+            echo "WALLET_FILTERS_OK total=".$all["total"]." positive=".$positive["total"]." zero=".$zero["total"]."\n";
+            echo "GIFT_SORT_OK total=".$sorted["total"]."\n";
             echo "REPORT_OK issued=".$stats["issued_count"]
               ." redeemed=".$stats["redeemed_count"]
               ." unredeemed=".$stats["unredeemed_count"]
