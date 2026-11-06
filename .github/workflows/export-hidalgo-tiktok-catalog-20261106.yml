@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/export-hidalgo-tiktok-catalog-20261106.yml'
+      - '.github/scripts/export-hidalgo-tiktok-20261106.php'
   workflow_dispatch:
 permissions:
   contents: read
