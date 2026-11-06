@@ -60,8 +60,24 @@ a{color:#24513a}h1{font-size:30px}h2{font-size:25px}
 <tr><th>Forma de pago:</th><td>Transferencia bancaria</td></tr>
 <tr><th>Total:</th><td><strong>85,50 €</strong></td></tr>
 </tfoot></table></section>
+<h2>Add your note</h2>
+<form action="" method="POST" enctype="multipart/form-data">
+<table class="woocommerce-table"><tbody>
+<tr><th>Add Note</th><td><textarea name="cus_add_note" id="cus_add_note"></textarea></td></tr>
+<tr><th>Upload File</th><td><input type="file" name="cus_add_note_file" id="cus_add_note_file"></td></tr>
+<tr><td colspan="2"><input type="submit" name="cus_note_submit" id="cus_note_submit" value="Submit"></td></tr>
+</tbody></table>
+</form>
 <section class="woocommerce-customer-details"><h2>Direcciones</h2><div class="woocommerce-columns">
 <div class="woocommerce-column"><h3>Facturación</h3><address>Nombre de prueba<br>Calle Ejemplo, 14<br>Madrid</address></div>
 <div class="woocommerce-column"><h3>Envío</h3><address>Nombre de prueba<br>Av. Ejemplo, 21<br>Madrid</address></div>
 </div></section>
-</div></div></main></body></html>
+</div></div></main>
+<?php
+// Use the exact script embedded in the plugin, not a rewritten mock.
+if ( ! preg_match( '/echo <<<\x27HTML\x27\\n(<script id="emdo-account-order-note-es">[\\s\\S]*?<\\/script>)\\nHTML;/', $source, $note_script ) ) {
+	throw new RuntimeException( 'Missing real order-note translation script' );
+}
+echo $note_script[1];
+?>
+</body></html>
