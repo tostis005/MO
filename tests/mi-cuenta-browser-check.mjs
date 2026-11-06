@@ -41,13 +41,13 @@ try {
 					.filter(n => n.getClientRects().length > 0 && n.getBoundingClientRect().width < 44).length,
 				noteHeading: [...document.querySelectorAll('.woocommerce-MyAccount-content h2')]
 					.some(h => h.textContent.trim() === 'Añadir una nota al pedido'),
-				noteLabels: [...document.querySelectorAll('form:has(#cus_add_note) th label')]
+				noteLabels: [...document.querySelectorAll('form:has(#wcfm_cus_add_note) th label')]
 					.map(label => label.textContent.trim()),
-				noteFormWidth: box('form:has(#cus_add_note)').width,
-				noteTextWidth: box('#cus_add_note').width,
-				noteFileWidth: box('#cus_add_note_file').width,
-				noteSubmit: el('#cus_note_submit').value,
-				noteEnctype: el('#cus_add_note').form.enctype,
+				noteFormWidth: box('form:has(#wcfm_cus_add_note)').width,
+				noteTextWidth: box('#wcfm_cus_add_note').width,
+				noteFileWidth: box('#wcfm_cus_add_note_file').width,
+				noteSubmit: el('#wcfm_cus_note_submit').value,
+				noteEnctype: el('#wcfm_cus_add_note').form.enctype,
 			};
 		});
 		console.log('WIDTH ' + width + 'px:', JSON.stringify(a));
