@@ -58,23 +58,14 @@ final class MDO_Club_Admin {
 		$page = isset( $_GET['pnum'] ) ? max( 1, absint( $_GET['pnum'] ) ) : 1;
 		$search = isset( $_GET['s'] ) ? substr( sanitize_text_field( wp_unslash( $_GET['s'] ) ), 0, 100 ) : '';
 		$detail_id = isset( $_GET['club_user'] ) ? absint( $_GET['club_user'] ) : 0;
-		$args = array(
-			'number' => 25, 'paged' => $page, 'orderby' => 'registered',
-			'order' => 'DESC', 'count_total' => true,
-		);
-		if ( '' !== $search ) {
-			$normalized = ltrim( $search, '#' );
-			if ( ctype_digit( $normalized ) ) {
-				$args['include'] = array( absint( $normalized ) );
-			} else {
-				$args['search'] = '*' . $search . '*';
-				$args['search_columns'] = array( 'user_email', 'user_login', 'display_name' );
-			}
-		}
-		$query = new WP_User_Query( $args );
-		$users = $query->get_results();
-		$ids = array_map( 'intval', wp_list_pluck( $users, 'ID' ) );
-		$balances = MDO_Club_Ledger::balances_for_users( $ids );
+		$balance_filter = isset( $_GET['w_balance'] ) ? sanitize_key( wp_unslash( $_GET['w_balance'] ) ) : 'all';
+		if ( ! in_array( $balance_filter, array( 'all', 'positive', 'zero' ), true ) ) { $balance_filter = 'all'; }
+		$sort = isset( $_GET['w_sort'] ) ? sanitize_key( wp_unslash( $_GET['w_sort'] ) ) : 'balance';
+		if ( ! in_array( $sort, array( 'balance', 'name', 'email', 'registered', 'id' ), true ) ) { $sort = 'balance'; }
+		$direction = isset( $_GET['w_dir'] ) && 'asc' === sanitize_key( wp_unslash( $_GET['w_dir'] ) ) ? 'asc' : 'desc';
+		$report = MDO_Club_Ledger::wallet_report( $page, 25, $search, $balance_filter, $sort, $direction );
+		$users = $report['rows'];
+		$filters = array( 's' => $search, 'w_balance' => $balance_filter, 'w_sort' => $sort, 'w_dir' => $direction );
 		$status = isset( $_GET['club_status'] ) ? sanitize_key( wp_unslash( $_GET['club_status'] ) ) : '';
 		$totals = MDO_Club_Ledger::totals();
 		?>
@@ -97,48 +88,90 @@ final class MDO_Club_Admin {
 					<strong style="font-size:24px"><?php echo wp_kses_post( wc_price( MDO_Club_Ledger::money( (int) $totals['balance_cents'] ) ) ); ?></strong><br>Saldo total de clientes
 				</div>
 				<div style="padding:18px;background:#fff;border:1px solid #dcdcde;border-radius:10px">
-					<strong style="font-size:24px"><?php echo (int) $totals['positive_wallets']; ?></strong><br>Usuarios con saldo
+					<strong style="font-size:24px"><?php echo (int) $totals['positive_wallets']; ?></strong><br><a href="<?php echo esc_url( self::url( array( 'w_balance' => 'positive', 'w_sort' => 'balance', 'w_dir' => 'desc' ) ) ); ?>">Ver solo usuarios con saldo</a>
 				</div>
 			</div>
-			<h2>Buscar clientes</h2>
+			<h2>Buscar y ordenar clientes</h2>
 			<form method="get" style="margin:12px 0">
 				<input type="hidden" name="page" value="mdo-club-balances">
-				<input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="Nombre, correo o ID" style="min-width:250px">
-				<button class="button" type="submit">Buscar</button>
-				<?php if ( $search ) : ?><a class="button" href="<?php echo esc_url( self::url() ); ?>">Limpiar</a><?php endif; ?>
+				<input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="Nombre, correo o ID" style="min-width:240px">
+				<label for="mdo-club-balance-filter">Saldo:</label>
+				<select id="mdo-club-balance-filter" name="w_balance">
+					<option value="all" <?php selected( $balance_filter, 'all' ); ?>>Todos los usuarios</option>
+					<option value="positive" <?php selected( $balance_filter, 'positive' ); ?>>Solo con saldo</option>
+					<option value="zero" <?php selected( $balance_filter, 'zero' ); ?>>Sin saldo</option>
+				</select>
+				<label for="mdo-club-wallet-sort">Ordenar por:</label>
+				<select id="mdo-club-wallet-sort" name="w_sort">
+					<option value="balance" <?php selected( $sort, 'balance' ); ?>>Saldo</option>
+					<option value="name" <?php selected( $sort, 'name' ); ?>>Nombre</option>
+					<option value="email" <?php selected( $sort, 'email' ); ?>>Correo</option>
+					<option value="registered" <?php selected( $sort, 'registered' ); ?>>Fecha de registro</option>
+					<option value="id" <?php selected( $sort, 'id' ); ?>>ID de usuario</option>
+				</select>
+				<select name="w_dir" aria-label="Sentido de ordenación">
+					<option value="desc" <?php selected( $direction, 'desc' ); ?>>Descendente</option>
+					<option value="asc" <?php selected( $direction, 'asc' ); ?>>Ascendente</option>
+				</select>
+				<button class="button button-primary" type="submit">Aplicar filtros</button>
+				<?php if ( $search || 'all' !== $balance_filter || 'balance' !== $sort || 'desc' !== $direction ) : ?>
+					<a class="button" href="<?php echo esc_url( self::url() ); ?>">Limpiar</a>
+				<?php endif; ?>
 			</form>
+			<p><strong><?php echo (int) $report['total']; ?></strong> usuarios encontrados.</p>
 			<table class="widefat striped">
-				<thead><tr><th>Cliente</th><th>Correo</th><th>Saldo disponible</th><th>Ajuste manual</th><th>Movimientos</th></tr></thead>
+				<thead><tr>
+					<?php self::sort_th( 'Cliente', 'name', $sort, $direction, 'w_sort', 'w_dir', $filters ); ?>
+					<?php self::sort_th( 'Correo', 'email', $sort, $direction, 'w_sort', 'w_dir', $filters ); ?>
+					<?php self::sort_th( 'Saldo disponible', 'balance', $sort, $direction, 'w_sort', 'w_dir', $filters ); ?>
+					<th>Ajuste manual</th><th>Movimientos</th>
+				</tr></thead>
 				<tbody>
-					<?php if ( ! $users ) : ?><tr><td colspan="5">No se encontraron usuarios.</td></tr><?php endif; ?>
-					<?php foreach ( $users as $user ) : ?>
+					<?php if ( ! $users ) : ?><tr><td colspan="5">No se encontraron usuarios con estos filtros. Prueba «Todos los usuarios».</td></tr><?php endif; ?>
+					<?php foreach ( $users as $user ) :
+						$user_id = (int) $user['user_id']; ?>
 						<tr>
-							<td><strong><?php echo esc_html( $user->display_name ); ?></strong><br><small>#<?php echo (int) $user->ID; ?></small></td>
-							<td><?php echo esc_html( $user->user_email ); ?></td>
-							<td><strong><?php echo wp_kses_post( wc_price( MDO_Club_Ledger::money( (int) ( $balances[ $user->ID ] ?? 0 ) ) ) ); ?></strong></td>
+							<td><strong><?php echo esc_html( $user['display_name'] ); ?></strong><br><small>#<?php echo $user_id; ?></small></td>
+							<td><?php echo esc_html( $user['user_email'] ); ?></td>
+							<td><strong><?php echo wp_kses_post( wc_price( MDO_Club_Ledger::money( (int) $user['balance_cents'] ) ) ); ?></strong></td>
 							<td><form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:flex;gap:6px;flex-wrap:wrap">
-								<?php wp_nonce_field( 'mdo_club_adjust_' . $user->ID ); ?>
+								<?php wp_nonce_field( 'mdo_club_adjust_' . $user_id ); ?>
 								<input type="hidden" name="action" value="mdo_club_adjust">
-								<input type="hidden" name="club_user" value="<?php echo (int) $user->ID; ?>">
+								<input type="hidden" name="club_user" value="<?php echo (int) $user_id; ?>">
 								<input type="text" name="club_delta" placeholder="+5,00 / -2,00" size="12" required aria-label="Importe positivo o negativo">
 								<input type="text" name="club_note" placeholder="Motivo del ajuste" size="23" minlength="5" maxlength="200" required aria-label="Motivo">
 								<button class="button button-secondary" type="submit">Aplicar</button>
 							</form></td>
-							<td><a href="<?php echo esc_url( self::url( array( 'club_user' => $user->ID, 's' => $search ) ) ); ?>">Ver historial</a></td>
+							<td><a href="<?php echo esc_url( self::url( array_merge( $filters, array( 'club_user' => $user_id ) ) ) ); ?>">Ver historial</a></td>
 						</tr>
 					<?php endforeach; ?>
 				</tbody>
 			</table>
-			<?php $total_pages = (int) ceil( $query->get_total() / 25 ); ?>
+			<?php $total_pages = (int) ceil( $report['total'] / 25 ); ?>
 			<?php if ( $total_pages > 1 ) : ?>
 				<p><?php echo wp_kses_post( paginate_links( array(
-					'base' => add_query_arg( 'pnum', '%#%', self::url( array( 's' => $search ) ) ),
+					'base' => add_query_arg( 'pnum', '%#%', self::url( $filters ) ),
 					'format' => '', 'current' => $page, 'total' => $total_pages,
 				) ) ); ?></p>
 			<?php endif; ?>
 			<?php if ( $detail_id ) : self::history( $detail_id ); endif; ?>
 		</div>
 		<?php
+	}
+	/**
+	 * Server-side sortable column link. Whitelisted SQL columns are selected
+	 * in the ledger; this helper only changes URL parameters.
+	 */
+	private static function sort_th( string $label, string $key, string $sort, string $direction, string $sort_param, string $direction_param, array $filters ): void {
+		$active = $sort === $key;
+		$next_direction = $active && 'asc' === $direction ? 'desc' : 'asc';
+		$params = array_merge( $filters, array(
+			$sort_param => $key, $direction_param => $next_direction,
+		) );
+		$attr = $active ? ' aria-sort="' . ( 'asc' === $direction ? 'ascending' : 'descending' ) . '"' : '';
+		echo '<th' . $attr . '><a href="' . esc_url( self::url( $params ) ) . '">'
+			. esc_html( $label ) . ( $active ? ' ' . ( 'asc' === $direction ? '▲' : '▼' ) : ' ↕' )
+			. '</a></th>';
 	}
 	/** Two views within the existing admin URL, preserving old bookmarks. */
 	private static function tabs( string $active ): void {
