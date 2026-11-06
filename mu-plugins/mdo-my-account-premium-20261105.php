@@ -1021,3 +1021,63 @@ add_action( 'woocommerce_order_details_before_order_table', static function( $or
 	echo '<a class="emdo-account-order-back" href="' . esc_url( wc_get_account_endpoint_url( 'orders' ) ) . '">'
 		. '<span aria-hidden="true">←</span> Volver a mis pedidos</a>';
 }, 5, 1 );
+
+
+/**
+ * El formulario de notas del pedido es un snippet personalizado de WCFM y
+ * escribe sus textos en inglés directamente, fuera de gettext. Traduce
+ * solamente ese formulario identificándolo por sus campos propios, sin
+ * modificar el POST, el fichero adjunto ni el funcionamiento del envío.
+ */
+add_action( 'wp_footer', static function(): void {
+	if ( ! function_exists( 'is_account_page' ) || ! is_account_page()
+		|| ! function_exists( 'is_wc_endpoint_url' )
+		|| ! is_wc_endpoint_url( 'view-order' ) ) {
+		return;
+	}
+	echo <<<'HTML'
+<script id="emdo-account-order-note-es">
+(function () {
+	'use strict';
+	function translateOrderNote() {
+		var root = document.querySelector('.woocommerce-MyAccount-content');
+		if (!root) return;
+		var field = root.querySelector('textarea[name="cus_add_note"],textarea#cus_add_note');
+		if (!field || !field.form) return;
+		var form = field.form;
+		var upload = form.querySelector('input[name="cus_add_note_file"],input#cus_add_note_file');
+		var submit = form.querySelector('input[name="cus_note_submit"],input#cus_note_submit');
+		if (!submit) return;
+		root.querySelectorAll('h1,h2,h3,h4').forEach(function (heading) {
+			if (heading.textContent.trim() === 'Add your note') {
+				heading.textContent = 'Añadir una nota al pedido';
+			}
+		});
+		form.querySelectorAll('th').forEach(function (cell) {
+			var text = cell.textContent.trim();
+			var translated = text === 'Add Note' ? 'Mensaje' :
+				(text === 'Upload File' ? 'Adjuntar archivo (opcional)' : '');
+			if (!translated) return;
+			cell.textContent = '';
+			var label = document.createElement('label');
+			label.textContent = translated;
+			if (text === 'Add Note' && field.id) label.htmlFor = field.id;
+			if (text === 'Upload File' && upload && upload.id) label.htmlFor = upload.id;
+			cell.appendChild(label);
+		});
+		if (submit.tagName === 'INPUT') {
+			if (submit.value === 'Submit') submit.value = 'Enviar nota';
+		} else if (submit.textContent.trim() === 'Submit') {
+			submit.textContent = 'Enviar nota';
+		}
+		form.setAttribute('aria-label', 'Enviar una nota al pedido');
+	}
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', translateOrderNote, { once: true });
+	} else {
+		translateOrderNote();
+	}
+}());
+</script>
+HTML;
+}, 40 );
