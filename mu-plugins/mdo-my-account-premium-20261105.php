@@ -388,7 +388,7 @@ add_action( 'woocommerce_account_dashboard', static function (): void {
 		'user' => '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
 	);
 	echo '<section class="emdo-account-hub" aria-labelledby="emdo-account-hub-title">';
-	echo '<div class="emdo-account-hub__heading"><h2 id="emdo-account-hub-title">¿Qué quieres hacer?</h2><p>Todo tu mercado, en un solo lugar</p></div>';
+	echo '<div class="emdo-account-hub__heading"><h2 id="emdo-account-hub-title">¿Qué quieres hacer?</h2></div>';
 	echo '<div class="emdo-account-hub__grid">';
 	foreach ( $cards as $card ) {
 		list( $endpoint, $title, $description, $icon ) = $card;
