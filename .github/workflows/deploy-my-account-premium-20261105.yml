@@ -19,7 +19,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: emdo-my-account-premium-deploy
+  group: emdo-my-account-premium-${{ github.event_name }}
   cancel-in-progress: false
 jobs:
   validate:
