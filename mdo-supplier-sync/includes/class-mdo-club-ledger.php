@@ -156,6 +156,57 @@ final class MDO_Club_Ledger {
 		}
 		return $balances;
 	}
+	/**
+	 * Read-only user balance report. Filter/sort before pagination so every
+	 * account with credit can be discovered, not just the current 25 users.
+	 * Includes zero-balance and no-wallet WordPress accounts.
+	 * @return array{rows:array,total:int}
+	 */
+	public static function wallet_report( int $page = 1, int $per_page = 25, string $search = '', string $balance_filter = 'all', string $sort = 'balance', string $direction = 'desc' ): array {
+		global $wpdb;
+		$page = max( 1, $page );
+		$per_page = min( 50, max( 1, $per_page ) );
+		$sort_fields = array(
+			'balance' => 'COALESCE(w.balance_cents,0)',
+			'name' => 'u.display_name',
+			'email' => 'u.user_email',
+			'registered' => 'u.user_registered',
+			'id' => 'u.ID',
+		);
+		$sort_sql = $sort_fields[ $sort ] ?? $sort_fields['balance'];
+		$direction_sql = 'asc' === strtolower( $direction ) ? 'ASC' : 'DESC';
+		$join = ' FROM ' . $wpdb->users . ' u LEFT JOIN ' . self::table( 'wallets' ) . ' w ON w.user_id=u.ID';
+		$conditions = array();
+		$args = array();
+		if ( 'positive' === $balance_filter ) {
+			$conditions[] = 'COALESCE(w.balance_cents,0)>0';
+		} elseif ( 'zero' === $balance_filter ) {
+			$conditions[] = 'COALESCE(w.balance_cents,0)=0';
+		}
+		$search = trim( $search );
+		if ( '' !== $search ) {
+			$pattern = '%' . $wpdb->esc_like( $search ) . '%';
+			$numeric = ltrim( $search, '#' );
+			if ( ctype_digit( $numeric ) && strlen( $numeric ) <= 12 ) {
+				$conditions[] = '(u.ID=%d OR u.display_name LIKE %s OR u.user_email LIKE %s OR u.user_login LIKE %s)';
+				array_push( $args, (int) $numeric, $pattern, $pattern, $pattern );
+			} else {
+				$conditions[] = '(u.display_name LIKE %s OR u.user_email LIKE %s OR u.user_login LIKE %s)';
+				array_push( $args, $pattern, $pattern, $pattern );
+			}
+		}
+		$where = $conditions ? ' WHERE ' . implode( ' AND ', $conditions ) : '';
+		$count_sql = 'SELECT COUNT(*)' . $join . $where;
+		if ( $args ) { $count_sql = $wpdb->prepare( $count_sql, $args ); }
+		$total = (int) $wpdb->get_var( $count_sql );
+		$sql = 'SELECT u.ID AS user_id,u.display_name,u.user_email,u.user_registered,'
+			. 'COALESCE(w.balance_cents,0) AS balance_cents' . $join . $where
+			. ' ORDER BY ' . $sort_sql . ' ' . $direction_sql . ',u.ID DESC LIMIT %d OFFSET %d';
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, array_merge( $args, array(
+			$per_page, ( $page - 1 ) * $per_page,
+		) ) ), ARRAY_A );
+		return array( 'rows' => is_array( $rows ) ? $rows : array(), 'total' => $total );
+	}
 	public static function totals(): array {
 		global $wpdb;
 		$row = $wpdb->get_row(
@@ -202,11 +253,21 @@ final class MDO_Club_Ledger {
 	 *
 	 * @return array{rows:array,total:int}
 	 */
-	public static function gift_report( int $page = 1, int $per_page = 25, string $search = '', string $status = '' ): array {
+	public static function gift_report( int $page = 1, int $per_page = 25, string $search = '', string $status = '', string $sort = 'date', string $direction = 'desc', int $min_cents = 0, int $max_cents = 0 ): array {
 		global $wpdb;
 		$page = max( 1, $page );
 		$per_page = min( 50, max( 1, $per_page ) );
 		$search = trim( $search );
+		$sort_fields = array(
+			'date' => 'id',
+			'order' => 'order_id',
+			'recipient' => 'recipient_email',
+			'amount' => 'amount_cents',
+			'status' => 'redeemed_user_id',
+			'redeemed_at' => 'redeemed_at',
+		);
+		$sort_sql = $sort_fields[ $sort ] ?? $sort_fields['date'];
+		$direction_sql = 'asc' === strtolower( $direction ) ? 'ASC' : 'DESC';
 		$wheres = array();
 		$values = array();
 
@@ -227,6 +288,14 @@ final class MDO_Club_Ledger {
 				$values[] = $pattern;
 			}
 		}
+		if ( $min_cents > 0 ) {
+			$wheres[] = 'amount_cents>=%d';
+			$values[] = $min_cents;
+		}
+		if ( $max_cents > 0 ) {
+			$wheres[] = 'amount_cents<=%d';
+			$values[] = $max_cents;
+		}
 		$from = ' FROM ' . self::table( 'gifts' );
 		$where = $wheres ? ' WHERE ' . implode( ' AND ', $wheres ) : '';
 		$count_sql = 'SELECT COUNT(*)' . $from . $where;
@@ -235,7 +304,7 @@ final class MDO_Club_Ledger {
 		}
 		$total = (int) $wpdb->get_var( $count_sql );
 		$query = 'SELECT id,amount_cents,recipient_email,order_id,item_id,redeemed_user_id,redeemed_at,created_at'
-			. $from . $where . ' ORDER BY id DESC LIMIT %d OFFSET %d';
+			. $from . $where . ' ORDER BY ' . $sort_sql . ' ' . $direction_sql . ',id DESC LIMIT %d OFFSET %d';
 		$query_values = array_merge( $values, array( $per_page, ( $page - 1 ) * $per_page ) );
 		$rows = $wpdb->get_results( $wpdb->prepare( $query, $query_values ), ARRAY_A );
 		return array( 'rows' => is_array( $rows ) ? $rows : array(), 'total' => $total );
