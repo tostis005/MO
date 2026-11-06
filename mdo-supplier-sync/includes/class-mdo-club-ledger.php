@@ -172,6 +172,74 @@ final class MDO_Club_Ledger {
 			$user_id, min( 50, max( 1, $limit ) )
 		), ARRAY_A ) ?: array();
 	}
+	/**
+	 * Read-only totals for gift cards already issued after an eligible paid order.
+	 * Unpaid / unissued gift orders belong to WooCommerce, not this ledger.
+	 * No card secrets or plaintext redemption codes are retrieved.
+	 */
+	public static function gift_report_totals(): array {
+		global $wpdb;
+		$row = $wpdb->get_row(
+			'SELECT COUNT(*) AS issued_count,
+				COALESCE(SUM(amount_cents),0) AS issued_cents,
+				COALESCE(SUM(CASE WHEN redeemed_user_id=0 THEN 1 ELSE 0 END),0) AS unredeemed_count,
+				COALESCE(SUM(CASE WHEN redeemed_user_id=0 THEN amount_cents ELSE 0 END),0) AS unredeemed_cents,
+				COALESCE(SUM(CASE WHEN redeemed_user_id>0 THEN 1 ELSE 0 END),0) AS redeemed_count
+			 FROM ' . self::table( 'gifts' ),
+			ARRAY_A
+		);
+		return array(
+			'issued_count' => (int) ( $row['issued_count'] ?? 0 ),
+			'issued_cents' => (int) ( $row['issued_cents'] ?? 0 ),
+			'unredeemed_count' => (int) ( $row['unredeemed_count'] ?? 0 ),
+			'unredeemed_cents' => (int) ( $row['unredeemed_cents'] ?? 0 ),
+			'redeemed_count' => (int) ( $row['redeemed_count'] ?? 0 ),
+		);
+	}
+	/**
+	 * Paginated read-only gift card report. Only operational metadata is
+	 * selected: never expose code_hash, signing secrets or gift codes.
+	 *
+	 * @return array{rows:array,total:int}
+	 */
+	public static function gift_report( int $page = 1, int $per_page = 25, string $search = '', string $status = '' ): array {
+		global $wpdb;
+		$page = max( 1, $page );
+		$per_page = min( 50, max( 1, $per_page ) );
+		$search = trim( $search );
+		$wheres = array();
+		$values = array();
+
+		if ( 'unredeemed' === $status ) {
+			$wheres[] = 'redeemed_user_id=0';
+		} elseif ( 'redeemed' === $status ) {
+			$wheres[] = 'redeemed_user_id>0';
+		}
+		if ( '' !== $search ) {
+			$pattern = '%' . $wpdb->esc_like( $search ) . '%';
+			// Search recipient email, or exact WooCommerce order ID when numeric.
+			if ( preg_match( '/^#?([0-9]{1,12})$/', $search, $matches ) ) {
+				$wheres[] = '(recipient_email LIKE %s OR order_id=%d)';
+				$values[] = $pattern;
+				$values[] = (int) $matches[1];
+			} else {
+				$wheres[] = 'recipient_email LIKE %s';
+				$values[] = $pattern;
+			}
+		}
+		$from = ' FROM ' . self::table( 'gifts' );
+		$where = $wheres ? ' WHERE ' . implode( ' AND ', $wheres ) : '';
+		$count_sql = 'SELECT COUNT(*)' . $from . $where;
+		if ( $values ) {
+			$count_sql = $wpdb->prepare( $count_sql, $values );
+		}
+		$total = (int) $wpdb->get_var( $count_sql );
+		$query = 'SELECT id,amount_cents,recipient_email,order_id,item_id,redeemed_user_id,redeemed_at,created_at'
+			. $from . $where . ' ORDER BY id DESC LIMIT %d OFFSET %d';
+		$query_values = array_merge( $values, array( $per_page, ( $page - 1 ) * $per_page ) );
+		$rows = $wpdb->get_results( $wpdb->prepare( $query, $query_values ), ARRAY_A );
+		return array( 'rows' => is_array( $rows ) ? $rows : array(), 'total' => $total );
+	}
 	private static function gift_secret(): string {
 		// Clave dedicada y persistente: cambiar las sales de WordPress no invalida
 		// tarjetas ya emitidas. No compartir este secreto ni exportarlo.
