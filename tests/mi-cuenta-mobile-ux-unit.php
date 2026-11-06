@@ -78,6 +78,27 @@ $GLOBALS['emdo_test_endpoint']=false;
 ob_start();
 foreach($GLOBALS['emdo_test_hooks']['woocommerce_order_details_before_order_table'] as $cb){$cb(null);}
 $assert(''===ob_get_clean(),'No back navigation on other order pages');
+$assert(isset($GLOBALS['emdo_test_hooks']['wp_footer']), 'Custom note translation is scoped to WordPress footer');
+ob_start();
+foreach ($GLOBALS['emdo_test_hooks']['wp_footer'] as $cb) { $cb(); }
+$assert('' === ob_get_clean(), 'No note translation script on other account pages');
+$GLOBALS['emdo_test_endpoint']=true;
+ob_start();
+foreach ($GLOBALS['emdo_test_hooks']['wp_footer'] as $cb) { $cb(); }
+$note_script=(string)ob_get_clean();
+$assert(str_contains($note_script,'emdo-account-order-note-es'), 'Custom order notes script loaded only on order details');
+foreach ([
+	'Añadir una nota al pedido','Mensaje','Adjuntar archivo (opcional)','Enviar nota',
+	'textarea[name="cus_add_note"]', 'cus_add_note_file','cus_note_submit',
+] as $expected) {
+	$assert(str_contains($note_script,$expected),'Missing custom note translation: '.$expected);
+}
+$GLOBALS['emdo_test_account']=false;
+ob_start();
+foreach ($GLOBALS['emdo_test_hooks']['wp_footer'] as $cb) { $cb(); }
+$assert('' === ob_get_clean(), 'No custom notes script outside Mi cuenta');
+$GLOBALS['emdo_test_account']=true;
+
 
 $src=file_get_contents(dirname(__DIR__).'/mu-plugins/mdo-my-account-premium-20261105.php');
 $assert((bool)preg_match("/<<<'CSS'\n([\s\S]*?)\nCSS\n/", $src, $match),'Inline CSS extracted');
@@ -99,6 +120,9 @@ $checks = [
 	'@media(prefers-reduced-motion:reduce)' => 'Accessible motion preferences maintained',
 ];
 foreach($checks as $needle=>$explanation) {$assert(str_contains($css,$needle),$explanation);}
+$assert(str_contains($css,'form:has(textarea[name="cus_add_note"])'), 'Custom note form layout is scoped by the exact field');
+$assert(str_contains($css,'input[type="file"]'), 'Note attachment input has responsive styling');
+$assert(str_contains($css,'input[type="submit"]'), 'Note submit button remains legible');
 $assert(!str_contains($css, 'scroll-snap-type:x proximity'), 'Old horizontal menu scrolling removed');
 $assert(!str_contains($css, '.woocommerce-orders-table {display:block;overflow-x:auto;'), 'Orders never forced to horizontal scrolling');
 echo "EMDO Mi cuenta mobile, orders and Spanish labels: OK\n";
