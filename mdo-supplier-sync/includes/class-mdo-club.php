@@ -201,9 +201,16 @@ final class MDO_Club {
 		if ( function_exists( 'wc_print_notices' ) ) { wc_print_notices(); }
 		?>
 		<div class="mdo-club">
-			<div class="mdo-club-hero"><span>EL MERCADO DE ORIGEN · CLUB EMDO</span><h2>Mi monedero</h2>
-				<p>Saldo disponible para tus próximos pedidos</p><strong><?php echo wp_kses_post( self::funds_html( $balance ) ); ?></strong>
-				<p>Un solo saldo que suma recompensas, recargas y tarjetas regalo.</p>
+			<div class="mdo-club-hero mdo-club-hero--wallet">
+				<div class="mdo-club-hero__heading">
+					<span class="mdo-club-hero__eyebrow">CLUB EMDO</span>
+					<h2>Mi monedero</h2>
+					<p>Recarga saldo y canjea tus tarjetas regalo.</p>
+				</div>
+				<div class="mdo-club-hero__balance" aria-label="Saldo disponible">
+					<span>Saldo disponible</span>
+					<strong class="mdo-club-hero__amount"><?php echo wp_kses_post( self::funds_html( $balance ) ); ?></strong>
+				</div>
 			</div>
 			<div class="mdo-club-columns">
 				<section class="mdo-club-card"><h3>Recargar saldo</h3><p>Elige cuánto quieres añadir a tu monedero.</p>
@@ -279,7 +286,6 @@ final class MDO_Club {
 				<label>Correo de la persona que recibirá la tarjeta<input type="email" name="recipient_email" maxlength="190" required></label>
 				<label>Mensaje (opcional)<textarea name="gift_message" maxlength="350" rows="3"></textarea></label>
 			<?php endif; ?>
-			<p class="mdo-club-separate-note">Esta compra se hace por separado de otros productos. Al continuar, tu carrito tendrá solo <?php echo 'gift' === $kind ? 'esta tarjeta regalo' : 'esta recarga'; ?>.</p>
 			<button class="button alt" type="submit"><?php echo 'gift' === $kind ? 'Continuar al pago' : 'Recargar y continuar al pago'; ?></button>
 		</form>
 		<?php self::amount_script(); ?>
@@ -316,6 +322,36 @@ final class MDO_Club {
 		.mdo-club .mdo-club-hero,.mdo-club .mdo-club-hero :is(h2,h3,p,span,strong,small,b,.amount,.woocommerce-Price-currencySymbol){color:#fffdf5!important;-webkit-text-fill-color:#fffdf5!important}
 		.mdo-club .mdo-club-hero>span{color:#e5d6b4!important;-webkit-text-fill-color:#e5d6b4!important}
 		.mdo-club .mdo-club-hero>p{color:#e5eee5!important;-webkit-text-fill-color:#e5eee5!important}
+		/* Wallet hero: stable alignment, strong contrast, no split currency. */
+		.mdo-club .mdo-club-hero--wallet{
+			display:grid!important;grid-template-columns:minmax(0,1fr) minmax(190px,max-content);
+			align-items:center!important;gap:clamp(18px,3vw,36px)!important;
+			padding:clamp(25px,3vw,37px)!important;
+			background:linear-gradient(120deg,#193d30 0%,#28563d 100%)!important;
+		}
+		.mdo-club .mdo-club-hero--wallet .mdo-club-hero__heading{min-width:0;text-align:left!important}
+		.mdo-club .mdo-club-hero--wallet .mdo-club-hero__eyebrow{display:block!important;font-size:11px;letter-spacing:.16em;font-weight:750;color:#e8d7b2!important;-webkit-text-fill-color:#e8d7b2!important}
+		.mdo-club .mdo-club-hero--wallet .mdo-club-hero__heading h2{font-family:Georgia,'Times New Roman',serif;text-align:left!important;font-size:clamp(30px,3.3vw,40px)!important;line-height:1.2!important;margin:13px 0 10px!important;color:#fffdf5!important}
+		.mdo-club .mdo-club-hero--wallet .mdo-club-hero__heading p{text-align:left!important;margin:0!important;font-size:14px!important;line-height:1.6!important;color:#e6eee6!important;-webkit-text-fill-color:#e6eee6!important}
+		.mdo-club .mdo-club-hero--wallet .mdo-club-hero__balance{
+			min-width:0;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;
+			padding:20px 24px;border-radius:15px;border:1px solid rgba(255,255,255,.20);
+			background:rgba(255,255,255,.085);text-align:left!important;
+		}
+		.mdo-club .mdo-club-hero--wallet .mdo-club-hero__balance>span{display:block!important;font-size:12px!important;font-weight:650!important;letter-spacing:.02em;color:#e9eee6!important;-webkit-text-fill-color:#e9eee6!important}
+		.mdo-club .mdo-club-hero--wallet .mdo-club-hero__amount{display:block!important;font-size:clamp(28px,3.1vw,36px)!important;font-weight:800!important;line-height:1.2!important;margin-top:8px!important;white-space:nowrap!important;color:#fffdf5!important}
+		.mdo-club .mdo-club-hero--wallet .mdo-club-hero__amount .woocommerce-Price-amount,
+		.mdo-club .mdo-club-hero--wallet .mdo-club-hero__amount .woocommerce-Price-amount bdi,
+		.mdo-club .mdo-club-hero--wallet .mdo-club-hero__amount .woocommerce-Price-currencySymbol{
+			display:inline!important;white-space:nowrap!important;float:none!important;font-size:inherit!important;line-height:inherit!important;
+		}
+		.mdo-club .mdo-club-card h3{color:#224334!important;-webkit-text-fill-color:#224334!important;text-align:left!important;font-weight:750!important}
+		.mdo-club .mdo-club-card>p{color:#5c6d60!important;-webkit-text-fill-color:#5c6d60!important}
+		@media(max-width:690px){
+			.mdo-club .mdo-club-hero--wallet{grid-template-columns:minmax(0,1fr)!important;gap:20px!important}
+			.mdo-club .mdo-club-hero--wallet .mdo-club-hero__balance{max-width:100%;padding:18px 20px}
+			.mdo-club .mdo-club-hero--wallet .mdo-club-hero__amount{font-size:clamp(27px,7vw,34px)!important}
+		}
 		.mdo-club-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 		.mdo-club-card{padding:22px;margin-bottom:16px;background:#fffdfa;border:1px solid #eee7dc;border-radius:16px}
 		.mdo-club-card h3{color:#224334;margin:0 0 10px}.mdo-club-card p{line-height:1.6}
@@ -324,7 +360,6 @@ final class MDO_Club {
 		.mdo-club .button{background:#28513c;color:#fff;border:0;border-radius:10px;padding:10px 14px;display:inline-block;margin:6px 5px 0 0;cursor:pointer}
 		.mdo-club .mdo-club-card>a.button{display:inline-flex!important;align-items:center!important;justify-content:center!important;text-align:center!important}
 		.mdo-club-amounts .button{background:#f4eee3;color:#234b37}.mdo-club-note{font-style:italic}
-		.mdo-club-separate-note{margin:13px 0 4px;font-size:12px;line-height:1.5;color:#5c6f62}
 		.mdo-club table{width:100%;border-collapse:collapse}.mdo-club td,.mdo-club th{padding:10px;border-bottom:1px solid #eee;text-align:left}
 		.mdo-club-gift-visual{width:min(100%,720px);margin:25px auto 0;border-radius:18px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.25);background:#ead9bd}
 		.mdo-club-gift-visual img{display:block;width:100%;max-width:100%;height:auto;border-radius:18px}
