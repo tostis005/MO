@@ -30,7 +30,6 @@ final class MDO_Club_Checkout {
 		add_filter( 'woocommerce_cart_needs_shipping', array( __CLASS__, 'prepaid_needs_no_shipping' ), 999 );
 		add_filter( 'woocommerce_cart_needs_shipping_address', array( __CLASS__, 'prepaid_needs_no_shipping' ), 999 );
 		add_filter( 'woocommerce_enable_order_notes_field', array( __CLASS__, 'prepaid_order_notes' ), 999 );
-		add_action( 'woocommerce_before_checkout_billing_form', array( __CLASS__, 'digital_checkout_intro' ), 5 );
 		add_action( 'woocommerce_admin_order_data_after_order_details', array( __CLASS__, 'admin_notice' ) );
 	}
 	private static function active(): bool {
@@ -96,10 +95,6 @@ final class MDO_Club_Checkout {
 	}
 	public static function prepaid_order_notes( bool $enabled ): bool {
 		return self::prepaid_only_cart() ? false : $enabled;
-	}
-	public static function digital_checkout_intro(): void {
-		if ( ! self::prepaid_only_cart() ) { return; }
-		echo '<div class="woocommerce-info mdo-club-checkout-digital" role="note">Compra digital: no necesitas dirección de envío. Completa los datos básicos y elige cómo pagar.</div>';
 	}
 	private static function wallet_limit( int $total_cents ): int {
 		return max( 0, min( $total_cents, MDO_Club_Ledger::balance( get_current_user_id() ) ) );
