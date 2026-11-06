@@ -58,6 +58,9 @@ $ids=get_posts(array('post_type'=>'product','post_status'=>'publish',
 $rows=array(); $n_variations=0;
 foreach($ids as $id) {
     $p=wc_get_product($id); if(!$p || $p->is_type('variation')) continue;
+    // Product authorship is shared in production; export only the 23 verified Hidalgo parents.
+    $hidalgo_ids=array(4199,1356,1350,4160,2322,1363,1375,5045,1695,5080,1380,1693,14614,1370,5336,5343,1382,1586,5348,3948,3979,4188,8624);
+    if(!in_array((int)$id,$hidalgo_ids,true)) continue;
     $row=emdo_tt_props($p);
     $row['vendor']=$vendor_names[(int)get_post_field('post_author',$id)]??'Hidalgo de la Jara';
     $row['attributes']=array(); $row['categories']=array();
