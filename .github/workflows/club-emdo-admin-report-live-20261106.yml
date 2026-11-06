@@ -1,0 +1,71 @@
+name: Club EMDO admin report live audit
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/club-emdo-admin-report-live-20261106.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Verify read-only gift totals and report against production data
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$HOST" && test -n "$USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          SSH_PORT="${PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$SSH_PORT" -H "$HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $SSH_PORT"
+          sshpass -e ssh $SSH "$USER@$HOST" 'sh -s' <<'REMOTE'
+          set -eu
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          test -f "$ROOT/wp-config.php"
+          URL=$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)
+          case "$URL" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
+            *) echo 'Unexpected production URL'; exit 3 ;;
+          esac
+          VERSION=$("$PHP" -d memory_limit=512M "$WP" plugin get mdo-supplier-sync --field=version --path="$ROOT" --allow-root)
+          STATUS=$("$PHP" -d memory_limit=512M "$WP" plugin get mdo-supplier-sync --field=status --path="$ROOT" --allow-root)
+          test "$VERSION" = '1.0.79' && test "$STATUS" = 'active'
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            if (!class_exists("MDO_Club_Ledger") || !class_exists("MDO_Club_Admin")) {
+              fwrite(STDERR,"REPORT_CLASSES_MISSING\n"); exit(4);
+            }
+            $stats=MDO_Club_Ledger::gift_report_totals();
+            $report=MDO_Club_Ledger::gift_report(1,25);
+            foreach(["issued_count","issued_cents","unredeemed_count","unredeemed_cents","redeemed_count"] as $key) {
+              if(!isset($stats[$key]) || !is_int($stats[$key])) { exit(5); }
+            }
+            if(!isset($report["total"],$report["rows"]) || !is_array($report["rows"])) { exit(6); }
+            if($report["total"]!=$stats["issued_count"]) { exit(7); }
+            foreach($report["rows"] as $gift) {
+              if(isset($gift["code_hash"])) { exit(8); }
+              foreach(["order_id","item_id","amount_cents","recipient_email","redeemed_user_id"] as $key) {
+                if(!array_key_exists($key,$gift)) { exit(9); }
+              }
+              $order=wc_get_order((int)$gift["order_id"]);
+              if($order && !method_exists($order,"get_edit_order_url")) { exit(10); }
+            }
+            if(!method_exists("MDO_Club_Admin","render")) { exit(11); }
+            echo "REPORT_OK issued=".$stats["issued_count"]
+              ." redeemed=".$stats["redeemed_count"]
+              ." unredeemed=".$stats["unredeemed_count"]
+              ." page_count=".count($report["rows"])."\n";
+          ' --path="$ROOT" --allow-root
+          REMOTE
