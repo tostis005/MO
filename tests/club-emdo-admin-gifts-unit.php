@@ -6,6 +6,7 @@ define( 'ARRAY_A', 'ARRAY_A' );
 
 class Fake_Club_Gift_Reports_DB {
 	public string $prefix = 'wp_';
+	public string $users = 'wp_users';
 	public array $queries = array();
 	public array $args = array();
 	public function esc_like( string $value ): string {
@@ -84,9 +85,46 @@ MDO_Club_Ledger::gift_report( 1, 25, "x' OR 1=1 --", '' );
 $queries = implode( "\n", $wpdb->queries );
 $assert( str_contains( $queries, "recipient_email LIKE '") && ! str_contains( $queries, "WHERE 1=1" ), 'Search inputs stay inside SQL value binding' );
 
+// Balance filtering/sorting runs across the whole user population before LIMIT.
+$wpdb->queries = array();
+$wallets = MDO_Club_Ledger::wallet_report( 3, 25, '', 'positive', 'balance', 'desc' );
+$queries = implode( "\n", $wpdb->queries );
+$assert( 2 === $wallets['total'], 'Wallet report counts matching users across all pages' );
+$assert( str_contains( $queries, 'LEFT JOIN wp_mdo_club_wallets w ON w.user_id=u.ID' ), 'Wallets joined to all WP accounts' );
+$assert( str_contains( $queries, 'COALESCE(w.balance_cents,0)>0' ), 'Positive filter works globally' );
+$assert( str_contains( $queries, 'ORDER BY COALESCE(w.balance_cents,0) DESC,u.ID DESC LIMIT 25 OFFSET 50' ), 'Sort by credit before pagination' );
+$wpdb->queries = array();
+MDO_Club_Ledger::wallet_report( 1, 25, 'maria@example.com', 'zero', 'email', 'asc' );
+$queries = implode( "\n", $wpdb->queries );
+$assert( str_contains( $queries, 'COALESCE(w.balance_cents,0)=0' ), 'Zero-balance filter includes users without wallets' );
+$assert( str_contains( $queries, 'ORDER BY u.user_email ASC,u.ID DESC' ), 'Email sorting' );
+$assert( str_contains( $queries, "u.user_email LIKE '%maria@example.com%'" ), 'Search within filter' );
+$wpdb->queries = array();
+MDO_Club_Ledger::wallet_report( 1, 500, "x' OR 1=1 --", 'positive', 'DROP TABLE', 'DELETE' );
+$queries = implode( "\n", $wpdb->queries );
+$assert( str_contains( $queries, 'ORDER BY COALESCE(w.balance_cents,0) DESC,u.ID DESC LIMIT 50 OFFSET 0' ), 'Untrusted sorting and page size are whitelisted' );
+$assert( ! str_contains( $queries, 'DROP TABLE' ), 'Untrusted sort key never interpolated' );
+$wpdb->queries = array();
+MDO_Club_Ledger::gift_report( 2, 25, 'amigo@example.com', 'unredeemed', 'amount', 'asc', 2500, 5000 );
+$queries = implode( "\n", $wpdb->queries );
+$assert( str_contains( $queries, 'amount_cents>=2500' ) && str_contains( $queries, 'amount_cents<=5000' ), 'Amount range restricts all gift cards before pagination' );
+$assert( str_contains( $queries, 'ORDER BY amount_cents ASC,id DESC LIMIT 25 OFFSET 25' ), 'Gift amounts sorted across whole table' );
+$wpdb->queries = array();
+MDO_Club_Ledger::gift_report( 1, 25, '', '', 'FAKE_SQL', 'ASC' );
+$queries = implode( "\n", $wpdb->queries );
+$assert( str_contains( $queries, 'ORDER BY id ASC,id DESC' ), 'Unknown gift sort key is whitelisted' );
+
 $ui = (string) file_get_contents( dirname( __DIR__ ) . '/mdo-supplier-sync/includes/class-mdo-club-admin.php' );
 foreach ( array(
 	"self::tabs( 'wallets' )",
+	'wallet_report(',
+	'Ver solo usuarios con saldo',
+	'Solo con saldo',
+	'Aplicar filtros',
+	"self::sort_th( 'Saldo disponible'",
+	"self::sort_th( 'Importe'",
+	'gmin',
+	'gmax',
 	"self::tabs( 'gifts' )",
 	'Saldos de usuarios',
 	'Tarjetas regalo adquiridas',
