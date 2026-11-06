@@ -55,6 +55,19 @@ foreach($GLOBALS['emdo_test_hooks']['gettext'] as $cb){
 		$assert($cb('Order #%1$s was placed on %2$s and is currently %3$s.','Order #%1$s was placed on %2$s and is currently %3$s.','woocommerce')===
 			'El pedido n.º %1$s se realizó el %2$s y su estado actual es %3$s.','Order status placeholders preserved');
 		$assert($cb('Order details','Order details','another-plugin')==='Order details','Third-party domain unchanged');
+		// Exact original strings and text domain verified from the installed
+		// WCFM Ultimate production plugin, not a guessed WooCommerce label.
+		foreach ([
+			'Add your note' => 'Añadir una nota al pedido',
+			'Add Note' => 'Mensaje',
+			'Upload File' => 'Adjuntar archivo (opcional)',
+			'Submit' => 'Enviar nota',
+			'See Attachment' => 'Ver archivo adjunto',
+			'Your note succesfully submitted.' => 'Tu nota se ha enviado correctamente.',
+		] as $english => $spanish) {
+			$assert($cb($english,$english,'wc-frontend-manager-ultimate')===$spanish, 'WCFM Ultimate did not translate: '.$english);
+			$assert($cb($english,$english,'another-plugin')===$english, 'No WCFM translations in unrelated plugins');
+		}
 		$assert($cb('Detalles del pedido','Order details','woocommerce')==='Detalles del pedido','Existing Spanish translations preserved');
 		// Registered only after wp resolves a specific account route.
 		$translated=true;
@@ -89,7 +102,7 @@ $note_script=(string)ob_get_clean();
 $assert(str_contains($note_script,'emdo-account-order-note-es'), 'Custom order notes script loaded only on order details');
 foreach ([
 	'Añadir una nota al pedido','Mensaje','Adjuntar archivo (opcional)','Enviar nota',
-	'textarea[name="cus_add_note"]', 'cus_add_note_file','cus_note_submit',
+	'textarea[name="wcfm_cus_add_note"]', 'wcfm_cus_add_note_file','wcfm_cus_note_submit',
 ] as $expected) {
 	$assert(str_contains($note_script,$expected),'Missing custom note translation: '.$expected);
 }
@@ -120,7 +133,8 @@ $checks = [
 	'@media(prefers-reduced-motion:reduce)' => 'Accessible motion preferences maintained',
 ];
 foreach($checks as $needle=>$explanation) {$assert(str_contains($css,$needle),$explanation);}
-$assert(str_contains($css,'form:has(textarea[name="cus_add_note"])'), 'Custom note form layout is scoped by the exact field');
+$assert(str_contains($css,'form:has(textarea[name="wcfm_cus_add_note"])'), 'Custom note form layout is scoped by the exact field');
+$assert(str_contains($src,'input[name="wcfm_cus_add_note_file"]'), 'WCFM Ultimate original file input targeted by the real translation fallback');
 $assert(str_contains($css,'input[type="file"]'), 'Note attachment input has responsive styling');
 $assert(str_contains($css,'input[type="submit"]'), 'Note submit button remains legible');
 $assert(!str_contains($css, 'scroll-snap-type:x proximity'), 'Old horizontal menu scrolling removed');

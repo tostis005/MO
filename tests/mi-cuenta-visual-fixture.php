@@ -63,9 +63,9 @@ a{color:#24513a}h1{font-size:30px}h2{font-size:25px}
 <h2>Add your note</h2>
 <form action="" method="POST" enctype="multipart/form-data">
 <table class="woocommerce-table"><tbody>
-<tr><th>Add Note</th><td><textarea name="cus_add_note" id="cus_add_note"></textarea></td></tr>
-<tr><th>Upload File</th><td><input type="file" name="cus_add_note_file" id="cus_add_note_file"></td></tr>
-<tr><td colspan="2"><input type="submit" name="cus_note_submit" id="cus_note_submit" value="Submit"></td></tr>
+<tr><th>Add Note</th><td><textarea name="wcfm_cus_add_note" id="wcfm_cus_add_note"></textarea></td></tr>
+<tr><th>Upload File</th><td><input type="file" name="wcfm_cus_add_note_file" id="wcfm_cus_add_note_file"></td></tr>
+<tr><td colspan="2"><input type="submit" name="wcfm_cus_note_submit" id="wcfm_cus_note_submit" value="Submit"></td></tr>
 </tbody></table>
 </form>
 <section class="woocommerce-customer-details"><h2>Direcciones</h2><div class="woocommerce-columns">
