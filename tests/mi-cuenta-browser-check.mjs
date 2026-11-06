@@ -39,9 +39,25 @@ try {
 				totalsDisplay: getComputedStyle(total).display,
 				cellsTiny: [...document.querySelectorAll('.woocommerce-table--order-details td,.woocommerce-table--order-details th')]
 					.filter(n => n.getClientRects().length > 0 && n.getBoundingClientRect().width < 44).length,
+				noteHeading: [...document.querySelectorAll('.woocommerce-MyAccount-content h2')]
+					.some(h => h.textContent.trim() === 'Añadir una nota al pedido'),
+				noteLabels: [...document.querySelectorAll('form:has(#cus_add_note) th label')]
+					.map(label => label.textContent.trim()),
+				noteFormWidth: box('form:has(#cus_add_note)').width,
+				noteTextWidth: box('#cus_add_note').width,
+				noteFileWidth: box('#cus_add_note_file').width,
+				noteSubmit: el('#cus_note_submit').value,
+				noteEnctype: el('#cus_add_note').form.enctype,
 			};
 		});
 		console.log('WIDTH ' + width + 'px:', JSON.stringify(a));
+		assert.ok(a.noteHeading, width + 'px: order notes heading remains in English');
+		assert.ok(a.noteLabels.includes('Mensaje'), width + 'px: message label remains in English');
+		assert.ok(a.noteLabels.includes('Adjuntar archivo (opcional)'), width + 'px: upload label remains in English');
+		assert.equal(a.noteSubmit, 'Enviar nota', width + 'px: note submit remains in English');
+		assert.equal(a.noteEnctype, 'multipart/form-data', width + 'px: note attachment behavior must remain intact');
+		assert.ok(a.noteTextWidth > 190, width + 'px: note text area squeezed');
+		assert.ok(a.noteFileWidth <= a.noteFormWidth - 20, width + 'px: file input wider than note form');
 		assert.ok(a.pageWidth <= width + 4, width + 'px: horizontal document overflow');
 		assert.ok(a.navItemsInside, width + 'px: navigation item escapes container');
 		if (width <= 1023) {
