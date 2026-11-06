@@ -92,7 +92,7 @@ final class MDO_Club {
 				</table>
 				<?php submit_button( 'Guardar configuración' ); ?>
 			</form>
-			<p><a class="button button-secondary" href="<?php echo esc_url( admin_url( 'admin.php?page=mdo-club-balances' ) ); ?>">Ver y ajustar saldos de usuarios</a></p>
+			<p><a class="button button-secondary" href="<?php echo esc_url( admin_url( 'admin.php?page=mdo-club-balances' ) ); ?>">Ver saldos de usuarios y tarjetas regalo</a></p>
 			<p><strong>Devoluciones:</strong> no se ajusta automáticamente ningún saldo por reembolso. Revisar cada caso desde Saldos Club EMDO.</p>
 			<p><strong>Publicación:</strong> se generan borradores de las páginas «Club EMDO» y «Tarjetas regalo». Publícalos al validar todo el circuito.</p>
 			<?php self::render_reconciliation(); ?>
