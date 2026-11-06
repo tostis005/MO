@@ -39,7 +39,14 @@ $has = static function( string $hook, string $needle ): bool {
 $assert($has('wp_enqueue_scripts',''),'Scoped stylesheet is enqueued');
 $assert($has('woocommerce_account_menu_items',''),'Woo menu filters registered');
 $assert($has('woocommerce_account_orders_columns',''),'Order list columns translated');
-$assert($has('gettext',''),'WooCommerce translations registered');
+$assert($has('wp',''),'Translations are registered only after WordPress routing');
+$assert(!$has('gettext',''),'No global translation filters during plugin bootstrap');
+$GLOBALS['emdo_test_account']=false;
+foreach ($GLOBALS['emdo_test_hooks']['wp'] as $cb) { $cb(); }
+$assert(!$has('gettext',''),'Non-account pages have no custom gettext filter');
+$GLOBALS['emdo_test_account']=true;
+foreach ($GLOBALS['emdo_test_hooks']['wp'] as $cb) { $cb(); }
+$assert($has('gettext',''),'WooCommerce translations registered only on account page');
 $assert($has('woocommerce_order_details_before_order_table',''),'Return navigation on order details');
 foreach($GLOBALS['emdo_test_hooks']['gettext'] as $cb){
 	$result=$cb('Order details','Order details','woocommerce');
@@ -49,9 +56,7 @@ foreach($GLOBALS['emdo_test_hooks']['gettext'] as $cb){
 			'El pedido n.º %1$s se realizó el %2$s y su estado actual es %3$s.','Order status placeholders preserved');
 		$assert($cb('Order details','Order details','another-plugin')==='Order details','Third-party domain unchanged');
 		$assert($cb('Detalles del pedido','Order details','woocommerce')==='Detalles del pedido','Existing Spanish translations preserved');
-		$GLOBALS['emdo_test_account']=false;
-		$assert($cb('Order details','Order details','woocommerce')==='Order details','Outside account text unchanged');
-		$GLOBALS['emdo_test_account']=true;
+		// Registered only after wp resolves a specific account route.
 		$translated=true;
 		break;
 	}
