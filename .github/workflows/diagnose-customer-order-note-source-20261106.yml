@@ -59,5 +59,8 @@ jobs:
           done
           echo "ACTIVE_THEME="
           "$PHP" -d memory_limit=512M "$WP" option get stylesheet --path="$ROOT" --skip-plugins --skip-themes --allow-root
+          echo "WCFMU_FORM_SOURCE_BEGIN"
+          sed -n '65,146p' "$ROOT/wp-content/plugins/wc-frontend-manager-ultimate/core/class-wcfmu-frontend.php"
+          echo "WCFMU_FORM_SOURCE_END"
           echo "SOURCE_SCAN_END"
           REMOTE
