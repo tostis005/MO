@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 /** Cargar exclusivamente en Mi cuenta, nunca en checkout, tienda o panel de vendedores. */
 add_action( 'wp_enqueue_scripts', static function (): void {
 	if ( ! function_exists( 'is_account_page' ) || ! is_account_page() ) { return; }
-	wp_register_style( 'emdo-mi-cuenta-ux', false, array(), '20261106.3' );
+	wp_register_style( 'emdo-mi-cuenta-ux', false, array(), '20261106.4' );
 	wp_enqueue_style( 'emdo-mi-cuenta-ux' );
 	wp_add_inline_style( 'emdo-mi-cuenta-ux', <<<'CSS'
 /* EL MERCADO DE ORIGEN · MI CUENTA 2026
@@ -664,6 +664,146 @@ body.woocommerce-account .woocommerce-MyAccount-content .woocommerce-OrderUpdate
 		text-align:left!important;
 		margin-top:2px!important;
 	}
+}
+
+/* Nota de cliente añadida por una personalización de pedido (no pertenece
+   al catálogo de etiquetas de WooCommerce). Siempre un formulario vertical. */
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) {
+	display:block!important;
+	width:100%!important;
+	max-width:100%!important;
+	min-width:0!important;
+	margin:15px 0 25px!important;
+	padding:clamp(15px,3.5vw,24px)!important;
+	background:#fafbf8!important;
+	border:1px solid #e1e9df!important;
+	border-radius:16px!important;
+	box-sizing:border-box!important;
+}
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) table.woocommerce-table,
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) tbody {
+	display:block!important;
+	width:100%!important;
+	min-width:0!important;
+	max-width:100%!important;
+	margin:0!important;
+	padding:0!important;
+	border:0!important;
+	background:transparent!important;
+	box-shadow:none!important;
+	table-layout:auto!important;
+	overflow:visible!important;
+}
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) table.woocommerce-table tr {
+	display:block!important;
+	width:100%!important;
+	min-width:0!important;
+	max-width:100%!important;
+	margin:0 0 18px!important;
+	padding:0!important;
+	background:transparent!important;
+	border:0!important;
+	box-sizing:border-box!important;
+}
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) table.woocommerce-table tr:last-child {
+	margin-bottom:0!important;
+}
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) table.woocommerce-table :is(th,td) {
+	display:block!important;
+	float:none!important;
+	width:100%!important;
+	min-width:0!important;
+	max-width:100%!important;
+	height:auto!important;
+	padding:0!important;
+	margin:0!important;
+	border:0!important;
+	background:transparent!important;
+	vertical-align:top!important;
+	text-align:left!important;
+	word-break:normal!important;
+	overflow-wrap:break-word!important;
+	box-sizing:border-box!important;
+}
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) table.woocommerce-table th {
+	margin-bottom:8px!important;
+	color:#2a4a38!important;
+	font-size:14px!important;
+	font-weight:750!important;
+	line-height:1.4!important;
+}
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) label {
+	display:block!important;
+	margin:0!important;
+	color:#2a4a38!important;
+	font-weight:750!important;
+	line-height:1.45!important;
+}
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) textarea[name="cus_add_note"] {
+	display:block!important;
+	width:100%!important;
+	min-width:0!important;
+	max-width:100%!important;
+	min-height:145px!important;
+	padding:13px!important;
+	border:1px solid #cddacb!important;
+	border-radius:12px!important;
+	background:#fff!important;
+	font:inherit!important;
+	font-size:16px!important;
+	color:#264332!important;
+	line-height:1.55!important;
+	resize:vertical!important;
+	box-sizing:border-box!important;
+}
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) input[type="file"] {
+	display:block!important;
+	width:100%!important;
+	min-width:0!important;
+	max-width:100%!important;
+	margin:0!important;
+	padding:9px!important;
+	border:1px solid #cddacb!important;
+	border-radius:10px!important;
+	background:#fff!important;
+	color:#2c4a39!important;
+	font-size:13px!important;
+	box-sizing:border-box!important;
+	white-space:normal!important;
+}
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) input[type="file"]::file-selector-button {
+	padding:8px 10px;
+	margin-right:10px;
+	border:0;
+	border-radius:8px;
+	background:#e7f0e8;
+	color:#224f38;
+	font:inherit;
+	font-weight:750;
+	cursor:pointer;
+}
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) input[type="submit"] {
+	display:inline-flex!important;
+	align-items:center!important;
+	justify-content:center!important;
+	width:auto!important;
+	max-width:100%!important;
+	min-height:44px!important;
+	padding:11px 23px!important;
+	margin:0!important;
+	background:#234e37!important;
+	color:#fff!important;
+	border:1px solid #234e37!important;
+	border-radius:10px!important;
+	font-size:14px!important;
+	font-weight:800!important;
+	line-height:1.35!important;
+	text-align:center!important;
+	white-space:normal!important;
+	cursor:pointer!important;
+}
+body.woocommerce-account .woocommerce-MyAccount-content form:has(textarea[name="cus_add_note"]) input[type="submit"]:hover {
+	background:#153d29!important;
 }
 
 @media(prefers-reduced-motion:reduce){
