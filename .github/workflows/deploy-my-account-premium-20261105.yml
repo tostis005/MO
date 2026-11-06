@@ -5,11 +5,15 @@ on:
     paths:
       - 'mu-plugins/mdo-my-account-premium-20261105.php'
       - 'tests/mi-cuenta-mobile-ux-unit.php'
+      - 'tests/mi-cuenta-visual-fixture.php'
+      - 'tests/mi-cuenta-browser-check.mjs'
       - '.github/workflows/deploy-my-account-premium-20261105.yml'
   pull_request:
     paths:
       - 'mu-plugins/mdo-my-account-premium-20261105.php'
       - 'tests/mi-cuenta-mobile-ux-unit.php'
+      - 'tests/mi-cuenta-visual-fixture.php'
+      - 'tests/mi-cuenta-browser-check.mjs'
       - '.github/workflows/deploy-my-account-premium-20261105.yml'
   workflow_dispatch:
 permissions:
@@ -34,6 +38,19 @@ jobs:
           grep -Fq "prefers-reduced-motion" mu-plugins/mdo-my-account-premium-20261105.php
           grep -Fq "woocommerce-MyAccount-navigation" mu-plugins/mdo-my-account-premium-20261105.php
           ! grep -Eq 'update_option|wp_update_post|wc_create_order|wp_delete_post|woocommerce_calculated_total' mu-plugins/mdo-my-account-premium-20261105.php
+      - name: Install browser for responsive layout regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Check 320, 360, 390, 430, 768, 1024 and 1280 pixel layouts
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/mi-cuenta-visual-fixture.php > /tmp/emdo-mi-cuenta-fixture.html
+          node tests/mi-cuenta-browser-check.mjs /tmp/emdo-mi-cuenta-fixture.html
+
   deploy:
     needs: validate
     if: github.event_name != 'pull_request'
