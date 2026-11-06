@@ -1,0 +1,63 @@
+name: Diagnose customer order note form source
+on:
+  pull_request:
+    paths: [".github/workflows/diagnose-customer-order-note-source-20261106.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Identify live plugin/theme producing English order note fields (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$HOST" && test -n "$USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          SSH_PORT="${PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$SSH_PORT" -H "$HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $SSH_PORT"
+          sshpass -e ssh $SSH "$USER@$HOST" 'sh -s' <<'REMOTE'
+          set -eu
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          test -f "$ROOT/wp-config.php"
+          SITEURL=$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)
+          case "$SITEURL" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
+            *) echo 'UNEXPECTED_SITE'; exit 2 ;;
+          esac
+          echo "SOURCE_SCAN_BEGIN"
+          # Find only exact UI labels or plausible field IDs. Print matching
+          # file names and line numbers, never file bodies or customer data.
+          for phrase in 'Add your note' 'Upload File' 'Add Note' 'cus_add_note' 'cus_note_submit'; do
+            echo "MATCH_LABEL=$phrase"
+            find "$ROOT/wp-content/plugins" "$ROOT/wp-content/mu-plugins" "$ROOT/wp-content/themes" \
+              -path '*/vendor/*' -prune -o -path '*/node_modules/*' -prune -o \
+              -path '*/cache/*' -prune -o -type f \
+              \( -name '*.php' -o -name '*.js' -o -name '*.html' \) \
+              -print0 | xargs -0 -r grep -ilF "$phrase" 2>/dev/null | head -n 35 | while IFS= read -r file; do
+                short="${file#"$ROOT"/}"
+                echo "FOUND=$short"
+                grep -nF "$phrase" "$file" 2>/dev/null | cut -d: -f1 | head -n 6 | while IFS= read -r n; do
+                  echo "LINE=$n"
+                done
+              done
+          done
+          echo "ACTIVE_THEME="
+          "$PHP" -d memory_limit=512M "$WP" option get stylesheet --path="$ROOT" --skip-plugins --skip-themes --allow-root
+          echo "SOURCE_SCAN_END"
+          REMOTE
