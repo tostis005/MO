@@ -34,4 +34,5 @@ jobs:
           PHP="/tmp/emdo-bounce-reconcile-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP .github/scripts/review-campaign12-unsubscribed-encrypted-20261108.php "$STAGING_USER@$STAGING_HOST:$PHP"
           trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $PHP" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "timeout 180 /opt/plesk/php/8.2/bin/php -d memory_limit=768M /usr/local/bin/wp eval-file '$PHP' --path='$ROOT' --allow-root" | tee /tmp/reconcile-bounces-crm.txt
           grep -q 'PRIVATE_REVIEW_COMPLETE=61' /tmp/reconcile-bounces-crm.txt
