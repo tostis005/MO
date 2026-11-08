@@ -1,0 +1,37 @@
+name: Private review of 61 campaign unsubscribe records
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/review-campaign12-unsubscribed-encrypted-20261108.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  reconcile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse Maildir delivery status notices and safely match CRM contacts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/review-campaign12-unsubscribed-encrypted-20261108.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP="/tmp/emdo-bounce-reconcile-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/review-campaign12-unsubscribed-encrypted-20261108.php "$STAGING_USER@$STAGING_HOST:$PHP"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $PHP" >/dev/null 2>&1 || true' EXIT
+          grep -q 'PRIVATE_REVIEW_COMPLETE=61' /tmp/reconcile-bounces-crm.txt
