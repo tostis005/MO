@@ -17,18 +17,10 @@ final class MDO_Email_Branding {
 	}
 
 	/**
-	 * Branded transactional footer, designed to survive email-client HTML
-	 * sanitization and keep the store homepage as the only outbound URL.
+	 * A single understated signature: no duplicate brand name or links.
 	 */
 	public static function footer( $previous = '' ): string {
-		$home = function_exists( 'home_url' ) ? home_url( '/' ) : 'https://www.elmercadodeorigen.com/';
-		return '<strong style="font-family:Georgia,Times New Roman,serif;font-size:17px;line-height:1.5;color:#254a36">'
-			. 'El Mercado de Origen</strong><br>'
-			. '<span style="color:#617366;font-size:12px;line-height:1.7">'
-			. 'De nuestros productores a tu mesa, con todo el sabor del origen.'
-			. '</span><br>'
-			. '<a href="' . esc_url( $home ) . '" style="color:#28513c;text-decoration:none;font-size:12px;line-height:1.9">'
-			. 'www.elmercadodeorigen.com</a>';
+		return 'Del productor a tu mesa.';
 	}
 
 	/**
