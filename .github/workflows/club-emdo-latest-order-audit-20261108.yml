@@ -1,0 +1,65 @@
+name: Club EMDO read-only latest order email eligibility
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/club-emdo-latest-order-audit-20261108.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Inspect latest actual WooCommerce order (never print customer data)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$HOST" && test -n "$USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          SSH_PORT="${PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$SSH_PORT" -H "$HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive \
+            -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$SSH_PORT" \
+            "$USER@$HOST" 'sh -s' <<'REMOTE'
+          set -eu
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          test -f "$ROOT/wp-config.php"
+          URL=$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)
+          case "$URL" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
+            *) echo 'UNEXPECTED_SITE'; exit 3 ;;
+          esac
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            if(!function_exists("wc_get_orders")) exit(4);
+            $ids=wc_get_orders(["limit"=>3,"orderby"=>"date","order"=>"DESC","return"=>"ids","type"=>"shop_order"]);
+            foreach($ids as $id) {
+              $o=wc_get_order($id);
+              if(!$o) continue;
+              $customer=(int)$o->get_customer_id();
+              $award=(int)$o->get_meta("_mdo_club_award_cents");
+              $lines=count($o->get_items("line_item"));
+              $eligible=0;
+              foreach($o->get_items("line_item") as $item) $eligible += (float)$item->get_total()+(float)$item->get_total_tax();
+              echo "ORDER_AUDIT id=".$o->get_id()
+                ." status=".$o->get_status()
+                ." is_paid=".($o->is_paid()?"yes":"no")
+                ." registered=".($customer>0?"yes":"no")
+                ." reward_cents=".$award
+                ." lines=".$lines
+                ." eligible_cents=".round($eligible*100)
+                ."\n";
+            }
+          ' --path="$ROOT" --allow-root
+          REMOTE
