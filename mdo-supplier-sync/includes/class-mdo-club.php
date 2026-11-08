@@ -691,10 +691,12 @@ final class MDO_Club {
 	 */
 	public static function reward_email_snippet( int $reward_cents, bool $plain_text = false, string $currency = 'EUR' ): string {
 		if ( $reward_cents <= 0 ) { return ''; }
-		$amount = wp_strip_all_tags( wc_price(
+		// wc_price() may contain HTML entities such as &nbsp; for the euro
+		// separator. Decode before escaping so emails show a clean amount.
+		$amount = html_entity_decode( wp_strip_all_tags( wc_price(
 			MDO_Club_Ledger::money( $reward_cents ),
 			array( 'currency' => $currency )
-		) );
+		) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 		$url = wc_get_account_endpoint_url( 'monedero' );
 		if ( $plain_text ) {
 			return "\nCLUB EMDO · TU RECOMPENSA\n"
