@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO
  * Description: Gestión y sincronización de catálogos de proveedores con WooCommerce/WCFM.
- * Version: 1.0.82
+ * Version: 1.0.83
  * Author: El Mercado de Origen
  * Requires at least: 6.4
  * Requires PHP: 8.0
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.82' );
+define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.83' );
 define( 'MDO_SUPPLIER_SYNC_DB_VERSION', '1.2.0' );
 define( 'MDO_SUPPLIER_SYNC_FILE', __FILE__ );
 define( 'MDO_SUPPLIER_SYNC_PATH', plugin_dir_path( __FILE__ ) );
@@ -24,6 +24,7 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-club-ledger.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-club.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-club-checkout.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-club-admin.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-email-branding.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-supplier-repository.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-pricing.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-iberico-variations.php';
@@ -122,6 +123,7 @@ add_action(
 		MDO_Club_Ledger::maybe_install();
 		MDO_Club::init();
 		MDO_Club_Checkout::init();
+		MDO_Email_Branding::init();
 		if ( is_admin() ) { MDO_Club_Admin::init(); }
 		MDO_Reviews_Schema::maybe_install();
 		MDO_Reviews_Vendors::init();
