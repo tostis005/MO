@@ -1,0 +1,66 @@
+name: QA branded customer emails on real WooCommerce order
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/qa-branded-woo-email-20261108.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Render actual customer email without sending or touching orders
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$HOST" && test -n "$USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          SSH_PORT="${PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$SSH_PORT" -H "$HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive \
+            -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$SSH_PORT" "$USER@$HOST" 'sh -s' <<'REMOTE'
+          set -eu
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          test -f "$ROOT/wp-config.php"
+          SITE=$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)
+          case "$SITE" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;; *) exit 2;; esac
+          VERSION=$("$PHP" -d memory_limit=512M "$WP" plugin get mdo-supplier-sync --field=version --path="$ROOT" --allow-root)
+          test "$VERSION" = '1.0.83'
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            $emails=WC()->mailer()->get_emails();
+            $email=$emails["WC_Email_Customer_Completed_Order"]??null;
+            if (!$email instanceof WC_Email) exit(3);
+            $orders=wc_get_orders(["limit"=>1,"orderby"=>"date","order"=>"DESC","return"=>"ids","type"=>"shop_order"]);
+            if (!$orders) exit(4);
+            $order=wc_get_order((int)$orders[0]);
+            $email->object=$order;
+            $email->recipient="qa-only@example.invalid";
+            $html=$email->get_content_html();
+            if (!is_string($html)||strlen($html)<1000) exit(5);
+            if (str_contains($html,"Built with")||str_contains($html,"woocommerce.com")) exit(6);
+            if (!str_contains($html,"De nuestros productores a tu mesa")) exit(7);
+            if (!str_contains($html,"www.elmercadodeorigen.com")) exit(8);
+            $styled=$email->style_inline($html);
+            if (!is_string($styled)||!str_contains($styled,"#1d4533")) exit(9);
+            if (!str_contains($styled,"#f4f6f1")) exit(10);
+            if (!str_contains($styled,"#254a36")) exit(11);
+            echo "BRANDED_WOO_EMAIL_OK version=1.0.83"
+              ." footer_no_software=yes"
+              ." brand_styles_inlined=yes"
+              ." latest_order_rendered=yes"
+              ." sent=no"
+              ."\n";
+          ' --path="$ROOT" --allow-root
+          REMOTE
