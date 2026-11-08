@@ -1,0 +1,86 @@
+name: Export one real Woo customer email preview to private artifact
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/export-real-woo-email-20261108.yml'
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Render real WooCommerce customer email to ephemeral private HTML
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$HOST" && test -n "$USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT_NUM="${PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT_NUM" -H "$HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive \
+            -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$PORT_NUM" \
+            "$USER@$HOST" 'sh -s' <<'REMOTE'
+          set -eu
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          OUTPUT="/tmp/emdo-real-order-email-20261108.html"
+          test -f "$ROOT/wp-config.php"
+          URL=$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)
+          case "$URL" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;; *) exit 3;; esac
+          SCRIPT=$(mktemp /tmp/emdo-real-email-render-XXXXXX.php)
+          chmod 600 "$SCRIPT"
+          trap 'rm -f "$SCRIPT"' EXIT
+          cat > "$SCRIPT" <<'PHP_CODE'
+          <?php
+          // Render only. Does not call Woo email triggers or send any email.
+          $orders = wc_get_orders(["limit"=>1,"orderby"=>"date","order"=>"DESC","return"=>"ids","type"=>"shop_order"]);
+          if (!$orders) exit(4);
+          $order=wc_get_order((int)$orders[0]);
+          if (!$order || !$order->is_paid() || !$order->has_status("completed") || !$order->get_customer_id()) exit(5);
+          $award=(int)$order->get_meta("_mdo_club_award_cents");
+          if ($award<=0) exit(6);
+          $email=WC()->mailer()->get_emails()["WC_Email_Customer_Completed_Order"]??null;
+          if (!$email instanceof WC_Email) exit(7);
+          $email->object=$order;
+          $email->recipient="jose.fraga@gmail.com";
+          $html=$email->get_content_html();
+          if (!str_contains($html,"¡Tu compra tiene recompensa!") || !str_contains($html,"mi-cuenta/monedero/")) exit(8);
+          $banner='<p style="background-color:#fff2d8;padding:14px;border:1px solid #e6ca91;color:#714d1c;font-weight:700">COPIA DE PRUEBA DEL PEDIDO REAL - SOLO PARA REVISAR EL DISEÑO. No es un nuevo pedido; no se ha acreditado saldo adicional.</p>';
+          $html=preg_replace('~(<body\b[^>]*>)~i','$1'.$banner,$html,1,$replaced);
+          if (!$replaced) exit(9);
+          // One temporary private file, never placed in web root or public Git.
+          if (file_put_contents("/tmp/emdo-real-order-email-20261108.html",$html)===false) exit(10);
+          chmod("/tmp/emdo-real-order-email-20261108.html",0600);
+          echo "CUSTOMER_EMAIL_RENDER_OK order_suffix=".substr((string)$order->get_id(),-2)." bytes=".strlen($html)."\n";
+          PHP_CODE
+          "$PHP" -d memory_limit=768M "$WP" eval-file "$SCRIPT" --path="$ROOT" --allow-root
+          test -s "$OUTPUT"
+          REMOTE
+          mkdir -p /tmp/emdo-private-preview
+          chmod 700 /tmp/emdo-private-preview
+          sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive \
+            -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P "$PORT_NUM" \
+            "$USER@$HOST:/tmp/emdo-real-order-email-20261108.html" /tmp/emdo-private-preview/order-confirmation.html
+          test -s /tmp/emdo-private-preview/order-confirmation.html
+          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive \
+            -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$PORT_NUM" \
+            "$USER@$HOST" 'rm -f /tmp/emdo-real-order-email-20261108.html'
+          echo "PRIVATE_ARTIFACT_READY=yes"
+      - name: Private short-retention email preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: one-time-real-woo-order-email-preview
+          path: /tmp/emdo-private-preview/order-confirmation.html
+          retention-days: 1
+          if-no-files-found: error
