@@ -1,0 +1,99 @@
+name: One-time branded WooCommerce order preview for Jose
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/one-time-branded-woo-preview-20261108.yml'
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Render branded real Woo customer email without sending
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$HOST" && test -n "$USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          SSH_PORT="${PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$SSH_PORT" -H "$HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive \
+            -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$SSH_PORT" \
+            "$USER@$HOST" 'sh -s' <<'REMOTE'
+          set -eu
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          OUTPUT='/tmp/emdo-branded-order-22234-preview-20261108.html'
+          test -f "$ROOT/wp-config.php"
+          URL=$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)
+          case "$URL" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
+            *) echo 'Unexpected WordPress environment'; exit 3 ;;
+          esac
+          VERSION=$("$PHP" -d memory_limit=512M "$WP" plugin get mdo-supplier-sync --field=version --path="$ROOT" --allow-root)
+          test "$VERSION" = '1.0.83'
+          SCRIPT=$(mktemp /tmp/emdo-branded-preview-XXXXXX.php)
+          chmod 600 "$SCRIPT"
+          trap 'rm -f "$SCRIPT"' EXIT
+          cat > "$SCRIPT" <<'PHP_CODE'
+          <?php
+          // No trigger(), no wp_mail(), no order writes or reward modifications.
+          if (!class_exists('MDO_Email_Branding') || !class_exists('MDO_Club')) exit(4);
+          $order=wc_get_order(22234);
+          if (!$order || !$order->has_status('completed') || !$order->is_paid()
+              || !$order->get_customer_id()
+              || (int)$order->get_meta('_mdo_club_award_cents')<=0) exit(5);
+          $emails=WC()->mailer()->get_emails();
+          $email=$emails['WC_Email_Customer_Completed_Order']??null;
+          if (!$email instanceof WC_Email || $email->id !== 'customer_completed_order') exit(6);
+          $email->object=$order;
+          $email->recipient='jose.fraga@gmail.com';
+          $html=$email->get_content_html();
+          if (!is_string($html) || !str_contains($html,'¡Tu compra tiene recompensa!')
+              || !str_contains($html,'De nuestros productores a tu mesa')
+              || str_contains($html,'Built with WooCommerce')) exit(7);
+          // This step replicates what WooCommerce does immediately before sending:
+          // convert the template CSS (including our new brand styles) to inline styles.
+          $html=$email->style_inline($html);
+          if (!is_string($html) || strlen($html)<1000 || !str_contains($html,'#1d4533')) exit(8);
+          $notice='<p style="background-color:#fff2d8;padding:14px 18px;border:1px solid #e6ca91;color:#714d1c;font-weight:700;font-size:13px">'
+            .'COPIA DE PRUEBA DEL PEDIDO REAL #22234. Solo para revisar el diseño del correo. '
+            .'No se ha realizado ninguna compra ni se ha acreditado saldo adicional.</p>';
+          $html=preg_replace('~(<body\b[^>]*>)~i','$1'.$notice,$html,1,$hits);
+          if (!$hits || file_put_contents('/tmp/emdo-branded-order-22234-preview-20261108.html',$html)===false) exit(9);
+          chmod('/tmp/emdo-branded-order-22234-preview-20261108.html',0600);
+          echo 'BRANDED_ORDER_PREVIEW_READY=yes footer_woocredit=no reward=yes customer_email_sent=no bytes='.strlen($html)."\n";
+          PHP_CODE
+          "$PHP" -d memory_limit=768M "$WP" eval-file "$SCRIPT" --path="$ROOT" --allow-root
+          test -s "$OUTPUT"
+          REMOTE
+          mkdir -p /tmp/emdo-private-mail
+          chmod 700 /tmp/emdo-private-mail
+          sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive \
+            -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P "$SSH_PORT" \
+            "$USER@$HOST:/tmp/emdo-branded-order-22234-preview-20261108.html" \
+            /tmp/emdo-private-mail/branded-order-22234.html
+          test -s /tmp/emdo-private-mail/branded-order-22234.html
+          sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive \
+            -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$SSH_PORT" \
+            "$USER@$HOST" 'rm -f /tmp/emdo-branded-order-22234-preview-20261108.html'
+          echo 'PRIVATE_BRANDED_PREVIEW_READY=yes'
+      - name: Short-lived private preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: branded-woo-order-22234-email
+          path: /tmp/emdo-private-mail/branded-order-22234.html
+          retention-days: 1
+          if-no-files-found: error
