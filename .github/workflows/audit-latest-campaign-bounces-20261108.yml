@@ -21,8 +21,8 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          php -l .github/scripts/audit-latest-campaign-bounces-20261108.php
-          python3 -m py_compile .github/scripts/scan-hola-maildir-bounces-20261030.py
+          php -l .github/scripts/reconcile-latest-campaign-bounces-20261108.php
+          python3 -m py_compile .github/scripts/scan-latest-campaign-bounces-20261108.py
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"
@@ -35,8 +35,8 @@ jobs:
           SCAN="/tmp/emdo-bounce-scan-${GITHUB_RUN_ID}.py"
           PHP="/tmp/emdo-bounce-reconcile-${GITHUB_RUN_ID}.php"
           MANIFEST="/tmp/emdo-bounces-${GITHUB_RUN_ID}.json"
-          sshpass -e scp $SCP .github/scripts/scan-hola-maildir-bounces-20261030.py "$STAGING_USER@$STAGING_HOST:$SCAN"
-          sshpass -e scp $SCP .github/scripts/audit-latest-campaign-bounces-20261108.php "$STAGING_USER@$STAGING_HOST:$PHP"
+          sshpass -e scp $SCP .github/scripts/scan-latest-campaign-bounces-20261108.py "$STAGING_USER@$STAGING_HOST:$SCAN"
+          sshpass -e scp $SCP .github/scripts/reconcile-latest-campaign-bounces-20261108.php "$STAGING_USER@$STAGING_HOST:$PHP"
           trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $SCAN $PHP $MANIFEST" >/dev/null 2>&1 || true' EXIT
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "timeout 480 python3 '$SCAN' '$MANIFEST'" | tee /tmp/reconcile-bounces-scan.txt
           grep -q 'BOUNCE_MAILDIR_SCAN_COMPLETE' /tmp/reconcile-bounces-scan.txt
