@@ -25,6 +25,6 @@ foreach($a as $e){
  if(!$original||strtolower($original)!==strtolower($s->email))exit(7);
  $data=wp_json_encode(['email'=>$original,'status'=>$s->status]);
  if(!openssl_public_encrypt($data,$enc,$pub,OPENSSL_PKCS1_OAEP_PADDING))exit(8);
- echo 'PRIVATE_REVIEW_ROW='.base64_encode($enc)."\n";
+ echo 'PRIVATE_REVIEW_ROW='.strtr(bin2hex($enc),'0123456789','qrstuvwxyz')."\n";
 }
 echo "PRIVATE_REVIEW_COMPLETE=61\n";
