@@ -40,6 +40,7 @@ final class MDO_Club {
 		add_action( 'woocommerce_order_status_processing', array( __CLASS__, 'award_reward' ), 35 );
 		add_action( 'woocommerce_order_status_completed', array( __CLASS__, 'award_reward' ), 35 );
 		add_filter( 'woocommerce_email_enabled_new_order', array( __CLASS__, 'skip_supplier_email' ), 20, 2 );
+		add_action( 'woocommerce_email_before_order_table', array( __CLASS__, 'customer_reward_email' ), 5, 4 );
 		add_action( 'admin_menu', array( __CLASS__, 'admin_menu' ), 25 );
 		add_action( 'admin_post_mdo_club_save', array( __CLASS__, 'save_settings' ) );
 		add_action( 'admin_init', array( __CLASS__, 'maybe_create_content' ) );
@@ -658,6 +659,62 @@ final class MDO_Club {
 			$order->update_meta_data( '_mdo_club_award_cents', $amount );
 			$order->save();
 		}
+	}
+	/**
+	 * Show Club EMDO credits near the beginning of the customer's paid-order
+	 * email. The stored, already-awarded amount is the only source of truth:
+	 * no projected rewards and no new monetary operations during email send.
+	 *
+	 * @param WC_Order $order         WooCommerce order.
+	 * @param bool     $sent_to_admin Admin vs customer recipient.
+	 * @param bool     $plain_text    HTML vs text template.
+	 * @param WC_Email $email         Actual WooCommerce email class.
+	 */
+	public static function customer_reward_email( $order, $sent_to_admin, $plain_text, $email ): void {
+		if ( ! $order instanceof WC_Order
+			|| $sent_to_admin
+			|| ! $email instanceof WC_Email
+			|| ! in_array( $email->id, array( 'customer_processing_order', 'customer_completed_order' ), true )
+			|| ! $order->is_paid()
+			|| ! (int) $order->get_customer_id()
+			|| ! get_user_by( 'id', (int) $order->get_customer_id() )
+			|| self::is_prepaid( $order ) ) {
+			return;
+		}
+		$reward_cents = (int) $order->get_meta( '_mdo_club_award_cents' );
+		if ( $reward_cents <= 0 ) { return; }
+		echo self::reward_email_snippet( $reward_cents, (bool) $plain_text, (string) $order->get_currency() );
+	}
+	/**
+	 * Reusable presentation: the sample email and the actual order email
+	 * render exactly the same earned-reward block.
+	 */
+	public static function reward_email_snippet( int $reward_cents, bool $plain_text = false, string $currency = 'EUR' ): string {
+		if ( $reward_cents <= 0 ) { return ''; }
+		$amount = wp_strip_all_tags( wc_price(
+			MDO_Club_Ledger::money( $reward_cents ),
+			array( 'currency' => $currency )
+		) );
+		$url = wc_get_account_endpoint_url( 'monedero' );
+		if ( $plain_text ) {
+			return "\nCLUB EMDO · TU RECOMPENSA\n"
+				. "¡Tu compra tiene recompensa!\n"
+				. "Hemos añadido " . $amount . " a tu monedero de Club EMDO.\n"
+				. "Ya puedes utilizar ese saldo en tus próximas compras.\n"
+				. "Ver mi monedero: " . $url . "\n\n";
+		}
+		return '<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%"'
+			. ' style="border-collapse:separate;margin:18px 0 26px;background-color:#f4f8f1;border:1px solid #d8e6d5;border-radius:14px">'
+			. '<tr><td style="padding:25px 26px;font-family:Arial,Helvetica,sans-serif;color:#254936">'
+			. '<p style="margin:0 0 11px;color:#607d64;font-size:11px;line-height:1.5;font-weight:700;letter-spacing:1.6px">CLUB EMDO · TU RECOMPENSA</p>'
+			. '<p style="margin:0 0 9px;font-family:Georgia,serif;font-size:25px;line-height:1.25;font-weight:bold;color:#1c4732">¡Tu compra tiene recompensa!</p>'
+			. '<p style="margin:0 0 10px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.7;color:#345544">'
+			. 'Hemos añadido <strong style="color:#1c4732;white-space:nowrap">' . esc_html( $amount ) . '</strong>'
+			. ' a tu monedero de Club EMDO. Ya puedes utilizar ese saldo en tus próximas compras.</p>'
+			. '<p style="margin:19px 0 0"><a href="' . esc_url( $url ) . '"'
+			. ' style="display:inline-block;background-color:#28513c;color:#ffffff!important;text-decoration:none;border-radius:9px;'
+			. 'padding:13px 21px;font-size:13px;font-weight:700;line-height:1.4">Ver mi monedero</a></p>'
+			. '</td></tr></table>';
 	}
 	public static function skip_supplier_email( bool $enabled, $order ): bool {
 		return self::is_prepaid( $order ) ? false : $enabled;
