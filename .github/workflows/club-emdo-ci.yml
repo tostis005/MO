@@ -12,6 +12,7 @@ on:
       - 'tests/club-emdo-gift-design.php'
       - 'tests/club-emdo-ui-cleanup.php'
       - 'tests/club-emdo-cta-unit.php'
+      - 'tests/club-emdo-reward-email-unit.php'
       - 'tests/club-emdo-admin-gifts-unit.php'
       - 'mdo-supplier-sync/assets/club-emdo-tarjeta-regalo.jpg.b64'
       - '.github/workflows/club-emdo-ci.yml'
@@ -46,3 +47,5 @@ jobs:
         run: php tests/club-emdo-admin-gifts-unit.php
       - name: Dashboard and gift action buttons
         run: php tests/club-emdo-cta-unit.php
+      - name: Customer earned-reward email preview and eligibility
+        run: php tests/club-emdo-reward-email-unit.php
