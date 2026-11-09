@@ -44,7 +44,7 @@ jobs:
           grep -Fq 'id="bf26-overlay"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'BFEMDO' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           ! grep -Fq 'BFM2' elmercadodeorigen-child/templates/black-friday-2026-preview.php
-          grep -Fq 'bf26-steps--textual' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          ! grep -Fq 'bf26-coupon-section' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           test -s elmercadodeorigen-child/assets/css/black-friday-2026-preview.css
           test -s elmercadodeorigen-child/assets/js/black-friday-2026-preview.js
           test -s .github/scripts/check-black-friday-2026-fullbleed.cjs
@@ -183,7 +183,7 @@ jobs:
           grep -Fq 'Montjam' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'BFEMDO' "/tmp/bf-preview-$RUN.html"
           ! grep -Fq 'BFM2' "/tmp/bf-preview-$RUN.html"
-          grep -Fq 'bf26-steps--textual' "/tmp/bf-preview-$RUN.html"
+          ! grep -Fq 'bf26-coupon-section' "/tmp/bf-preview-$RUN.html"
           # Native site header / nav / cart / footer: this must be a real shop page.
           grep -Eiq 'class="[^"]*site-header' "/tmp/bf-preview-$RUN.html"
           grep -Eiq 'main-navigation|primary-navigation' "/tmp/bf-preview-$RUN.html"
