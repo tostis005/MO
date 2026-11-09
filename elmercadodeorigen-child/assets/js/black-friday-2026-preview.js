@@ -9,6 +9,17 @@
 		var panel = overlay.querySelector('.bf26-overlay__panel');
 		var enterButton = overlay.querySelector('[data-bf26-enter]');
 		var previousFocus = null;
+		var dismissedKey = 'emdo_bf2026_curtain_dismissed';
+
+		function curtainSeen() {
+			try { return window.sessionStorage.getItem(dismissedKey) === '1'; }
+			catch (error) { return false; }
+		}
+
+		function rememberDismissal() {
+			try { window.sessionStorage.setItem(dismissedKey, '1'); }
+			catch (error) { /* Storage may be unavailable; navigation still works. */ }
+		}
 
 		function openCurtain() {
 			previousFocus = document.activeElement;
@@ -20,6 +31,7 @@
 		function closeCurtain(goToOffers) {
 			overlay.hidden = true;
 			document.body.classList.remove('bf26-modal-open');
+			rememberDismissal();
 			if (goToOffers) {
 				var section = document.getElementById('ofertas');
 				if (section) {
@@ -88,10 +100,10 @@
 			});
 		});
 
-		// En la fase de revisión se abre siempre al entrar en ESTA página.
-		// Cuando la campaña se extienda al resto del sitio, se podrá usar
-		// sessionStorage con caducidad para limitar la frecuencia de aparición.
-		openCurtain();
+		// La presentación se muestra una vez por sesión. Al volver de la tienda
+		// el menú, el carrito y la navegación siguen disponibles sin interrupción.
+		// Se puede abrir de nuevo con el botón al final de la landing.
+		if (!curtainSeen()) { openCurtain(); }
 	}
 
 	if (document.readyState === 'loading') {
