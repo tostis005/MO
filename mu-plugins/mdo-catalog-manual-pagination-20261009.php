@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO - Paginacion segura del catalogo
  * Description: Recupera la navegacion real de WooCommerce cuando el cargador continuo del tema no llega al frontend.
- * Version: 1.0.0
+ * Version: 1.1.0
  */
 if (!defined('ABSPATH')) { exit; }
 
@@ -39,11 +39,33 @@ add_action('wp_head', static function () {
     html body.elmercado-child-theme .mdo-catalog-manual-pagination .mdo-pager-current {
         font-size:12px; font-weight:700; color:#60766b; padding:8px 2px;
     }
-    /* Restore native WooCommerce page controls hidden by old infinite-scroll CSS. */
-    html body.elmercado-child-theme.emo-continuous-catalog nav.woocommerce-pagination,
-    html body.elmercado-child-theme.emo-continuous-catalog .woocommerce-pagination.emo-catalog-native-pagination,
-    html body.elmercado-child-theme.emo-continuous-catalog nav.navigation.pagination {
-        display:block !important; visibility:visible !important; opacity:1 !important;
+    /* Fallback accesible sin JS: un solo paginador, no dos barras superpuestas. */
+    @supports selector(body:has(nav.mdo-catalog-manual-pagination)) {
+        html body.elmercado-child-theme:has(nav.mdo-catalog-manual-pagination) nav.woocommerce-pagination,
+        html body.elmercado-child-theme:has(nav.mdo-catalog-manual-pagination) nav.navigation.pagination,
+        html body.elmercado-child-theme:has(nav.mdo-catalog-manual-pagination) .woostify-pagination {
+            display:none !important;
+        }
+    }
+    /* Compatibilidad con navegadores antiguos: no permitir desbordamiento horizontal. */
+    @media (max-width:767px) {
+        html body.elmercado-child-theme .mdo-catalog-manual-pagination {
+            box-sizing:border-box; max-width:100%; gap:10px; padding:12px 16px;
+            margin:18px auto 24px;
+        }
+        html body.elmercado-child-theme .mdo-catalog-manual-pagination .mdo-pager-current {
+            flex:0 0 100%; text-align:center; font-size:13px;
+        }
+        html body.elmercado-child-theme .mdo-catalog-manual-pagination a {
+            max-width:100%; box-sizing:border-box; min-height:46px; font-size:13px;
+        }
+        html body.elmercado-child-theme nav.woocommerce-pagination ul.page-numbers {
+            display:flex !important; flex-wrap:nowrap !important; overflow-x:auto !important;
+            max-width:calc(100vw - 32px); padding:4px 8px; gap:6px;
+        }
+        html body.elmercado-child-theme nav.woocommerce-pagination ul.page-numbers li {
+            flex:0 0 auto; min-width:0 !important;
+        }
     }
     </style>
     <?php
