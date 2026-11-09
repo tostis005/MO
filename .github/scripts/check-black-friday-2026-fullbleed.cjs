@@ -11,6 +11,8 @@ const {chromium} = require('playwright-core');
   });
   try {
     for (const [label, width, height] of [
+      ['mobile-small', 320, 720],
+      ['mobile-medium', 360, 780],
       ['mobile', 390, 844],
       ['tablet', 768, 1024],
       ['desktop', 1440, 900],
@@ -41,6 +43,20 @@ const {chromium} = require('playwright-core');
         const cart=sel('.site-tools .shopping-cart, .site-tools .cart-contents, .site-tools .shopping-bag-button, .site-tools [class*="cart"]');
         const promo=sel('.bf26');
         const couponButtons=Array.from(document.querySelectorAll('[data-bf26-copy]'));
+        const offerSelectors=[
+          '.bf26-offer', '.bf26-offer__content', '.bf26-offer__description',
+          '.bf26-offer__discount', '.bf26-offer__discount > strong',
+          '.bf26-offer__discount-details', '.bf26-offer__discount-details .bf26-coupon',
+          '.bf26-gift', '.bf26-gift__text', '.bf26-gift__text > strong',
+          '.bf26-offer__content > a.bf26-button'
+        ];
+        const offerRectangles=offerSelectors.flatMap(selector=>
+          Array.from(document.querySelectorAll(selector)).map(el=>{
+            const r=el.getBoundingClientRect();
+            return {selector,left:r.left,right:r.right,width:r.width,
+              scrollWidth:el.scrollWidth,clientWidth:el.clientWidth};
+          })
+        );
         const percentGlyphs=Array.from(document.querySelectorAll(
           '.bf26-hero__seal strong span, .bf26-overlay__discount strong span, '+
           '.bf26-offer__discount > strong span, .bf26-club__wallet-main strong span'
@@ -58,6 +74,7 @@ const {chromium} = require('playwright-core');
           removedHeroEyebrow:!sel('.bf26-hero__copy .bf26-eyebrow'),
           removedHowItWorksLink:!sel('a[href="#como-funciona"]'),
           percentGlyphs,
+          offerRectangles,
           width:window.innerWidth,scrollWidth:document.documentElement.scrollWidth,
           header:!!header,cart:!!cart,footer:box(footer),
           wallet:!!sel('.bf26-club__wallet'),
@@ -74,6 +91,15 @@ const {chromium} = require('playwright-core');
       if (measurement.percentGlyphs.length !== 5 ||
           measurement.percentGlyphs.some(g=>g.symbol !== '%' || g.marginLeft < 2 || g.fontRatio < .4 || g.fontRatio > .55)) {
         throw Error('Poor percent symbol spacing at '+label+': '+JSON.stringify(measurement.percentGlyphs));
+      }
+      if (measurement.offerRectangles.length < 20) {
+        throw Error('Offer cards not fully rendered at '+label);
+      }
+      for (const el of measurement.offerRectangles) {
+        if (el.left < -3 || el.right > measurement.width+3 ||
+            el.clientWidth + 3 < el.scrollWidth) {
+          throw Error('Clipped or overflowing offer element at '+label+': '+JSON.stringify(el));
+        }
       }
       if (!measurement.header || !measurement.headerVisible || !measurement.cart || !measurement.footer || !measurement.wallet) {
         throw Error('Missing native shop shell/header/cart/footer at '+label);
