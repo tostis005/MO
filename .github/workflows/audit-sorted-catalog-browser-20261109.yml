@@ -47,7 +47,13 @@ jobs:
               const button=page.locator('.emo-catalog-load-button');
               if(await button.count() && await button.isVisible()) {
                 const previous=await page.evaluate(()=>document.querySelectorAll('main ul.products > li.product').length);
-                await button.click({timeout:5000});
+                /* Dismiss the timed newsletter overlay, unrelated to catalog pagination. */
+                await page.evaluate(()=>{
+                  document.querySelectorAll('#hustle-popup-id-1,.hustle-popup-mask,.hustle-modal-mask,.hustle-overlay').forEach(el=>el.remove());
+                  document.body.classList.remove('hustle-scroll-forbidden');
+                  document.documentElement.classList.remove('hustle-scroll-forbidden');
+                });
+                await button.click({timeout:12000});
                 await page.waitForFunction(previous=>document.querySelectorAll('main ul.products > li.product').length>=previous+12,previous,{timeout:45000});
                 const afterClick=await snapshot('AFTER_BUTTON');
                 console.log('AJAX_AFTER_BUTTON '+JSON.stringify(ajax.slice(-6)));
