@@ -502,3 +502,96 @@ html body.emdo-bf2026-page :is(.site-footer,#colophon) {
   .bf26-hero__seal strong{font-size:43px}
   .bf26-offer__discount > strong{font-size:48px}
 }
+
+
+/* BF2026 v5: prevent offer-card clipping on phones and larger text settings.
+   The code is its own tappable element, not part of a long inline sentence. */
+.bf26-offer,
+.bf26-offer__content,
+.bf26-offer__discount,
+.bf26-offer__discount-details,
+.bf26-gift,
+.bf26-gift__text {
+  min-width:0;
+  max-width:100%;
+}
+.bf26-offer {width:100%}
+.bf26-offer__content {width:100%;overflow-wrap:break-word}
+.bf26-offer__discount > strong {flex:0 0 auto;max-width:100%}
+.bf26-offer__discount-details {flex:1 1 0}
+.bf26-offer__discount-details > span {display:block}
+.bf26-offer__discount-details p {margin-top:7px!important;max-width:100%}
+.bf26-offer__discount-details .bf26-coupon {
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  flex-wrap:nowrap;
+  gap:10px;
+  width:max-content;
+  max-width:100%;
+  min-height:44px;
+  margin-top:12px;
+  padding:10px 15px!important;
+  font-size:14px!important;
+  line-height:1.3!important;
+  white-space:nowrap;
+  text-align:center;
+}
+.bf26-offer__discount-details .bf26-coupon span {
+  flex:none;
+  margin:0;
+  font-size:16px;
+  line-height:1;
+}
+.bf26-offer__description,
+.bf26-gift__text,
+.bf26-gift__text > strong,
+.bf26-gift__text > p {
+  overflow-wrap:break-word;
+}
+.bf26-offer__content > .bf26-button {
+  max-width:100%;
+  white-space:normal;
+  text-align:left;
+}
+@media(max-width:780px){
+  .bf26-offers .bf26-wrap{max-width:100%;width:calc(100% - 32px);margin-inline:auto}
+  .bf26-offer{grid-template-columns:minmax(0,1fr);min-width:0}
+  .bf26-offer__content{min-width:0;padding:28px 24px 31px}
+  .bf26-offer__discount{
+    display:grid;
+    grid-template-columns:minmax(0,1fr);
+    align-items:start;
+    gap:10px;
+    min-width:0;
+    max-width:100%;
+    margin:22px 0;
+    padding-block:18px;
+  }
+  .bf26-offer__discount > strong {
+    justify-self:start;
+    font-size:clamp(50px,13vw,60px);
+    line-height:1.05;
+  }
+  .bf26-offer__discount-details{width:100%;min-width:0}
+  .bf26-offer__discount-details > span{font-size:10px;letter-spacing:.085em}
+  .bf26-offer__discount-details p{font-size:13px;line-height:1.6}
+  .bf26-gift{display:flex;min-width:0;width:100%;overflow:hidden;gap:12px;padding:12px}
+  .bf26-gift__image{width:73px;height:78px;flex:0 0 73px}
+  .bf26-gift__text{flex:1 1 0;min-width:0}
+  .bf26-offer__content > .bf26-button{width:100%}
+}
+@media(max-width:420px){
+  .bf26-offers .bf26-wrap{width:calc(100% - 24px)}
+  .bf26-offer__content{padding:24px 17px 29px}
+  .bf26-offer__discount > strong{font-size:clamp(46px,13vw,55px)}
+  .bf26-offer__discount-details .bf26-coupon{
+    width:auto;
+    font-size:13px!important;
+    padding:9px 13px!important;
+  }
+  .bf26-gift{gap:10px;padding:10px}
+  .bf26-gift__image{width:60px;height:67px;flex-basis:60px}
+  .bf26-gift__text>strong{font-size:14px;line-height:1.34}
+  .bf26-gift__text>p{font-size:12px}
+}
