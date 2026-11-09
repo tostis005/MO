@@ -502,3 +502,81 @@ html body.emdo-bf2026-page :is(.site-footer,#colophon) {
   .bf26-hero__seal strong{font-size:43px}
   .bf26-offer__discount > strong{font-size:48px}
 }
+
+
+/* BF2026 v5: less dead space under the native shop header. The campaign
+   starts with the headline: its former eyebrow has been removed. */
+.bf26-hero__grid {
+  min-height:0;
+  padding-top:clamp(22px,3vw,44px);
+  padding-bottom:clamp(48px,5vw,72px);
+}
+.bf26-hero h1 {
+  margin-top:0;
+  margin-bottom:23px;
+}
+.bf26-hero__fine {margin-top:30px}
+.bf26-hero__visual {min-height:460px}
+
+/* BFEMDO is the offer's own control, not a word trapped inside a sentence. */
+.bf26-offer__discount-details {display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+.bf26-offer__discount-details > span {
+  display:block;
+  color:#315b45;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.08em;
+}
+.bf26-offer__coupon-row {
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:13px;
+}
+.bf26-offer__coupon-hint {
+  color:#688070;
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.12em;
+}
+.bf26-offer__coupon-row .bf26-coupon {
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:8px;
+  min-height:37px;
+  padding:7px 12px!important;
+  border:1px solid #cfdbcd!important;
+  border-radius:6px!important;
+  background:#eff4ed!important;
+  color:#173f32!important;
+  box-shadow:none!important;
+  font-size:13px!important;
+  font-weight:850!important;
+  letter-spacing:.065em;
+  line-height:1.2!important;
+  transition:background-color .2s,border-color .2s;
+}
+.bf26-offer__coupon-row .bf26-coupon:hover {
+  background:#dcebdd!important;
+  border-color:#a8c1ac!important;
+}
+.bf26-offer__coupon-row .bf26-coupon span {
+  margin-left:0;
+  color:#4a7254;
+  font-size:15px;
+  line-height:1;
+}
+@media(max-width:780px) {
+  .bf26-hero__grid{padding-top:24px;padding-bottom:52px}
+  .bf26-hero__visual{min-height:350px}
+  .bf26-hero h1{margin-bottom:21px}
+  .bf26-hero__fine{margin-top:26px}
+}
+@media(max-width:420px) {
+  .bf26-hero__grid{padding-top:20px;padding-bottom:46px}
+  .bf26-hero__visual{min-height:300px}
+  .bf26-offer__coupon-row{gap:8px}
+}
