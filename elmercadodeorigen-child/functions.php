@@ -171,6 +171,7 @@ $elmercado_modules = array(
 	'inc/blog-product-category-more-010267.php',
 	'inc/blog-b2b-context-links-20261012.php',
 	'inc/navidad-2026-campaign.php',
+	'inc/black-friday-2026-preview.php',
 	'inc/blog-default-image-010264.php',
 	'inc/seo-meta-descriptions-010265.php',
 	'inc/seo-search-console-010313.php',
