@@ -1,6 +1,15 @@
-/* Black Friday 2026 · visual preview only. Strict scope to .bf26 and .bf26-overlay. */
+/* Black Friday 2026. The shop's native header, cart and footer remain untouched. */
 body.emdo-bf2026-page { --bf-green:#173f32; --bf-forest:#112d24; --bf-ink:#192f26; --bf-paper:#f7f3ea; --bf-cream:#fffaf0; --bf-gold:#d4b27d; --bf-line:#dfdfd5; }
-body.emdo-bf2026-page .site-content,body.emdo-bf2026-page #content{max-width:none}
+/* The campaign is full-bleed inside the normal WordPress page shell.
+   Restrict resets to THIS route; never alter the site header or cart. */
+html body.emdo-bf2026-page #content,
+html body.emdo-bf2026-page .site-content{width:100%!important;max-width:none!important;margin-inline:0!important;padding-inline:0!important}
+html body.emdo-bf2026-page :is(#content,.site-content) > .woostify-container{width:100%!important;max-width:none!important;margin-inline:0!important;padding-inline:0!important}
+html body.emdo-bf2026-page :is(#content,.site-content) :is(#primary,.content-area,.site-main){max-width:none!important;width:100%!important;margin-inline:0!important;padding-inline:0!important}
+html body.emdo-bf2026-page .bf26{display:block;width:100%;max-width:none;margin:0 auto;padding:0;border:0}
+html body.emdo-bf2026-page .bf26 :is(.bf26-hero,.bf26-band,.bf26-offers,.bf26-coupon-section,.bf26-close){width:100%;max-width:none;margin-inline:0;border-radius:0}
+html body.emdo-bf2026-page .site-header{visibility:visible;opacity:1}
+
 .bf26,.bf26-overlay{box-sizing:border-box;font-family:inherit;-webkit-font-smoothing:antialiased}
 .bf26 *, .bf26 *::before, .bf26 *::after,.bf26-overlay *, .bf26-overlay *::before,.bf26-overlay *::after{box-sizing:border-box}
 .bf26{color:var(--bf-ink);background:#fff;overflow:hidden}
@@ -9,11 +18,6 @@ body.emdo-bf2026-page .site-content,body.emdo-bf2026-page #content{max-width:non
 .bf26 button:focus-visible,.bf26 a:focus-visible,.bf26-overlay button:focus-visible{outline:3px solid #d3ad61;outline-offset:4px}
 .bf26 h1,.bf26 h2,.bf26 h3,.bf26 p{margin:0}
 .bf26-wrap{width:min(1200px,calc(100% - 56px));margin:0 auto}
-.bf26-previewbar{background:#e6e9e0;color:#284336;border-bottom:1px solid #cbd5c7}
-.bf26-previewbar__inner{min-height:44px;display:flex;align-items:center;justify-content:space-between;gap:16px}
-.bf26-previewbar__status{font-size:10px;line-height:1.3;font-weight:800;letter-spacing:.13em}
-.bf26-previewbar__dot{display:inline-block;width:7px;height:7px;background:#be8f43;border-radius:50%;margin-right:8px}
-.bf26-previewbar__reopen{background:none!important;border:0!important;padding:5px 0!important;font-size:12px!important;color:#244e3b!important;text-decoration:underline!important;text-underline-offset:3px}
 .bf26-eyebrow{color:#52705d;font-size:11px;font-weight:800;letter-spacing:.16em;line-height:1.5}
 .bf26-eyebrow--light{color:#e4d0a8}
 .bf26-spark{font-size:20px;vertical-align:-2px;margin-right:6px}
@@ -23,7 +27,7 @@ body.emdo-bf2026-page .site-content,body.emdo-bf2026-page #content{max-width:non
 .bf26-hero__copy{position:relative;z-index:3}
 .bf26-hero h1{font-size:clamp(54px,5.6vw,82px);line-height:1.04;font-weight:600;letter-spacing:-.051em;max-width:630px;margin:20px 0 26px;color:#fff}
 .bf26-hero h1 em{display:block;font:italic 400 .88em/1.1 Georgia,serif;letter-spacing:-.04em;color:#e6cb9d}
-.bf26-hero h1>span{display:block}
+.bf26-hero h1>span{display:block;max-width:640px}
 .bf26-hero__lead{color:#e0e8df;font-size:clamp(16px,1.55vw,19px);line-height:1.72;max-width:520px;margin-bottom:33px!important}
 .bf26-hero__buttons{display:flex;gap:24px;align-items:center;flex-wrap:wrap}
 .bf26-button{display:inline-flex;align-items:center;justify-content:space-between;gap:20px;min-height:54px;padding:16px 24px;border-radius:4px;font-size:14px;font-weight:750;letter-spacing:.01em;transition:transform .18s,background-color .18s,box-shadow .18s;border:1px solid transparent}
@@ -114,6 +118,8 @@ body.emdo-bf2026-page .site-content,body.emdo-bf2026-page #content{max-width:non
 .bf26-close h2{font-weight:600;color:#173f32;font-size:clamp(38px,4.55vw,63px);line-height:1.14;letter-spacing:-.045em;margin:15px 0 28px}
 .bf26-close h2 em{font:italic 400 .94em Georgia,serif;color:#957749}
 .bf26-close__inner>p:last-child{font-size:12px;line-height:1.7;color:#78867b;max-width:570px;margin:24px auto 0}
+.bf26-reopen{display:block;margin:22px auto 0;padding:7px 4px!important;border:0!important;background:transparent!important;color:#315f46!important;font-weight:700!important;font-size:12px!important;text-decoration:underline!important;text-underline-offset:4px}
+.bf26-disclaimer{font-size:11px!important;line-height:1.6!important;color:#778378!important;max-width:610px!important;margin-top:14px!important}
 
 /* First-visit curtain: only rendered in this preview template. */
 .bf26-overlay[hidden]{display:none!important}
@@ -124,14 +130,11 @@ body.emdo-bf2026-page .site-content,body.emdo-bf2026-page #content{max-width:non
 .bf26-overlay__panel:after{content:'BLACK';position:absolute;bottom:-95px;right:5%;font-size:230px;letter-spacing:-.09em;font-weight:900;line-height:1;color:#ffffff08;pointer-events:none;z-index:-1}
 .bf26-overlay__close{position:absolute;z-index:5;right:25px;top:24px;background:#ffffff13!important;border:1px solid #ffffff5c!important;color:#fff!important;padding:10px 13px!important;border-radius:30px!important;font-size:12px!important;display:flex;align-items:center;gap:10px}
 .bf26-overlay__close span{font-size:10px;letter-spacing:.08em;font-weight:800}
-.bf26-overlay__bottom{display:flex;justify-content:center;gap:15px;align-items:center;text-align:center;font-size:10px;font-weight:800;letter-spacing:.17em;color:#d2cfb5}
-.bf26-overlay__bottom{padding:23px 55px 28px;border-top:1px solid #ffffff28}
-.bf26-overlay__layout{display:grid;grid-template-columns:1.09fr .91fr;min-height:530px;align-items:center;padding:25px 55px 50px;gap:20px}
+.bf26-overlay__layout{display:grid;grid-template-columns:1.09fr .91fr;min-height:530px;align-items:center;padding:45px 55px;gap:20px}
 .bf26-overlay__copy{position:relative;z-index:4}
 .bf26-overlay__copy h2{font-weight:850;font-size:clamp(74px,7.8vw,117px);line-height:.85;letter-spacing:-.085em;margin:0 0 23px;color:#f8f1de}
 .bf26-overlay__copy h2 em{font-style:normal;color:#d8b878}
-.bf26-overlay__copy h2>span{display:block;font:italic 400 clamp(28px,3.3vw,46px)/1.35 Georgia,serif;letter-spacing:-.035em;color:#fff8ed;margin-top:14px}
-.bf26-overlay__copy>p:not(.bf26-overlay__kicker){font-size:17px;line-height:1.65;max-width:475px;color:#e2e9db;margin:0 0 28px}
+.bf26-overlay__copy>p{font-size:17px;line-height:1.65;max-width:475px;color:#e2e9db;margin:0 0 28px}
 .bf26-overlay__copy>p strong{color:#f3d6a2}
 .bf26-overlay__buttons{display:flex;flex-wrap:wrap;align-items:center;gap:17px}
 .bf26-overlay__cta{background:#e6ca92!important;color:#123527!important;border:0!important;min-height:56px;padding:16px 20px!important;font-size:14px!important;font-weight:850!important;border-radius:3px!important;display:inline-flex;gap:20px;align-items:center}
@@ -152,12 +155,11 @@ body.bf26-modal-open{overflow:hidden!important}
 /* Phones and tablets */
 @media(max-width:1050px){
 .bf26-hero__grid{gap:20px}.bf26-offer__content{padding:36px}.bf26-offer__discount>strong{font-size:60px}.bf26-offer__discount{gap:19px}
-.bf26-overlay__layout{padding-inline:38px}.bf26-overlay__bottom{padding-inline:38px}.bf26-overlay__copy h2{font-size:clamp(68px,8.7vw,100px)}
+.bf26-overlay__layout{padding-inline:38px}.bf26-overlay__copy h2{font-size:clamp(68px,8.7vw,100px)}
 .bf26-overlay__discount{right:-4%;width:155px;height:155px}.bf26-overlay__discount strong{font-size:64px}
 }
 @media(max-width:780px){
 .bf26-wrap{width:min(100% - 38px,600px)}
-.bf26-previewbar__inner{min-height:51px}.bf26-previewbar__status{font-size:9px;max-width:56%}.bf26-previewbar__reopen{font-size:10px!important;text-align:right}
 .bf26-hero__grid{grid-template-columns:1fr;padding-top:66px;padding-bottom:55px;gap:35px}
 .bf26-hero h1{font-size:clamp(47px,9vw,66px)}.bf26-hero__lead{font-size:16px;max-width:550px}.bf26-hero__fine{margin-top:30px;font-size:9px}
 .bf26-hero__visual{min-height:390px;max-width:520px;width:100%;margin-inline:auto}
@@ -170,11 +172,11 @@ body.bf26-modal-open{overflow:hidden!important}
 .bf26-coupon-section{padding:68px 0}.bf26-coupon-section__grid{grid-template-columns:1fr;gap:28px}
 .bf26-close{padding:76px 0}.bf26-close h2{font-size:clamp(38px,8vw,53px)}
 .bf26-overlay{padding:10px}.bf26-overlay__panel{max-height:calc(100dvh - 20px)}.bf26-overlay__layout{grid-template-columns:1fr;gap:5px;padding:62px 24px 25px}
-.bf26-overlay__copy h2{font-size:clamp(66px,13.5vw,105px)}.bf26-overlay__copy h2>span{font-size:clamp(26px,6vw,37px)}.bf26-overlay__copy>p:not(.bf26-overlay__kicker){font-size:15px}
+.bf26-overlay__copy h2{font-size:clamp(66px,13.5vw,105px)}.bf26-overlay__copy>p{font-size:15px}
 .bf26-overlay__art{height:245px;width:min(340px,100%);margin:auto}
 .bf26-overlay__photo{inset:4px 60px 0 12px;border-width:5px}.bf26-overlay__circle{width:235px;height:235px}
 .bf26-overlay__discount{width:118px;height:118px;right:7%;bottom:-10px}.bf26-overlay__discount strong{font-size:47px}.bf26-overlay__discount strong span{font-size:20px}.bf26-overlay__discount small,.bf26-overlay__discount>span{font-size:7px}
-.bf26-overlay__asterisk{font-size:44px}.bf26-overlay__bottom{padding:17px 24px;font-size:8px}
+.bf26-overlay__asterisk{font-size:44px}
 .bf26-overlay__panel:after{font-size:130px;bottom:-55px}
 }
 @media(max-width:420px){
@@ -186,8 +188,8 @@ body.bf26-modal-open{overflow:hidden!important}
 .bf26-offer__discount{gap:12px}.bf26-offer__discount>strong{font-size:50px}.bf26-offer__discount>strong span{font-size:25px}.bf26-gift{align-items:flex-start;gap:10px;padding:11px}.bf26-gift__image{width:68px;height:73px;flex-basis:68px}.bf26-gift__text>strong{font-size:14px}
 .bf26-offer__top{gap:8px}.bf26-offer__origin{font-size:9px}
 .bf26-overlay__layout{padding-top:62px}.bf26-overlay__copy h2{font-size:clamp(62px,14vw,79px)}.bf26-overlay__art{height:195px}.bf26-overlay__photo{inset:0 66px 0 16px}.bf26-overlay__circle{width:185px;height:185px}
-.bf26-overlay__copy>p:not(.bf26-overlay__kicker){margin-bottom:17px}
+.bf26-overlay__copy>p{margin-bottom:17px}
 .bf26-overlay__buttons{gap:5px}.bf26-overlay__cta{min-height:50px;padding:12px 15px!important;font-size:13px!important}.bf26-overlay__skip{font-size:11px!important}
-.bf26-overlay__discount{right:10px;bottom:-4px}.bf26-overlay__bottom{padding-block:12px}
+.bf26-overlay__discount{right:10px;bottom:-4px}
 }
 @media(prefers-reduced-motion:reduce){.bf26-button{transition:none}.bf26-overlay *, .bf26 *{scroll-behavior:auto!important}}
