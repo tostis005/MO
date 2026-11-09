@@ -1,0 +1,59 @@
+name: Audit Montjam green shoulder size and preparations 2026-11-09
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-montjam-green-shoulder-20261109.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: audit-montjam-green-shoulder-20261109
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/audit-montjam-green-shoulder-20261109.php
+          test -n "${STAGING_HOST:-}" && test -n "${STAGING_USER:-}" && test -n "${SSHPASS:-}"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Inspect the actual production product and YITH options
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_ARGS=(-o StrictHostKeyChecking=no -o ConnectTimeout=15 -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive -p "$PORT")
+          SCP_ARGS=(-o StrictHostKeyChecking=no -o ConnectTimeout=15 -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive -P "$PORT")
+          REMOTE="/tmp/montjam-green-audit-${GITHUB_RUN_ID}.php"
+          sshpass -e scp "${SCP_ARGS[@]}" .github/scripts/audit-montjam-green-shoulder-20261109.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh "${SSH_ARGS[@]}" "$STAGING_USER@$STAGING_HOST" "bash -s -- '$REMOTE'" <<'REMOTE_SCRIPT' | tee /tmp/montjam-green-audit.log
+          set -Eeuo pipefail
+          SCRIPT="$1"
+          ROOT=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+          PHP=/opt/plesk/php/8.2/bin/php
+          WP="$(command -v wp)"
+          trap 'rm -f "$SCRIPT"' EXIT
+          SITE="$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)"
+          case "$SITE" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;; *) echo "REFUSING_UNKNOWN_SITE"; exit 10;; esac
+          "$PHP" -d memory_limit=1024M "$WP" eval-file "$SCRIPT" --path="$ROOT" --allow-root
+          REMOTE_SCRIPT
+          grep -q 'MONTJAM_GREEN_AUDIT_OK' /tmp/montjam-green-audit.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: montjam-green-diagnosis-20261109
+          path: /tmp/montjam-green-audit.log
+          retention-days: 7
+          if-no-files-found: warn
