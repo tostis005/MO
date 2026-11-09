@@ -153,7 +153,6 @@ jobs:
                 "post_content" => "",
                 "comment_status" => "closed",
                 "ping_status" => "closed",
-                "post_author" => 1,
               ), true);
               if (is_wp_error($id) || !$id) {
                 fwrite(STDERR, "Unable to create normal WordPress campaign page\n");
