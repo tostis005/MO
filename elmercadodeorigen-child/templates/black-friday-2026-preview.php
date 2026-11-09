@@ -180,11 +180,13 @@ get_header();
 			</div>
 		</div>
 		<div class="bf26-wrap bf26-club__footer">
-			<span>El 1 % se acredita en pedidos válidos; no incluye envíos, recargas ni tarjetas regalo.</span>
+			<div class="bf26-club__conditions">
+				<span>El 1 % se acredita en pedidos válidos; no incluye envíos, recargas ni tarjetas regalo.</span>
+				<small>Black Friday en preparación: el descuento y los regalos todavía no están activos. Fechas y condiciones pendientes de confirmar.</small>
+			</div>
 			<button type="button" class="bf26-reopen" data-bf26-open>Volver a ver la presentación ↗</button>
 		</div>
 	</section>
-	<p class="bf26-legal-note">Ofertas en preparación: el descuento y los regalos de Black Friday todavía no están activos. Fechas y condiciones pendientes de confirmar.</p>
 </main>
 
 <div class="bf26-overlay" id="bf26-overlay" role="dialog" aria-modal="true" aria-labelledby="bf26-overlay-title" aria-describedby="bf26-overlay-desc" hidden>
