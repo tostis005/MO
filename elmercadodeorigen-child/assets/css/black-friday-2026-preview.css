@@ -432,3 +432,73 @@ html body.emdo-bf2026-page :is(.site-footer,#colophon) {
   .bf26-club__token--two{right:0;width:63px;height:63px;font-size:40px}
   .bf26-club__footer{padding:18px 0 25px}
 }
+
+
+/* BF2026 v4 percentage typography — distinct, balanced superscript-style
+   symbol across the offer stickers, producer offers and Club EMDO wallet. */
+.bf26-hero__seal strong,
+.bf26-overlay__discount strong,
+.bf26-offer__discount > strong,
+.bf26-club__wallet-main strong {
+  display:inline-flex;
+  justify-content:center;
+  align-items:flex-start;
+  gap:.04em;
+  letter-spacing:-.045em;
+  white-space:nowrap;
+}
+.bf26-hero__seal strong span,
+.bf26-overlay__discount strong span,
+.bf26-offer__discount > strong span,
+.bf26-club__wallet-main strong span {
+  display:inline-block;
+  flex:none;
+  font-size:.48em;
+  line-height:1;
+  margin-left:.13em;
+  padding:0;
+  letter-spacing:0;
+  transform:translateY(.14em);
+}
+.bf26-hero__seal strong{font-size:70px;line-height:1.03}
+.bf26-overlay__discount strong{font-size:69px;line-height:1.03}
+.bf26-offer__discount > strong{font-size:68px;line-height:1.03}
+.bf26-club__wallet-main strong{line-height:1.03}
+
+/* Two editorial instructions, no step numbers and no third coupon step. */
+.bf26-steps--textual > div {
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:9px;
+  padding:25px 0;
+}
+.bf26-steps--textual > div + div {margin-top:2px}
+.bf26-steps--textual strong {
+  display:block;
+  font-size:clamp(19px,1.8vw,23px);
+  line-height:1.3;
+  letter-spacing:-.025em;
+  font-weight:750;
+}
+.bf26-steps--textual p {
+  display:block;
+  grid-column:auto;
+  margin:0;
+  font-size:14px;
+  line-height:1.75;
+  max-width:530px;
+}
+@media(max-width:1050px) {
+  .bf26-hero__seal strong{font-size:51px}
+  .bf26-overlay__discount strong{font-size:60px}
+  .bf26-offer__discount > strong{font-size:59px}
+}
+@media(max-width:780px) {
+  .bf26-overlay__discount strong{font-size:46px}
+  .bf26-hero__seal strong{font-size:50px}
+}
+@media(max-width:420px) {
+  .bf26-hero__seal strong{font-size:43px}
+  .bf26-offer__discount > strong{font-size:48px}
+}
