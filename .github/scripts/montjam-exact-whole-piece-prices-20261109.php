@@ -79,10 +79,15 @@ foreach ($targets as $pid=>$spec) {
         if (!$v || !$v->is_type('variation') || (int)$v->get_parent_id()!==$pid) {
             fwrite(STDERR, "ABORT: invalid variation #$vid\n"); exit(5);
         }
-        if ($v->get_status()!=='publish') continue;
         $weight=(string)($v->get_attributes()['pa_tamano']??'');
-        if (!array_key_exists($weight,$spec['weights']) || isset($seen[$weight])) {
-            fwrite(STDERR, "ABORT: unexpected published weight $weight for #$pid\n"); exit(6);
+        if (!array_key_exists($weight,$spec['weights'])) {
+            if ($v->get_status()==='publish') {
+                fwrite(STDERR, "ABORT: unexpected published weight $weight for #$pid\n"); exit(6);
+            }
+            continue; // never touch unrelated retired/private weights
+        }
+        if (!in_array($v->get_status(),['publish','private'],true) || isset($seen[$weight])) {
+            fwrite(STDERR, "ABORT: absent or duplicate target weight $weight on #$pid\n"); exit(6);
         }
         if ($v->get_sale_price('edit')!=='' ||
             !is_numeric($v->get_regular_price('edit')) ||
