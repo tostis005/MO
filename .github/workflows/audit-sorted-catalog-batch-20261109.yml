@@ -1,0 +1,45 @@
+name: Audit sorted catalog AJAX batch 2026-11-09
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/audit-sorted-catalog-batch-20261109.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Compare first page and two product batches, read only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE='https://www.elmercadodeorigen.com'
+          curl -fsSL --retry 1 --connect-timeout 8 --max-time 45 -A 'Mozilla/5.0 EMDO-Catalog-QA/20261109' -c /tmp/emdo-cookies -D /tmp/emdo-headers -o /tmp/emdo-sort.html "$BASE/tienda/?orderby=price&emdo_qa=20261109"
+          python3 - <<'PY'
+          import re,html,json
+          t=open('/tmp/emdo-sort.html',encoding='utf8',errors='replace').read()
+          m=re.search(r'const orderedIds\s*=\s*(\[[^\]]+\])\.map\(String\)',t,re.S)
+          n=re.search(r'const nonce\s*=\s*("([^"]+)")\s*;',t)
+          ids=list(map(str,json.loads(m.group(1)))) if m else []
+          visible=set(re.findall(r'<li\b[^>]*class=["\x27][^"\x27]*\bproduct\b[^>]*\bpost-(\d+)',t,re.I))
+          wanted=[x for x in ids if x not in visible][:12]
+          print('SORT_HTML',json.dumps({'bytes':len(t),'orderedIds':len(ids),'visible':len(visible),'requested':len(wanted),'nonce':bool(n),'manualPager':t.count('mdo-catalog-manual-pagination'),'ajaxLoader':'elmercado-catalog-scroll-final-010234' in t,'legacyLoader':'elmercado-continuous-catalog-loader-010181' in t}))
+          assert m and n and len(wanted)>0,'Missing sorted AJAX data'
+          from urllib.parse import urlencode
+          open('/tmp/emdo-batch.post','w').write(urlencode([('action','elmercado_catalog_batch_010234'),('nonce',n.group(2)),('scope','catalog')]+[('ids[]',x) for x in wanted]))
+          open('/tmp/emdo-wanted.json','w').write(json.dumps(wanted))
+          PY
+          curl -sSL --connect-timeout 8 --max-time 45 --retry 0 -A 'Mozilla/5.0 EMDO-Catalog-QA/20261109' -b /tmp/emdo-cookies -e "$BASE/tienda/?orderby=price" -D /tmp/emdo-ajax.headers -o /tmp/emdo-ajax.json -w 'AJAX_HTTP=%{http_code} AJAX_TIME=%{time_total}\n' -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' --data-binary @/tmp/emdo-batch.post "$BASE/wp-admin/admin-ajax.php"
+          python3 - <<'PY'
+          import json,re
+          raw=open('/tmp/emdo-ajax.json',encoding='utf8',errors='replace').read()
+          try:d=json.loads(raw)
+          except ValueError: print('NON_JSON',raw[:180]);raise
+          data=d.get('data') or {}
+          cards=len(re.findall(r'<li\b[^>]*class=["\x27][^"\x27]*\bproduct\b',(data.get('html') or ''),re.I))
+          print('SORT_AJAX',json.dumps({'success':d.get('success'),'countIDs':len(data.get('ids',[])),'cards':cards,'htmlBytes':len(data.get('html','')),'requested':len(json.load(open('/tmp/emdo-wanted.json')))}))
+          if not d.get('success') or cards==0:raise SystemExit('Sorted AJAX batch returned no cards')
+          PY
+          echo 'SORT_AJAX_AUDIT_PASSED'
