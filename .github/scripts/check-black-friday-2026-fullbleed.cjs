@@ -40,6 +40,10 @@ const {chromium} = require('playwright-core');
         const header=sel('.site-header');
         const cart=sel('.site-tools .shopping-cart, .site-tools .cart-contents, .site-tools .shopping-bag-button, .site-tools [class*="cart"]');
         const promo=sel('.bf26');
+        const hero=sel('.bf26-hero');
+        const headline=sel('.bf26-hero h1');
+        const discountDetails=Array.from(document.querySelectorAll('.bf26-offer__discount-details'));
+        const couponRows=Array.from(document.querySelectorAll('.bf26-offer__coupon-row'));
         const couponButtons=Array.from(document.querySelectorAll('[data-bf26-copy]'));
         const percentGlyphs=Array.from(document.querySelectorAll(
           '.bf26-hero__seal strong span, .bf26-overlay__discount strong span, '+
@@ -54,6 +58,10 @@ const {chromium} = require('playwright-core');
           couponPresent:!!promo && promo.textContent.includes('BFEMDO'),
           legacyCouponPresent:!!promo && promo.textContent.includes('BFM2'),
           allCopyButtonsUpdated:couponButtons.length===2 && couponButtons.every(el=>el.getAttribute('data-bf26-copy')==='BFEMDO'),
+          integratedCoupons:discountDetails.length===2 && couponRows.length===2
+            && couponRows.every(el=>!!el.querySelector('.bf26-coupon') && el.textContent.includes('BFEMDO')),
+          noOldCouponSentence:!!promo && !promo.textContent.includes('Introduce el código'),
+          heroTitleTopGap:hero && headline ? box(headline).top-box(hero).top : null,
           removedInstructionSection:!sel('.bf26-coupon-section, #como-funciona'),
           removedHeroEyebrow:!sel('.bf26-hero__copy .bf26-eyebrow'),
           removedHowItWorksLink:!sel('a[href="#como-funciona"]'),
@@ -67,6 +75,8 @@ const {chromium} = require('playwright-core');
       });
       console.log('BF2026_GEOMETRY_'+label.toUpperCase()+'='+JSON.stringify(measurement));
       if (!measurement.couponPresent || measurement.legacyCouponPresent || !measurement.allCopyButtonsUpdated
+          || !measurement.integratedCoupons || !measurement.noOldCouponSentence
+          || measurement.heroTitleTopGap===null || measurement.heroTitleTopGap<0 || measurement.heroTitleTopGap>105
           || !measurement.removedInstructionSection || !measurement.removedHeroEyebrow
           || !measurement.removedHowItWorksLink) {
         throw Error('Incorrect coupon or textual guidance at '+label+': '+JSON.stringify(measurement));

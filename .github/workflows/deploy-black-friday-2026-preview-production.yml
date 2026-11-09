@@ -43,6 +43,8 @@ jobs:
           grep -Fq 'noindex, nofollow, noarchive' mu-plugins/emdo-black-friday-2026-preview.php
           grep -Fq 'id="bf26-overlay"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'BFEMDO' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'bf26-offer__coupon-row' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          ! grep -Fq 'Introduce el código' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           ! grep -Fq 'BFM2' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           ! grep -Fq 'bf26-coupon-section' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           test -s elmercadodeorigen-child/assets/css/black-friday-2026-preview.css
@@ -182,6 +184,8 @@ jobs:
           grep -Fq 'Hidalgo' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'Montjam' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'BFEMDO' "/tmp/bf-preview-$RUN.html"
+          grep -Fq 'bf26-offer__coupon-row' "/tmp/bf-preview-$RUN.html"
+          ! grep -Fq 'Introduce el código' "/tmp/bf-preview-$RUN.html"
           ! grep -Fq 'BFM2' "/tmp/bf-preview-$RUN.html"
           ! grep -Fq 'bf26-coupon-section' "/tmp/bf-preview-$RUN.html"
           # Native site header / nav / cart / footer: this must be a real shop page.
