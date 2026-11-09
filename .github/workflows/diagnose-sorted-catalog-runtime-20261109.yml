@@ -1,0 +1,49 @@
+name: Diagnose sorted catalog served source and runtime 20261109
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/diagnose-sorted-catalog-runtime-20261109.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Inspect sorted HTML and browser execution
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for spec in 'usual|https://www.elmercadodeorigen.com/tienda/?orderby=price' 'fresh|https://www.elmercadodeorigen.com/tienda/?orderby=price&emdo_src_diag=20261109'; do
+            label="${spec%%|*}"; url="${spec#*|}"
+            curl -fsSL --connect-timeout 8 --max-time 48 -D "/tmp/$label.headers" -o "/tmp/$label.html" "$url"
+            python3 - "$label" <<'PY'
+          import sys,re,json
+          label=sys.argv[1]
+          s=open('/tmp/'+label+'.html',encoding='utf8',errors='replace').read()
+          m=re.search(r'const orderedIds\s*=\s*(\[[^\]]+\])\.map\(String\)',s,re.S)
+          n=len(json.loads(m.group(1))) if m else -1
+          print('SERVED_SOURCE',label,{'bytes':len(s),'ordered':n,'newReadyClassLiteral':'document.body.classList.add(\'emo-catalog-batch-ready\')' in s,'newCSS':'html body.elmercado-child-theme.emo-catalog-batch-ready' in s,'newButton':'Reintentar carga' in s,'oldAutoChain':'setTimeout(loadNext,80)' in s,'manualStyle':'selector(body:has(nav.mdo-catalog-manual-pagination))' in s,'countOfScrollScripts':s.count('id="elmercado-catalog-scroll-final-010234"')})
+          PY
+            grep -iE '^(HTTP/|age:|x-emdo-vendor-cache:|x-cache:|cache-control:|x-el-mercado)' "/tmp/$label.headers" | head -n 12 || true
+          done
+          npm install --no-save --no-audit --no-fund playwright-core@1.56.1 >/dev/null
+          cat > /tmp/runtime.cjs <<'JS'
+          const {chromium}=require(process.cwd()+'/node_modules/playwright-core');
+          (async()=>{
+            const b=await chromium.launch({executablePath:'/usr/bin/google-chrome',args:['--no-sandbox','--disable-dev-shm-usage']});
+            try{
+              for(const [label,url] of [['usual','https://www.elmercadodeorigen.com/tienda/?orderby=price'],['fresh','https://www.elmercadodeorigen.com/tienda/?orderby=price&emdo_src_diag=20261109']]){
+                const p=await b.newPage({viewport:{width:393,height:851},isMobile:true,hasTouch:true});
+                const errors=[];p.on('pageerror',e=>errors.push(String(e).slice(0,300)));
+                const res=await p.goto(url,{waitUntil:'domcontentloaded',timeout:63000});
+                await p.waitForTimeout(1500);
+                const v=await p.evaluate(()=>({ready:document.body.classList.contains('emo-catalog-batch-ready'),ordered:window.__emoCatalogLoaderState?.ordered,remaining:window.__emoCatalogLoaderState?.remaining,jsString:document.documentElement.outerHTML.includes('document.body.classList.add(\'emo-catalog-batch-ready\')'),shopItems:document.querySelectorAll('main ul.products > li.product').length}));
+                console.log('BROWSER_SOURCE',label,res.status(),JSON.stringify(v),'ERRORS',JSON.stringify(errors));
+                await p.close();
+              }
+            }finally{await b.close()}
+          })().catch(e=>{console.error(e.stack||e);process.exit(1)});
+          JS
+          node /tmp/runtime.cjs
