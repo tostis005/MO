@@ -580,3 +580,72 @@ html body.emdo-bf2026-page :is(.site-footer,#colophon) {
   .bf26-hero__visual{min-height:300px}
   .bf26-offer__coupon-row{gap:8px}
 }
+
+
+/* BF2026 v6: safeguard entire product cards at narrow mobile sizes.
+   The 15% discount stacks above the compact BFEMDO coupon; no component
+   may force the card wider than its viewport. */
+.bf26-offer,
+.bf26-offer__content,
+.bf26-offer__discount,
+.bf26-offer__discount-details,
+.bf26-offer__coupon-row,
+.bf26-gift,
+.bf26-gift__text {
+  min-width:0;
+  max-width:100%;
+}
+.bf26-offer { width:100%; }
+.bf26-offer__content { width:100%;overflow-wrap:break-word; }
+.bf26-offer__discount > strong { flex:0 0 auto;max-width:100%; }
+.bf26-offer__discount-details {flex:1 1 0}
+.bf26-offer__coupon-row .bf26-coupon {
+  min-height:44px;
+  max-width:100%;
+  white-space:nowrap;
+}
+.bf26-offer__description,
+.bf26-gift__text,
+.bf26-gift__text > strong,
+.bf26-gift__text > p { overflow-wrap:break-word; }
+.bf26-offer__content > .bf26-button {
+  max-width:100%;
+  white-space:normal;
+  text-align:left;
+}
+@media(max-width:780px) {
+  .bf26-offers .bf26-wrap {width:calc(100% - 32px);max-width:100%;margin-inline:auto}
+  .bf26-offer {grid-template-columns:minmax(0,1fr);min-width:0}
+  .bf26-offer__content {padding:28px 24px 31px}
+  .bf26-offer__discount {
+    display:grid;
+    grid-template-columns:minmax(0,1fr);
+    align-items:start;
+    gap:12px;
+    width:100%;
+    margin:23px 0;
+    padding-block:18px;
+  }
+  .bf26-offer__discount > strong {
+    justify-self:start;
+    font-size:clamp(50px,13vw,61px);
+    line-height:1.05;
+  }
+  .bf26-offer__discount-details {width:100%;min-width:0}
+  .bf26-offer__coupon-row {align-items:center;gap:9px;max-width:100%}
+  .bf26-gift {width:100%;min-width:0;overflow:hidden;gap:12px;padding:12px}
+  .bf26-gift__image {width:73px;height:78px;flex:0 0 73px}
+  .bf26-gift__text {flex:1 1 0;min-width:0}
+  .bf26-offer__content > .bf26-button {width:100%}
+}
+@media(max-width:420px) {
+  .bf26-offers .bf26-wrap {width:calc(100% - 24px)}
+  .bf26-offer__content {padding:23px 17px 28px}
+  .bf26-offer__discount > strong {font-size:clamp(46px,13vw,54px)}
+  .bf26-offer__coupon-row {gap:7px}
+  .bf26-offer__coupon-row .bf26-coupon {padding:9px 11px!important;font-size:12px!important}
+  .bf26-gift {gap:10px;padding:10px}
+  .bf26-gift__image {width:60px;height:67px;flex-basis:60px}
+  .bf26-gift__text>strong {font-size:14px;line-height:1.34}
+  .bf26-gift__text>p {font-size:12px}
+}

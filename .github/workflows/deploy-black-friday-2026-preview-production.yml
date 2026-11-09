@@ -44,6 +44,7 @@ jobs:
           grep -Fq 'id="bf26-overlay"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'BFEMDO' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'bf26-offer__coupon-row' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'BF2026 v6' elmercadodeorigen-child/assets/css/black-friday-2026-preview.css
           ! grep -Fq 'Introduce el código' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           ! grep -Fq 'BFM2' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           ! grep -Fq 'bf26-coupon-section' elmercadodeorigen-child/templates/black-friday-2026-preview.php
@@ -215,7 +216,7 @@ jobs:
           curl -fsSIL --max-time 30 'https://www.elmercadodeorigen.com/wp-content/mu-plugins/emdo-black-friday-2026-preview/preview.js' >/dev/null
           echo "BLACK_FRIDAY_PREVIEW_PUBLIC_VERIFIED"
 
-      - name: Verify actual full-width sections, shop cart, and flush footer on 3 screen sizes
+      - name: Verify 320/360/390/768/1440 px viewport cards, full-bleed sections and native shop shell
         shell: bash
         run: |
           set -Eeuo pipefail
