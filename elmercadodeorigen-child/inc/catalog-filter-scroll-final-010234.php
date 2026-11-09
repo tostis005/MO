@@ -211,6 +211,39 @@ add_action(
 			html body.elmercado-child-theme :is(#secondary#secondary,#wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-category-context__remove:focus-visible > span:last-child {
 				text-decoration:none !important; text-decoration-line:none !important;
 			}
+			/* El scroll AJAX es el único paginador visible cuando está inicializado. */
+			html body.elmercado-child-theme.emo-catalog-batch-ready :is(nav.woocommerce-pagination, nav.navigation.pagination, .woostify-pagination, .wcfm-pagination, .wcfmmp-pagination, .mdo-catalog-manual-pagination) {
+				display:none !important; visibility:hidden !important; height:0 !important;
+				margin:0 !important; padding:0 !important; overflow:hidden !important;
+			}
+			html body.elmercado-child-theme.emo-catalog-batch-ready .emo-catalog-load-state.is-idle {
+				box-sizing:border-box; height:auto; min-height:68px; padding:12px 0;
+				margin:20px auto 28px; overflow:visible; visibility:visible;
+			}
+			html body.elmercado-child-theme.emo-catalog-batch-ready .emo-catalog-load-state:is(.is-loading,.is-failure) {
+				margin:20px auto 28px; padding:12px 0; min-height:68px;
+			}
+			html body.elmercado-child-theme.emo-catalog-batch-ready .emo-catalog-load-state .emo-catalog-load-button {
+				border:1px solid #c9d9d0; border-radius:999px; background:#fff; color:#173f32;
+				font-size:14px; font-weight:750; line-height:1.3; min-height:46px;
+				padding:12px 24px; max-width:calc(100vw - 36px); cursor:pointer;
+				box-shadow:0 2px 8px rgba(23,63,50,.04);
+			}
+			html body.elmercado-child-theme.emo-catalog-batch-ready .emo-catalog-load-state .emo-catalog-load-button:hover,
+			html body.elmercado-child-theme.emo-catalog-batch-ready .emo-catalog-load-state .emo-catalog-load-button:focus-visible {
+				background:#edf5ef; outline:2px solid #a8c5b0; outline-offset:2px;
+			}
+			html body.elmercado-child-theme.emo-catalog-batch-ready .emo-catalog-load-state .emo-catalog-load-message {
+				font-size:13px; line-height:1.5; font-weight:650;
+			}
+			html body.elmercado-child-theme.emo-catalog-batch-ready .emo-catalog-load-state.is-failure {
+				flex-wrap:wrap; row-gap:12px;
+			}
+			@media (max-width:767px) {
+				html body.elmercado-child-theme.emo-catalog-batch-ready .emo-catalog-load-state .emo-catalog-load-button {
+					width:auto; min-width:218px;
+				}
+			}
 		</style>
 		<?php
 	},
@@ -242,6 +275,9 @@ add_action(
 			const gridSelector = '#wcfmmp-store ul.products,main ul.products,#primary ul.products,.content-area ul.products,ul.products';
 			const grid = document.querySelector(gridSelector);
 			if (!grid) return;
+			/* Solo sustituir el HTML navegable si existe un lote AJAX válido. */
+			if (!orderedIds.length) return;
+			document.body.classList.add('emo-catalog-batch-ready');
 			const isVendor = !!grid.closest('#wcfmmp-store');
 			const surface = isVendor ? grid.closest('#wcfmmp-store') : (grid.closest('main,#primary,.content-area') || document);
 
@@ -283,8 +319,10 @@ add_action(
 			const setState=(mode,text='')=>{
 				state.classList.toggle('is-loading',mode==='loading');
 				state.classList.toggle('is-failure',mode==='failure');
+				state.classList.toggle('is-idle',mode==='idle');
 				message.textContent=(mode==='loading'||mode==='failure')?text:'';
-				button.hidden=mode!=='failure'||remaining.length===0;
+				button.hidden=(mode==='loading'||mode==='finished'||remaining.length===0);
+				button.textContent=mode==='failure'?'Reintentar carga':'Ver más productos';
 			};
 			const finish=()=>{remaining=[];setState('finished');};
 
@@ -295,15 +333,17 @@ add_action(
 			});
 			window.__emoCatalogLoaderState=debug;
 
-			const loadNext=async()=>{
+			const loadNext=async(manual=false)=>{
 				if(loading||!remaining.length) return;
 				if(exactTotal&&productItems().length>=exactTotal){finish();return;}
+				const stateRect=state.getBoundingClientRect();
+				const revealNewProducts=manual||(stateRect.top<=window.innerHeight&&stateRect.bottom>=0);
 				loading=true; setState('loading','Cargando más productos…');
 				const batch=remaining.slice(0,12);
 				const body=new URLSearchParams({action:'elmercado_catalog_batch_010234',nonce,scope:isVendor?'vendor':'catalog'});
 				batch.forEach(id=>body.append('ids[]',id));
 				try{
-					const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),10000);
+					const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),22000);
 					let response;
 					try{response=await fetch(endpoint,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'},body:body.toString(),signal:controller.signal});}
 					finally{clearTimeout(timer);}
@@ -312,9 +352,10 @@ add_action(
 					if(!payload?.success) throw new Error('Invalid batch response');
 					const holder=document.createElement('ul'); holder.innerHTML=payload.data?.html||'';
 					let appended=0;
+					let firstNewProduct=null;
 					for(const item of [...holder.querySelectorAll(':scope > li.product')]){
 						const id=idFromItem(item); if(id&&known.has(id)) continue;
-						if(id) known.add(id); grid.append(item); appended++;
+						if(id) known.add(id); if(!firstNewProduct) firstNewProduct=item; grid.append(item); appended++;
 					}
 					const rendered=new Set((payload.data?.ids||[]).map(String));
 					remaining=remaining.filter(id=>!batch.includes(id)||!rendered.has(id));
@@ -322,20 +363,22 @@ add_action(
 					if(!appended) remaining=remaining.filter(id=>!batch.includes(id));
 					lockCounts(); failures=0; loading=false;
 					document.body.dispatchEvent(new CustomEvent('emo:catalog-products-appended',{detail:{count:appended,remaining:remaining.length}}));
+					/* El producto recién añadido debe verse, no quedar sobre el botón por scroll anchoring. */
+					if(firstNewProduct&&revealNewProducts) requestAnimationFrame(()=>firstNewProduct.scrollIntoView({behavior:'smooth',block:'start'}));
 					if(!remaining.length||(exactTotal&&productItems().length>=exactTotal)){finish();return;}
+					/* Una petición por llegada al final; no encadenar decenas de lotes sin interacción. */
 					setState('idle');
-					if(state.getBoundingClientRect().top<=window.innerHeight+2200) setTimeout(loadNext,80);
 				}catch(_){
 					loading=false; failures++;
-					if(failures<2){setState('loading','Cargando más productos…');setTimeout(loadNext,900);}
-					else setState('failure','No se ha podido continuar la carga automática.');
+					if(failures<2){setState('loading','Reintentando cargar productos…');setTimeout(()=>loadNext(manual),900);}
+					else setState('failure','No se han cargado los productos. Puedes reintentarlo.');
 				}
 			};
-			button.addEventListener('click',()=>{failures=0;setState('idle');loadNext();});
+			button.addEventListener('click',()=>{failures=0;setState('idle');loadNext(true);});
 			if(!remaining.length){finish();return;}
 			if(!('IntersectionObserver' in window)){setState('failure','Pulsa para cargar más productos.');button.hidden=false;return;}
 			setState('idle');
-			const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting))loadNext();},{rootMargin:'2400px 0px 2400px 0px',threshold:.01});
+			const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting))loadNext(false);},{rootMargin:'500px 0px 500px 0px',threshold:.01});
 			observer.observe(state);
 		})();
 		</script>
