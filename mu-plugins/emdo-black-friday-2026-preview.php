@@ -86,7 +86,7 @@ add_filter( 'body_class', static function ( array $classes ): array {
 
 add_filter( 'pre_get_document_title', static function ( $title ) {
 	return emdo_bf2026_production_preview_route()
-		? 'Vista previa Black Friday 2026 | El Mercado de Origen'
+		? 'Black Friday 2026 | El Mercado de Origen'
 		: $title;
 }, 999 );
 
@@ -99,3 +99,18 @@ add_filter( 'wp_robots', static function ( array $robots ): array {
 	}
 	return $robots;
 }, 999 );
+
+// A published but unlinked page provides the native WordPress page context,
+// so Woostify renders its regular desktop/mobile header, menus and cart.
+add_filter( 'wp_sitemaps_posts_query_args', static function ( array $args, string $post_type ): array {
+	if ( 'page' !== $post_type ) {
+		return $args;
+	}
+	$page = get_page_by_path( 'vista-previa-black-friday-2026', OBJECT, 'page' );
+	if ( $page instanceof WP_Post ) {
+		$excluded = isset( $args['post__not_in'] ) && is_array( $args['post__not_in'] ) ? $args['post__not_in'] : array();
+		$excluded[] = (int) $page->ID;
+		$args['post__not_in'] = array_unique( $excluded );
+	}
+	return $args;
+}, 10, 2 );

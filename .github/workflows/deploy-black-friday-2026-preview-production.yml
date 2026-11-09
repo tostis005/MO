@@ -98,6 +98,7 @@ jobs:
           install -d -m 0700 "$BACKUP"
           HAD_MODULE=0
           HAD_ASSETS=0
+          CREATED_PAGE_ID=0
           CHANGED=0
           if [ -f "$MODULE" ]; then cp -p "$MODULE" "$BACKUP/previous-module.php"; HAD_MODULE=1; fi
           if [ -d "$DEST" ]; then cp -a "$DEST" "$BACKUP/previous-assets"; HAD_ASSETS=1; fi
@@ -110,6 +111,9 @@ jobs:
               if [ "$HAD_MODULE" -eq 1 ]; then cp -p "$BACKUP/previous-module.php" "$MODULE"; fi
               rm -rf "$DEST"
               if [ "$HAD_ASSETS" -eq 1 ]; then cp -a "$BACKUP/previous-assets" "$DEST"; fi
+              if [ "$CREATED_PAGE_ID" -gt 0 ]; then
+                "$PHP" -d memory_limit=512M "$WP" post delete "$CREATED_PAGE_ID" --force --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+              fi
               echo "BF_PREVIEW_ROLLBACK_COMPLETE"
             fi
             rm -rf "$NEW" "$STAGE"
@@ -129,12 +133,54 @@ jobs:
             if (!function_exists("emdo_bf2026_production_preview_route")) { exit(9); }
             echo "BF_PREVIEW_MU_PLUGIN_ACTIVE\n";
           ' --path="$ROOT" --allow-root
+          # An actual WordPress page ensures is_page() / body classes are identical
+          # to an ordinary shop page. Nothing is added to site navigation.
+          PAGE_RESULT="$("$PHP" -d memory_limit=768M "$WP" eval '
+            $slug = "vista-previa-black-friday-2026";
+            $page = get_page_by_path($slug, OBJECT, "page");
+            if ($page instanceof WP_Post) {
+              if ("publish" !== $page->post_status) {
+                fwrite(STDERR, "Existing unpublished preview page: refusing override\n");
+                exit(12);
+              }
+              echo "EMDO_BF_PAGE_STATE=EXISTING:" . $page->ID . "\n";
+            } else {
+              $id = wp_insert_post(array(
+                "post_type" => "page",
+                "post_status" => "publish",
+                "post_name" => $slug,
+                "post_title" => "Black Friday 2026",
+                "post_content" => "",
+                "comment_status" => "closed",
+                "ping_status" => "closed",
+              ), true);
+              if (is_wp_error($id) || !$id) {
+                fwrite(STDERR, "Unable to create normal WordPress campaign page\n");
+                exit(13);
+              }
+              echo "EMDO_BF_PAGE_STATE=CREATED:" . $id . "\n";
+            }
+          ' --path="$ROOT" --allow-root)"
+          PAGE_TOKEN="$(printf '%s\n' "$PAGE_RESULT" | grep '^EMDO_BF_PAGE_STATE=' | tail -n 1)"
+          case "$PAGE_TOKEN" in
+            EMDO_BF_PAGE_STATE=CREATED:*) CREATED_PAGE_ID="${PAGE_TOKEN##*:}" ;;
+            EMDO_BF_PAGE_STATE=EXISTING:*) ;;
+            *) echo "UNEXPECTED_PAGE_CREATION_STATUS"; exit 14 ;;
+          esac
+          echo "$PAGE_TOKEN"
+          # Confirm that permalink resolution gives a genuine page query.
+          test "$("$PHP" -d memory_limit=512M "$WP" post get "${PAGE_TOKEN##*:}" --field=post_name --path="$ROOT" --allow-root)" = "vista-previa-black-friday-2026"
           CODE="$(curl -sSL --retry 3 --max-time 45 -A 'Mozilla/5.0 EMDO BF Preview' -D "/tmp/bf-preview-$RUN.headers" -o "/tmp/bf-preview-$RUN.html" -w '%{http_code}' "https://www.elmercadodeorigen.com/vista-previa-black-friday-2026/?verify=$RUN")"
           test "$CODE" = 200
           grep -Fq 'id="bf26-overlay"' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'Hidalgo' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'Montjam' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'BFM2' "/tmp/bf-preview-$RUN.html"
+          # Native site header / nav / cart / footer: this must be a real shop page.
+          grep -Eiq 'class="[^"]*site-header' "/tmp/bf-preview-$RUN.html"
+          grep -Eiq 'main-navigation|primary-navigation' "/tmp/bf-preview-$RUN.html"
+          grep -Eiq 'shopping-cart|cart-contents|shop-cart-count|cart-count' "/tmp/bf-preview-$RUN.html"
+          grep -Eiq '<footer|site-footer' "/tmp/bf-preview-$RUN.html"
           grep -Eiq '^x-robots-tag:.*noindex' "/tmp/bf-preview-$RUN.headers"
           ! grep -Eiq 'Fatal error:|Parse error:|Uncaught Error:|critical error on this website' "/tmp/bf-preview-$RUN.html"
           rm -f "/tmp/bf-preview-$RUN.html" "/tmp/bf-preview-$RUN.headers"
@@ -151,6 +197,8 @@ jobs:
           curl -fsSL --retry 2 --max-time 45 -A 'Mozilla/5.0 EMDO BF' "$URL" -o /tmp/bf-preview-live.html
           grep -Fq 'id="bf26-overlay"' /tmp/bf-preview-live.html
           grep -Fq 'emdo-bf2026-preview' /tmp/bf-preview-live.html
+          grep -Eiq 'class="[^"]*site-header' /tmp/bf-preview-live.html
+          grep -Eiq 'shopping-cart|cart-contents|shop-cart-count|cart-count' /tmp/bf-preview-live.html
           curl -fsSIL --max-time 30 'https://www.elmercadodeorigen.com/wp-content/mu-plugins/emdo-black-friday-2026-preview/preview.css' >/dev/null
           curl -fsSIL --max-time 30 'https://www.elmercadodeorigen.com/wp-content/mu-plugins/emdo-black-friday-2026-preview/preview.js' >/dev/null
           echo "BLACK_FRIDAY_PREVIEW_PUBLIC_VERIFIED"

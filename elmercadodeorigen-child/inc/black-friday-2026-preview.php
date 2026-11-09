@@ -56,7 +56,7 @@ add_filter( 'body_class', static function ( array $classes ): array {
 } );
 
 add_filter( 'pre_get_document_title', static function ( $title ) {
-	return emdo_bf2026_is_preview() ? 'Vista previa Black Friday 2026 | El Mercado de Origen' : $title;
+	return emdo_bf2026_is_preview() ? 'Black Friday 2026 | El Mercado de Origen' : $title;
 }, 120 );
 
 add_filter( 'wp_robots', static function ( array $robots ): array {
