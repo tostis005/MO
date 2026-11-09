@@ -170,10 +170,8 @@ get_header();
 	<div class="bf26-overlay__backdrop" aria-hidden="true"></div>
 	<div class="bf26-overlay__panel" tabindex="-1">
 		<button class="bf26-overlay__close" type="button" data-bf26-close aria-label="Cerrar cortinilla">✕ <span>CERRAR</span></button>
-		<div class="bf26-overlay__top"><span>EL MERCADO DE ORIGEN</span><span>EDICIÓN BLACK FRIDAY 2026</span></div>
 		<div class="bf26-overlay__layout">
 			<div class="bf26-overlay__copy">
-				<p class="bf26-overlay__kicker">EL SABOR DE UNA BUENA OPORTUNIDAD <span>✳</span></p>
 				<h2 id="bf26-overlay-title">BLACK<br><em>FRIDAY</em><span>CON ORIGEN.</span></h2>
 				<p id="bf26-overlay-desc">Ibéricos de productores seleccionados, <strong>15 % de descuento</strong> y regalos muy especiales con jamones y paletas.</p>
 				<div class="bf26-overlay__buttons">
@@ -190,7 +188,7 @@ get_header();
 				<div class="bf26-overlay__asterisk">✳</div>
 			</div>
 		</div>
-		<div class="bf26-overlay__bottom"><span>UNA CAMPAÑA DE EL MERCADO DE ORIGEN</span><span>VISTA PREVIA · OFERTAS SIN ACTIVAR</span></div>
+		<div class="bf26-overlay__bottom"><span>VISTA PREVIA · OFERTAS SIN ACTIVAR</span></div>
 	</div>
 </div>
 <noscript><style>.bf26-overlay{display:none!important}</style></noscript>
