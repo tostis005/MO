@@ -1,0 +1,75 @@
+name: Fix Montjam green shoulder single size and sliced preparation 2026-11-09
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-montjam-green-shoulder-20261109.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: fix-montjam-green-shoulder-20261109
+  cancel-in-progress: false
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate script and SSH prerequisites
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/fix-montjam-green-shoulder-20261109.php
+          test -n "${STAGING_HOST:-}" && test -n "${STAGING_USER:-}" && test -n "${SSHPASS:-}"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Preflight, repair and verify live WooCommerce
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_ARGS=(-o StrictHostKeyChecking=no -o ConnectTimeout=15 -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive -o ServerAliveInterval=15 -p "$PORT")
+          SCP_ARGS=(-o StrictHostKeyChecking=no -o ConnectTimeout=15 -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive -P "$PORT")
+          REMOTE="/tmp/montjam-green-fix-${GITHUB_RUN_ID}.php"
+          sshpass -e scp "${SCP_ARGS[@]}" .github/scripts/fix-montjam-green-shoulder-20261109.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh "${SSH_ARGS[@]}" "$STAGING_USER@$STAGING_HOST" "bash -s -- '$REMOTE'" <<'REMOTE_SCRIPT' | tee /tmp/montjam-green-fix.log
+          set -Eeuo pipefail
+          SCRIPT="$1"
+          ROOT=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+          PHP=/opt/plesk/php/8.2/bin/php
+          WP="$(command -v wp)"
+          trap 'rm -f "$SCRIPT"' EXIT
+          test -s "$ROOT/wp-config.php" && test -x "$PHP" && test -s "$SCRIPT"
+          SITE="$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)"
+          case "$SITE" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;; *) echo "REFUSING_UNKNOWN_SITE";exit 10;; esac
+          "$PHP" -l "$SCRIPT"
+          for phase in audit apply verify; do
+            MDO_GREEN_MODE="$phase" "$PHP" -d memory_limit=1536M "$WP" eval-file "$SCRIPT" --path="$ROOT" --allow-root
+          done
+          echo "MONTJAM_GREEN_ALL_PHASES_OK"
+          REMOTE_SCRIPT
+          for marker in MONTJAM_GREEN_PREFLIGHT_OK MONTJAM_GREEN_APPLY_OK MONTJAM_GREEN_VERIFY_OK MONTJAM_GREEN_ALL_PHASES_OK; do grep -q "$marker" /tmp/montjam-green-fix.log; done
+      - name: Check live customer-facing format and price
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          URL="https://www.elmercadodeorigen.com/producto/paleta-cebo-de-campo-iberica-50-montjam/"
+          curl -fsSL --retry 3 --max-time 35 -H 'Cache-Control: no-cache' "${URL}?verified=${GITHUB_RUN_ID}" -o /tmp/montjam-green-page.html
+          grep -Fq 'FORMATO' /tmp/montjam-green-page.html
+          grep -Fq 'Loncheado a cuchillo' /tmp/montjam-green-page.html
+          grep -Fq 'Pieza entera' /tmp/montjam-green-page.html
+          grep -Fq '151,94' /tmp/montjam-green-page.html
+          echo 'MONTJAM_GREEN_PUBLIC_FORMAT_PRICE_OK'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: montjam-green-fix-verification-20261109
+          path: /tmp/montjam-green-fix.log
+          retention-days: 30
+          if-no-files-found: warn
