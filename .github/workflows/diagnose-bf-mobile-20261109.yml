@@ -1,0 +1,29 @@
+name: Diagnose Black Friday mobile viewport (temporary)
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/diagnose-bf-mobile-20261109.yml'
+      - '.github/scripts/check-black-friday-2026-fullbleed.cjs'
+permissions:
+  contents: read
+jobs:
+  viewport:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Launch mobile diagnostics against current public Black Friday page
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm install --no-save --no-audit --no-fund playwright-core@1.56.1 >/dev/null
+          export CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          echo "CHROME=$CHROME"
+          node .github/scripts/check-black-friday-2026-fullbleed.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bf2026-mobile-diag
+          path: /tmp/black-friday-2026-*.png
+          if-no-files-found: ignore
+          retention-days: 2
