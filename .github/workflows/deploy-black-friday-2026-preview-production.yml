@@ -1,0 +1,155 @@
+name: Deploy Black Friday 2026 preview to production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/emdo-black-friday-2026-preview.php'
+      - 'elmercadodeorigen-child/templates/black-friday-2026-preview.php'
+      - 'elmercadodeorigen-child/assets/css/black-friday-2026-preview.css'
+      - 'elmercadodeorigen-child/assets/js/black-friday-2026-preview.js'
+      - '.github/workflows/deploy-black-friday-2026-preview-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emdo-black-friday-2026-preview-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify scope, PHP syntax and preview files
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l mu-plugins/emdo-black-friday-2026-preview.php
+          php -l elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'vista-previa-black-friday-2026' mu-plugins/emdo-black-friday-2026-preview.php
+          grep -Fq 'noindex, nofollow, noarchive' mu-plugins/emdo-black-friday-2026-preview.php
+          grep -Fq 'id="bf26-overlay"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'BFM2' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          test -s elmercadodeorigen-child/assets/css/black-friday-2026-preview.css
+          test -s elmercadodeorigen-child/assets/js/black-friday-2026-preview.js
+          ! grep -Eq 'wc_create_coupon|woocommerce_before_calculate_totals|wc_create_order' mu-plugins/emdo-black-friday-2026-preview.php
+          test -n "$HOST" && test -n "$USER" && test -n "$SSHPASS"
+
+      - name: Upload only the dedicated four preview files
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          SSH_PORT="${PORT:-22}"
+          [[ "$SSH_PORT" =~ ^[0-9]{1,5}$ ]]
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$SSH_PORT" -H "$HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $SSH_PORT"
+          SCP="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $SSH_PORT"
+          STAGE="/tmp/emdo-bfpreview-$GITHUB_RUN_ID"
+          sshpass -e ssh $SSH "$USER@$HOST" "install -d -m 0700 '$STAGE'"
+          sshpass -e scp $SCP mu-plugins/emdo-black-friday-2026-preview.php "$USER@$HOST:$STAGE/bootstrap.php"
+          sshpass -e scp $SCP elmercadodeorigen-child/templates/black-friday-2026-preview.php "$USER@$HOST:$STAGE/landing.php"
+          sshpass -e scp $SCP elmercadodeorigen-child/assets/css/black-friday-2026-preview.css "$USER@$HOST:$STAGE/preview.css"
+          sshpass -e scp $SCP elmercadodeorigen-child/assets/js/black-friday-2026-preview.js "$USER@$HOST:$STAGE/preview.js"
+
+      - name: Deploy to production only with backup, rollback and live smoke test
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SSH_PORT="${PORT:-22}"
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $SSH_PORT"
+          sshpass -e ssh $SSH "$USER@$HOST" "bash -s -- '$GITHUB_RUN_ID'" <<'REMOTE'
+          set -Eeuo pipefail
+          RUN="$1"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          STAGE="/tmp/emdo-bfpreview-$RUN"
+          MU="$ROOT/wp-content/mu-plugins"
+          MODULE="$MU/emdo-black-friday-2026-preview.php"
+          DEST="$MU/emdo-black-friday-2026-preview"
+          BACKUP="$HOME/.elmercado-rollbacks/black-friday-2026-preview/$RUN"
+          NEW="$MU/.emdo-bfpreview-new-$RUN"
+          test -f "$ROOT/wp-config.php" && test -d "$MU" && test -x "$PHP"
+          for f in bootstrap.php landing.php; do "$PHP" -l "$STAGE/$f" >/dev/null; done
+          test -s "$STAGE/preview.js" && test -s "$STAGE/preview.css"
+          SITE="$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --allow-root --skip-plugins --skip-themes)"
+          case "$SITE" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
+            *) echo "WRONG_PRODUCTION_SITE $SITE"; exit 5 ;;
+          esac
+          install -d -m 0700 "$BACKUP"
+          HAD_MODULE=0
+          HAD_ASSETS=0
+          CHANGED=0
+          if [ -f "$MODULE" ]; then cp -p "$MODULE" "$BACKUP/previous-module.php"; HAD_MODULE=1; fi
+          if [ -d "$DEST" ]; then cp -a "$DEST" "$BACKUP/previous-assets"; HAD_ASSETS=1; fi
+          rollback() {
+            code=$?
+            trap - EXIT
+            if [ "$code" -ne 0 ] && [ "$CHANGED" -eq 1 ]; then
+              echo "ROLLING_BACK_BF_PREVIEW"
+              rm -f "$MODULE"
+              if [ "$HAD_MODULE" -eq 1 ]; then cp -p "$BACKUP/previous-module.php" "$MODULE"; fi
+              rm -rf "$DEST"
+              if [ "$HAD_ASSETS" -eq 1 ]; then cp -a "$BACKUP/previous-assets" "$DEST"; fi
+              echo "BF_PREVIEW_ROLLBACK_COMPLETE"
+            fi
+            rm -rf "$NEW" "$STAGE"
+            exit "$code"
+          }
+          trap rollback EXIT
+          install -d -m 0755 "$NEW"
+          install -m 0644 "$STAGE/landing.php" "$NEW/landing.php"
+          install -m 0644 "$STAGE/preview.css" "$NEW/preview.css"
+          install -m 0644 "$STAGE/preview.js" "$NEW/preview.js"
+          CHANGED=1
+          rm -rf "$DEST"
+          mv "$NEW" "$DEST"
+          install -m 0644 "$STAGE/bootstrap.php" "$MODULE"
+          "$PHP" -l "$MODULE" >/dev/null
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            if (!function_exists("emdo_bf2026_production_preview_route")) { exit(9); }
+            echo "BF_PREVIEW_MU_PLUGIN_ACTIVE\n";
+          ' --path="$ROOT" --allow-root
+          CODE="$(curl -sSL --retry 3 --max-time 45 -A 'Mozilla/5.0 EMDO BF Preview' -D "/tmp/bf-preview-$RUN.headers" -o "/tmp/bf-preview-$RUN.html" -w '%{http_code}' "https://www.elmercadodeorigen.com/vista-previa-black-friday-2026/?verify=$RUN")"
+          test "$CODE" = 200
+          grep -Fq 'id="bf26-overlay"' "/tmp/bf-preview-$RUN.html"
+          grep -Fq 'Hidalgo' "/tmp/bf-preview-$RUN.html"
+          grep -Fq 'Montjam' "/tmp/bf-preview-$RUN.html"
+          grep -Fq 'BFM2' "/tmp/bf-preview-$RUN.html"
+          grep -Eiq '^x-robots-tag:.*noindex' "/tmp/bf-preview-$RUN.headers"
+          ! grep -Eiq 'Fatal error:|Parse error:|Uncaught Error:|critical error on this website' "/tmp/bf-preview-$RUN.html"
+          rm -f "/tmp/bf-preview-$RUN.html" "/tmp/bf-preview-$RUN.headers"
+          CHANGED=0
+          echo "BF_PREVIEW_PRODUCTION_OK"
+          echo "BACKUP=$BACKUP"
+          REMOTE
+
+      - name: Recheck production route and static resources
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          URL="https://www.elmercadodeorigen.com/vista-previa-black-friday-2026/?final_verify=$GITHUB_RUN_ID"
+          curl -fsSL --retry 2 --max-time 45 -A 'Mozilla/5.0 EMDO BF' "$URL" -o /tmp/bf-preview-live.html
+          grep -Fq 'id="bf26-overlay"' /tmp/bf-preview-live.html
+          grep -Fq 'emdo-bf2026-preview' /tmp/bf-preview-live.html
+          curl -fsSIL --max-time 30 'https://www.elmercadodeorigen.com/wp-content/mu-plugins/emdo-black-friday-2026-preview/preview.css' >/dev/null
+          curl -fsSIL --max-time 30 'https://www.elmercadodeorigen.com/wp-content/mu-plugins/emdo-black-friday-2026-preview/preview.js' >/dev/null
+          echo "BLACK_FRIDAY_PREVIEW_PUBLIC_VERIFIED"
