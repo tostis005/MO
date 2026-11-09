@@ -99,7 +99,18 @@ foreach ($targets as $pid=>$spec) {
     }
     $actual=array_keys($seen);$wanted=array_keys($spec['weights']);sort($actual);sort($wanted);
     if ($actual!==$wanted) {
-        fwrite(STDERR, "ABORT: missing/unexpected published sizes #$pid\n"); exit(8);
+        $all=[];
+        foreach ($p->get_children() as $child_id) {
+            $child=wc_get_product($child_id);
+            if ($child) $all[]=[
+                'id'=>(int)$child_id,'status'=>$child->get_status(),
+                'size'=>$child->get_attributes()['pa_tamano']??'',
+                'regular'=>$child->get_regular_price('edit'),
+            ];
+        }
+        fwrite(STDERR, "ABORT: missing/unexpected published sizes #$pid ".
+            wp_json_encode(['expected'=>$wanted,'published'=>$actual,'all'=>$all],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n");
+        exit(8);
     }
 }
 if(count($rows)!==22 || count($parents)!==5) {
