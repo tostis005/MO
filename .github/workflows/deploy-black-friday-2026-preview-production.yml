@@ -9,6 +9,7 @@ on:
       - 'elmercadodeorigen-child/assets/css/black-friday-2026-preview.css'
       - 'elmercadodeorigen-child/assets/js/black-friday-2026-preview.js'
       - '.github/workflows/deploy-black-friday-2026-preview-production.yml'
+      - '.github/scripts/check-black-friday-2026-fullbleed.cjs'
   workflow_dispatch:
 
 permissions:
@@ -44,6 +45,9 @@ jobs:
           grep -Fq 'BFM2' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           test -s elmercadodeorigen-child/assets/css/black-friday-2026-preview.css
           test -s elmercadodeorigen-child/assets/js/black-friday-2026-preview.js
+          test -s .github/scripts/check-black-friday-2026-fullbleed.cjs
+          grep -Fq 'bf26-club__wallet' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'width:100vw!important' elmercadodeorigen-child/assets/css/black-friday-2026-preview.css
           ! grep -Eq 'wc_create_coupon|woocommerce_before_calculate_totals|wc_create_order' mu-plugins/emdo-black-friday-2026-preview.php
           test -n "$HOST" && test -n "$USER" && test -n "$SSHPASS"
 
@@ -202,6 +206,24 @@ jobs:
           curl -fsSIL --max-time 30 'https://www.elmercadodeorigen.com/wp-content/mu-plugins/emdo-black-friday-2026-preview/preview.css' >/dev/null
           curl -fsSIL --max-time 30 'https://www.elmercadodeorigen.com/wp-content/mu-plugins/emdo-black-friday-2026-preview/preview.js' >/dev/null
           echo "BLACK_FRIDAY_PREVIEW_PUBLIC_VERIFIED"
+
+      - name: Verify actual full-width sections, shop cart, and flush footer on 3 screen sizes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm install --no-save --no-audit --no-fund playwright-core@1.56.1 >/dev/null
+          export CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          test -n "$CHROME"
+          node .github/scripts/check-black-friday-2026-fullbleed.cjs
+
+      - name: Upload optional browser snapshots for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: black-friday-2026-visual-${{ github.run_id }}
+          path: /tmp/black-friday-2026-*.png
+          if-no-files-found: ignore
+          retention-days: 5
 
       - name: Report deploy result to GitHub
         if: always()

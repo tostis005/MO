@@ -36,6 +36,8 @@ $hidalgo_url  = home_url( '/tienda/hidalgo-de-la-jara/' );
 $montjam_url  = home_url( '/tienda/montjam/' );
 $cheese_url   = home_url( '/producto/miniqueso-a-la-pimienta-negra/' );
 $chorizo_url  = home_url( '/producto/chorizo-cular-iberico-extra-loncheado-montjam-90g/' );
+$club_account_url = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : home_url( '/mi-cuenta/' );
+$club_wallet_url  = function_exists( 'wc_get_account_endpoint_url' ) ? wc_get_account_endpoint_url( 'monedero' ) : $club_account_url;
 
 $hidalgo_ham   = emdo_bf2026_photo( 'jamon-de-bellota-100-iberico', 'Jamón de bellota 100 % ibérico de Hidalgo de la Jara' );
 $hidalgo_palet = emdo_bf2026_photo( 'paleta-de-bellota-100-iberico', 'Paleta de bellota 100 % ibérica de Hidalgo de la Jara' );
@@ -51,14 +53,14 @@ get_header();
 	<section class="bf26-hero">
 		<div class="bf26-wrap bf26-hero__grid">
 			<div class="bf26-hero__copy">
-				<p class="bf26-eyebrow bf26-eyebrow--light"><span class="bf26-spark">✳</span> UNA SELECCIÓN MUY ESPECIAL</p>
-				<h1 id="bf26-title">Black Friday.<em>Un buen momento</em><span>para darte un gusto.</span></h1>
-				<p class="bf26-hero__lead">Dos grandes productores de ibéricos, un 15 % de descuento con el código BFM2 y un regalo especial al elegir un jamón o una paleta.</p>
+				<p class="bf26-eyebrow bf26-eyebrow--light"><span class="bf26-spark">✳</span> OFERTAS BLACK FRIDAY 2026</p>
+				<h1 id="bf26-title">Black Friday.<em>15 % menos.</em><span>Un regalo más.</span></h1>
+				<p class="bf26-hero__lead">Tus ibéricos favoritos tienen premio: disfruta de un <strong>15 % de descuento</strong> con el código <strong>BFM2</strong> y llévate un regalo extra al elegir un jamón o una paleta.</p>
 				<div class="bf26-hero__buttons">
 					<a class="bf26-button bf26-button--cream" href="#ofertas">Descubrir las ofertas <span aria-hidden="true">↗</span></a>
 					<a class="bf26-hero__textlink" href="#como-funciona">Cómo funciona <span aria-hidden="true">↓</span></a>
 				</div>
-				<div class="bf26-hero__fine">DOS PRODUCTORES <i></i> UN SOLO CÓDIGO <i></i> REGALOS ESPECIALES</div>
+				<div class="bf26-hero__fine">15 % DE DESCUENTO <i></i> CÓDIGO BFM2 <i></i> REGALO EXTRA</div>
 			</div>
 			<div class="bf26-hero__visual" aria-label="Selección de productos ibéricos de El Mercado de Origen">
 				<div class="bf26-hero__frame bf26-hero__frame--back">
@@ -76,7 +78,7 @@ get_header();
 
 	<div class="bf26-band" aria-label="Resumen de las ofertas de Black Friday">
 		<div class="bf26-wrap bf26-band__inner">
-			<span>PRODUCTORES CON HISTORIA</span><span class="bf26-band__star">✳</span>
+			<span>TUS FAVORITOS, CON VENTAJA</span><span class="bf26-band__star">✳</span>
 			<strong>–15 % CON BFM2</strong><span class="bf26-band__star">✳</span>
 			<span>REGALOS CON JAMONES Y PALETAS</span>
 		</div>
@@ -87,9 +89,9 @@ get_header();
 			<div class="bf26-heading">
 				<div>
 					<p class="bf26-eyebrow">01 / LAS PROMOCIONES</p>
-					<h2>Dos grandes nombres.<br><em>Y algo especial para ti.</em></h2>
+					<h2>15 % de descuento.<br><em>Y un detalle que enamora.</em></h2>
 				</div>
-				<p>Un mismo descuento, dos formas de disfrutarlo y un obsequio distinto al elegir un jamón o una paleta.</p>
+				<p>El Black Friday sabe mejor cuando viene con regalo. Descubre las ofertas y elige tu próximo capricho ibérico.</p>
 			</div>
 
 			<article class="bf26-offer bf26-offer--hidalgo" aria-labelledby="bf26-hidalgo-title">
@@ -103,7 +105,7 @@ get_header();
 				<div class="bf26-offer__content">
 					<div class="bf26-offer__top"><span class="bf26-offer__origin">DE LA DEHESA DE LOS PEDROCHES</span><span class="bf26-offer__tag">15% DE DESCUENTO</span></div>
 					<h3 id="bf26-hidalgo-title">Hidalgo <em>de la Jara</em></h3>
-					<p class="bf26-offer__description">El sabor de una tradición ibérica de cinco generaciones. Jamones, paletas y embutidos con una historia que empieza en la dehesa.</p>
+					<p class="bf26-offer__description">Ese jamón que llevas tiempo queriendo probar, ahora con un motivo más para decidirte. Aprovecha el descuento en toda su selección.</p>
 					<div class="bf26-offer__discount"><strong>–15<span>%</span></strong><div><span>EN TODOS SUS PRODUCTOS</span><p>Introduce el código <button type="button" class="bf26-coupon" data-bf26-copy="BFM2" aria-label="Copiar cupón BFM2">BFM2 <span aria-hidden="true">⧉</span></button> al finalizar tu compra.</p></div></div>
 					<div class="bf26-gift">
 						<div class="bf26-gift__image">
@@ -128,7 +130,7 @@ get_header();
 				<div class="bf26-offer__content">
 					<div class="bf26-offer__top"><span class="bf26-offer__origin">EL CARÁCTER DE LOS IBÉRICOS DE HUELVA</span><span class="bf26-offer__tag">15% DE DESCUENTO</span></div>
 					<h3 id="bf26-montjam-title">Montjam<em>.</em></h3>
-					<p class="bf26-offer__description">Jamones, paletas y embutidos de carácter propio, seleccionados para quienes disfrutan de los pequeños grandes placeres.</p>
+					<p class="bf26-offer__description">Para una ocasión especial o simplemente porque te apetece. Descubre sus ibéricos con un 15 % menos y un regalo extra.</p>
 					<div class="bf26-offer__discount"><strong>–15<span>%</span></strong><div><span>EN TODOS SUS PRODUCTOS</span><p>Introduce el código <button type="button" class="bf26-coupon" data-bf26-copy="BFM2" aria-label="Copiar cupón BFM2">BFM2 <span aria-hidden="true">⧉</span></button> al finalizar tu compra.</p></div></div>
 					<div class="bf26-gift bf26-gift--montjam">
 						<div class="bf26-gift__image">
@@ -146,17 +148,44 @@ get_header();
 
 	<section class="bf26-coupon-section" id="como-funciona">
 		<div class="bf26-wrap bf26-coupon-section__grid">
-			<div class="bf26-coupon-section__intro"><p class="bf26-eyebrow bf26-eyebrow--light">02 / ASÍ DE SENCILLO</p><h2>Una buena elección.<br><em>Una gran oportunidad.</em></h2><p>Disfrutar de las ventajas de esta selección es así de fácil.</p></div>
+			<div class="bf26-coupon-section__intro"><p class="bf26-eyebrow bf26-eyebrow--light">02 / APROVECHA LA PROMOCIÓN</p><h2>Elige, aplica<br><em>y disfruta.</em></h2><p>Tres pasos para aprovechar tu descuento y conseguir el regalo.</p></div>
 			<div class="bf26-steps">
-				<div><span>01</span><strong>Elige tu productor</strong><p>Hidalgo de la Jara o Montjam. Descubre su selección de ibéricos.</p></div>
-				<div><span>02</span><strong>Usa el código BFM2</strong><p>Un 15 % de descuento en los productos de ambos productores.</p></div>
-				<div><span>03</span><strong>Añade un jamón o paleta</strong><p>En pieza o loncheado, para recibir el regalo específico de cada productor.</p></div>
+				<div><span>01</span><strong>Elige tus favoritos</strong><p>Explora los ibéricos de Hidalgo de la Jara o Montjam.</p></div>
+				<div><span>02</span><strong>Aplica BFM2</strong><p>Introduce el cupón al finalizar tu compra para disfrutar de un 15 % menos.</p></div>
+				<div><span>03</span><strong>Y llévate tu regalo</strong><p>Al elegir jamón o paleta, entero o loncheado, disfruta también del obsequio correspondiente.</p></div>
 			</div>
 		</div>
 	</section>
 
-	<section class="bf26-close">
-		<div class="bf26-wrap bf26-close__inner"><span class="bf26-eyebrow">UNA OCASIÓN PARA ELEGIR BIEN</span><h2>El buen producto<br><em>siempre merece la pena.</em></h2><a href="#ofertas" class="bf26-button bf26-button--green">Volver a las promociones <span aria-hidden="true">↑</span></a><button type="button" class="bf26-reopen" data-bf26-open>Volver a ver la presentación ↗</button><p class="bf26-disclaimer">Esta campaña está en preparación. Los descuentos y los regalos todavía no están activos. Fechas, condiciones y existencias pendientes de confirmar.</p></div>
+	<section class="bf26-club" id="club-emdo" aria-labelledby="bf26-club-title">
+		<div class="bf26-wrap bf26-club__grid">
+			<div class="bf26-club__copy">
+				<p class="bf26-eyebrow bf26-eyebrow--light">03 / DESCUBRE EL CLUB EMDO</p>
+				<h2 id="bf26-club-title">Tus compras<br><em>tienen recompensa.</em></h2>
+				<p class="bf26-club__lead">Y el Black Friday es solo el principio. Si tienes una cuenta en El Mercado de Origen, con Club EMDO recuperas el <strong>1 % del importe de los productos de tus pedidos válidos</strong> en tu monedero para tus próximas compras.</p>
+				<p class="bf26-club__sublead">También puedes recargar tu saldo cuando quieras y utilizarlo para comprar de forma más cómoda.</p>
+				<div class="bf26-club__actions">
+					<a href="<?php echo esc_url( $club_account_url ); ?>" class="bf26-button bf26-button--cream">Únete al Club EMDO <span aria-hidden="true">↗</span></a>
+					<a href="<?php echo esc_url( $club_wallet_url ); ?>" class="bf26-club__textlink">Ver mi monedero <span aria-hidden="true">↗</span></a>
+				</div>
+			</div>
+			<div class="bf26-club__visual">
+				<div class="bf26-club__wallet" aria-label="Club EMDO: tu monedero digital">
+					<div class="bf26-club__wallet-top"><span>CLUB EMDO</span><span aria-hidden="true">✳</span></div>
+					<div class="bf26-club__wallet-main"><small>RECOMPENSA POR COMPRA</small><strong>1<span>%</span></strong><span>PARA TU MONEDERO</span></div>
+					<div class="bf26-club__wallet-foot"><span>Acumula</span><span>Recarga</span><span>Disfruta</span></div>
+				</div>
+				<div class="bf26-club__token bf26-club__token--one" aria-hidden="true">+</div>
+				<div class="bf26-club__token bf26-club__token--two" aria-hidden="true">✳</div>
+			</div>
+		</div>
+		<div class="bf26-wrap bf26-club__footer">
+			<div class="bf26-club__conditions">
+				<span>El 1 % se acredita en pedidos válidos; no incluye envíos, recargas ni tarjetas regalo.</span>
+				<small>Black Friday en preparación: el descuento y los regalos todavía no están activos. Fechas y condiciones pendientes de confirmar.</small>
+			</div>
+			<button type="button" class="bf26-reopen" data-bf26-open>Volver a ver la presentación ↗</button>
+		</div>
 	</section>
 </main>
 
@@ -167,7 +196,7 @@ get_header();
 		<div class="bf26-overlay__layout">
 			<div class="bf26-overlay__copy">
 				<h2 id="bf26-overlay-title">BLACK<br><em>FRIDAY</em></h2>
-				<p id="bf26-overlay-desc">Una ocasión para elegir algo excepcional: <strong>15 % de descuento</strong> en Hidalgo de la Jara y Montjam, con un regalo especial al comprar un jamón o una paleta.</p>
+				<p id="bf26-overlay-desc">Este Black Friday, elige tus ibéricos favoritos con <strong>un 15 % de descuento</strong>. Y si compras un jamón o una paleta, tenemos un regalo para ti.</p>
 				<div class="bf26-overlay__buttons">
 					<button type="button" class="bf26-overlay__cta" data-bf26-enter>Descubrir las promociones <span aria-hidden="true">↗</span></button>
 					<button type="button" class="bf26-overlay__skip" data-bf26-close>Ahora no, ver la página</button>
