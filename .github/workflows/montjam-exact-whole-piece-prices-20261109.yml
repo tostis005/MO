@@ -1,0 +1,74 @@
+name: Montjam exact whole-piece prices 2026-11-09
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/montjam-exact-whole-piece-prices-20261109.yml'
+      - '.github/scripts/montjam-exact-whole-piece-prices-20261109.php'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: montjam-exact-whole-piece-prices-20261109
+  cancel-in-progress: false
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate strict Montjam price-only script
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/montjam-exact-whole-piece-prices-20261109.php
+          grep -q "count(\$rows)!==22" .github/scripts/montjam-exact-whole-piece-prices-20261109.php
+          grep -q "set_regular_price" .github/scripts/montjam-exact-whole-piece-prices-20261109.php
+          test -n "${STAGING_HOST:-}" && test -n "${STAGING_USER:-}" && test -n "${SSHPASS:-}"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Audit, apply and verify exactly 22 prices in live WooCommerce
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_ARGS=(-o StrictHostKeyChecking=no -o ConnectTimeout=15 -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive -o ServerAliveInterval=15 -p "$PORT")
+          SCP_ARGS=(-o StrictHostKeyChecking=no -o ConnectTimeout=15 -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive -P "$PORT")
+          REMOTE="/tmp/montjam-exact-prices-${GITHUB_RUN_ID}.php"
+          sshpass -e scp "${SCP_ARGS[@]}" .github/scripts/montjam-exact-whole-piece-prices-20261109.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh "${SSH_ARGS[@]}" "$STAGING_USER@$STAGING_HOST" "bash -s -- '$REMOTE'" <<'REMOTE_SCRIPT' | tee /tmp/montjam-exact-prices-20261109.log
+          set -Eeuo pipefail
+          SCRIPT="$1"
+          ROOT=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+          PHP=/opt/plesk/php/8.2/bin/php
+          WP="$(command -v wp)"
+          trap 'rm -f "$SCRIPT"' EXIT
+          test -s "$ROOT/wp-config.php" && test -x "$PHP" && test -s "$SCRIPT"
+          SITE="$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)"
+          case "$SITE" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
+            *) echo "REFUSING_UNKNOWN_PRODUCTION_SITE: $SITE"; exit 10 ;;
+          esac
+          "$PHP" -l "$SCRIPT"
+          for phase in audit apply verify; do
+            MDO_MONTJAM_PRICE_MODE="$phase" "$PHP" -d memory_limit=1536M "$WP" eval-file "$SCRIPT" --path="$ROOT" --allow-root
+          done
+          echo "MONTJAM_EXACT_ALL_PHASES_OK"
+          REMOTE_SCRIPT
+          grep -q 'MONTJAM_EXACT_AUDIT_OK' /tmp/montjam-exact-prices-20261109.log
+          grep -q 'MONTJAM_EXACT_APPLY_OK' /tmp/montjam-exact-prices-20261109.log
+          grep -q 'MONTJAM_EXACT_VERIFY_OK' /tmp/montjam-exact-prices-20261109.log
+          grep -q 'MONTJAM_EXACT_ALL_PHASES_OK' /tmp/montjam-exact-prices-20261109.log
+      - name: Store price comparison and verification log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: montjam-price-comparison-20261109
+          path: /tmp/montjam-exact-prices-20261109.log
+          retention-days: 30
+          if-no-files-found: warn
