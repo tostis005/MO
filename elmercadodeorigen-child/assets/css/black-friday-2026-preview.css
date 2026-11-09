@@ -3,7 +3,7 @@ body.emdo-bf2026-page { --bf-green:#173f32; --bf-forest:#112d24; --bf-ink:#192f2
 /* The campaign is full-bleed inside the normal WordPress page shell.
    Restrict resets to THIS route; never alter the site header or cart. */
 html body.emdo-bf2026-page #content,
-html body.emdo-bf2026-page .site-content{width:100%!important;max-width:none!important;margin-inline:0!important;padding-inline:0!important}
+html body.emdo-bf2026-page .site-content{width:100%!important;max-width:none!important;margin:0!important;padding:0!important}
 html body.emdo-bf2026-page :is(#content,.site-content) > .woostify-container{width:100%!important;max-width:none!important;margin-inline:0!important;padding-inline:0!important}
 html body.emdo-bf2026-page :is(#content,.site-content) :is(#primary,.content-area,.site-main){max-width:none!important;width:100%!important;margin-inline:0!important;padding-inline:0!important}
 html body.emdo-bf2026-page .bf26{display:block;width:100%;max-width:none;margin:0 auto;padding:0;border:0}
