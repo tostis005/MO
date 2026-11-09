@@ -104,7 +104,7 @@ get_header();
 					<div class="bf26-offer__top"><span class="bf26-offer__origin">DE LA DEHESA DE LOS PEDROCHES</span><span class="bf26-offer__tag">15% DE DESCUENTO</span></div>
 					<h3 id="bf26-hidalgo-title">Hidalgo <em>de la Jara</em></h3>
 					<p class="bf26-offer__description">Ese jamón que llevas tiempo queriendo probar, ahora con un motivo más para decidirte. Aprovecha el descuento en toda su selección.</p>
-					<div class="bf26-offer__discount"><strong>–15<span>%</span></strong><div><span>EN TODOS SUS PRODUCTOS</span><p>Introduce el código <button type="button" class="bf26-coupon" data-bf26-copy="BFEMDO" aria-label="Copiar cupón BFEMDO">BFEMDO <span aria-hidden="true">⧉</span></button> al finalizar tu compra.</p></div></div>
+					<div class="bf26-offer__discount"><strong>–15<span>%</span></strong><div class="bf26-offer__discount-details"><span>EN TODOS SUS PRODUCTOS</span><p>Utiliza este código al finalizar tu compra:</p><button type="button" class="bf26-coupon" data-bf26-copy="BFEMDO" aria-label="Copiar cupón BFEMDO">BFEMDO <span aria-hidden="true">⧉</span></button></div></div>
 					<div class="bf26-gift">
 						<div class="bf26-gift__image">
 							<?php if ( $cheese ) { echo $cheese; } else { echo '<span class="bf26-gift__illustration" aria-hidden="true">✷</span>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
@@ -129,7 +129,7 @@ get_header();
 					<div class="bf26-offer__top"><span class="bf26-offer__origin">EL CARÁCTER DE LOS IBÉRICOS DE HUELVA</span><span class="bf26-offer__tag">15% DE DESCUENTO</span></div>
 					<h3 id="bf26-montjam-title">Montjam<em>.</em></h3>
 					<p class="bf26-offer__description">Para una ocasión especial o simplemente porque te apetece. Descubre sus ibéricos con un 15 % menos y un regalo extra.</p>
-					<div class="bf26-offer__discount"><strong>–15<span>%</span></strong><div><span>EN TODOS SUS PRODUCTOS</span><p>Introduce el código <button type="button" class="bf26-coupon" data-bf26-copy="BFEMDO" aria-label="Copiar cupón BFEMDO">BFEMDO <span aria-hidden="true">⧉</span></button> al finalizar tu compra.</p></div></div>
+					<div class="bf26-offer__discount"><strong>–15<span>%</span></strong><div class="bf26-offer__discount-details"><span>EN TODOS SUS PRODUCTOS</span><p>Utiliza este código al finalizar tu compra:</p><button type="button" class="bf26-coupon" data-bf26-copy="BFEMDO" aria-label="Copiar cupón BFEMDO">BFEMDO <span aria-hidden="true">⧉</span></button></div></div>
 					<div class="bf26-gift bf26-gift--montjam">
 						<div class="bf26-gift__image">
 							<?php if ( $chorizo ) { echo $chorizo; } else { echo '<span class="bf26-gift__illustration" aria-hidden="true">✷</span>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
