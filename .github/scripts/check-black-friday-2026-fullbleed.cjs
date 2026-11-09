@@ -39,7 +39,25 @@ const {chromium} = require('playwright-core');
         const footer=sel('.site-footer, #colophon, footer.site-footer');
         const header=sel('.site-header');
         const cart=sel('.site-tools .shopping-cart, .site-tools .cart-contents, .site-tools .shopping-bag-button, .site-tools [class*="cart"]');
+        const promo=sel('.bf26');
+        const stepBlocks=Array.from(document.querySelectorAll('.bf26-steps--textual > div'));
+        const couponButtons=Array.from(document.querySelectorAll('[data-bf26-copy]'));
+        const percentGlyphs=Array.from(document.querySelectorAll(
+          '.bf26-hero__seal strong span, .bf26-overlay__discount strong span, '+
+          '.bf26-offer__discount > strong span, .bf26-club__wallet-main strong span'
+        )).map((el)=>({
+          symbol:el.textContent.trim(),
+          marginLeft:parseFloat(getComputedStyle(el).marginLeft),
+          fontRatio:parseFloat(getComputedStyle(el).fontSize)/
+            parseFloat(getComputedStyle(el.parentElement).fontSize)
+        }));
         return {
+          couponPresent:!!promo && promo.textContent.includes('BFEMDO'),
+          legacyCouponPresent:!!promo && promo.textContent.includes('BFM2'),
+          allCopyButtonsUpdated:couponButtons.length===2 && couponButtons.every(el=>el.getAttribute('data-bf26-copy')==='BFEMDO'),
+          stepTitles:stepBlocks.map(el=>(el.querySelector('strong')?.textContent||'').trim()),
+          hasNumberedSteps:!!sel('.bf26-steps--textual > div > span'),
+          percentGlyphs,
           width:window.innerWidth,scrollWidth:document.documentElement.scrollWidth,
           header:!!header,cart:!!cart,footer:box(footer),
           wallet:!!sel('.bf26-club__wallet'),
@@ -48,6 +66,16 @@ const {chromium} = require('playwright-core');
         };
       });
       console.log('BF2026_GEOMETRY_'+label.toUpperCase()+'='+JSON.stringify(measurement));
+      if (!measurement.couponPresent || measurement.legacyCouponPresent || !measurement.allCopyButtonsUpdated
+          || measurement.hasNumberedSteps || measurement.stepTitles.length !== 2
+          || measurement.stepTitles[0] !== 'Elige tus favoritos'
+          || measurement.stepTitles[1] !== 'Y llévate tu regalo') {
+        throw Error('Incorrect coupon or textual guidance at '+label+': '+JSON.stringify(measurement));
+      }
+      if (measurement.percentGlyphs.length !== 5 ||
+          measurement.percentGlyphs.some(g=>g.symbol !== '%' || g.marginLeft < 2 || g.fontRatio < .4 || g.fontRatio > .55)) {
+        throw Error('Poor percent symbol spacing at '+label+': '+JSON.stringify(measurement.percentGlyphs));
+      }
       if (!measurement.header || !measurement.headerVisible || !measurement.cart || !measurement.footer || !measurement.wallet) {
         throw Error('Missing native shop shell/header/cart/footer at '+label);
       }
