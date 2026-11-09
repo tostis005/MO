@@ -76,10 +76,16 @@ jobs:
           install -m 0644 "/tmp/emdo-pager-manual-$RUN.php" "$MANUAL"
           "$PHP" -l "$BATCH" && "$PHP" -l "$MANUAL"
           "$PHP" -d memory_limit=512M "$WP" cache flush --path="$ROOT" --allow-root || true
+          # Invalidate only the cached shop HTML after a shop-inline-JS change.
+          SHOPCACHE="$ROOT/wp-content/uploads/elmercado-hot-static-v1/es-shop-root.html"
+          rm -f "$SHOPCACHE" "$SHOPCACHE.lock"
           install -m 0644 "/tmp/emdo-pager-opcache-$RUN.php" "$ROOT/emdo-pager-opcache-$RUN.php"
           curl -fsSL --connect-timeout 6 --max-time 20 "https://www.elmercadodeorigen.com/emdo-pager-opcache-$RUN.php" || true
           rm -f "$ROOT/emdo-pager-opcache-$RUN.php"
           echo DEPLOYED_BATCH_AND_MANUAL_PAGER_MODULES
+          grep -Fq "document.body.classList.add('emo-catalog-batch-ready')" "$BATCH"
+          grep -Fq 'selector(body:has' "$MANUAL"
+          echo DEPLOYED_SOURCE_MARKERS_VERIFIED
           trap - ERR
           REMOTE
       - name: Mobile browser test of single pager and appended products
@@ -96,18 +102,27 @@ jobs:
               const page=await browser.newPage({viewport:{width:393,height:851},isMobile:true,hasTouch:true});
               const errors=[];
               page.on('pageerror',e=>errors.push(String(e).slice(0,200)));
-              const response=await page.goto('https://www.elmercadodeorigen.com/tienda/?orderby=price&emdo_pager_fix=20261109-'+Date.now(),{waitUntil:'domcontentloaded',timeout:65000});
-              await page.waitForTimeout(1500);
-              const before=await page.evaluate(()=>{
+              let response,before;
+              /* Cached HTML may lag the PHP deployment; verify multiple uncached responses. */
+              for(let attempt=1;attempt<=5;attempt++){
+                const url='https://www.elmercadodeorigen.com/tienda/?orderby=price&emdo_pager_fix=20261109-'+Date.now()+'-'+attempt;
+                response=await page.goto(url,{waitUntil:'domcontentloaded',timeout:65000});
+                await page.waitForTimeout(1700);
+                before=await page.evaluate(()=>{
                 const grid=document.querySelector('main ul.products,#primary ul.products,.content-area ul.products,ul.products');
                 const manual=document.querySelector('nav.mdo-catalog-manual-pagination');
                 const native=document.querySelector('nav.woocommerce-pagination');
                 return {products:grid?.querySelectorAll(':scope > li.product').length||0,batchReady:document.body.classList.contains('emo-catalog-batch-ready'),manual:manual?getComputedStyle(manual).display:'none',native:native?getComputedStyle(native).display:'none',width:document.documentElement.scrollWidth,viewport:innerWidth};
               });
+                const marker=await page.evaluate(()=>({newSource:document.documentElement.innerHTML.includes("document.body.classList.add('emo-catalog-batch-ready')"),ordered:window.__emoCatalogLoaderState?.ordered,errors:window.__emoCatalogLoaderState?.remaining}));
+                console.log('PAGER_ATTEMPT '+attempt+' '+JSON.stringify(before)+' '+JSON.stringify(marker));
+                if(before.batchReady&&before.manual==='none'&&before.native==='none')break;
+                await page.waitForTimeout(3000);
+              }
               console.log('PAGER_BEFORE '+JSON.stringify(before));
               if(response.status()!==200||!before.batchReady||before.manual!=='none'||before.native!=='none'||before.products<10||before.width>before.viewport+4) throw Error('Initial sorted mobile pager regression');
               await page.evaluate(()=>window.scrollTo(0,document.documentElement.scrollHeight));
-              await page.waitForFunction(()=>document.querySelectorAll('main ul.products > li.product,#primary ul.products > li.product,.content-area ul.products > li.product').length>=27,{timeout:52000}).catch(async()=>{await page.waitForTimeout(900);throw Error('Product append timed out');});
+              await page.waitForFunction(()=>document.querySelectorAll('main ul.products > li.product,#primary ul.products > li.product,.content-area ul.products > li.product').length>=27,null,{timeout:52000}).catch(async()=>{await page.waitForTimeout(900);throw Error('Product append timed out');});
               await page.waitForTimeout(2000);
               const after=await page.evaluate(()=>({
                 products:document.querySelectorAll('main ul.products > li.product,#primary ul.products > li.product,.content-area ul.products > li.product').length,
