@@ -636,6 +636,8 @@ html body.emdo-bf2026-page :is(.site-footer,#colophon) {
   .bf26-gift {width:100%;min-width:0;overflow:hidden;gap:12px;padding:12px}
   .bf26-gift__image {width:73px;height:78px;flex:0 0 73px}
   .bf26-gift__text {flex:1 1 0;min-width:0}
+  /* No dejes que el asterisco decorativo sobresalga del ancho del regalo. */
+  .bf26-gift__icon {display:none!important}
   .bf26-offer__content > .bf26-button {width:100%}
 }
 @media(max-width:420px) {
