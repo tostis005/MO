@@ -1,0 +1,77 @@
+name: Read-only audit MONTJUNTA coupon 2026-11-09
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-montjunta-coupon-20261109.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Create read-only WP-CLI coupon inspection
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/emdo-montjunta-inspect.php <<'PHP'
+          <?php
+          if (!defined('ABSPATH') || !defined('WP_CLI') || !WP_CLI || !function_exists('wc_get_coupon_id_by_code')) {
+            fwrite(STDERR, "MONTJUNTA_AUDIT_ABORT_WOO_REQUIRED\n");
+            exit(2);
+          }
+          if (!in_array(strtolower((string)wp_parse_url(home_url('/'), PHP_URL_HOST)), ['elmercadodeorigen.com','www.elmercadodeorigen.com'], true)) {
+            fwrite(STDERR,"MONTJUNTA_AUDIT_ABORT_HOST\n");
+            exit(3);
+          }
+          $id = wc_get_coupon_id_by_code('MONTJUNTA');
+          if (!$id) { echo "MONTJUNTA_NOT_FOUND\n"; exit(0); }
+          $coupon = new WC_Coupon($id);
+          $expires = $coupon->get_date_expires();
+          echo 'MONTJUNTA_RESULT='.wp_json_encode([
+            'code'=>$coupon->get_code(),
+            'status'=>get_post_status($id),
+            'discount_type'=>$coupon->get_discount_type(),
+            'amount'=>$coupon->get_amount(),
+            'expires_gmt'=>$expires ? $expires->date('Y-m-d H:i:s') : null,
+            'individual_use'=>$coupon->get_individual_use(),
+            'minimum_amount'=>$coupon->get_minimum_amount(),
+            'product_restriction_count'=>count($coupon->get_product_ids()),
+            'category_restriction_count'=>count($coupon->get_product_categories())
+          ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+          PHP
+          php -l /tmp/emdo-montjunta-inspect.php
+      - name: Read live WooCommerce coupon without changes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "$STAGING_HOST" && test -n "$STAGING_USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          PROD_ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          REMOTE="/tmp/montjunta-audit-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP /tmp/emdo-montjunta-inspect.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f $REMOTE" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "timeout 90 /opt/plesk/php/8.2/bin/php -d memory_limit=384M /usr/local/bin/wp eval-file '$REMOTE' --path='$PROD_ROOT' --allow-root" | tee /tmp/montjunta-audit-output.txt
+          grep -Eq 'MONTJUNTA_RESULT=|MONTJUNTA_NOT_FOUND' /tmp/montjunta-audit-output.txt
+      - name: Save audit log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: montjunta-coupon-audit
+          path: /tmp/montjunta-audit-output.txt
+          if-no-files-found: warn
+          retention-days: 1
