@@ -46,11 +46,14 @@ jobs:
               console.log('ERRORS '+JSON.stringify(errors.slice(0,10)));
               const button=page.locator('.emo-catalog-load-button');
               if(await button.count() && await button.isVisible()) {
+                const previous=await page.evaluate(()=>document.querySelectorAll('main ul.products > li.product').length);
                 await button.click({timeout:5000});
-                await page.waitForTimeout(12500);
-                await snapshot('AFTER_BUTTON');
+                await page.waitForFunction(previous=>document.querySelectorAll('main ul.products > li.product').length>=previous+12,previous,{timeout:45000});
+                const afterClick=await snapshot('AFTER_BUTTON');
                 console.log('AJAX_AFTER_BUTTON '+JSON.stringify(ajax.slice(-6)));
-              }
+                if(afterClick.items<previous+12||afterClick.manualDisplay!=='none'||afterClick.nativeDisplay!=='none') throw Error('Manual load-more click failed');
+                console.log('MANUAL_LOAD_MORE_VERIFIED');
+              } else { throw Error('Idle load-more button not visible'); }
               if((b.items||0)<=a.items){throw Error('Mobile browser failed to append products after bottom scroll');}
               if(b.documentWidth>b.viewport+5){throw Error('Mobile horizontal overflow detected');}
               console.log('MOBILE_SORT_SCROLL_OK');
