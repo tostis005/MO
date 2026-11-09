@@ -33,14 +33,13 @@ const {chromium} = require('playwright-core');
         const box=(e)=>{ if (!e) return null; const r=e.getBoundingClientRect();
           return {left:r.left, right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height}; };
         const parts={};
-        for(const s of ['.bf26','.bf26-hero','.bf26-band','.bf26-offers','.bf26-coupon-section','.bf26-club']) {
+        for(const s of ['.bf26','.bf26-hero','.bf26-band','.bf26-offers','.bf26-club']) {
           parts[s]=box(sel(s));
         }
         const footer=sel('.site-footer, #colophon, footer.site-footer');
         const header=sel('.site-header');
         const cart=sel('.site-tools .shopping-cart, .site-tools .cart-contents, .site-tools .shopping-bag-button, .site-tools [class*="cart"]');
         const promo=sel('.bf26');
-        const stepBlocks=Array.from(document.querySelectorAll('.bf26-steps--textual > div'));
         const couponButtons=Array.from(document.querySelectorAll('[data-bf26-copy]'));
         const percentGlyphs=Array.from(document.querySelectorAll(
           '.bf26-hero__seal strong span, .bf26-overlay__discount strong span, '+
@@ -55,8 +54,9 @@ const {chromium} = require('playwright-core');
           couponPresent:!!promo && promo.textContent.includes('BFEMDO'),
           legacyCouponPresent:!!promo && promo.textContent.includes('BFM2'),
           allCopyButtonsUpdated:couponButtons.length===2 && couponButtons.every(el=>el.getAttribute('data-bf26-copy')==='BFEMDO'),
-          stepTitles:stepBlocks.map(el=>(el.querySelector('strong')?.textContent||'').trim()),
-          hasNumberedSteps:!!sel('.bf26-steps--textual > div > span'),
+          removedInstructionSection:!sel('.bf26-coupon-section, #como-funciona'),
+          removedHeroEyebrow:!sel('.bf26-hero__copy .bf26-eyebrow'),
+          removedHowItWorksLink:!sel('a[href="#como-funciona"]'),
           percentGlyphs,
           width:window.innerWidth,scrollWidth:document.documentElement.scrollWidth,
           header:!!header,cart:!!cart,footer:box(footer),
@@ -67,9 +67,8 @@ const {chromium} = require('playwright-core');
       });
       console.log('BF2026_GEOMETRY_'+label.toUpperCase()+'='+JSON.stringify(measurement));
       if (!measurement.couponPresent || measurement.legacyCouponPresent || !measurement.allCopyButtonsUpdated
-          || measurement.hasNumberedSteps || measurement.stepTitles.length !== 2
-          || measurement.stepTitles[0] !== 'Elige tus favoritos'
-          || measurement.stepTitles[1] !== 'Y llévate tu regalo') {
+          || !measurement.removedInstructionSection || !measurement.removedHeroEyebrow
+          || !measurement.removedHowItWorksLink) {
         throw Error('Incorrect coupon or textual guidance at '+label+': '+JSON.stringify(measurement));
       }
       if (measurement.percentGlyphs.length !== 5 ||
