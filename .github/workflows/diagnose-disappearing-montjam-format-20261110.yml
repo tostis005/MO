@@ -41,9 +41,9 @@ jobs:
           PHP=/opt/plesk/php/8.2/bin/php
           WP="$(command -v wp)"
           trap 'rm -f "$SCRIPT"' EXIT
-          SITE="$("$PHP" "$WP" option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)"
+          SITE="$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)"
           case "$SITE" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;; *) exit 10;; esac
-          "$PHP" "$WP" eval-file "$SCRIPT" --path="$ROOT" --allow-root
+          "$PHP" -d memory_limit=1536M "$WP" eval-file "$SCRIPT" --path="$ROOT" --allow-root
           REMOTE_SCRIPT
       - name: Reproduce disappearance in real Chrome over 28 seconds
         shell: bash
