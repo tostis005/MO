@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO - Footer layout and social contacts 0.10.284
  * Description: Organiza el pie global con redes sociales, seis métodos de pago y copyright.
- * Version: 0.10.286
+ * Version: 0.10.287
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -17,11 +17,32 @@ if ( ! defined( 'ABSPATH' ) ) {
 add_action(
 	'init',
 	static function (): void {
-		$version = 'payment-methods-20261110-v4';
+		$version = 'payment-methods-20261110-v5';
 		$key = 'mdo_footer_payment_cache_version';
 		if ( get_option( $key, '' ) === $version ) {
 			return;
 		}
+		/*
+		 * The home cache uses a language-aware home_url() in its transient key.
+		 * Delete every language variant, not just the key for the first visitor
+		 * after deployment. The persistent object cache may also store these
+		 * transients; a one-time flush prevents old /en/ HTML from persisting.
+		 */
+		global $wpdb;
+		$home_transient_like = $wpdb->esc_like( '_transient_elmercado_home_' ) . '%';
+		$home_transient_names = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s",
+				$home_transient_like
+			)
+		);
+		foreach ( (array) $home_transient_names as $option_name ) {
+			if ( is_string( $option_name ) && str_starts_with( $option_name, '_transient_elmercado_home_' ) ) {
+				delete_transient( substr( $option_name, strlen( '_transient_' ) ) );
+			}
+		}
+		wp_cache_flush();
+
 		if ( function_exists( 'elmercado_flush_home_cache' ) ) {
 			elmercado_flush_home_cache();
 		} else {
