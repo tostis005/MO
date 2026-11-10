@@ -220,11 +220,26 @@ jobs:
                 const socials = Array.from(shell?.querySelectorAll('.mdo-footer-social-010278') || []).map(el => ({ label: el.getAttribute('aria-label'), href: el.href }));
                 const visibleOriginalCount = Array.from(footer?.children || []).filter(el => !el.classList.contains('mdo-footer-shell-010278') && getComputedStyle(el).display !== 'none').length;
                 const columns = main ? getComputedStyle(main).gridTemplateColumns.split(' ').filter(Boolean).length : 0;
+                const paymentGrid = shell?.querySelector('.mdo-footer-payment-cards-010278');
+                const paymentCards = Array.from(paymentGrid?.querySelectorAll('.mdo-footer-payment-card-010278') || []);
+                const paypal = paymentGrid?.querySelector('.mdo-footer-payment-card--paypal svg.mdo-footer-payment-paypal-logo-010278');
+                const bankIcon = paymentGrid?.querySelector('.mdo-footer-payment-card--transfer svg.mdo-footer-payment-transfer-icon-010278');
+                const bankLabel = paymentGrid?.querySelector('.mdo-footer-payment-card--transfer .mdo-footer-payment-transfer-label-010278');
+                const payRect = paypal?.getBoundingClientRect();
                 return {
                   headings,
                   socials,
                   visibleOriginalCount,
                   columns,
+                  paymentCount: paymentCards.length,
+                  paymentLabels: paymentCards.map(el => el.getAttribute('aria-label')),
+                  paymentColumns: paymentGrid ? getComputedStyle(paymentGrid).gridTemplateColumns.split(' ').filter(Boolean).length : 0,
+                  paymentWidthSpan: paymentCards.length ? Math.max(...paymentCards.map(el => el.getBoundingClientRect().width)) - Math.min(...paymentCards.map(el => el.getBoundingClientRect().width)) : -1,
+                  paypalPathCount: paypal?.querySelectorAll('path').length || 0,
+                  paypalBounds: payRect ? { width: payRect.width, height: payRect.height } : null,
+                  paypalImageIsExternal: !!paymentGrid?.querySelector('.mdo-footer-payment-card--paypal img[src]'),
+                  bankPathCount: bankIcon?.querySelectorAll('path').length || 0,
+                  bankLabel: bankLabel?.textContent.trim() || '',
                   overflow: document.documentElement.scrollWidth - window.innerWidth,
                   refinementStyle: !!document.querySelector('#mdo-footer-brand-hover-010279'),
                   refinementScript: !!document.querySelector('#mdo-footer-brand-hover-runtime-010279')
@@ -240,6 +255,15 @@ jobs:
               if (result.overflow > 2) throw new Error(cfg.name + ': horizontal overflow ' + result.overflow + 'px');
               if (cfg.mobile && result.columns !== 1) throw new Error(cfg.name + ': mobile footer is not stacked');
               if (!cfg.mobile && result.columns !== 3) throw new Error(cfg.name + ': desktop footer does not have 3 visual areas');
+              if (result.paymentCount !== 6) throw new Error(cfg.name + ': expected 6 payment badges, got ' + result.paymentCount);
+              if (result.paymentColumns !== (cfg.mobile ? 2 : 3)) throw new Error(cfg.name + ': payment grid columns mismatch: ' + result.paymentColumns);
+              if (result.paymentWidthSpan > 2) throw new Error(cfg.name + ': payment cards have unequal widths');
+              if (result.paypalImageIsExternal || result.paypalPathCount < 1 || !result.paypalBounds || result.paypalBounds.width < 90 || result.paypalBounds.height < 30) {
+                throw new Error(cfg.name + ': PayPal vector logo is missing, tiny, or externally loaded');
+              }
+              if (result.bankPathCount < 5 || !/Transferencia|Bank transfer/.test(result.bankLabel)) {
+                throw new Error(cfg.name + ': clean bank icon/label was not rendered');
+              }
 
               if (cfg.name === 'home-es') {
                 for (const [label, expected] of Object.entries(expectedHover)) {
