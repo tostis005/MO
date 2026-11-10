@@ -176,6 +176,22 @@ jobs:
             echo "${markers:-NO_MARKERS}"
           done
 
+      - name: Diagnose English home cache variants
+        shell: bash
+        run: |
+          set -euo pipefail
+          for url in \
+            'https://www.elmercadodeorigen.com/en/' \
+            'https://www.elmercadodeorigen.com/en/?mdo_footer_fresh=20261110v4'
+          do
+            echo "=== $url ==="
+            curl -sSL --max-time 35 -D /tmp/mdo-en-h.txt -o /tmp/mdo-en-b.txt "$url"
+            grep -Ei '^(HTTP/|cache-control:|age:|x-el-mercado-cache:|x-cache:|x-proxy-cache:|cf-cache-status:|content-length:|vary:|etag:)' /tmp/mdo-en-h.txt || true
+            echo "PAYPAL_INLINE=$(grep -Fc 'mdo-footer-payment-paypal-logo-010278' /tmp/mdo-en-b.txt || true)"
+            echo "PAYPAL_EXTERNAL=$(grep -Fc 'paypal-wordmark-color.svg' /tmp/mdo-en-b.txt || true)"
+            echo "BANK_LUCIDE=$(grep -Fc 'mdo-footer-payment-transfer-icon-010278' /tmp/mdo-en-b.txt || true)"
+          done
+
       - name: Verify footer on canonical home and internal pages
         shell: bash
         run: |
@@ -204,6 +220,7 @@ jobs:
               { name: 'home-es', url: 'https://www.elmercadodeorigen.com/', width: 1440, height: 1000, mobile: false },
               { name: 'home-es-mobile', url: 'https://www.elmercadodeorigen.com/', width: 390, height: 844, mobile: true },
               { name: 'shipping-es', url: 'https://www.elmercadodeorigen.com/envios/', width: 1440, height: 1000, mobile: false },
+              { name: 'home-en-cache-bypass', url: 'https://www.elmercadodeorigen.com/en/?mdo_footer_fresh=20261110v4', width: 1440, height: 1000, mobile: false },
               { name: 'home-en', url: 'https://www.elmercadodeorigen.com/en/', width: 1440, height: 1000, mobile: false }
             ];
 
