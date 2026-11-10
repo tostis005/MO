@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO - Footer layout and social contacts 0.10.284
  * Description: Organiza el pie global con redes sociales, seis métodos de pago y copyright.
- * Version: 0.10.284
+ * Version: 0.10.285
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 add_action(
 	'init',
 	static function (): void {
-		$version = 'payment-methods-20261110-v2';
+		$version = 'payment-methods-20261110-v3';
 		$key = 'mdo_footer_payment_cache_version';
 		if ( get_option( $key, '' ) === $version ) {
 			return;
@@ -142,15 +142,14 @@ add_action(
 		$payment_html = '<section class="mdo-footer-payments-010278" aria-label="' . esc_attr( $payment_title ) . '"><h2 class="mdo-footer-payments-heading-010278">' . esc_html( $payment_title ) . '</h2><div class="mdo-footer-payment-cards-010278">';
 		foreach ( $payment_labels as $slug => $label ) {
 			if ( 'paypal' === $slug ) {
-				// PayPal mark (Simple Icons) plus recognizable brand wordmark.
-				$icon_html = '<span class="mdo-footer-payment-paypal-010278" aria-hidden="true">'
-					. '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" focusable="false"><path d="M15.607 4.653H8.941L6.645 19.251H1.82L4.862 0h7.995c3.754 0 6.375 2.294 6.473 5.513-.648-.478-2.105-.86-3.722-.86m6.57 5.546c0 3.41-3.01 6.853-6.958 6.853h-2.493L11.595 24H6.74l1.845-11.538h3.592c4.208 0 7.346-3.634 7.153-6.949a5.24 5.24 0 0 1 2.848 4.686M9.653 5.546h6.408c.907 0 1.942.222 2.363.541-.195 2.741-2.655 5.483-6.441 5.483H8.714Z"/></svg>'
-					. '<span class="mdo-footer-payment-paypal-wordmark-010278"><span>Pay</span><span>Pal</span></span></span>';
+				// Official PayPal 2024 wordmark, loaded unmodified from PayPal's own CDN.
+				$icon_html = '<img class="mdo-footer-payment-paypal-logo-010278" src="https://www.paypalobjects.com/paypal-ui/logos/svg/paypal-wordmark-color.svg" alt="" width="132" height="42" loading="lazy" decoding="async" aria-hidden="true" />';
 			} elseif ( 'transfer' === $slug ) {
-				// Generic bank building icon; no bank or payment processor is implied.
+				// Neutral bank pictogram in a centered two-line brand-like lockup.
+				$short_label = $is_english ? 'Bank transfer' : 'Transferencia';
 				$icon_html = '<span class="mdo-footer-payment-transfer-010278" aria-hidden="true">'
-					. '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M3 9.25 12 4l9 5.25M4 10h16M6.5 10v8M11 10v8M16 10v8M20.5 18H3.5M2.5 21h19"/></svg>'
-					. '<span>' . esc_html( $label ) . '</span></span>';
+					. '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M4 12 16 5l12 7M6 13.5h20M9 15v10M15 15v10M21 15v10M26 15v10M5 26h22M3 29h26" /></svg>'
+					. '<span>' . esc_html( $short_label ) . '</span></span>';
 			} else {
 				$icon_html = '<span class="mdo-footer-payment-logo-010278 mdo-footer-payment-logo--' . esc_attr( $slug ) . '" aria-hidden="true"></span>';
 			}
@@ -332,41 +331,36 @@ add_action(
 				overflow: hidden;
 				box-sizing: border-box;
 			}
-			html body .site-footer .mdo-footer-payment-paypal-010278,
-			html body .site-footer .mdo-footer-payment-transfer-010278 {
-				display: inline-flex;
-				justify-content: center;
-				align-items: center;
-				gap: 6px;
+			html body .site-footer .mdo-footer-payment-paypal-logo-010278 {
+				display: block;
+				width: min(100%, 132px);
 				max-width: 100%;
+				height: 42px;
+				object-fit: contain;
+				margin: 0 auto;
 			}
-			html body .site-footer .mdo-footer-payment-paypal-010278 svg {
-				width: 28px;
-				height: 28px;
-				fill: #003087;
-				flex: none;
-			}
-			html body .site-footer .mdo-footer-payment-paypal-wordmark-010278 {
-				display: inline-flex;
-				align-items: baseline;
-				font: italic 800 24px/1 Arial,Helvetica,sans-serif;
-				letter-spacing: -1.3px;
-				white-space: nowrap;
-			}
-			html body .site-footer .mdo-footer-payment-paypal-wordmark-010278 span:first-child { color: #003087; }
-			html body .site-footer .mdo-footer-payment-paypal-wordmark-010278 span:last-child { color: #009cde; }
 			html body .site-footer .mdo-footer-payment-transfer-010278 {
-				gap: 8px;
-				color: #1e443e;
-				font-size: 12.5px;
-				line-height: 1.25;
-				font-weight: 650;
-				text-align: left;
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				justify-content: center;
+				gap: 2px;
+				width: 100%;
+				max-width: 100%;
+				color: #1a4640;
+				text-align: center;
+				font-size: 11px;
+				line-height: 1.2;
+				font-weight: 700;
+				letter-spacing: .055em;
+				text-transform: uppercase;
 			}
 			html body .site-footer .mdo-footer-payment-transfer-010278 svg {
-				width: 28px;
-				height: 28px;
+				display: block;
 				flex: none;
+				width: 29px;
+				height: 29px;
+				margin: 0 auto;
 			}
 			html body .site-footer .mdo-footer-payment-logo-010278 {
 				display: block;
@@ -448,12 +442,13 @@ add_action(
 					height: 68px;
 					padding: 6px 8px !important;
 				}
-				html body .site-footer .mdo-footer-payment-paypal-wordmark-010278 {
-					font-size: 21px;
+				html body .site-footer .mdo-footer-payment-paypal-logo-010278 {
+					width: min(100%, 124px);
+					height: 38px;
 				}
 				html body .site-footer .mdo-footer-payment-transfer-010278 {
-					font-size: 11.5px;
-					gap: 5px;
+					font-size: 10px;
+					letter-spacing: .04em;
 				}
 
 				html body .site-footer .mdo-footer-bottom-010278 {
