@@ -1,0 +1,70 @@
+name: Repair disappearing FORMAT on Montjam green shoulder 2026-11-10
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/repair-montjam-green-format-persistence-20261110.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: repair-montjam-green-format-persistence-20261110
+  cancel-in-progress: false
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Chrome test dependencies and SSH
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/repair-montjam-green-format-persistence-20261110.php
+          python3 -m py_compile .github/scripts/verify-montjam-green-format-persistence-20261110.py
+          python3 -m pip install --quiet --break-system-packages selenium || python3 -m pip install --quiet selenium
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Audit repair verify production YITH association rows
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_ARGS=(-o StrictHostKeyChecking=no -o ConnectTimeout=15 -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive -o ServerAliveInterval=15 -p "$PORT")
+          SCP_ARGS=(-o StrictHostKeyChecking=no -o ConnectTimeout=15 -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive -P "$PORT")
+          REMOTE="/tmp/montjam-assoc-repair-${GITHUB_RUN_ID}.php"
+          sshpass -e scp "${SCP_ARGS[@]}" .github/scripts/repair-montjam-green-format-persistence-20261110.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh "${SSH_ARGS[@]}" "$STAGING_USER@$STAGING_HOST" "bash -s -- '$REMOTE'" <<'REMOTE_SCRIPT' | tee /tmp/montjam-assoc-repair.log
+          set -Eeuo pipefail
+          SCRIPT="$1"
+          ROOT=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+          PHP=/opt/plesk/php/8.2/bin/php
+          WP="$(command -v wp)"
+          trap 'rm -f "$SCRIPT"' EXIT
+          SITE="$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)"
+          case "$SITE" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;; *) echo "ABORT_WRONG_SITE";exit 10;; esac
+          for phase in audit apply verify; do
+            MDO_GREEN_ASSOC_MODE="$phase" "$PHP" -d memory_limit=1536M "$WP" eval-file "$SCRIPT" --path="$ROOT" --allow-root
+          done
+          echo 'MONTJAM_FORMAT_ASSOC_ALL_PHASES_OK'
+          REMOTE_SCRIPT
+          for marker in MONTJAM_FORMAT_ASSOC_AUDIT_OK MONTJAM_FORMAT_ASSOC_APPLY_OK MONTJAM_FORMAT_ASSOC_VERIFY_OK MONTJAM_FORMAT_ASSOC_ALL_PHASES_OK;do grep -q "$marker" /tmp/montjam-assoc-repair.log;done
+      - name: Verify the field persists at 2, 6, 12 and 22 seconds on two reloads
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 .github/scripts/verify-montjam-green-format-persistence-20261110.py | tee /tmp/montjam-format-live-verified.log
+          grep -q MONTJAM_FORMAT_BROWSER_PERSISTENCE_OK /tmp/montjam-format-live-verified.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: montjam-green-format-persistence-20261110
+          path: |
+            /tmp/montjam-assoc-repair.log
+            /tmp/montjam-format-live-verified.log
+          retention-days: 30
+          if-no-files-found: warn
