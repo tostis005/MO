@@ -1,0 +1,57 @@
+name: Diagnose disappearing format on Montjam green shoulder 2026-11-10
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-disappearing-montjam-format-20261110.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diag:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install browser dependencies and SSH
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --quiet --break-system-packages selenium || python3 -m pip install --quiet selenium
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+          google-chrome --version
+      - name: Inspect YITH association rows in live WooCommerce
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_ARGS=(-o StrictHostKeyChecking=no -o ConnectTimeout=15 -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive -p "$PORT")
+          SCP_ARGS=(-o StrictHostKeyChecking=no -o ConnectTimeout=15 -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive -P "$PORT")
+          REMOTE="/tmp/montjam-format-diagnosis-${GITHUB_RUN_ID}.php"
+          sshpass -e scp "${SCP_ARGS[@]}" .github/scripts/diagnose-disappearing-montjam-format-20261110.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh "${SSH_ARGS[@]}" "$STAGING_USER@$STAGING_HOST" "bash -s -- '$REMOTE'" <<'REMOTE_SCRIPT'
+          set -Eeuo pipefail
+          SCRIPT="$1"
+          ROOT=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+          PHP=/opt/plesk/php/8.2/bin/php
+          WP="$(command -v wp)"
+          trap 'rm -f "$SCRIPT"' EXIT
+          SITE="$("$PHP" "$WP" option get siteurl --path="$ROOT" --skip-plugins --skip-themes --allow-root)"
+          case "$SITE" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;; *) exit 10;; esac
+          "$PHP" "$WP" eval-file "$SCRIPT" --path="$ROOT" --allow-root
+          REMOTE_SCRIPT
+      - name: Reproduce disappearance in real Chrome over 28 seconds
+        shell: bash
+        run: |
+          python3 .github/scripts/diagnose-disappearing-montjam-format-20261110.py | tee /tmp/montjam-format-browser-diagnosis.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: montjam-disappearing-format-browser-diagnosis
+          path: /tmp/montjam-format-browser-diagnosis.json
+          if-no-files-found: warn
