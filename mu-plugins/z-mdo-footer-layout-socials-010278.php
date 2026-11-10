@@ -1,13 +1,39 @@
 <?php
 /**
  * Plugin Name: MDO - Footer layout and social contacts 0.10.278
- * Description: Reorganiza el pie en dos columnas funcionales, sustituye los logos de pago por accesos sociales y mantiene un bloque final de copyright limpio.
- * Version: 0.10.278
+ * Description: Organiza el pie global con accesos sociales, cuatro métodos de pago y copyright.
+ * Version: 0.10.283
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
+
+
+/**
+ * Refresh the separately cached home HTML once so the new payment strip is not
+ * lost behind the previous footer snapshot.
+ */
+add_action(
+	'init',
+	static function (): void {
+		$version = 'payment-methods-20261110-v1';
+		$key = 'mdo_footer_payment_cache_version';
+		if ( get_option( $key, '' ) === $version ) {
+			return;
+		}
+		if ( function_exists( 'elmercado_flush_home_cache' ) ) {
+			elmercado_flush_home_cache();
+		} else {
+			$file = WP_CONTENT_DIR . '/uploads/elmercado-home-static/index.html';
+			if ( is_file( $file ) ) {
+				@unlink( $file );
+			}
+		}
+		update_option( $key, $version, false );
+	},
+	-9999
+);
 
 add_action(
 	'wp_footer',
@@ -103,8 +129,22 @@ add_action(
 			);
 		}
 
+
+		$payment_labels = array(
+			'edenred'    => 'Edenred',
+			'visa'       => 'Visa',
+			'mastercard' => 'Mastercard',
+			'bizum'      => 'Bizum',
+		);
+		$payment_title = $is_english ? 'Accepted payment methods' : 'Métodos de pago';
+		$payment_html = '<section class="mdo-footer-payments-010278" aria-label="' . esc_attr( $payment_title ) . '"><h2 class="mdo-footer-payments-heading-010278">' . esc_html( $payment_title ) . '</h2><div class="mdo-footer-payment-cards-010278">';
+		foreach ( $payment_labels as $slug => $label ) {
+			$payment_html .= '<span class="mdo-footer-payment-card-010278" role="img" aria-label="' . esc_attr( $label ) . '"><span class="mdo-footer-payment-logo-010278 mdo-footer-payment-logo--' . esc_attr( $slug ) . '" aria-hidden="true"></span></span>';
+		}
+		$payment_html .= '</div></section>';
+
 		$footer_markup = sprintf(
-			'<div class="mdo-footer-shell-010278"><div class="mdo-footer-main-010278"><section class="mdo-footer-column-010278"><h2>%1$s</h2><ul>%2$s</ul></section><section class="mdo-footer-column-010278 mdo-footer-info-010278"><h2>%3$s</h2><ul>%4$s</ul></section><section class="mdo-footer-column-010278 mdo-footer-contact-010278"><h2>%5$s</h2><div class="mdo-footer-socials-010278">%6$s</div></section></div><div class="mdo-footer-bottom-010278">&copy; %7$s - %8$s</div></div>',
+			'<div class="mdo-footer-shell-010278"><div class="mdo-footer-main-010278"><section class="mdo-footer-column-010278"><h2>%1$s</h2><ul>%2$s</ul></section><section class="mdo-footer-column-010278 mdo-footer-info-010278"><h2>%3$s</h2><ul>%4$s</ul></section><section class="mdo-footer-column-010278 mdo-footer-contact-010278"><h2>%5$s</h2><div class="mdo-footer-socials-010278">%6$s</div></section></div>%9$s<div class="mdo-footer-bottom-010278">&copy; %7$s - %8$s</div></div>',
 			esc_html( $copy['market_title'] ),
 			$market_html,
 			esc_html( $copy['info_title'] ),
@@ -112,7 +152,8 @@ add_action(
 			esc_html( $copy['social_title'] ),
 			$social_html,
 			esc_html( gmdate( 'Y' ) ),
-			esc_html( $copy['copyright'] )
+			esc_html( $copy['copyright'] ),
+			$payment_html
 		);
 		?>
 		<style id="mdo-footer-layout-socials-010278">
@@ -236,8 +277,73 @@ add_action(
 				stroke: none;
 			}
 
+
+			/* The supplied marks are preserved, separated into four small ivory badges. */
+			html body .site-footer .mdo-footer-payments-010278 {
+				display: flex;
+				flex-wrap: wrap;
+				align-items: center;
+				gap: 16px 24px;
+				margin-top: 34px;
+				padding-top: 25px;
+				border-top: 1px solid rgba(255,255,255,.12);
+			}
+			html body .site-footer .mdo-footer-payments-heading-010278 {
+				flex: 0 0 auto;
+				margin: 0 !important;
+				padding: 0 !important;
+				font: inherit !important;
+				font-size: 13px !important;
+				line-height: 1.5 !important;
+				font-weight: 550 !important;
+				letter-spacing: .01em;
+				color: rgba(255,255,255,.74) !important;
+			}
+			html body .site-footer .mdo-footer-payment-cards-010278 {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 10px;
+				align-items: center;
+			}
+			html body .site-footer .mdo-footer-payment-card-010278 {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				flex: 0 0 126px;
+				width: 126px;
+				height: 68px;
+				padding: 0 !important;
+				border: 1px solid rgba(255,255,255,.15);
+				border-radius: 9px;
+				background: #fff;
+				overflow: hidden;
+			}
+			html body .site-footer .mdo-footer-payment-card-010278:first-child {
+				flex-basis: 143px;
+				width: 143px;
+			}
+			html body .site-footer .mdo-footer-payment-logo-010278 {
+				display: block;
+				flex: none;
+				background-image: url("data:image/webp;base64,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");
+				background-size: 384px 77px;
+				background-repeat: no-repeat;
+			}
+			html body .site-footer .mdo-footer-payment-logo--edenred {
+				width: 101px; height: 63px; background-position: -5.75px -6px;
+			}
+			html body .site-footer .mdo-footer-payment-logo--visa {
+				width: 94px; height: 34px; background-position: -109.5px -23px;
+			}
+			html body .site-footer .mdo-footer-payment-logo--mastercard {
+				width: 66px; height: 52px; background-position: -212px -13.75px;
+			}
+			html body .site-footer .mdo-footer-payment-logo--bizum {
+				width: 92px; height: 29px; background-position: -289.25px -23.25px;
+			}
+
 			html body .site-footer .mdo-footer-bottom-010278 {
-				margin-top: 38px;
+				margin-top: 22px;
 				padding-top: 18px;
 				border-top: 1px solid rgba(255,255,255,.12);
 				color: rgba(255,255,255,.58);
@@ -279,8 +385,32 @@ add_action(
 					gap: 7px;
 				}
 
+				html body .site-footer .mdo-footer-payments-010278 {
+					margin-top: 27px;
+					padding-top: 20px;
+					gap: 12px;
+					align-items: flex-start;
+				}
+				html body .site-footer .mdo-footer-payments-heading-010278 {
+					flex-basis: 100%;
+				}
+				html body .site-footer .mdo-footer-payment-cards-010278 {
+					display: grid;
+					grid-template-columns: repeat(2, minmax(0, 1fr));
+					width: 100%;
+					gap: 9px;
+				}
+				html body .site-footer .mdo-footer-payment-card-010278,
+				html body .site-footer .mdo-footer-payment-card-010278:first-child {
+					width: 100%;
+					max-width: none;
+					height: 66px;
+					min-width: 0;
+					flex: none;
+				}
+
 				html body .site-footer .mdo-footer-bottom-010278 {
-					margin-top: 28px;
+					margin-top: 21px;
 					padding-top: 16px;
 				}
 			}
