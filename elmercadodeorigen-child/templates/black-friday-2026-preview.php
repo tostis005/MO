@@ -50,11 +50,11 @@ get_header();
 		<div class="bf26-wrap bf26-hero__grid">
 			<div class="bf26-hero__copy">
 				<h1 id="bf26-title">Black Friday.<em>Ofertas que apetecen.</em><span>Y mucho por descubrir.</span></h1>
-				<p class="bf26-hero__lead">El Black Friday llega con <strong>descuentos especiales, regalos y ventajas exclusivas</strong> en una selección de productos que merece la pena descubrir. Explora las promociones de cada productor y elige tus favoritas.</p>
+				<p class="bf26-hero__lead">Este Black Friday reunimos <strong>descuentos, regalos y ventajas especiales</strong> de nuestros productores. Y estrenamos el <strong>Club EMDO</strong>: durante la campaña, tus compras con cuenta registrada acumulan un <strong>2 % de cashback</strong> en el monedero.</p>
 				<div class="bf26-hero__buttons">
 					<a class="bf26-button bf26-button--cream" href="#ofertas">Ver todas las promociones <span aria-hidden="true">↗</span></a>
 				</div>
-				<div class="bf26-hero__fine">DESCUENTOS ESPECIALES <i></i> REGALOS <i></i> OPORTUNIDADES PARA DISFRUTAR</div>
+				<div class="bf26-hero__fine">DESCUENTOS ESPECIALES <i></i> REGALOS <i></i> CLUB EMDO: 2 % CASHBACK</div>
 			</div>
 			<div class="bf26-hero__visual" aria-label="Selección de productos ibéricos de El Mercado de Origen">
 				<div class="bf26-hero__frame bf26-hero__frame--back">
@@ -74,7 +74,7 @@ get_header();
 		<div class="bf26-wrap bf26-band__inner">
 			<span>BLACK FRIDAY EN EL MERCADO DE ORIGEN</span><span class="bf26-band__star">✳</span>
 			<strong>DESCUENTOS Y REGALOS ESPECIALES</strong><span class="bf26-band__star">✳</span>
-			<span>DESCUBRE TODAS LAS PROMOCIONES</span>
+			<span>ESTRENAMOS CLUB EMDO · 2 % CASHBACK</span>
 		</div>
 	</div>
 
@@ -126,7 +126,7 @@ get_header();
 							<p class="bf26-hidalgo-rewards__note">Se tiene en cuenta el importe de los productos de Hidalgo de la Jara de tu pedido. <strong>Los regalos son acumulables:</strong> al superar los 250 €, recibes ambos.</p>
 						</div>
 					</div>
-					<p class="bf26-offer__cashback"><span aria-hidden="true">✳</span> <strong>¿Compras con tu cuenta?</strong> Además, acumulas el <strong>1 % en tu monedero Club EMDO</strong> por tus compras. <a href="#club-emdo">Descubre el club ↗</a></p>
+					<p class="bf26-offer__cashback"><span aria-hidden="true">✳</span> <strong>Estrenamos el Club EMDO:</strong> compra con tu cuenta y acumula <strong>2 % de cashback este Black Friday</strong> en tu monedero, en lugar del 1 % habitual. <a href="#club-emdo">Descubre el club ↗</a></p>
 					<a href="<?php echo esc_url( $hidalgo_url ); ?>" class="bf26-button bf26-button--green">Explorar Hidalgo de la Jara <span aria-hidden="true">↗</span></a>
 					
 				</div>
@@ -164,7 +164,7 @@ get_header();
 							</div>
 						</div>
 					</div>
-					<p class="bf26-offer__cashback"><span aria-hidden="true">✳</span> <strong>¿Compras con tu cuenta?</strong> Además, acumulas el <strong>1 % en tu monedero Club EMDO</strong> por tus compras. <a href="#club-emdo">Descubre el club ↗</a></p>
+					<p class="bf26-offer__cashback"><span aria-hidden="true">✳</span> <strong>Estrenamos el Club EMDO:</strong> compra con tu cuenta y acumula <strong>2 % de cashback este Black Friday</strong> en tu monedero, en lugar del 1 % habitual. <a href="#club-emdo">Descubre el club ↗</a></p>
 					<a href="<?php echo esc_url( $montjam_url ); ?>" class="bf26-button bf26-button--green">Explorar Montjam <span aria-hidden="true">↗</span></a>
 					
 				</div>
@@ -175,10 +175,10 @@ get_header();
 	<section class="bf26-club" id="club-emdo" aria-labelledby="bf26-club-title">
 		<div class="bf26-wrap bf26-club__grid">
 			<div class="bf26-club__copy">
-				<p class="bf26-eyebrow bf26-eyebrow--light">DESCUBRE EL CLUB EMDO</p>
-				<h2 id="bf26-club-title">Tus compras<br><em>tienen recompensa.</em></h2>
-				<p class="bf26-club__lead">Y el Black Friday es solo el principio. Si tienes una cuenta en El Mercado de Origen, con Club EMDO recuperas el <strong>1 % del importe de los productos de tus compras</strong> en tu monedero para disfrutarlo cuando quieras.</p>
-				<p class="bf26-club__sublead">También puedes recargar tu saldo cuando quieras y utilizarlo para comprar de forma más cómoda.</p>
+				<p class="bf26-eyebrow bf26-eyebrow--light">ADEMÁS, ESTRENAMOS EL CLUB EMDO</p>
+				<h2 id="bf26-club-title">Tus compras<br><em>vuelven a ti.</em></h2>
+				<p class="bf26-club__lead">Lanzamos el <strong>Club EMDO</strong> para que tus compras tengan recompensa. Al comprar con tu cuenta registrada, acumulas cashback en tu monedero para utilizarlo en próximas compras. La recompensa habitual es del <strong>1 %</strong>, pero <strong>durante Black Friday la duplicamos al 2 % en todas tus compras</strong>, con independencia del productor.</p>
+				<p class="bf26-club__sublead">Y, además de acumular cashback, puedes <strong>recargar tu monedero</strong> cuando quieras y utilizar tu saldo para pagar tus pedidos.</p>
 				<div class="bf26-club__actions">
 					<a href="<?php echo esc_url( $club_account_url ); ?>" class="bf26-button bf26-button--cream">Únete al Club EMDO <span aria-hidden="true">↗</span></a>
 					<a href="<?php echo esc_url( $club_wallet_url ); ?>" class="bf26-club__textlink">Ver mi monedero <span aria-hidden="true">↗</span></a>
@@ -187,7 +187,7 @@ get_header();
 			<div class="bf26-club__visual">
 				<div class="bf26-club__wallet" aria-label="Club EMDO: tu monedero digital">
 					<div class="bf26-club__wallet-top"><span>CLUB EMDO</span><span aria-hidden="true">✳</span></div>
-					<div class="bf26-club__wallet-main"><small>RECOMPENSA POR COMPRA</small><strong>1<span>%</span></strong><span>PARA TU MONEDERO</span></div>
+					<div class="bf26-club__wallet-main"><small>BLACK FRIDAY · CASHBACK</small><strong>2<span>%</span></strong><span>EL DOBLE DEL 1 % HABITUAL</span></div>
 					<div class="bf26-club__wallet-foot"><span>Acumula</span><span>Recarga</span><span>Disfruta</span></div>
 				</div>
 				<div class="bf26-club__token bf26-club__token--one" aria-hidden="true">+</div>
@@ -196,8 +196,8 @@ get_header();
 		</div>
 		<div class="bf26-wrap bf26-club__footer">
 			<div class="bf26-club__conditions">
-				<span>Con tu cuenta registrada, acumulas un 1 % del importe de tus productos en el monedero. No incluye envíos, recargas ni tarjetas regalo.</span>
-				<small>Black Friday en preparación: el descuento y los regalos todavía no están activos. Fechas y condiciones pendientes de confirmar.</small>
+				<span>Durante Black Friday, las compras con cuenta registrada acumulan un 2 % de cashback en el monedero; después, el 1 % habitual. No incluye gastos de envío, recargas ni tarjetas regalo.</span>
+				<small>Campaña en preparación: los descuentos, los regalos y el cashback promocional del 2 % aún no están activados. Fechas y condiciones pendientes de confirmar.</small>
 			</div>
 			<button type="button" class="bf26-reopen" data-bf26-open>Volver a ver la presentación ↗</button>
 		</div>
@@ -211,7 +211,7 @@ get_header();
 		<div class="bf26-overlay__layout">
 			<div class="bf26-overlay__copy">
 				<h2 id="bf26-overlay-title">BLACK<br><em>FRIDAY</em></h2>
-				<p id="bf26-overlay-desc">Este Black Friday trae <strong>descuentos especiales, regalos y ventajas</strong> de nuestros productores. Descubre cada promoción y, si compras con tu cuenta, acumula además <strong>un 1 % en tu monedero Club EMDO</strong>.</p>
+				<p id="bf26-overlay-desc">Este Black Friday llegan <strong>descuentos, regalos y promociones especiales</strong> de nuestros productores. Además, estrenamos el <strong>Club EMDO</strong> con un <strong>2 % de cashback</strong> en todas tus compras durante la campaña si compras con tu cuenta.</p>
 				<div class="bf26-overlay__buttons">
 					<button type="button" class="bf26-overlay__cta" data-bf26-enter>Descubrir las promociones <span aria-hidden="true">↗</span></button>
 					<button type="button" class="bf26-overlay__skip" data-bf26-close>Ahora no, ver la página</button>
