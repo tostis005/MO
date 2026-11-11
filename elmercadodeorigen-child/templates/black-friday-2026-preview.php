@@ -172,7 +172,7 @@ get_header();
 								<p>Solo en los <strong>jamones Montjam de bellota 100 % ibérico de 7 kg o más</strong>, disfrutas de un <strong>2,5 % adicional</strong>. Este extra se aplica <strong>automáticamente en el carrito</strong>, sin introducir otro código. El 15 % para todos los productos Montjam se consigue con <strong>BFMONTJAM</strong>.</p>
 							</div>
 						</div>
-						<p class="bf26-montjam-extras__conditions" id="montjam-letra-pequena"><strong>* Condiciones del 2,5 % adicional:</strong> solo para jamones Montjam de <strong>bellota 100 % ibérico</strong> con peso <strong>igual o superior a 7 kg</strong> (incluye los de 7 kg exactos); no incluye paletas, embutidos ni jamones de menos de 7 kg. Este descuento se refleja automáticamente en el carrito. El <strong>15 % general de Montjam</strong> se obtiene al introducir <strong>BFMONTJAM</strong>.</p>
+						<p class="bf26-montjam-extras__conditions" id="montjam-letra-pequena"><strong>* Condiciones del 2,5 % adicional:</strong> solo para jamones Montjam de <strong>bellota 100 % ibérico</strong> con peso <strong>igual o superior a 7 kg</strong>; no incluye paletas, embutidos ni jamones de menos de 7 kg. Este descuento se refleja automáticamente en el carrito. El <strong>15 % general de Montjam</strong> se obtiene al introducir <strong>BFMONTJAM</strong>.</p>
 						<div class="bf26-montjam-gift">
 							<div class="bf26-montjam-gift__emblem" aria-hidden="true">✳</div>
 							<div>
