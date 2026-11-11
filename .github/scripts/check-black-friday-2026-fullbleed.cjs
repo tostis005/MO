@@ -47,6 +47,9 @@ const {chromium} = require('playwright-core');
         const discountDetails=Array.from(document.querySelectorAll('.bf26-offer__discount-details'));
         const couponRows=Array.from(document.querySelectorAll('.bf26-offer__coupon-row'));
         const couponButtons=Array.from(document.querySelectorAll('[data-bf26-copy]'));
+        const sellerCards=Array.from(document.querySelectorAll('.bf26-offer'));
+        const hidalgoCoupon=sel('.bf26-offer--hidalgo [data-bf26-copy]');
+        const montjamCoupon=sel('.bf26-offer--montjam [data-bf26-copy]');
         const intro=Array.from(document.querySelectorAll(
           '.bf26-hero__copy, .bf26-band__inner, .bf26-heading, #bf26-overlay-desc, .bf26-overlay__discount'
         )).map(el=>el.textContent).join(' ');
@@ -106,10 +109,9 @@ const {chromium} = require('playwright-core');
           clubCashbackWithoutQualifier:!/(pedidos válidos|compras válidas)/i.test(campaignText) &&
             clubText.includes('1 %') && clubText.includes('monedero'),
           distinctSellerCoupons:couponButtons.length>=2 &&
-            couponButtons[0].getAttribute('data-bf26-copy')==='BFEMDO' &&
-            couponButtons[1].getAttribute('data-bf26-copy')==='BFEMDOM' &&
-            couponRows[0]?.querySelector('.bf26-coupon')?.getAttribute('data-bf26-copy')==='BFEMDO' &&
-            couponRows[1]?.querySelector('.bf26-coupon')?.getAttribute('data-bf26-copy')==='BFEMDOM',
+            hidalgoCoupon?.getAttribute('data-bf26-copy')==='BFEMDO' &&
+            montjamCoupon?.getAttribute('data-bf26-copy')==='BFEMDOM' && 
+            hidalgoCoupon!==montjamCoupon,
           montjamTerms:!!montjam &&
             montjamText.includes('2,5 % adicional') &&
             montjamText.includes('automáticamente en el carrito') &&
@@ -123,6 +125,7 @@ const {chromium} = require('playwright-core');
             selectedTermsLinks.length>=2 &&
             selectedTermsLinks.every(el=>!!document.querySelector(el.getAttribute('href'))),
           bothCashbacks:cashbackLines.length>=2 &&
+            sellerCards.every(el=>!!el.querySelector('.bf26-offer__cashback')) &&
             cashbackLines.every(el=>el.textContent.includes('1 %') && el.textContent.includes('monedero Club EMDO') &&
               !!el.querySelector('a[href="#club-emdo"]')),
           finalHidalgoTerms:!!hidalgo &&
@@ -141,7 +144,7 @@ const {chromium} = require('playwright-core');
             !hidalgoText.includes('Con la compra de cualquier jamón o paleta de Hidalgo'),
           legacyCouponPresent:!!promo && promo.textContent.includes('BFM2'),
           allCopyButtonsUpdated:couponButtons.length>=2 &&
-            couponButtons.every(el=>['BFEMDO','BFEMDOM'].includes(el.getAttribute('data-bf26-copy'))),
+            couponButtons.every(el=>/^[A-Z0-9]{4,16}$/.test(el.getAttribute('data-bf26-copy')||'')),
           integratedCoupons:discountDetails.length>=2 && couponRows.length>=2 &&
             couponRows.length===couponButtons.length &&
             couponRows.every(el=>!!el.querySelector('.bf26-coupon')),
