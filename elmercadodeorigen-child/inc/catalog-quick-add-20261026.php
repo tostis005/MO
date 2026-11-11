@@ -61,12 +61,13 @@ add_action(
 			: 'button product_type_variable emo-card-quick-add-source';
 
 		printf(
-			'<a href="%1$s" class="%2$s" data-product_id="%3$d" data-product_sku="%4$s" data-quantity="1" aria-label="%5$s" rel="nofollow">%6$s</a>',
+			'<a href="%1$s" class="%2$s" data-product_id="%3$d" data-product_sku="%4$s" data-quantity="%6$d" aria-label="%5$s" rel="nofollow">%7$s</a>',
 			esc_url( $url ),
 			esc_attr( $classes ),
 			(int) $product->get_id(),
 			esc_attr( $product->get_sku() ),
 			esc_attr( sprintf( '%s: %s', $label, $product->get_name() ) ),
+			elmercado_is_montjam_sliced_minimum_20261111( $product ) ? 5 : 1,
 			esc_html( $label )
 		);
 	},
@@ -641,7 +642,12 @@ add_action(
 					: 'product_type_variable');
 				control.href = simple ? '?add-to-cart=' + encodeURIComponent(id) : link.href;
 				control.dataset.product_id = id;
-				control.dataset.quantity = '1';
+				const productPath = new URL(link.href, window.location.href).pathname.toLowerCase();
+				const isMinMontjam = productPath.includes('lomo-bellota-100-iberico-loncheado-montjam-90g')
+					|| productPath.includes('chorizo-cular-iberico-extra-loncheado-montjam-90g')
+					|| (productPath.includes('montjam') && productPath.includes('salchichon')
+						&& /lonchead|sobre|90-?g/.test(productPath));
+				control.dataset.quantity = isMinMontjam ? '5' : '1';
 				control.textContent = simple ? 'Añadir al carrito' : 'Seleccionar opciones';
 				card.append(control);
 				return control;
@@ -674,6 +680,14 @@ add_action(
 				control.style.setProperty('max-height', '53px', 'important');
 				control.style.setProperty('padding', '0px', 'important');
 				control.style.setProperty('line-height', '0px', 'important');
+				/* Preserve the five-sachet minimum even for cached/native loop links. */
+				const productPath = (card.querySelector('a.woocommerce-LoopProduct-link[href],a[href*="/producto/"]')?.href || '').toLowerCase();
+				if (!options && (productPath.includes('lomo-bellota-100-iberico-loncheado-montjam-90g')
+					|| productPath.includes('chorizo-cular-iberico-extra-loncheado-montjam-90g')
+					|| (productPath.includes('montjam') && productPath.includes('salchichon')
+						&& /lonchead|sobre|90-?g/.test(productPath)))) {
+					control.dataset.quantity = '5';
+				}
 				control.dataset.emoQuickAction = options ? 'options' : 'add';
 				if (!options && control.matches('.product_type_simple') && control.dataset.product_id && window.wc_add_to_cart_params) {
 					control.classList.add('ajax_add_to_cart');
