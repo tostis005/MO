@@ -2,7 +2,9 @@ name: EMDO production performance snapshot (read only) 20261111
 on:
   push:
     branches: [diagnostics/emdo-performance-20261111]
-    paths: ['.github/workflows/emdo-performance-snapshot-20261111.yml']
+    paths:
+      - '.github/workflows/emdo-performance-snapshot-20261111.yml'
+      - 'elmercadodeorigen-child/dropins/advanced-cache.php'
   workflow_dispatch:
 permissions:
   contents: read
@@ -16,6 +18,54 @@ jobs:
       STAGING_USER: ${{ secrets.STAGING_USER }}
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
+      - uses: actions/checkout@v4
+      - name: PHP syntax and isolated anonymous home-cache regression
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l elmercadodeorigen-child/dropins/advanced-cache.php
+          ROOT=$(mktemp -d)
+          mkdir -p "$ROOT/wp-content/uploads/elmercado-home-static"
+          cp elmercadodeorigen-child/dropins/advanced-cache.php "$ROOT/wp-content/advanced-cache.php"
+          python3 - "$ROOT" <<'PY'
+          import sys,pathlib
+          f=pathlib.Path(sys.argv[1])/'wp-content/uploads/elmercado-home-static/index.html'
+          f.write_text('<!doctype html><html><body>EARLY_CACHE_FIXTURE'+('a'*60000)+'</body></html>')
+          PY
+          cat > "$ROOT/router.php" <<'PHP'
+          <?php
+          define('ABSPATH', __DIR__ . '/');
+          require __DIR__ . '/wp-content/advanced-cache.php';
+          header('X-EMDO-Fallback: BOOT');
+          echo 'FALLBACK_WITHOUT_EARLY_CACHE';
+          PHP
+          php -S 127.0.0.1:8877 -t "$ROOT" "$ROOT/router.php" >/tmp/emdo-php-server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true; rm -rf "$ROOT"' EXIT
+          sleep 1
+          BASE=http://127.0.0.1:8877/
+          H=$(mktemp)
+          B=$(mktemp)
+          call() { curl -sS --max-time 5 -H 'Host: www.elmercadodeorigen.com' "$@" -D "$H" -o "$B" "$BASE"; }
+          require_hit() {
+            grep -qi '^X-El-Mercado-Home-Early-Cache: HIT' "$H"
+            grep -q EARLY_CACHE_FIXTURE "$B"
+          }
+          require_bypass() {
+            ! grep -qi '^X-El-Mercado-Home-Early-Cache: HIT' "$H"
+            grep -q FALLBACK_WITHOUT_EARLY_CACHE "$B"
+          }
+          call; require_hit; echo "PASS: safe anonymous HIT"
+          call -H 'Cookie: _ga=analytics'; require_hit; echo "PASS: harmless analytics cookie"
+          call -H 'Cookie: wordpress_logged_in_example=1'; require_bypass; echo "PASS: logged-in bypass"
+          call -H 'Cookie: woocommerce_items_in_cart=1'; require_bypass; echo "PASS: cart bypass"
+          call -H 'Cookie: private_custom_cookie=1'; require_bypass; echo "PASS: unknown cookie bypass"
+          call -X POST; require_bypass; echo "PASS: POST bypass"
+          call -H 'Host: other.example.com'; require_bypass; echo "PASS: foreign-host bypass"
+          curl -sS --max-time 5 -H 'Host: www.elmercadodeorigen.com' -D "$H" -o "$B" "$BASE?nocache=1"; require_bypass; echo "PASS: query bypass"
+          touch -d '11 minutes ago' "$ROOT/wp-content/uploads/elmercado-home-static/index.html"
+          call; require_bypass; echo "PASS: expired HTML bypass"
+          echo "ISOLATED_HOME_CACHE_TESTS_OK"
       - name: Collect anonymized production metrics without changing state
         shell: bash
         run: |
