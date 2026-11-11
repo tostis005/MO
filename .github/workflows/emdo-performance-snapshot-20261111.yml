@@ -61,7 +61,7 @@ jobs:
           call -H 'Cookie: woocommerce_items_in_cart=1'; require_bypass; echo "PASS: cart bypass"
           call -H 'Cookie: private_custom_cookie=1'; require_bypass; echo "PASS: unknown cookie bypass"
           call -X POST; require_bypass; echo "PASS: POST bypass"
-          call -H 'Host: other.example.com'; require_bypass; echo "PASS: foreign-host bypass"
+          curl -sS --max-time 5 -H 'Host: other.example.com' -D "$H" -o "$B" "$BASE"; require_bypass; echo "PASS: foreign-host bypass"
           curl -sS --max-time 5 -H 'Host: www.elmercadodeorigen.com' -D "$H" -o "$B" "$BASE?nocache=1"; require_bypass; echo "PASS: query bypass"
           touch -d '11 minutes ago' "$ROOT/wp-content/uploads/elmercado-home-static/index.html"
           call; require_bypass; echo "PASS: expired HTML bypass"
