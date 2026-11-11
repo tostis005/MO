@@ -1,7 +1,8 @@
 <?php
 /**
- * Página de revisión Black Friday 2026. Todo el contenido promocional es
- * una propuesta visual: no activa el cupón ni entrega regalos.
+ * Página Black Friday 2026: ofertas confirmadas de Hidalgo de la Jara
+ * y propuestas pendientes de otros productores. Esta plantilla solo informa;
+ * no activa cupones ni modifica los pedidos.
  *
  * @package ElMercadoDeOrigen
  */
@@ -34,7 +35,6 @@ if ( ! function_exists( 'emdo_bf2026_photo' ) ) {
 
 $hidalgo_url  = home_url( '/tienda/hidalgo-de-la-jara/' );
 $montjam_url  = home_url( '/tienda/montjam/' );
-$cheese_url   = home_url( '/producto/miniqueso-a-la-pimienta-negra/' );
 $chorizo_url  = home_url( '/producto/chorizo-cular-iberico-extra-loncheado-montjam-90g/' );
 $club_account_url = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : home_url( '/mi-cuenta/' );
 $club_wallet_url  = function_exists( 'wc_get_account_endpoint_url' ) ? wc_get_account_endpoint_url( 'monedero' ) : $club_account_url;
@@ -43,7 +43,6 @@ $hidalgo_ham   = emdo_bf2026_photo( 'jamon-de-bellota-100-iberico', 'Jamón de b
 $hidalgo_palet = emdo_bf2026_photo( 'paleta-de-bellota-100-iberico', 'Paleta de bellota 100 % ibérica de Hidalgo de la Jara' );
 $montjam_ham   = emdo_bf2026_photo( 'jamon-de-bellota-100-iberico-montjam', 'Jamón de bellota 100 % ibérico de Montjam' );
 $montjam_slice = emdo_bf2026_photo( 'jamon-bellota-100-iberico-loncheado-montjam-90g', 'Sobre de jamón de bellota 100 % ibérico loncheado Montjam' );
-$cheese        = emdo_bf2026_photo( 'miniqueso-a-la-pimienta-negra', 'Miniqueso de oveja Pajarete de 100 gramos' );
 $chorizo       = emdo_bf2026_photo( 'chorizo-cular-iberico-extra-loncheado-montjam-90g', 'Sobre de chorizo ibérico loncheado de Montjam' );
 
 get_header();
@@ -53,21 +52,21 @@ get_header();
 	<section class="bf26-hero">
 		<div class="bf26-wrap bf26-hero__grid">
 			<div class="bf26-hero__copy">
-				<h1 id="bf26-title">Black Friday.<em>15 % menos.</em><span>Un regalo más.</span></h1>
-				<p class="bf26-hero__lead">Tus ibéricos favoritos tienen premio: disfruta de un <strong>15 % de descuento</strong> con el código <strong>BFEMDO</strong> y llévate un regalo extra al elegir un jamón o una paleta.</p>
+				<h1 id="bf26-title">Black Friday.<em>15 % menos.</em><span>Más ventajas.</span></h1>
+				<p class="bf26-hero__lead">Hidalgo de la Jara se supera este Black Friday: <strong>15 % de descuento</strong> con BFEMDO, <strong>medio kilo más</strong> en jamones de brida negra seleccionados y regalos al superar 150 € y 250 €.</p>
 				<div class="bf26-hero__buttons">
-					<a class="bf26-button bf26-button--cream" href="#ofertas">Descubrir las ofertas <span aria-hidden="true">↗</span></a>
+					<a class="bf26-button bf26-button--cream" href="#hidalgo-oferta">Descubrir las ventajas <span aria-hidden="true">↗</span></a>
 				</div>
-				<div class="bf26-hero__fine">15 % DE DESCUENTO <i></i> CÓDIGO BFEMDO <i></i> REGALO EXTRA</div>
+				<div class="bf26-hero__fine">15 % EN HIDALGO <i></i> + 0,5 KG EN JAMONES SELECCIONADOS <i></i> REGALOS POR IMPORTE</div>
 			</div>
 			<div class="bf26-hero__visual" aria-label="Selección de productos ibéricos de El Mercado de Origen">
 				<div class="bf26-hero__frame bf26-hero__frame--back">
-					<?php if ( $montjam_ham ) { echo $montjam_ham; } else { echo '<div class="bf26-image-fallback">MONTJAM<br><strong>Ibéricos</strong></div>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+					<?php if ( $hidalgo_ham ) { echo $hidalgo_ham; } else { echo '<div class="bf26-image-fallback">HIDALGO<br><strong>DE LA JARA</strong></div>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 				</div>
 				<div class="bf26-hero__frame bf26-hero__frame--front">
 					<?php if ( $hidalgo_palet ) { echo $hidalgo_palet; } else { echo '<div class="bf26-image-fallback">HIDALGO<br><strong>DE LA JARA</strong></div>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 				</div>
-				<div class="bf26-hero__seal"><small>OFERTA<br>ESPECIAL</small><strong>15<span>%</span></strong><span>EN IBÉRICOS</span></div>
+				<div class="bf26-hero__seal"><small>OFERTA<br>ESPECIAL</small><strong>15<span>%</span></strong><span>EN HIDALGO</span></div>
 				<div class="bf26-hero__stamp" aria-hidden="true">CALIDAD <span>✳</span> TRADICIÓN <span>✳</span> SABOR</div>
 			</div>
 		</div>
@@ -76,9 +75,9 @@ get_header();
 
 	<div class="bf26-band" aria-label="Resumen de las ofertas de Black Friday">
 		<div class="bf26-wrap bf26-band__inner">
-			<span>TUS FAVORITOS, CON VENTAJA</span><span class="bf26-band__star">✳</span>
+			<span>HIDALGO DE LA JARA</span><span class="bf26-band__star">✳</span>
 			<strong>–15 % CON BFEMDO</strong><span class="bf26-band__star">✳</span>
-			<span>REGALOS CON JAMONES Y PALETAS</span>
+			<span>+ 0,5 KG EN BRIDA NEGRA · REGALOS POR IMPORTE</span>
 		</div>
 	</div>
 
@@ -87,12 +86,12 @@ get_header();
 			<div class="bf26-heading">
 				<div>
 					<p class="bf26-eyebrow">LAS PROMOCIONES</p>
-					<h2>15 % de descuento.<br><em>Y un detalle que enamora.</em></h2>
+					<h2>15 % de descuento.<br><em>Y mucho más que ahorrar.</em></h2>
 				</div>
-				<p>El Black Friday sabe mejor cuando viene con regalo. Descubre las ofertas y elige tu próximo capricho ibérico.</p>
+				<p>Este Black Friday, Hidalgo de la Jara suma un tramo de peso superior y regalos según el importe de tu pedido.</p>
 			</div>
 
-			<article class="bf26-offer bf26-offer--hidalgo" aria-labelledby="bf26-hidalgo-title">
+			<article class="bf26-offer bf26-offer--hidalgo" id="hidalgo-oferta" aria-labelledby="bf26-hidalgo-title">
 				<div class="bf26-offer__media">
 					<div class="bf26-offer__photobg">
 						<?php if ( $hidalgo_ham ) { echo $hidalgo_ham; } else { echo '<div class="bf26-image-fallback">HIDALGO<br><strong>DE LA JARA</strong></div>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
@@ -103,14 +102,32 @@ get_header();
 				<div class="bf26-offer__content">
 					<div class="bf26-offer__top"><span class="bf26-offer__origin">DE LA DEHESA DE LOS PEDROCHES</span><span class="bf26-offer__tag">15% DE DESCUENTO</span></div>
 					<h3 id="bf26-hidalgo-title">Hidalgo <em>de la Jara</em></h3>
-					<p class="bf26-offer__description">Ese jamón que llevas tiempo queriendo probar, ahora con un motivo más para decidirte. Aprovecha el descuento en toda su selección.</p>
+					<p class="bf26-offer__description">Llévate tus ibéricos favoritos con un 15 % de descuento en todos los productos de Hidalgo de la Jara de nuestra tienda. Y aprovecha las ventajas especiales para tus jamones y pedidos.</p>
 					<div class="bf26-offer__discount"><strong>–15<span>%</span></strong><div class="bf26-offer__discount-details"><span>EN TODOS SUS PRODUCTOS</span><div class="bf26-offer__coupon-row"><span class="bf26-offer__coupon-hint">CÓDIGO</span><button type="button" class="bf26-coupon" data-bf26-copy="BFEMDO" aria-label="Copiar cupón BFEMDO">BFEMDO <span aria-hidden="true">⧉</span></button></div></div></div>
-					<div class="bf26-gift">
-						<div class="bf26-gift__image">
-							<?php if ( $cheese ) { echo $cheese; } else { echo '<span class="bf26-gift__illustration" aria-hidden="true">✷</span>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+					<div class="bf26-hidalgo-benefits" aria-label="Ventajas especiales de Black Friday para Hidalgo de la Jara">
+						<div class="bf26-hidalgo-upgrade">
+							<div class="bf26-hidalgo-upgrade__emblem" aria-hidden="true"><strong>+0,5</strong><span>KG</span></div>
+							<div class="bf26-hidalgo-upgrade__copy">
+								<span class="bf26-hidalgo-benefits__eyebrow">VENTAJA EXTRA EN JAMONES DE BRIDA NEGRA</span>
+								<h4>Compras un peso. <em>Recibes el siguiente.</em></h4>
+								<p>Desde el tramo de <strong>7,5–8 kg</strong> en adelante, te enviamos el tramo superior, <strong>medio kilo más sin coste adicional</strong>. Por ejemplo, eliges 7,5–8 kg y recibes 8–8,5 kg.</p>
+								<p class="bf26-hidalgo-upgrade__note">Válido para jamones de brida negra de Hidalgo de la Jara, tanto con Denominación de Origen Protegida (DOP) como sin DOP.</p>
+							</div>
 						</div>
-						<div class="bf26-gift__text"><span>Y ADEMÁS, UN REGALO MUY ESPECIAL</span><strong>Un miniqueso Pajarete de 100 g</strong><p>Con la compra de cualquier jamón o paleta de Hidalgo de la Jara, ya sea entero o loncheado. <a href="<?php echo esc_url( $cheese_url ); ?>">Conoce el miniqueso ↗</a></p></div>
-						<div class="bf26-gift__icon" aria-hidden="true">✳</div>
+						<div class="bf26-hidalgo-rewards">
+							<div class="bf26-hidalgo-rewards__heading"><span class="bf26-hidalgo-benefits__eyebrow">REGALOS SEGÚN TU PEDIDO</span><h4>Cuanto más disfrutas, <em>más te llevas.</em></h4></div>
+							<div class="bf26-hidalgo-rewards__grid">
+								<div class="bf26-hidalgo-rewards__tier">
+									<span>COMPRAS SUPERIORES A</span><strong>150 €</strong>
+									<p>Te regalamos <b>un sobre de salchichón</b>.</p>
+								</div>
+								<div class="bf26-hidalgo-rewards__tier bf26-hidalgo-rewards__tier--premium">
+									<span>COMPRAS SUPERIORES A</span><strong>250 €</strong>
+									<p>Te llevas <b>el sobre de salchichón y un miniqueso Pajarete de 90 g</b>.</p>
+								</div>
+							</div>
+							<p class="bf26-hidalgo-rewards__note">Se tiene en cuenta el importe de los productos de Hidalgo de la Jara de tu pedido. <strong>Los regalos son acumulables:</strong> al superar los 250 €, recibes ambos.</p>
+						</div>
 					</div>
 					<a href="<?php echo esc_url( $hidalgo_url ); ?>" class="bf26-button bf26-button--green">Explorar Hidalgo de la Jara <span aria-hidden="true">↗</span></a>
 					
@@ -183,7 +200,7 @@ get_header();
 		<div class="bf26-overlay__layout">
 			<div class="bf26-overlay__copy">
 				<h2 id="bf26-overlay-title">BLACK<br><em>FRIDAY</em></h2>
-				<p id="bf26-overlay-desc">Este Black Friday, elige tus ibéricos favoritos con <strong>un 15 % de descuento</strong>. Y si compras un jamón o una paleta, tenemos un regalo para ti.</p>
+				<p id="bf26-overlay-desc">En Hidalgo de la Jara tienes <strong>un 15 % de descuento</strong>, medio kilo más en jamones de brida negra seleccionados y regalos especiales según el importe de tu compra.</p>
 				<div class="bf26-overlay__buttons">
 					<button type="button" class="bf26-overlay__cta" data-bf26-enter>Descubrir las promociones <span aria-hidden="true">↗</span></button>
 					<button type="button" class="bf26-overlay__skip" data-bf26-close>Ahora no, ver la página</button>
@@ -194,7 +211,7 @@ get_header();
 				<div class="bf26-overlay__photo">
 					<?php if ( $hidalgo_palet ) { echo $hidalgo_palet; } elseif ( $montjam_ham ) { echo $montjam_ham; } else { echo '<div class="bf26-image-fallback">IBÉRICOS<br><strong>SELECCIONADOS</strong></div>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 				</div>
-				<div class="bf26-overlay__discount"><small>OFERTA ESPECIAL</small><strong>–15<span>%</span></strong><span>CÓDIGO BFEMDO</span></div>
+				<div class="bf26-overlay__discount"><small>HIDALGO DE LA JARA</small><strong>–15<span>%</span></strong><span>CÓDIGO BFEMDO</span></div>
 				<div class="bf26-overlay__asterisk">✳</div>
 			</div>
 		</div>
