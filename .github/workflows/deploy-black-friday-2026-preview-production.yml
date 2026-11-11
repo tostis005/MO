@@ -48,6 +48,11 @@ jobs:
           grep -Fq 'automáticamente en el carrito' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'fuet de regalo' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'bf26-offer__cashback' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'Ofertas que apetecen.' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'Cada productor tiene su propia promoción' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          ! grep -Fiq 'dos productores' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          ! grep -Fiq 'dos cupones' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          ! grep -Fiq 'pedidos válidos' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'montjam-letra-pequena' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           ! grep -Fq 'Un sobre de chorizo + uno de salchichón' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'bf26-offer__coupon-row' elmercadodeorigen-child/templates/black-friday-2026-preview.php
@@ -202,6 +207,11 @@ jobs:
           grep -Fq 'automáticamente en el carrito' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'fuet de regalo' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'bf26-offer__cashback' "/tmp/bf-preview-$RUN.html"
+          grep -Fq 'Ofertas que apetecen.' "/tmp/bf-preview-$RUN.html"
+          grep -Fq 'Cada productor tiene su propia promoción' "/tmp/bf-preview-$RUN.html"
+          ! grep -Fiq 'dos productores' "/tmp/bf-preview-$RUN.html"
+          ! grep -Fiq 'dos cupones' "/tmp/bf-preview-$RUN.html"
+          ! grep -Fiq 'pedidos válidos' "/tmp/bf-preview-$RUN.html"
           ! grep -Fq 'Un sobre de chorizo + uno de salchichón' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'bf26-offer__coupon-row' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'bf26-hidalgo-benefits' "/tmp/bf-preview-$RUN.html"
