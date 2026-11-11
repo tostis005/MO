@@ -105,6 +105,8 @@ $orders = array(
 	113 => new WC_Order( 42, false, array( new Test_Club_Item( 20, 100.00, 10.00 ) ), false ),
 	114 => new WC_Order( 42, true, array( new Test_Club_Item( 901, 25.00, 0.00 ) ) ),
 );
+// The buyer was authenticated at checkout, before the payment callback.
+$orders[111]->update_meta_data( '_mdo_club_checkout_user_id', 42 );
 MDO_Club::award_reward( 111 );
 check( MDO_Club_Ledger::balance( 42 ) === 88, 'Purchase of 88 EUR credits 0.88 EUR' );
 MDO_Club::award_reward( 111 );
