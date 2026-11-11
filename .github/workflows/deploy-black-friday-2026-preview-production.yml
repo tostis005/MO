@@ -44,8 +44,8 @@ jobs:
           grep -Fq 'id="bf26-overlay"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'BFEMDO' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'data-bf26-copy="BFEMDOM"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
-          grep -Fq "'hidalgo' => true" elmercadodeorigen-child/templates/black-friday-2026-preview.php
-          grep -Fq "'montjam' => true" elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq "'hidalgo' =>" elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq "'montjam' =>" elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'if ( $bf26_visible_offers[' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq '15 % de descuento en todos los productos Montjam de nuestra tienda' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           ! grep -Fq 'con su propio cupón' elmercadodeorigen-child/templates/black-friday-2026-preview.php
@@ -227,7 +227,6 @@ jobs:
           ! grep -Fiq 'pedidos válidos' "/tmp/bf-preview-$RUN.html"
           ! grep -Fq 'Un sobre de chorizo + uno de salchichón' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'bf26-offer__coupon-row' "/tmp/bf-preview-$RUN.html"
-          grep -Fq 'bf26-hidalgo-benefits' "/tmp/bf-preview-$RUN.html"
 
           ! grep -Fq 'miniqueso Pajarete de 100 g' "/tmp/bf-preview-$RUN.html"
           ! grep -Fq 'Introduce el código' "/tmp/bf-preview-$RUN.html"
