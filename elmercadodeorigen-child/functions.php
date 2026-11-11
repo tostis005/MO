@@ -183,6 +183,7 @@ $elmercado_modules = array(
 	'inc/adsterra-blog-010290.php',
 	'inc/cart-cross-sells-layout-010314.php',
 	'inc/montjam-dop-attributes-010317.php',
+	'inc/montjam-sliced-minimum-20261111.php',
 	'inc/product-gallery-controls-010318.php',
 	'inc/catalog-quick-add-20261026.php',
 );
