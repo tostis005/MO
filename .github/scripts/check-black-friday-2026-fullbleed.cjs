@@ -47,13 +47,22 @@ const {chromium} = require('playwright-core');
         const discountDetails=Array.from(document.querySelectorAll('.bf26-offer__discount-details'));
         const couponRows=Array.from(document.querySelectorAll('.bf26-offer__coupon-row'));
         const couponButtons=Array.from(document.querySelectorAll('[data-bf26-copy]'));
+        const hidalgo=sel('.bf26-offer--hidalgo');
+        const hidalgoText=hidalgo?.textContent || '';
+        const hidalgoPremium=sel('.bf26-hidalgo-rewards__tier--premium')?.textContent || '';
+        const hidalgoGiftTiers=Array.from(document.querySelectorAll('.bf26-hidalgo-rewards__tier'));
         const offerSelectors=[
           '.bf26-offer', '.bf26-offer__content', '.bf26-offer__description',
           '.bf26-offer__discount', '.bf26-offer__discount > strong',
           '.bf26-offer__discount-details', '.bf26-offer__coupon-row',
           '.bf26-offer__coupon-row .bf26-coupon', '.bf26-gift',
           '.bf26-gift__text', '.bf26-gift__text > strong',
-          '.bf26-offer__content > a.bf26-button'
+          '.bf26-offer__content > a.bf26-button',
+          '.bf26-hidalgo-benefits','.bf26-hidalgo-upgrade',
+          '.bf26-hidalgo-upgrade__emblem','.bf26-hidalgo-upgrade__copy',
+          '.bf26-hidalgo-upgrade__copy h4','.bf26-hidalgo-rewards',
+          '.bf26-hidalgo-rewards__grid','.bf26-hidalgo-rewards__tier',
+          '.bf26-hidalgo-rewards__note'
         ];
         const offerRectangles=offerSelectors.flatMap(selector=>
           Array.from(document.querySelectorAll(selector)).map(el=>{
@@ -73,6 +82,20 @@ const {chromium} = require('playwright-core');
         }));
         return {
           couponPresent:!!promo && promo.textContent.includes('BFEMDO'),
+          finalHidalgoTerms:!!hidalgo &&
+            hidalgoText.includes('7,5–8 kg') &&
+            hidalgoText.includes('8–8,5 kg') &&
+            hidalgoText.includes('brida negra') &&
+            hidalgoText.includes('sin DOP') &&
+            hidalgoText.includes('150 €') &&
+            hidalgoText.includes('250 €') &&
+            hidalgoText.includes('sobre de salchichón') &&
+            hidalgoText.includes('miniqueso Pajarete de 90 g') &&
+            hidalgoPremium.includes('sobre de salchichón') &&
+            hidalgoPremium.includes('miniqueso Pajarete de 90 g') &&
+            hidalgoGiftTiers.length===2,
+          noOldHidalgoGift:!!hidalgo && !hidalgoText.includes('100 g') &&
+            !hidalgoText.includes('Con la compra de cualquier jamón o paleta de Hidalgo'),
           legacyCouponPresent:!!promo && promo.textContent.includes('BFM2'),
           allCopyButtonsUpdated:couponButtons.length===2 && couponButtons.every(el=>el.getAttribute('data-bf26-copy')==='BFEMDO'),
           integratedCoupons:discountDetails.length===2 && couponRows.length===2
@@ -92,6 +115,9 @@ const {chromium} = require('playwright-core');
         };
       });
       console.log('BF2026_GEOMETRY_'+label.toUpperCase()+'='+JSON.stringify(measurement));
+      if (!measurement.finalHidalgoTerms || !measurement.noOldHidalgoGift) {
+        throw Error('Missing definitive Hidalgo BF benefits at '+label+': '+JSON.stringify(measurement));
+      }
       if (!measurement.couponPresent || measurement.legacyCouponPresent || !measurement.allCopyButtonsUpdated
           || !measurement.integratedCoupons || !measurement.noOldCouponSentence
           || measurement.heroTitleTopGap===null || measurement.heroTitleTopGap<0 || measurement.heroTitleTopGap>105
