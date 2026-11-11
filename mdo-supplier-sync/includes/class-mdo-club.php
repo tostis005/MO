@@ -33,6 +33,9 @@ final class MDO_Club {
 		add_action( 'woocommerce_check_cart_items', array( __CLASS__, 'check_prepaid_cart' ) );
 		add_filter( 'woocommerce_coupon_is_valid', array( __CLASS__, 'no_coupons_for_prepaid' ), 20, 2 );
 		add_filter( 'woocommerce_available_payment_gateways', array( __CLASS__, 'prepaid_gateways' ), 999 );
+		// Store the authenticated buyer at checkout, never infer it from billing email later.
+		add_action( 'woocommerce_checkout_create_order', array( __CLASS__, 'capture_reward_checkout_identity' ), 10, 1 );
+		add_action( 'woocommerce_store_api_checkout_order_processed', array( __CLASS__, 'capture_store_api_reward_checkout_identity' ), 10, 1 );
 		add_action( 'woocommerce_checkout_create_order_line_item', array( __CLASS__, 'line_metadata' ), 10, 4 );
 		add_action( 'woocommerce_payment_complete', array( __CLASS__, 'issue_prepaid' ), 20 );
 		add_action( 'woocommerce_order_status_completed', array( __CLASS__, 'issue_prepaid' ), 20 );
@@ -645,11 +648,48 @@ final class MDO_Club {
 			. '<p style="padding:0 25px 25px;font-size:12px;color:#7d8b80">' . esc_html( $site ) . '</p></div></div>';
 		return wp_mail( $email, 'Tu tarjeta regalo de Club EMDO', $body, array( 'Content-Type: text/html; charset=UTF-8' ) );
 	}
+	/**
+	 * Reward eligibility belongs to the authenticated checkout session, not to
+	 * an email address or a customer ID attached to the order at a later date.
+	 * Classic checkout persists this metadata when WooCommerce saves the order.
+	 */
+	public static function capture_reward_checkout_identity( $order ): void {
+		if ( ! $order instanceof WC_Order ) { return; }
+		$user_id = is_user_logged_in() ? (int) get_current_user_id() : 0;
+		if ( $user_id > 0
+			&& $user_id === (int) $order->get_customer_id()
+			&& get_user_by( 'id', $user_id ) ) {
+			$order->update_meta_data( '_mdo_club_checkout_user_id', $user_id );
+		} else {
+			// In particular, a reused Store API draft must not retain an old login.
+			$order->delete_meta_data( '_mdo_club_checkout_user_id' );
+		}
+	}
+	/**
+	 * Checkout Blocks / Store API: the order has already been saved, so persist
+	 * the checkout identity before the payment gateway can confirm its payment.
+	 */
+	public static function capture_store_api_reward_checkout_identity( $order ): void {
+		if ( ! $order instanceof WC_Order ) { return; }
+		self::capture_reward_checkout_identity( $order );
+		$order->save();
+	}
 	public static function award_reward( int $order_id ): void {
 		if ( ! self::enabled( 'rewards' ) ) { return; }
 		$order = wc_get_order( $order_id );
-		if ( ! $order || ! $order->is_paid() || ! $order->get_date_paid() || self::is_prepaid( $order ) || ! $order->get_customer_id() || ! get_user_by( 'id', (int) $order->get_customer_id() ) || (int) $order->get_meta( '_mdo_club_award_cents' ) > 0 ) { return; }
+		if ( ! $order || ! $order->is_paid() || ! $order->get_date_paid() || self::is_prepaid( $order ) ) { return; }
+		$customer_id = (int) $order->get_customer_id();
+		// A registered account alone does not suffice: it must have been logged
+		// in during checkout. Never assign a reward by matching billing email.
+		if ( $customer_id <= 0
+			|| $customer_id !== (int) $order->get_meta( '_mdo_club_checkout_user_id' )
+			|| ! get_user_by( 'id', $customer_id )
+			|| (int) $order->get_meta( '_mdo_club_award_cents' ) > 0 ) {
+			return;
+		}
 		$eligible = 0;
+		// Only discounted product line totals (including product tax) qualify.
+		// Shipping, shipping tax and order fees are never part of this sum.
 		foreach ( $order->get_items( 'line_item' ) as $item ) {
 			if ( self::product_kind( (int) $item->get_product_id() ) ) { continue; }
 			$eligible += MDO_Club_Ledger::cents( (float) $item->get_total() + (float) $item->get_total_tax() );
