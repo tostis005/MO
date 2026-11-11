@@ -61,6 +61,18 @@ const {chromium} = require('playwright-core');
         const clubWalletText=sel('.bf26-club__wallet')?.textContent || '';
         const clubFooterText=sel('.bf26-club__footer')?.textContent || '';
         const overlayText=sel('#bf26-overlay-desc')?.textContent || '';
+        const campaignStamps=Array.from(document.querySelectorAll(
+          '.bf26-hero__seal.bf26-campaign-stamp, .bf26-overlay__discount.bf26-campaign-stamp'
+        ));
+        const campaignStampTypography=campaignStamps.map(el=>({
+          heading:el.querySelector('strong')?.textContent.trim(),
+          edition:el.querySelector('small')?.textContent.trim(),
+          benefit:el.querySelector(':scope > span')?.textContent.trim(),
+          centerFontSize:parseFloat(getComputedStyle(el.querySelector('strong')).fontSize),
+          labelFontSize:parseFloat(getComputedStyle(el.querySelector(':scope > span')).fontSize),
+          circleWidth:parseFloat(getComputedStyle(el).width),
+          ring:getComputedStyle(el,'::before').borderTopWidth
+        }));
         const hidalgo=sel('.bf26-offer--hidalgo');
         const hidalgoText=hidalgo?.textContent || '';
         const hidalgoPremium=sel('.bf26-hidalgo-rewards__tier--premium')?.textContent || '';
@@ -120,11 +132,18 @@ const {chromium} = require('playwright-core');
             intro.includes('BLACK FRIDAY') &&
             intro.includes('DESCUENTOS Y REGALOS ESPECIALES') &&
             !!sel('.bf26-hero__seal strong') &&
-            sel('.bf26-hero__seal strong').textContent.trim()==='BF' &&
-            sel('.bf26-overlay__discount strong')?.textContent.trim()==='BF',
+            sel('.bf26-hero__seal strong').textContent.trim()==='BLACKFRIDAY' &&
+            sel('.bf26-overlay__discount strong')?.textContent.trim()==='BLACKFRIDAY',
           clubCashbackWithoutQualifier:!/(pedidos válidos|compras válidas)/i.test(campaignText) &&
             clubText.includes('1 %') && clubText.includes('2 %') &&
             clubText.includes('en todas tus compras') && clubText.includes('monedero'),
+          campaignStampDesign:campaignStamps.length===2 &&
+            campaignStampTypography.every(st=>
+              st.heading==='BLACKFRIDAY' &&
+              st.edition==='EDICIÓN 2026' &&
+              st.benefit.includes('OFERTAS') && st.benefit.includes('REGALOS') &&
+              st.centerFontSize>=18 && st.labelFontSize>=6 && st.circleWidth>=100 &&
+              st.ring!=='0px'),
           clubLaunchBlackFridayBoost:
             clubText.includes('Lanzamos el') &&
             clubText.includes('recargar tu monedero') &&
@@ -188,6 +207,7 @@ const {chromium} = require('playwright-core');
           removedHeroEyebrow:!sel('.bf26-hero__copy .bf26-eyebrow'),
           removedHowItWorksLink:!sel('a[href="#como-funciona"]'),
           percentGlyphs,
+          campaignStampTypography,
           offerRectangles,
           width:window.innerWidth,scrollWidth:document.documentElement.scrollWidth,
           header:!!header,cart:!!cart,footer:box(footer),
@@ -197,6 +217,10 @@ const {chromium} = require('playwright-core');
         };
       });
       console.log('BF2026_GEOMETRY_'+label.toUpperCase()+'='+JSON.stringify(measurement));
+      if (!measurement.campaignStampDesign) {
+        throw Error('Black Friday campaign seals are not readable or consistent at '+label+': '+
+          JSON.stringify(measurement.campaignStampTypography));
+      }
       if (!measurement.generalCampaignIntro || !measurement.clubCashbackWithoutQualifier ||
           !measurement.clubLaunchBlackFridayBoost) {
         throw Error('Campaign intro must stay seller-agnostic and Club EMDO terms must be uncluttered: '+
