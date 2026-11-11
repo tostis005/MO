@@ -42,6 +42,13 @@ jobs:
           if test -e "$ROOT/wp-content/object-cache.php"; then echo 'object-cache.php=PRESENT'; else echo 'object-cache.php=ABSENT'; fi
           /opt/plesk/php/8.2/bin/php -r 'echo "php_redis=".(extension_loaded("redis")?"yes":"no")."\n";'
           timeout 22 /opt/plesk/php/8.2/bin/php -d memory_limit=768M /usr/local/bin/wp eval 'echo "wp_ext_object_cache=".(wp_using_ext_object_cache()?"yes":"no")."\n";' --path="$ROOT" --allow-root 2>/dev/null || echo 'WP_CACHE_PROBE_TIMEOUT_OR_FAILURE'
+          echo '=== HOME CACHE FILES AND ACTIVE DROPIN ==='
+          for candidate in "$ROOT/wp-content/advanced-cache.php" "$ROOT/wp-content/uploads/elmercado-home-static/index.html"; do
+            if test -f "$candidate"; then stat -c '%n bytes=%s updated_epoch=%Y mode=%a' "$candidate"; else echo "$candidate=MISSING"; fi
+          done
+          grep -En 'elmercado-home-static|X-El-Mercado-Home-Early-Cache|hot_cache_paths' "$ROOT/wp-content/advanced-cache.php" | head -n 6 || true
+          echo '=== HOME RESPONSE SAFE HEADER FLAGS ==='
+          curl -ksS --connect-timeout 3 --max-time 12 -D - -o /dev/null https://www.elmercadodeorigen.com/ | grep -Ei '^(HTTP/|x-el-mercado|x-emdo|vary:|cache-control:|pragma:|expires:)' | tr -d '\r' || true
           echo '=== SAFE HTML TTFB COMPARISON / CACHED VS WARM ==='
           for endpoint in / /tienda/ /categoria-producto/jamones-paletas/ /producto/jamon-de-bellota-100-iberico/; do
             echo "PATH=$endpoint"
