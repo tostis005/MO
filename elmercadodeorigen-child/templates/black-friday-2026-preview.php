@@ -49,21 +49,21 @@ get_header();
 	<section class="bf26-hero">
 		<div class="bf26-wrap bf26-hero__grid">
 			<div class="bf26-hero__copy">
-				<h1 id="bf26-title">Black Friday.<em>15 % menos.</em><span>Más sorpresas.</span></h1>
-				<p class="bf26-hero__lead">Elige tus favoritos de <strong>Hidalgo de la Jara</strong> o <strong>Montjam</strong> con un <strong>15 % de descuento</strong> usando el cupón de cada productor. Y descubre los extras de las <a class="bf26-hero__conditions-link" href="#ofertas">piezas seleccionadas*</a>, los regalos y el Club EMDO.</p>
+				<h1 id="bf26-title">Black Friday.<em>Ofertas que apetecen.</em><span>Y mucho por descubrir.</span></h1>
+				<p class="bf26-hero__lead">El Black Friday llega con <strong>descuentos especiales, regalos y ventajas exclusivas</strong> en una selección de productos que merece la pena descubrir. Explora las promociones de cada productor y elige tus favoritas.</p>
 				<div class="bf26-hero__buttons">
 					<a class="bf26-button bf26-button--cream" href="#ofertas">Ver todas las promociones <span aria-hidden="true">↗</span></a>
 				</div>
-				<div class="bf26-hero__fine">DOS PRODUCTORES <i></i> DOS CUPONES <i></i> VENTAJAS EXTRA EN PIEZAS SELECCIONADAS*</div>
+				<div class="bf26-hero__fine">DESCUENTOS ESPECIALES <i></i> REGALOS <i></i> OPORTUNIDADES PARA DISFRUTAR</div>
 			</div>
 			<div class="bf26-hero__visual" aria-label="Selección de productos ibéricos de El Mercado de Origen">
 				<div class="bf26-hero__frame bf26-hero__frame--back">
-					<?php if ( $hidalgo_ham ) { echo $hidalgo_ham; } else { echo '<div class="bf26-image-fallback">HIDALGO<br><strong>DE LA JARA</strong></div>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+					<?php if ( $montjam_ham ) { echo $montjam_ham; } else { echo '<div class="bf26-image-fallback">BLACK<br><strong>FRIDAY</strong></div>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 				</div>
 				<div class="bf26-hero__frame bf26-hero__frame--front">
 					<?php if ( $hidalgo_palet ) { echo $hidalgo_palet; } else { echo '<div class="bf26-image-fallback">HIDALGO<br><strong>DE LA JARA</strong></div>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 				</div>
-				<div class="bf26-hero__seal"><small>BLACK<br>FRIDAY</small><strong>15<span>%</span></strong><span>CON TU CUPÓN</span></div>
+				<div class="bf26-hero__seal"><small>EDICIÓN<br>ESPECIAL</small><strong>BF</strong><span>OFERTAS Y REGALOS</span></div>
 				<div class="bf26-hero__stamp" aria-hidden="true">CALIDAD <span>✳</span> TRADICIÓN <span>✳</span> SABOR</div>
 			</div>
 		</div>
@@ -72,9 +72,9 @@ get_header();
 
 	<div class="bf26-band" aria-label="Resumen de las ofertas de Black Friday">
 		<div class="bf26-wrap bf26-band__inner">
-			<span>HIDALGO DE LA JARA + MONTJAM</span><span class="bf26-band__star">✳</span>
-			<strong>–15 % CON CUPÓN POR VENDEDOR</strong><span class="bf26-band__star">✳</span>
-			<span>EXTRAS EN PIEZAS SELECCIONADAS*</span>
+			<span>BLACK FRIDAY EN EL MERCADO DE ORIGEN</span><span class="bf26-band__star">✳</span>
+			<strong>DESCUENTOS Y REGALOS ESPECIALES</strong><span class="bf26-band__star">✳</span>
+			<span>DESCUBRE TODAS LAS PROMOCIONES</span>
 		</div>
 	</div>
 
@@ -83,9 +83,9 @@ get_header();
 			<div class="bf26-heading">
 				<div>
 					<p class="bf26-eyebrow">LAS PROMOCIONES</p>
-					<h2>15 % de descuento.<br><em>Y ventajas que suman.</em></h2>
+					<h2>Promociones para elegir.<br><em>Ofertas para disfrutar.</em></h2>
 				</div>
-				<p>Dos productores, dos cupones y ofertas especiales con sus propias condiciones. Descubre la que más te apetece.</p>
+				<p>Cada productor tiene su propia promoción. Descubre sus descuentos, regalos y condiciones, y encuentra la oferta que estabas esperando.</p>
 			</div>
 
 			<article class="bf26-offer bf26-offer--hidalgo" id="hidalgo-oferta" aria-labelledby="bf26-hidalgo-title">
@@ -126,7 +126,7 @@ get_header();
 							<p class="bf26-hidalgo-rewards__note">Se tiene en cuenta el importe de los productos de Hidalgo de la Jara de tu pedido. <strong>Los regalos son acumulables:</strong> al superar los 250 €, recibes ambos.</p>
 						</div>
 					</div>
-					<p class="bf26-offer__cashback"><span aria-hidden="true">✳</span> <strong>¿Compras con tu cuenta?</strong> Además, acumulas el <strong>1 % en tu monedero Club EMDO</strong> en pedidos válidos. <a href="#club-emdo">Descubre el club ↗</a></p>
+					<p class="bf26-offer__cashback"><span aria-hidden="true">✳</span> <strong>¿Compras con tu cuenta?</strong> Además, acumulas el <strong>1 % en tu monedero Club EMDO</strong> por tus compras. <a href="#club-emdo">Descubre el club ↗</a></p>
 					<a href="<?php echo esc_url( $hidalgo_url ); ?>" class="bf26-button bf26-button--green">Explorar Hidalgo de la Jara <span aria-hidden="true">↗</span></a>
 					
 				</div>
@@ -164,7 +164,7 @@ get_header();
 							</div>
 						</div>
 					</div>
-					<p class="bf26-offer__cashback"><span aria-hidden="true">✳</span> <strong>¿Compras con tu cuenta?</strong> Además, acumulas el <strong>1 % en tu monedero Club EMDO</strong> en pedidos válidos. <a href="#club-emdo">Descubre el club ↗</a></p>
+					<p class="bf26-offer__cashback"><span aria-hidden="true">✳</span> <strong>¿Compras con tu cuenta?</strong> Además, acumulas el <strong>1 % en tu monedero Club EMDO</strong> por tus compras. <a href="#club-emdo">Descubre el club ↗</a></p>
 					<a href="<?php echo esc_url( $montjam_url ); ?>" class="bf26-button bf26-button--green">Explorar Montjam <span aria-hidden="true">↗</span></a>
 					
 				</div>
@@ -177,7 +177,7 @@ get_header();
 			<div class="bf26-club__copy">
 				<p class="bf26-eyebrow bf26-eyebrow--light">DESCUBRE EL CLUB EMDO</p>
 				<h2 id="bf26-club-title">Tus compras<br><em>tienen recompensa.</em></h2>
-				<p class="bf26-club__lead">Y el Black Friday es solo el principio. Si tienes una cuenta en El Mercado de Origen, con Club EMDO recuperas el <strong>1 % del importe de los productos de tus pedidos válidos</strong> en tu monedero para tus próximas compras.</p>
+				<p class="bf26-club__lead">Y el Black Friday es solo el principio. Si tienes una cuenta en El Mercado de Origen, con Club EMDO recuperas el <strong>1 % del importe de los productos de tus compras</strong> en tu monedero para disfrutarlo cuando quieras.</p>
 				<p class="bf26-club__sublead">También puedes recargar tu saldo cuando quieras y utilizarlo para comprar de forma más cómoda.</p>
 				<div class="bf26-club__actions">
 					<a href="<?php echo esc_url( $club_account_url ); ?>" class="bf26-button bf26-button--cream">Únete al Club EMDO <span aria-hidden="true">↗</span></a>
@@ -196,7 +196,7 @@ get_header();
 		</div>
 		<div class="bf26-wrap bf26-club__footer">
 			<div class="bf26-club__conditions">
-				<span>El 1 % se acredita en pedidos válidos; no incluye envíos, recargas ni tarjetas regalo.</span>
+				<span>Con tu cuenta registrada, acumulas un 1 % del importe de tus productos en el monedero. No incluye envíos, recargas ni tarjetas regalo.</span>
 				<small>Black Friday en preparación: el descuento y los regalos todavía no están activos. Fechas y condiciones pendientes de confirmar.</small>
 			</div>
 			<button type="button" class="bf26-reopen" data-bf26-open>Volver a ver la presentación ↗</button>
@@ -211,7 +211,7 @@ get_header();
 		<div class="bf26-overlay__layout">
 			<div class="bf26-overlay__copy">
 				<h2 id="bf26-overlay-title">BLACK<br><em>FRIDAY</em></h2>
-				<p id="bf26-overlay-desc"><strong>15 % de descuento</strong> con un cupón distinto para Hidalgo de la Jara y Montjam. Además, <strong>ventajas extra en jamones seleccionados*</strong>, regalos y un 1 % para tu monedero Club EMDO al comprar con tu cuenta.</p>
+				<p id="bf26-overlay-desc">Este Black Friday trae <strong>descuentos especiales, regalos y ventajas</strong> de nuestros productores. Descubre cada promoción y, si compras con tu cuenta, acumula además <strong>un 1 % en tu monedero Club EMDO</strong>.</p>
 				<div class="bf26-overlay__buttons">
 					<button type="button" class="bf26-overlay__cta" data-bf26-enter>Descubrir las promociones <span aria-hidden="true">↗</span></button>
 					<button type="button" class="bf26-overlay__skip" data-bf26-close>Ahora no, ver la página</button>
@@ -222,7 +222,7 @@ get_header();
 				<div class="bf26-overlay__photo">
 					<?php if ( $hidalgo_palet ) { echo $hidalgo_palet; } elseif ( $montjam_ham ) { echo $montjam_ham; } else { echo '<div class="bf26-image-fallback">IBÉRICOS<br><strong>SELECCIONADOS</strong></div>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 				</div>
-				<div class="bf26-overlay__discount"><small>BLACK FRIDAY</small><strong>–15<span>%</span></strong><span>CUPÓN POR VENDEDOR</span></div>
+				<div class="bf26-overlay__discount"><small>EDICIÓN ESPECIAL</small><strong>BF</strong><span>DESCUENTOS + REGALOS</span></div>
 				<div class="bf26-overlay__asterisk">✳</div>
 			</div>
 		</div>

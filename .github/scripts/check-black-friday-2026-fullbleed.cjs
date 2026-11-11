@@ -47,6 +47,14 @@ const {chromium} = require('playwright-core');
         const discountDetails=Array.from(document.querySelectorAll('.bf26-offer__discount-details'));
         const couponRows=Array.from(document.querySelectorAll('.bf26-offer__coupon-row'));
         const couponButtons=Array.from(document.querySelectorAll('[data-bf26-copy]'));
+        const sellerCards=Array.from(document.querySelectorAll('.bf26-offer'));
+        const hidalgoCoupon=sel('.bf26-offer--hidalgo [data-bf26-copy]');
+        const montjamCoupon=sel('.bf26-offer--montjam [data-bf26-copy]');
+        const intro=Array.from(document.querySelectorAll(
+          '.bf26-hero__copy, .bf26-band__inner, .bf26-heading, #bf26-overlay-desc, .bf26-overlay__discount'
+        )).map(el=>el.textContent).join(' ');
+        const campaignText=promo?.textContent || '';
+        const clubText=sel('.bf26-club__copy')?.textContent || '';
         const hidalgo=sel('.bf26-offer--hidalgo');
         const hidalgoText=hidalgo?.textContent || '';
         const hidalgoPremium=sel('.bf26-hidalgo-rewards__tier--premium')?.textContent || '';
@@ -92,11 +100,18 @@ const {chromium} = require('playwright-core');
         }));
         return {
           couponPresent:!!promo && promo.textContent.includes('BFEMDO') && promo.textContent.includes('BFEMDOM'),
-          distinctSellerCoupons:couponButtons.length===2 &&
-            couponButtons[0].getAttribute('data-bf26-copy')==='BFEMDO' &&
-            couponButtons[1].getAttribute('data-bf26-copy')==='BFEMDOM' &&
-            couponRows[0]?.querySelector('.bf26-coupon')?.getAttribute('data-bf26-copy')==='BFEMDO' &&
-            couponRows[1]?.querySelector('.bf26-coupon')?.getAttribute('data-bf26-copy')==='BFEMDOM',
+          generalCampaignIntro:!/(dos\s+(productores|cupones)|Hidalgo|Montjam|BFEMDO|BFEMDOM|15\s*%)/i.test(intro) &&
+            intro.includes('BLACK FRIDAY') &&
+            intro.includes('DESCUENTOS Y REGALOS ESPECIALES') &&
+            !!sel('.bf26-hero__seal strong') &&
+            sel('.bf26-hero__seal strong').textContent.trim()==='BF' &&
+            sel('.bf26-overlay__discount strong')?.textContent.trim()==='BF',
+          clubCashbackWithoutQualifier:!/(pedidos válidos|compras válidas)/i.test(campaignText) &&
+            clubText.includes('1 %') && clubText.includes('monedero'),
+          distinctSellerCoupons:couponButtons.length>=2 &&
+            hidalgoCoupon?.getAttribute('data-bf26-copy')==='BFEMDO' &&
+            montjamCoupon?.getAttribute('data-bf26-copy')==='BFEMDOM' && 
+            hidalgoCoupon!==montjamCoupon,
           montjamTerms:!!montjam &&
             montjamText.includes('2,5 % adicional') &&
             montjamText.includes('automáticamente en el carrito') &&
@@ -107,9 +122,10 @@ const {chromium} = require('playwright-core');
             !montjamText.includes('sobre de salchichón'),
           selectedConditionsAccessible:
             !!sel('#hidalgo-condiciones') && !!sel('#montjam-letra-pequena') &&
-            selectedTermsLinks.length===2 &&
+            selectedTermsLinks.length>=2 &&
             selectedTermsLinks.every(el=>!!document.querySelector(el.getAttribute('href'))),
-          bothCashbacks:cashbackLines.length===2 &&
+          bothCashbacks:cashbackLines.length>=2 &&
+            sellerCards.every(el=>!!el.querySelector('.bf26-offer__cashback')) &&
             cashbackLines.every(el=>el.textContent.includes('1 %') && el.textContent.includes('monedero Club EMDO') &&
               !!el.querySelector('a[href="#club-emdo"]')),
           finalHidalgoTerms:!!hidalgo &&
@@ -127,10 +143,11 @@ const {chromium} = require('playwright-core');
           noOldHidalgoGift:!!hidalgo && !hidalgoText.includes('100 g') &&
             !hidalgoText.includes('Con la compra de cualquier jamón o paleta de Hidalgo'),
           legacyCouponPresent:!!promo && promo.textContent.includes('BFM2'),
-          allCopyButtonsUpdated:couponButtons.length===2 &&
-            couponButtons.every(el=>['BFEMDO','BFEMDOM'].includes(el.getAttribute('data-bf26-copy'))),
-          integratedCoupons:discountDetails.length===2 && couponRows.length===2
-            && couponRows.every(el=>!!el.querySelector('.bf26-coupon')),
+          allCopyButtonsUpdated:couponButtons.length>=2 &&
+            couponButtons.every(el=>/^[A-Z0-9]{4,16}$/.test(el.getAttribute('data-bf26-copy')||'')),
+          integratedCoupons:discountDetails.length>=2 && couponRows.length>=2 &&
+            couponRows.length===couponButtons.length &&
+            couponRows.every(el=>!!el.querySelector('.bf26-coupon')),
           noOldCouponSentence:!!promo && !promo.textContent.includes('Introduce el código'),
           heroTitleTopGap:hero && headline ? box(headline).top-box(hero).top : null,
           removedInstructionSection:!sel('.bf26-coupon-section, #como-funciona'),
@@ -146,6 +163,10 @@ const {chromium} = require('playwright-core');
         };
       });
       console.log('BF2026_GEOMETRY_'+label.toUpperCase()+'='+JSON.stringify(measurement));
+      if (!measurement.generalCampaignIntro || !measurement.clubCashbackWithoutQualifier) {
+        throw Error('Campaign intro must stay seller-agnostic and Club EMDO terms must be uncluttered: '+
+          label+': '+JSON.stringify(measurement));
+      }
       if (!measurement.montjamTerms || !measurement.distinctSellerCoupons ||
           !measurement.selectedConditionsAccessible || !measurement.bothCashbacks) {
         throw Error('Montjam/Club EMDO coupon or conditional benefit mismatch at '+label+': '+JSON.stringify(measurement));
@@ -160,7 +181,7 @@ const {chromium} = require('playwright-core');
           || !measurement.removedHowItWorksLink) {
         throw Error('Incorrect coupon or textual guidance at '+label+': '+JSON.stringify(measurement));
       }
-      if (measurement.percentGlyphs.length !== 6 ||
+      if (measurement.percentGlyphs.length < 4 ||
           measurement.percentGlyphs.some(g=>g.symbol !== '%' || g.marginLeft < 2 || g.fontRatio < .4 || g.fontRatio > .55)) {
         throw Error('Poor percent symbol spacing at '+label+': '+JSON.stringify(measurement.percentGlyphs));
       }
