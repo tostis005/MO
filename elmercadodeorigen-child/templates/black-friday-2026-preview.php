@@ -78,7 +78,7 @@ get_header();
 				<div class="bf26-hero__frame bf26-hero__frame--front">
 					<?php if ( $bf26_show_hidalgo && $hidalgo_palet ) { echo $hidalgo_palet; } elseif ( $bf26_show_montjam && $montjam_slice ) { echo $montjam_slice; } else { echo '<div class="bf26-image-fallback">SELECCIÓN<br><strong>ESPECIAL</strong></div>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 				</div>
-				<div class="bf26-hero__seal"><small>EDICIÓN<br>ESPECIAL</small><strong>BF</strong><span>OFERTAS Y REGALOS</span></div>
+				<div class="bf26-hero__seal bf26-campaign-stamp" aria-label="Black Friday 2026: ofertas y regalos"><small>EDICIÓN 2026</small><strong>BLACK<em>FRIDAY</em></strong><span>OFERTAS <b aria-hidden="true">✳</b> REGALOS</span></div>
 				<div class="bf26-hero__stamp" aria-hidden="true">CALIDAD <span>✳</span> TRADICIÓN <span>✳</span> SABOR</div>
 			</div>
 		</div>
@@ -241,7 +241,7 @@ get_header();
 				<div class="bf26-overlay__photo">
 					<?php if ( $bf26_show_hidalgo && $hidalgo_palet ) { echo $hidalgo_palet; } elseif ( $bf26_show_montjam && $montjam_ham ) { echo $montjam_ham; } else { echo '<div class="bf26-image-fallback">IBÉRICOS<br><strong>SELECCIONADOS</strong></div>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 				</div>
-				<div class="bf26-overlay__discount"><small>EDICIÓN ESPECIAL</small><strong>BF</strong><span>DESCUENTOS + REGALOS</span></div>
+				<div class="bf26-overlay__discount bf26-campaign-stamp" aria-label="Black Friday 2026: ofertas y regalos"><small>EDICIÓN 2026</small><strong>BLACK<em>FRIDAY</em></strong><span>OFERTAS <b aria-hidden="true">✳</b> REGALOS</span></div>
 				<div class="bf26-overlay__asterisk">✳</div>
 			</div>
 		</div>
