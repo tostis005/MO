@@ -48,6 +48,9 @@ const {chromium} = require('playwright-core');
         const couponRows=Array.from(document.querySelectorAll('.bf26-offer__coupon-row'));
         const couponButtons=Array.from(document.querySelectorAll('[data-bf26-copy]'));
         const sellerCards=Array.from(document.querySelectorAll('.bf26-offer'));
+        const enabledSellers=(promo?.getAttribute('data-bf26-visible-sellers')||'').split(',').filter(Boolean);
+        const actualSellers=sellerCards.map(el=>el.getAttribute('data-bf26-seller'));
+        const sellerLabels=sellerCards.map(el=>el.querySelector('.bf26-offer__number')?.textContent.trim());
         const hidalgoCoupon=sel('.bf26-offer--hidalgo [data-bf26-copy]');
         const montjamCoupon=sel('.bf26-offer--montjam [data-bf26-copy]');
         const intro=Array.from(document.querySelectorAll(
@@ -102,7 +105,17 @@ const {chromium} = require('playwright-core');
             parseFloat(getComputedStyle(el.parentElement).fontSize)
         }));
         return {
-          couponPresent:!!promo && promo.textContent.includes('BFEMDO') && promo.textContent.includes('BFEMDOM'),
+          couponPresent:enabledSellers.length>0 && 
+            (!enabledSellers.includes('hidalgo') || !!hidalgoCoupon) &&
+            (!enabledSellers.includes('montjam') || !!montjamCoupon),
+          sellerVisibilityConsistent:enabledSellers.length>0 &&
+            actualSellers.length===enabledSellers.length &&
+            actualSellers.every((seller,i)=>seller===enabledSellers[i]) &&
+            sellerLabels.every((label,i)=>label===String(i+1).padStart(2,'0')) &&
+            (!enabledSellers.includes('hidalgo') || hidalgo) &&
+            (!enabledSellers.includes('montjam') || montjam) &&
+            (!enabledSellers.includes('hidalgo') ? !hidalgo && !sel('#hidalgo-condiciones') : !!hidalgo) &&
+            (!enabledSellers.includes('montjam') ? !montjam && !sel('#montjam-condiciones') : !!montjam),
           generalCampaignIntro:!/(dos\s+(productores|cupones)|Hidalgo|Montjam|BFEMDO|BFEMDOM|15\s*%)/i.test(intro) &&
             intro.includes('BLACK FRIDAY') &&
             intro.includes('DESCUENTOS Y REGALOS ESPECIALES') &&
@@ -123,28 +136,32 @@ const {chromium} = require('playwright-core');
             overlayText.includes('2 % de cashback') &&
             overlayText.includes('Club EMDO') &&
             !overlayText.includes('1 % en tu monedero'),
-          distinctSellerCoupons:couponButtons.length>=2 &&
-            hidalgoCoupon?.getAttribute('data-bf26-copy')==='BFEMDO' &&
-            montjamCoupon?.getAttribute('data-bf26-copy')==='BFEMDOM' && 
-            hidalgoCoupon!==montjamCoupon,
-          montjamTerms:!!montjam &&
+          distinctSellerCoupons:couponButtons.length===enabledSellers.length &&
+            (!enabledSellers.includes('hidalgo') || hidalgoCoupon?.getAttribute('data-bf26-copy')==='BFEMDO') &&
+            (!enabledSellers.includes('montjam') || montjamCoupon?.getAttribute('data-bf26-copy')==='BFEMDOM') &&
+            (!hidalgoCoupon || !montjamCoupon || hidalgoCoupon!==montjamCoupon),
+          montjamTerms:!enabledSellers.includes('montjam') || (!!montjam &&
+            montjamText.includes('15 % de descuento en todos los productos Montjam') &&
+            montjamText.includes('EN TODOS LOS PRODUCTOS MONTJAM') &&
             montjamText.includes('2,5 % adicional') &&
             montjamText.includes('automáticamente en el carrito') &&
             montjamText.includes('más de 7 kg') &&
             montjamText.includes('bellota 100 % ibérico') &&
             montjamText.includes('fuet de regalo') &&
             !montjamText.includes('sobre de chorizo') &&
-            !montjamText.includes('sobre de salchichón'),
+            !montjamText.includes('sobre de salchichón')),
           selectedConditionsAccessible:
-            !!sel('#hidalgo-condiciones') && !!sel('#montjam-letra-pequena') &&
-            selectedTermsLinks.length>=2 &&
+            selectedTermsLinks.length===enabledSellers.length &&
+            (!enabledSellers.includes('hidalgo') || !!sel('#hidalgo-condiciones')) &&
+            (!enabledSellers.includes('montjam') || !!sel('#montjam-letra-pequena')) &&
             selectedTermsLinks.every(el=>!!document.querySelector(el.getAttribute('href'))),
-          bothCashbacks:cashbackLines.length>=2 &&
+          bothCashbacks:cashbackLines.length===enabledSellers.length &&
             sellerCards.every(el=>!!el.querySelector('.bf26-offer__cashback')) &&
             cashbackLines.every(el=>el.textContent.includes('2 % de cashback') &&
               el.textContent.includes('1 % habitual') && el.textContent.includes('monedero') &&
               !!el.querySelector('a[href="#club-emdo"]')),
-          finalHidalgoTerms:!!hidalgo &&
+          finalHidalgoTerms:!enabledSellers.includes('hidalgo') || (!!hidalgo &&
+            hidalgoText.includes('15 % de descuento en todos los productos Hidalgo') &&
             hidalgoText.includes('7,5–8 kg') &&
             hidalgoText.includes('8–8,5 kg') &&
             hidalgoText.includes('brida negra') &&
@@ -155,13 +172,14 @@ const {chromium} = require('playwright-core');
             hidalgoText.includes('miniqueso Pajarete de 90 g') &&
             hidalgoPremium.includes('sobre de salchichón') &&
             hidalgoPremium.includes('miniqueso Pajarete de 90 g') &&
-            hidalgoGiftTiers.length===2,
-          noOldHidalgoGift:!!hidalgo && !hidalgoText.includes('100 g') &&
+            hidalgoGiftTiers.length===2),
+          noOldHidalgoGift:!hidalgoText.includes('100 g') &&
             !hidalgoText.includes('Con la compra de cualquier jamón o paleta de Hidalgo'),
           legacyCouponPresent:!!promo && promo.textContent.includes('BFM2'),
-          allCopyButtonsUpdated:couponButtons.length>=2 &&
+          allCopyButtonsUpdated:couponButtons.length===enabledSellers.length &&
             couponButtons.every(el=>/^[A-Z0-9]{4,16}$/.test(el.getAttribute('data-bf26-copy')||'')),
-          integratedCoupons:discountDetails.length>=2 && couponRows.length>=2 &&
+          integratedCoupons:discountDetails.length===enabledSellers.length &&
+            couponRows.length===enabledSellers.length &&
             couponRows.length===couponButtons.length &&
             couponRows.every(el=>!!el.querySelector('.bf26-coupon')),
           noOldCouponSentence:!!promo && !promo.textContent.includes('Introduce el código'),
@@ -185,6 +203,7 @@ const {chromium} = require('playwright-core');
           label+': '+JSON.stringify(measurement));
       }
       if (!measurement.montjamTerms || !measurement.distinctSellerCoupons ||
+          !measurement.sellerVisibilityConsistent ||
           !measurement.selectedConditionsAccessible || !measurement.bothCashbacks) {
         throw Error('Montjam/Club EMDO coupon or conditional benefit mismatch at '+label+': '+JSON.stringify(measurement));
       }
@@ -198,11 +217,11 @@ const {chromium} = require('playwright-core');
           || !measurement.removedHowItWorksLink) {
         throw Error('Incorrect coupon or textual guidance at '+label+': '+JSON.stringify(measurement));
       }
-      if (measurement.percentGlyphs.length < 4 ||
+      if (measurement.percentGlyphs.length < 2 ||
           measurement.percentGlyphs.some(g=>g.symbol !== '%' || g.marginLeft < 2 || g.fontRatio < .4 || g.fontRatio > .55)) {
         throw Error('Poor percent symbol spacing at '+label+': '+JSON.stringify(measurement.percentGlyphs));
       }
-      if (measurement.offerRectangles.length < 24) {
+      if (measurement.offerRectangles.length < 12) {
         throw Error('Product cards not fully rendered at '+label);
       }
       for (const el of measurement.offerRectangles) {
