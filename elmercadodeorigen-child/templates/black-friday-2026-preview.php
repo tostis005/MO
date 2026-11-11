@@ -142,7 +142,7 @@ get_header();
 							<p class="bf26-hidalgo-rewards__note">Se tiene en cuenta el importe de los productos de Hidalgo de la Jara de tu pedido. <strong>Los regalos son acumulables:</strong> al superar los 250 €, recibes ambos.</p>
 						</div>
 					</div>
-					<p class="bf26-offer__cashback"><span aria-hidden="true">✳</span> <strong>Estrenamos el Club EMDO:</strong> compra con tu cuenta y acumula <strong>2 % de cashback este Black Friday</strong> en tu monedero, en lugar del 1 % habitual. <a href="#club-emdo">Descubre el club ↗</a></p>
+					<p class="bf26-offer__cashback"><span aria-hidden="true">✳</span> <strong>Estrenamos el Club EMDO:</strong> compra con tu cuenta y acumula <strong>2 % de cashback durante Black Friday</strong> en tu monedero. Después de la campaña, seguirás acumulando el 1 %. <a href="#club-emdo">Descubre el club ↗</a></p>
 					<a href="<?php echo esc_url( $hidalgo_url ); ?>" class="bf26-button bf26-button--green">Explorar Hidalgo de la Jara <span aria-hidden="true">↗</span></a>
 					
 				</div>
@@ -161,18 +161,18 @@ get_header();
 				<div class="bf26-offer__content">
 					<div class="bf26-offer__top"><span class="bf26-offer__origin">EL CARÁCTER DE LOS IBÉRICOS DE HUELVA</span><span class="bf26-offer__tag">15 % EN TODA SU SELECCIÓN</span></div>
 					<h3 id="bf26-montjam-title">Montjam<em>.</em></h3>
-					<p class="bf26-offer__description"><strong>15 % de descuento en todos los productos Montjam de nuestra tienda.</strong> Introduce <strong>BFEMDOM</strong> al hacer tu pedido. Y si eliges uno de los jamones seleccionados*, tendrás un descuento adicional automático en el carrito. <strong>Todos sus jamones incluyen un fuet de regalo.</strong></p>
-					<div class="bf26-offer__discount"><strong>–15<span>%</span></strong><div class="bf26-offer__discount-details"><span>EN TODOS LOS PRODUCTOS MONTJAM</span><div class="bf26-offer__coupon-row"><span class="bf26-offer__coupon-hint">CÓDIGO</span><button type="button" class="bf26-coupon" data-bf26-copy="BFEMDOM" aria-label="Copiar cupón BFEMDOM">BFEMDOM <span aria-hidden="true">⧉</span></button></div></div></div>
+					<p class="bf26-offer__description"><strong>15 % de descuento en todos los productos Montjam de nuestra tienda.</strong> Introduce <strong>BFMONTJAM</strong> al hacer tu pedido. Y si eliges uno de los jamones seleccionados*, tendrás un descuento adicional automático en el carrito. <strong>Todos sus jamones incluyen un fuet de regalo.</strong></p>
+					<div class="bf26-offer__discount"><strong>–15<span>%</span></strong><div class="bf26-offer__discount-details"><span>EN TODOS LOS PRODUCTOS MONTJAM</span><div class="bf26-offer__coupon-row"><span class="bf26-offer__coupon-hint">CÓDIGO</span><button type="button" class="bf26-coupon" data-bf26-copy="BFMONTJAM" aria-label="Copiar cupón BFMONTJAM">BFMONTJAM <span aria-hidden="true">⧉</span></button></div></div></div>
 					<div class="bf26-montjam-extras" aria-label="Promociones adicionales de Montjam">
 						<div class="bf26-montjam-extra" id="montjam-condiciones">
 							<div class="bf26-montjam-extra__badge"><strong>+2,5<span>%</span></strong><small>ADICIONAL</small></div>
 							<div class="bf26-montjam-extra__copy">
 								<span class="bf26-hidalgo-benefits__eyebrow">SOLO EN JAMONES SELECCIONADOS <a href="#montjam-letra-pequena" aria-label="Ver condiciones del descuento adicional">*</a></span>
 								<h4>Un extra más. <em>Sin hacer nada.</em></h4>
-								<p>Solo en los <strong>jamones Montjam de bellota 100 % ibérico de más de 7 kg</strong>, disfrutas de un <strong>2,5 % adicional</strong>. Este extra se aplica <strong>automáticamente en el carrito</strong>, sin introducir otro código. El 15 % para todos los productos Montjam se consigue con <strong>BFEMDOM</strong>.</p>
+								<p>Solo en los <strong>jamones Montjam de bellota 100 % ibérico de 7 kg o más</strong>, disfrutas de un <strong>2,5 % adicional</strong>. Este extra se aplica <strong>automáticamente en el carrito</strong>, sin introducir otro código. El 15 % para todos los productos Montjam se consigue con <strong>BFMONTJAM</strong>.</p>
 							</div>
 						</div>
-						<p class="bf26-montjam-extras__conditions" id="montjam-letra-pequena"><strong>* Condiciones del 2,5 % adicional:</strong> solo para jamones Montjam de <strong>bellota 100 % ibérico</strong> con peso <strong>superior a 7 kg</strong>; no incluye paletas, embutidos ni pesos de 7 kg o menos. Este descuento se refleja automáticamente en el carrito. El <strong>15 % general de Montjam</strong> se obtiene al introducir <strong>BFEMDOM</strong>.</p>
+						<p class="bf26-montjam-extras__conditions" id="montjam-letra-pequena"><strong>* Condiciones del 2,5 % adicional:</strong> solo para jamones Montjam de <strong>bellota 100 % ibérico</strong> con peso <strong>igual o superior a 7 kg</strong> (incluye los de 7 kg exactos); no incluye paletas, embutidos ni jamones de menos de 7 kg. Este descuento se refleja automáticamente en el carrito. El <strong>15 % general de Montjam</strong> se obtiene al introducir <strong>BFMONTJAM</strong>.</p>
 						<div class="bf26-montjam-gift">
 							<div class="bf26-montjam-gift__emblem" aria-hidden="true">✳</div>
 							<div>
@@ -182,7 +182,7 @@ get_header();
 							</div>
 						</div>
 					</div>
-					<p class="bf26-offer__cashback"><span aria-hidden="true">✳</span> <strong>Estrenamos el Club EMDO:</strong> compra con tu cuenta y acumula <strong>2 % de cashback este Black Friday</strong> en tu monedero, en lugar del 1 % habitual. <a href="#club-emdo">Descubre el club ↗</a></p>
+					<p class="bf26-offer__cashback"><span aria-hidden="true">✳</span> <strong>Estrenamos el Club EMDO:</strong> compra con tu cuenta y acumula <strong>2 % de cashback durante Black Friday</strong> en tu monedero. Después de la campaña, seguirás acumulando el 1 %. <a href="#club-emdo">Descubre el club ↗</a></p>
 					<a href="<?php echo esc_url( $montjam_url ); ?>" class="bf26-button bf26-button--green">Explorar Montjam <span aria-hidden="true">↗</span></a>
 					
 				</div>
@@ -196,7 +196,7 @@ get_header();
 			<div class="bf26-club__copy">
 				<p class="bf26-eyebrow bf26-eyebrow--light">ADEMÁS, ESTRENAMOS EL CLUB EMDO</p>
 				<h2 id="bf26-club-title">Tus compras<br><em>vuelven a ti.</em></h2>
-				<p class="bf26-club__lead">Lanzamos el <strong>Club EMDO</strong> para que tus compras tengan recompensa. Al comprar con tu cuenta registrada, acumulas cashback en tu monedero para utilizarlo en próximas compras. La recompensa habitual es del <strong>1 %</strong>, pero <strong>durante Black Friday la duplicamos al 2 % en todas tus compras</strong>, con independencia del productor.</p>
+				<p class="bf26-club__lead">Lanzamos el <strong>Club EMDO</strong> para que tus compras tengan recompensa. Al comprar con tu cuenta registrada, acumulas cashback en tu monedero para utilizarlo en próximas compras. Durante <strong>Black Friday acumulas un 2 % de cashback en todas tus compras</strong>, con independencia del productor. <strong>Después de Black Friday, el cashback será del 1 %.</strong></p>
 				<p class="bf26-club__sublead">Y, además de acumular cashback, puedes <strong>recargar tu monedero</strong> cuando quieras y utilizar tu saldo para pagar tus pedidos.</p>
 				<div class="bf26-club__actions">
 					<a href="<?php echo esc_url( $club_account_url ); ?>" class="bf26-button bf26-button--cream">Únete al Club EMDO <span aria-hidden="true">↗</span></a>
@@ -206,7 +206,7 @@ get_header();
 			<div class="bf26-club__visual">
 				<div class="bf26-club__wallet" aria-label="Club EMDO: tu monedero digital">
 					<div class="bf26-club__wallet-top"><span>CLUB EMDO</span><span aria-hidden="true">✳</span></div>
-					<div class="bf26-club__wallet-main"><small>BLACK FRIDAY · CASHBACK</small><strong>2<span>%</span></strong><span>EL DOBLE DEL 1 % HABITUAL</span></div>
+					<div class="bf26-club__wallet-main"><small>BLACK FRIDAY · CASHBACK</small><strong>2<span>%</span></strong><span>1 % DESPUÉS DEL BLACK FRIDAY</span></div>
 					<div class="bf26-club__wallet-foot"><span>Acumula</span><span>Recarga</span><span>Disfruta</span></div>
 				</div>
 				<div class="bf26-club__token bf26-club__token--one" aria-hidden="true">+</div>
@@ -215,7 +215,7 @@ get_header();
 		</div>
 		<div class="bf26-wrap bf26-club__footer">
 			<div class="bf26-club__conditions">
-				<span>Durante Black Friday, las compras con cuenta registrada acumulan un 2 % de cashback en el monedero; después, el 1 % habitual. No incluye gastos de envío, recargas ni tarjetas regalo.</span>
+				<span>Durante Black Friday, las compras con cuenta registrada acumulan un 2 % de cashback en el monedero; después de la campaña, acumularán el 1 %. No incluye gastos de envío, recargas ni tarjetas regalo.</span>
 				<small>Campaña en preparación: los descuentos, los regalos y el cashback promocional del 2 % aún no están activados. Fechas y condiciones pendientes de confirmar.</small>
 			</div>
 			<button type="button" class="bf26-reopen" data-bf26-open>Volver a ver la presentación ↗</button>

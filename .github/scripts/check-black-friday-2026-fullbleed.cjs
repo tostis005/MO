@@ -128,7 +128,7 @@ const {chromium} = require('playwright-core');
             (!enabledSellers.includes('montjam') || montjam) &&
             (!enabledSellers.includes('hidalgo') ? !hidalgo && !sel('#hidalgo-condiciones') : !!hidalgo) &&
             (!enabledSellers.includes('montjam') ? !montjam && !sel('#montjam-condiciones') : !!montjam),
-          generalCampaignIntro:!/(dos\s+(productores|cupones)|Hidalgo|Montjam|BFEMDO|BFEMDOM|15\s*%)/i.test(intro) &&
+          generalCampaignIntro:!/(dos\s+(productores|cupones)|Hidalgo|Montjam|BFEMDO|BFMONTJAM|15\s*%)/i.test(intro) &&
             intro.includes('BLACK FRIDAY') &&
             intro.includes('DESCUENTOS Y REGALOS ESPECIALES') &&
             !!sel('.bf26-hero__seal strong') &&
@@ -148,23 +148,27 @@ const {chromium} = require('playwright-core');
             clubText.includes('Lanzamos el') &&
             clubText.includes('recargar tu monedero') &&
             clubWalletText.includes('2%') &&
-            clubWalletText.includes('1 % HABITUAL') &&
+            clubWalletText.includes('1 % DESPUÉS DEL BLACK FRIDAY') &&
             clubFooterText.includes('un 2 % de cashback') &&
-            clubFooterText.includes('el 1 % habitual') &&
+            clubFooterText.includes('acumularán el 1 %') &&
             clubFooterText.includes('no están activados') &&
             overlayText.includes('2 % de cashback') &&
             overlayText.includes('Club EMDO') &&
             !overlayText.includes('1 % en tu monedero'),
           distinctSellerCoupons:couponButtons.length===enabledSellers.length &&
             (!enabledSellers.includes('hidalgo') || hidalgoCoupon?.getAttribute('data-bf26-copy')==='BFEMDO') &&
-            (!enabledSellers.includes('montjam') || montjamCoupon?.getAttribute('data-bf26-copy')==='BFEMDOM') &&
+            (!enabledSellers.includes('montjam') || montjamCoupon?.getAttribute('data-bf26-copy')==='BFMONTJAM') &&
             (!hidalgoCoupon || !montjamCoupon || hidalgoCoupon!==montjamCoupon),
           montjamTerms:!enabledSellers.includes('montjam') || (!!montjam &&
             montjamText.includes('15 % de descuento en todos los productos Montjam') &&
             montjamText.includes('EN TODOS LOS PRODUCTOS MONTJAM') &&
             montjamText.includes('2,5 % adicional') &&
             montjamText.includes('automáticamente en el carrito') &&
-            montjamText.includes('más de 7 kg') &&
+            montjamText.includes('7 kg o más') &&
+            montjamText.includes('igual o superior a 7 kg') &&
+            montjamText.includes('incluye los de 7 kg exactos') &&
+            montjamText.includes('menos de 7 kg') &&
+            !montjamText.includes('7 kg o menos') &&
             montjamText.includes('bellota 100 % ibérico') &&
             montjamText.includes('fuet de regalo') &&
             !montjamText.includes('sobre de chorizo') &&
@@ -177,7 +181,7 @@ const {chromium} = require('playwright-core');
           bothCashbacks:cashbackLines.length===enabledSellers.length &&
             sellerCards.every(el=>!!el.querySelector('.bf26-offer__cashback')) &&
             cashbackLines.every(el=>el.textContent.includes('2 % de cashback') &&
-              el.textContent.includes('1 % habitual') && el.textContent.includes('monedero') &&
+              el.textContent.includes('Después de la campaña, seguirás acumulando el 1 %') && el.textContent.includes('monedero') &&
               !!el.querySelector('a[href="#club-emdo"]')),
           finalHidalgoTerms:!enabledSellers.includes('hidalgo') || (!!hidalgo &&
             hidalgoText.includes('15 % de descuento en todos los productos Hidalgo') &&
@@ -194,7 +198,7 @@ const {chromium} = require('playwright-core');
             hidalgoGiftTiers.length===2),
           noOldHidalgoGift:!hidalgoText.includes('100 g') &&
             !hidalgoText.includes('Con la compra de cualquier jamón o paleta de Hidalgo'),
-          legacyCouponPresent:!!promo && promo.textContent.includes('BFM2'),
+          legacyCouponPresent:!!promo && /BFM2|BFEMDOM/.test(promo.textContent),
           allCopyButtonsUpdated:couponButtons.length===enabledSellers.length &&
             couponButtons.every(el=>/^[A-Z0-9]{4,16}$/.test(el.getAttribute('data-bf26-copy')||'')),
           integratedCoupons:discountDetails.length===enabledSellers.length &&

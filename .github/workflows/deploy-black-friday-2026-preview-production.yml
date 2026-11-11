@@ -43,14 +43,14 @@ jobs:
           grep -Fq 'noindex, nofollow, noarchive' mu-plugins/emdo-black-friday-2026-preview.php
           grep -Fq 'id="bf26-overlay"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'BFEMDO' elmercadodeorigen-child/templates/black-friday-2026-preview.php
-          grep -Fq 'data-bf26-copy="BFEMDOM"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'data-bf26-copy="BFMONTJAM"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq '2,5 % adicional' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'automáticamente en el carrito' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'fuet de regalo' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'bf26-offer__cashback' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'Lanzamos el' elmercadodeorigen-child/templates/black-friday-2026-preview.php
-          grep -Fq 'durante Black Friday la duplicamos al 2 % en todas tus compras' elmercadodeorigen-child/templates/black-friday-2026-preview.php
-          grep -Fq '2 % de cashback este Black Friday' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'Black Friday acumulas un 2 % de cashback en todas tus compras' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq '2 % de cashback durante Black Friday' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq '<strong>2<span>%</span></strong>' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'cashback promocional del 2 % aún no están activados' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           ! grep -Fq '1 % en tu monedero Club EMDO' elmercadodeorigen-child/templates/black-friday-2026-preview.php
@@ -73,6 +73,9 @@ jobs:
           grep -Fq 'BF2026 v6' elmercadodeorigen-child/assets/css/black-friday-2026-preview.css
           ! grep -Fq 'Introduce el código' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           ! grep -Fq 'BFM2' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          ! grep -Fq 'BFEMDOM' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'incluye los de 7 kg exactos' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'Después de Black Friday, el cashback será del 1 %.' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           ! grep -Fq 'bf26-coupon-section' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           test -s elmercadodeorigen-child/assets/css/black-friday-2026-preview.css
           test -s elmercadodeorigen-child/assets/js/black-friday-2026-preview.js
@@ -218,7 +221,7 @@ jobs:
           grep -Fq 'data-bf26-visible-sellers=' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'data-bf26-seller="' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'bf26-offer__cashback' "/tmp/bf-preview-$RUN.html"
-          grep -Fq 'durante Black Friday la duplicamos al 2 % en todas tus compras' "/tmp/bf-preview-$RUN.html"
+          grep -Fq 'Black Friday acumulas un 2 % de cashback en todas tus compras' "/tmp/bf-preview-$RUN.html"
           grep -Fq '<strong>2<span>%</span></strong>' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'cashback promocional del 2 % aún no están activados' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'Ofertas que apetecen.' "/tmp/bf-preview-$RUN.html"
@@ -230,6 +233,8 @@ jobs:
           ! grep -Fq 'miniqueso Pajarete de 100 g' "/tmp/bf-preview-$RUN.html"
           ! grep -Fq 'Introduce el código' "/tmp/bf-preview-$RUN.html"
           ! grep -Fq 'BFM2' "/tmp/bf-preview-$RUN.html"
+          ! grep -Fq 'BFEMDOM' "/tmp/bf-preview-$RUN.html"
+          grep -Fq 'Después de Black Friday, el cashback será del 1 %.' "/tmp/bf-preview-$RUN.html"
           ! grep -Fq 'bf26-coupon-section' "/tmp/bf-preview-$RUN.html"
           if grep -Fq 'data-bf26-seller="hidalgo"' "/tmp/bf-preview-$RUN.html"; then
             grep -Fq 'data-bf26-copy="BFEMDO"' "/tmp/bf-preview-$RUN.html"
@@ -240,8 +245,10 @@ jobs:
           fi
           if grep -Fq 'data-bf26-seller="montjam"' "/tmp/bf-preview-$RUN.html"; then
             grep -Fq '15 % de descuento en todos los productos Montjam' "/tmp/bf-preview-$RUN.html"
-            grep -Fq 'data-bf26-copy="BFEMDOM"' "/tmp/bf-preview-$RUN.html"
+            grep -Fq 'data-bf26-copy="BFMONTJAM"' "/tmp/bf-preview-$RUN.html"
             grep -Fq '2,5 % adicional' "/tmp/bf-preview-$RUN.html"
+            grep -Fq 'incluye los de 7 kg exactos' "/tmp/bf-preview-$RUN.html"
+            grep -Fq 'jamones de menos de 7 kg' "/tmp/bf-preview-$RUN.html"
             grep -Fq 'automáticamente en el carrito' "/tmp/bf-preview-$RUN.html"
             grep -Fq 'fuet de regalo' "/tmp/bf-preview-$RUN.html"
           fi
