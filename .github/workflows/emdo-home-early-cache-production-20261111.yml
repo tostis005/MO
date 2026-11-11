@@ -1,0 +1,116 @@
+name: EMDO production home early cache hotfix 20261111
+on:
+  push:
+    branches: [diagnostics/emdo-performance-20261111]
+    paths: ['.github/workflows/emdo-home-early-cache-production-20261111.yml']
+permissions:
+  contents: read
+concurrency:
+  group: emdo-home-early-cache-hotfix-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check source syntax and expected fast-path marker
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l elmercadodeorigen-child/dropins/advanced-cache.php
+          grep -Fq 'X-El-Mercado-Home-Early-Cache: HIT' elmercadodeorigen-child/dropins/advanced-cache.php
+      - name: Atomic production deployment with exact-source preflight and rollback
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq >/dev/null
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no"
+          SOURCE_REMOTE="/tmp/emdo-home-early-cache-$GITHUB_RUN_ID.php"
+          sshpass -e scp $SSH_OPTS -P "$STAGING_PORT" \
+            elmercadodeorigen-child/dropins/advanced-cache.php \
+            "$STAGING_USER@$STAGING_HOST:$SOURCE_REMOTE"
+          sshpass -e ssh $SSH_OPTS -p "$STAGING_PORT" \
+            "$STAGING_USER@$STAGING_HOST" "bash -s -- '$SOURCE_REMOTE'" <<'REMOTE'
+          set -Eeuo pipefail
+          SOURCE="$1"
+          ROOT=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+          TARGET="$ROOT/wp-content/advanced-cache.php"
+          PHP=/opt/plesk/php/8.2/bin/php
+          test "$(id -u)" -eq 0
+          test -f "$SOURCE" && test -s "$TARGET" && test ! -L "$TARGET"
+          test -f "$ROOT/wp-content/uploads/elmercado-home-static/index.html"
+          "$PHP" -l "$SOURCE"
+          python3 - "$TARGET" <<'PY'
+          import sys,hashlib
+          data=open(sys.argv[1],'rb').read()
+          sha=hashlib.sha1(b'blob '+str(len(data)).encode()+b'\x00'+data).hexdigest()
+          assert sha=='e3a976820eae187bf95ff969ac4b54f2f950c6e5',f'Production drop-in changed unexpectedly: {sha}'
+          print('EXACT_PRODUCTION_BASELINE_CONFIRMED',len(data))
+          PY
+          BACKUP=/root/emdo-home-early-cache-20261111-$(date -u +%Y%m%dT%H%M%SZ).php
+          cp -p "$TARGET" "$BACKUP"
+          CHANGED=0
+          rollback() {
+            rc=$?
+            trap - EXIT
+            if test "$rc" -ne 0 && test "$CHANGED" = 1; then
+              cp -p "$BACKUP" "$TARGET"
+              "$PHP" -l "$TARGET" || true
+              echo "ROLLBACK_COMPLETE"
+            fi
+            rm -f "$SOURCE" || true
+            exit "$rc"
+          }
+          trap rollback EXIT
+          NEW="$TARGET.hotfix-$$"
+          cp -p "$TARGET" "$NEW"
+          cat "$SOURCE" > "$NEW"
+          "$PHP" -l "$NEW"
+          python3 - "$TARGET" <<'PY'
+          import sys,hashlib
+          data=open(sys.argv[1],'rb').read()
+          sha=hashlib.sha1(b'blob '+str(len(data)).encode()+b'\x00'+data).hexdigest()
+          assert sha=='e3a976820eae187bf95ff969ac4b54f2f950c6e5','Concurrent production edit; refusing overwrite'
+          PY
+          mv -f "$NEW" "$TARGET"
+          CHANGED=1
+          "$PHP" -l "$TARGET"
+          sleep 3
+          BASE=https://www.elmercadodeorigen.com/
+          H=$(mktemp); B=$(mktemp)
+          for attempt in 1 2 3; do
+            code=$(curl -ksS --connect-timeout 3 --max-time 15 -D "$H" -o "$B" -w '%{http_code}' "$BASE")
+            echo "HOME_ATTEMPT=$attempt HTTP=$code"
+            grep -i '^X-El-Mercado-Home-Early-Cache:' "$H" | tr -d '\r' || true
+            test "$code" = 200
+            test "$(wc -c < "$B")" -gt 50000
+            if grep -qi '^X-El-Mercado-Home-Early-Cache: HIT' "$H"; then break; fi
+            sleep 2
+          done
+          grep -qi '^X-El-Mercado-Home-Early-Cache: HIT' "$H"
+          echo 'ANONYMOUS_HOME_EARLY_CACHE_HIT_CONFIRMED'
+          for cookie in 'wordpress_logged_in_test=1' 'woocommerce_items_in_cart=1' 'private_custom_cookie=1'; do
+            curl -ksS --connect-timeout 3 --max-time 15 \
+              -H "Cookie: $cookie" -D "$H" -o /dev/null "$BASE"
+            if grep -qi '^X-El-Mercado-Home-Early-Cache: HIT' "$H"; then
+              echo 'UNSAFE_PRIVATE_CACHE_HIT'; exit 1
+            fi
+          done
+          echo 'SESSION_CART_AND_PRIVATE_BYPASSES_CONFIRMED'
+          curl -ksS --connect-timeout 3 --max-time 15 \
+            -D "$H" -o /dev/null "$BASE?emdo_cache_guard_probe=1"
+          if grep -qi '^X-El-Mercado-Home-Early-Cache: HIT' "$H"; then
+            echo 'UNSAFE_QUERY_CACHE_HIT'; exit 1
+          fi
+          echo 'QUERY_BYPASS_CONFIRMED'
+          curl -ksS --connect-timeout 3 --max-time 15 -o /dev/null \
+            -w 'HOME_AFTER_FIX http=%{http_code} ttfb=%{time_starttransfer}s total=%{time_total}s\n' "$BASE"
+          echo 'HOME_EARLY_CACHE_PRODUCTION_DEPLOY_SUCCESS'
+          REMOTE
