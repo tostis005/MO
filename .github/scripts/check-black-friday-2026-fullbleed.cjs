@@ -51,6 +51,10 @@ const {chromium} = require('playwright-core');
         const hidalgoText=hidalgo?.textContent || '';
         const hidalgoPremium=sel('.bf26-hidalgo-rewards__tier--premium')?.textContent || '';
         const hidalgoGiftTiers=Array.from(document.querySelectorAll('.bf26-hidalgo-rewards__tier'));
+        const montjam=sel('.bf26-offer--montjam');
+        const montjamText=montjam?.textContent || '';
+        const cashbackLines=Array.from(document.querySelectorAll('.bf26-offer__cashback'));
+        const selectedTermsLinks=Array.from(document.querySelectorAll('a[href="#hidalgo-condiciones"],a[href="#montjam-letra-pequena"]'));
         const offerSelectors=[
           '.bf26-offer', '.bf26-offer__content', '.bf26-offer__description',
           '.bf26-offer__discount', '.bf26-offer__discount > strong',
@@ -62,7 +66,12 @@ const {chromium} = require('playwright-core');
           '.bf26-hidalgo-upgrade__emblem','.bf26-hidalgo-upgrade__copy',
           '.bf26-hidalgo-upgrade__copy h4','.bf26-hidalgo-rewards',
           '.bf26-hidalgo-rewards__grid','.bf26-hidalgo-rewards__tier',
-          '.bf26-hidalgo-rewards__note'
+          '.bf26-hidalgo-rewards__note',
+          '.bf26-offer__cashback','.bf26-montjam-extras',
+          '.bf26-montjam-extra','.bf26-montjam-extra__badge',
+          '.bf26-montjam-extra__copy','.bf26-montjam-extra__copy h4',
+          '.bf26-montjam-extras__conditions',
+          '.bf26-montjam-gift','.bf26-montjam-gift__emblem'
         ];
         const offerRectangles=offerSelectors.flatMap(selector=>
           Array.from(document.querySelectorAll(selector)).map(el=>{
@@ -73,7 +82,8 @@ const {chromium} = require('playwright-core');
         );
         const percentGlyphs=Array.from(document.querySelectorAll(
           '.bf26-hero__seal strong span, .bf26-overlay__discount strong span, '+
-          '.bf26-offer__discount > strong span, .bf26-club__wallet-main strong span'
+          '.bf26-offer__discount > strong span, .bf26-club__wallet-main strong span, '+
+          '.bf26-montjam-extra__badge strong span'
         )).map((el)=>({
           symbol:el.textContent.trim(),
           marginLeft:parseFloat(getComputedStyle(el).marginLeft),
@@ -81,7 +91,27 @@ const {chromium} = require('playwright-core');
             parseFloat(getComputedStyle(el.parentElement).fontSize)
         }));
         return {
-          couponPresent:!!promo && promo.textContent.includes('BFEMDO'),
+          couponPresent:!!promo && promo.textContent.includes('BFEMDO') && promo.textContent.includes('BFEMDOM'),
+          distinctSellerCoupons:couponButtons.length===2 &&
+            couponButtons[0].getAttribute('data-bf26-copy')==='BFEMDO' &&
+            couponButtons[1].getAttribute('data-bf26-copy')==='BFEMDOM' &&
+            couponRows[0]?.querySelector('.bf26-coupon')?.getAttribute('data-bf26-copy')==='BFEMDO' &&
+            couponRows[1]?.querySelector('.bf26-coupon')?.getAttribute('data-bf26-copy')==='BFEMDOM',
+          montjamTerms:!!montjam &&
+            montjamText.includes('2,5 % adicional') &&
+            montjamText.includes('automáticamente en el carrito') &&
+            montjamText.includes('más de 7 kg') &&
+            montjamText.includes('bellota 100 % ibérico') &&
+            montjamText.includes('fuet de regalo') &&
+            !montjamText.includes('sobre de chorizo') &&
+            !montjamText.includes('sobre de salchichón'),
+          selectedConditionsAccessible:
+            !!sel('#hidalgo-condiciones') && !!sel('#montjam-letra-pequena') &&
+            selectedTermsLinks.length===2 &&
+            selectedTermsLinks.every(el=>!!document.querySelector(el.getAttribute('href'))),
+          bothCashbacks:cashbackLines.length===2 &&
+            cashbackLines.every(el=>el.textContent.includes('1 %') && el.textContent.includes('monedero Club EMDO') &&
+              !!el.querySelector('a[href="#club-emdo"]')),
           finalHidalgoTerms:!!hidalgo &&
             hidalgoText.includes('7,5–8 kg') &&
             hidalgoText.includes('8–8,5 kg') &&
@@ -97,9 +127,10 @@ const {chromium} = require('playwright-core');
           noOldHidalgoGift:!!hidalgo && !hidalgoText.includes('100 g') &&
             !hidalgoText.includes('Con la compra de cualquier jamón o paleta de Hidalgo'),
           legacyCouponPresent:!!promo && promo.textContent.includes('BFM2'),
-          allCopyButtonsUpdated:couponButtons.length===2 && couponButtons.every(el=>el.getAttribute('data-bf26-copy')==='BFEMDO'),
+          allCopyButtonsUpdated:couponButtons.length===2 &&
+            couponButtons.every(el=>['BFEMDO','BFEMDOM'].includes(el.getAttribute('data-bf26-copy'))),
           integratedCoupons:discountDetails.length===2 && couponRows.length===2
-            && couponRows.every(el=>!!el.querySelector('.bf26-coupon') && el.textContent.includes('BFEMDO')),
+            && couponRows.every(el=>!!el.querySelector('.bf26-coupon')),
           noOldCouponSentence:!!promo && !promo.textContent.includes('Introduce el código'),
           heroTitleTopGap:hero && headline ? box(headline).top-box(hero).top : null,
           removedInstructionSection:!sel('.bf26-coupon-section, #como-funciona'),
@@ -115,6 +146,10 @@ const {chromium} = require('playwright-core');
         };
       });
       console.log('BF2026_GEOMETRY_'+label.toUpperCase()+'='+JSON.stringify(measurement));
+      if (!measurement.montjamTerms || !measurement.distinctSellerCoupons ||
+          !measurement.selectedConditionsAccessible || !measurement.bothCashbacks) {
+        throw Error('Montjam/Club EMDO coupon or conditional benefit mismatch at '+label+': '+JSON.stringify(measurement));
+      }
       if (!measurement.finalHidalgoTerms || !measurement.noOldHidalgoGift) {
         throw Error('Missing definitive Hidalgo BF benefits at '+label+': '+JSON.stringify(measurement));
       }
@@ -125,7 +160,7 @@ const {chromium} = require('playwright-core');
           || !measurement.removedHowItWorksLink) {
         throw Error('Incorrect coupon or textual guidance at '+label+': '+JSON.stringify(measurement));
       }
-      if (measurement.percentGlyphs.length !== 5 ||
+      if (measurement.percentGlyphs.length !== 6 ||
           measurement.percentGlyphs.some(g=>g.symbol !== '%' || g.marginLeft < 2 || g.fontRatio < .4 || g.fontRatio > .55)) {
         throw Error('Poor percent symbol spacing at '+label+': '+JSON.stringify(measurement.percentGlyphs));
       }
