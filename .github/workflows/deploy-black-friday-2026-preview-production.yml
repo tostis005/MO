@@ -78,6 +78,9 @@ jobs:
           test -s elmercadodeorigen-child/assets/js/black-friday-2026-preview.js
           test -s .github/scripts/check-black-friday-2026-fullbleed.cjs
           grep -Fq 'bf26-club__wallet' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          test "$(grep -Fc 'bf26-campaign-stamp' elmercadodeorigen-child/templates/black-friday-2026-preview.php)" -eq 2
+          test "$(grep -Fc '<strong>BLACK<em>FRIDAY</em></strong>' elmercadodeorigen-child/templates/black-friday-2026-preview.php)" -eq 2
+          grep -Fq 'BF2026 v9' elmercadodeorigen-child/assets/css/black-friday-2026-preview.css
           grep -Fq 'width:100vw!important' elmercadodeorigen-child/assets/css/black-friday-2026-preview.css
           ! grep -Eq 'wc_create_coupon|woocommerce_before_calculate_totals|wc_create_order' mu-plugins/emdo-black-friday-2026-preview.php
           test -n "$HOST" && test -n "$USER" && test -n "$SSHPASS"
@@ -208,6 +211,8 @@ jobs:
           CODE="$(curl -sSL --retry 3 --max-time 45 -A 'Mozilla/5.0 EMDO BF Preview' -D "/tmp/bf-preview-$RUN.headers" -o "/tmp/bf-preview-$RUN.html" -w '%{http_code}' "https://www.elmercadodeorigen.com/vista-previa-black-friday-2026/?verify=$RUN")"
           test "$CODE" = 200
           grep -Fq 'id="bf26-overlay"' "/tmp/bf-preview-$RUN.html"
+          test "$(grep -oF 'bf26-campaign-stamp' "/tmp/bf-preview-$RUN.html" | wc -l)" -ge 2
+          test "$(grep -oF '<strong>BLACK<em>FRIDAY</em></strong>' "/tmp/bf-preview-$RUN.html" | wc -l)" -eq 2
           # The page may have one or more visible sellers. Do not require
           # Montjam once its editorial card is hidden for the initial launch.
           grep -Fq 'data-bf26-visible-sellers=' "/tmp/bf-preview-$RUN.html"
