@@ -17,7 +17,7 @@ function elmercado_home_fresh_is_front_010244(): bool {
 	return ! is_admin() && is_front_page() && ! is_feed() && ! is_trackback() && ! wp_doing_ajax();
 }
 
-/* Keep the Home HTML fresh across devices. */
+/* Keep WordPress-rendered fallback responses private without evicting Home cache. */
 add_action(
 	'template_redirect',
 	static function (): void {
@@ -25,17 +25,13 @@ add_action(
 			return;
 		}
 
-		$version = defined( 'ELMERCADO_THEME_VERSION' ) ? (string) ELMERCADO_THEME_VERSION : '';
-		if ( '' !== $version ) {
-			$key = 'elmercado_home_' . md5( $version . '|' . home_url( '/' ) );
-			delete_transient( $key );
-		}
-
-		$static_html = WP_CONTENT_DIR . '/uploads/elmercado-home-static/index.html';
-		if ( is_file( $static_html ) ) {
-			@unlink( $static_html );
-		}
-
+		/*
+		 * Never invalidate the shared anonymous Home snapshot on a read.
+		 * Private/session/query requests correctly bypass advanced-cache.php,
+		 * but they must not evict the complete Home HTML for all other visitors.
+		 * The canonical home-cache.php handles TTL and product/order/category
+		 * mutations, while the promotion hooks purge on genuine data changes.
+		 */
 		nocache_headers();
 		if ( ! headers_sent() ) {
 			header( 'Cache-Control: no-store, no-cache, must-revalidate, max-age=0, private', true );

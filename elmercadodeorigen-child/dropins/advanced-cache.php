@@ -84,6 +84,34 @@ $path        = '/' !== $path ? rtrim( $path, '/' ) . '/' : '/';
 
 
 /**
+ * Anonymous front-page fast path. The existing WordPress home cache already
+ * atomically writes this file, but until now every HIT still bootstrapped the
+ * complete WordPress + WooCommerce stack before sending its HTML.
+ *
+ * The gates above explicitly exclude queries, personal/session cookies,
+ * non-GET requests and other hosts. Do not serve a stale file: after ten
+ * minutes WordPress must run to rebuild it and refresh all product signals.
+ * No shared/public browser cache is permitted for this response.
+ */
+if ( '/' === $path && '' === $query ) {
+	$home_early_file = __DIR__ . '/uploads/elmercado-home-static/index.html';
+	$home_early_mtime = is_readable( $home_early_file ) ? @filemtime( $home_early_file ) : false;
+
+	if (
+		false !== $home_early_mtime
+		&& time() - (int) $home_early_mtime < 10 * 60
+		&& (int) @filesize( $home_early_file ) > 50000
+	) {
+		header( 'Content-Type: text/html; charset=UTF-8' );
+		header( 'Cache-Control: private, no-store, max-age=0' );
+		header( 'Vary: Cookie', false );
+		header( 'X-El-Mercado-Home-Early-Cache: HIT' );
+		readfile( $home_early_file );
+		exit;
+	}
+}
+
+/**
  * Cache temprana y limitada para sugerencias anónimas de productos.
  *
  * El REST completo arranca WordPress y WooCommerce, incluso cuando los IDs
