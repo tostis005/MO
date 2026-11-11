@@ -197,7 +197,7 @@ get_header();
 		<div class="bf26-wrap bf26-club__footer">
 			<div class="bf26-club__conditions">
 				<span>Durante Black Friday, las compras con cuenta registrada acumulan un 2 % de cashback en el monedero; después, el 1 % habitual. No incluye gastos de envío, recargas ni tarjetas regalo.</span>
-				<small>Black Friday en preparación: el descuento y los regalos todavía no están activos. Fechas y condiciones pendientes de confirmar.</small>
+				<small>Campaña en preparación: los descuentos, los regalos y el cashback promocional del 2 % aún no están activados. Fechas y condiciones pendientes de confirmar.</small>
 			</div>
 			<button type="button" class="bf26-reopen" data-bf26-open>Volver a ver la presentación ↗</button>
 		</div>
