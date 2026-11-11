@@ -55,6 +55,9 @@ const {chromium} = require('playwright-core');
         )).map(el=>el.textContent).join(' ');
         const campaignText=promo?.textContent || '';
         const clubText=sel('.bf26-club__copy')?.textContent || '';
+        const clubWalletText=sel('.bf26-club__wallet')?.textContent || '';
+        const clubFooterText=sel('.bf26-club__footer')?.textContent || '';
+        const overlayText=sel('#bf26-overlay-desc')?.textContent || '';
         const hidalgo=sel('.bf26-offer--hidalgo');
         const hidalgoText=hidalgo?.textContent || '';
         const hidalgoPremium=sel('.bf26-hidalgo-rewards__tier--premium')?.textContent || '';
@@ -107,7 +110,19 @@ const {chromium} = require('playwright-core');
             sel('.bf26-hero__seal strong').textContent.trim()==='BF' &&
             sel('.bf26-overlay__discount strong')?.textContent.trim()==='BF',
           clubCashbackWithoutQualifier:!/(pedidos válidos|compras válidas)/i.test(campaignText) &&
-            clubText.includes('1 %') && clubText.includes('monedero'),
+            clubText.includes('1 %') && clubText.includes('2 %') &&
+            clubText.includes('en todas tus compras') && clubText.includes('monedero'),
+          clubLaunchBlackFridayBoost:
+            clubText.includes('Lanzamos el') &&
+            clubText.includes('recargar tu monedero') &&
+            clubWalletText.includes('2%') &&
+            clubWalletText.includes('1 % HABITUAL') &&
+            clubFooterText.includes('un 2 % de cashback') &&
+            clubFooterText.includes('el 1 % habitual') &&
+            clubFooterText.includes('no están activados') &&
+            overlayText.includes('2 % de cashback') &&
+            overlayText.includes('Club EMDO') &&
+            !overlayText.includes('1 % en tu monedero'),
           distinctSellerCoupons:couponButtons.length>=2 &&
             hidalgoCoupon?.getAttribute('data-bf26-copy')==='BFEMDO' &&
             montjamCoupon?.getAttribute('data-bf26-copy')==='BFEMDOM' && 
@@ -126,7 +141,8 @@ const {chromium} = require('playwright-core');
             selectedTermsLinks.every(el=>!!document.querySelector(el.getAttribute('href'))),
           bothCashbacks:cashbackLines.length>=2 &&
             sellerCards.every(el=>!!el.querySelector('.bf26-offer__cashback')) &&
-            cashbackLines.every(el=>el.textContent.includes('1 %') && el.textContent.includes('monedero Club EMDO') &&
+            cashbackLines.every(el=>el.textContent.includes('2 % de cashback') &&
+              el.textContent.includes('1 % habitual') && el.textContent.includes('monedero') &&
               !!el.querySelector('a[href="#club-emdo"]')),
           finalHidalgoTerms:!!hidalgo &&
             hidalgoText.includes('7,5–8 kg') &&
@@ -163,7 +179,8 @@ const {chromium} = require('playwright-core');
         };
       });
       console.log('BF2026_GEOMETRY_'+label.toUpperCase()+'='+JSON.stringify(measurement));
-      if (!measurement.generalCampaignIntro || !measurement.clubCashbackWithoutQualifier) {
+      if (!measurement.generalCampaignIntro || !measurement.clubCashbackWithoutQualifier ||
+          !measurement.clubLaunchBlackFridayBoost) {
         throw Error('Campaign intro must stay seller-agnostic and Club EMDO terms must be uncluttered: '+
           label+': '+JSON.stringify(measurement));
       }
