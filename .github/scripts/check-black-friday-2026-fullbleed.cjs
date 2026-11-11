@@ -166,7 +166,7 @@ const {chromium} = require('playwright-core');
             montjamText.includes('automáticamente en el carrito') &&
             montjamText.includes('7 kg o más') &&
             montjamText.includes('igual o superior a 7 kg') &&
-            montjamText.includes('incluye los de 7 kg exactos') &&
+            !montjamText.includes('incluye los de 7 kg exactos') &&
             montjamText.includes('menos de 7 kg') &&
             !montjamText.includes('7 kg o menos') &&
             montjamText.includes('bellota 100 % ibérico') &&
