@@ -44,6 +44,11 @@ jobs:
           grep -Fq 'id="bf26-overlay"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'BFEMDO' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'data-bf26-copy="BFEMDOM"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq "'hidalgo' => true" elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq "'montjam' => true" elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'if ( $bf26_visible_offers[' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq '15 % de descuento en todos los productos Montjam de nuestra tienda' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          ! grep -Fq 'con su propio cupón' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq '2,5 % adicional' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'automáticamente en el carrito' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'fuet de regalo' elmercadodeorigen-child/templates/black-friday-2026-preview.php
@@ -55,7 +60,7 @@ jobs:
           grep -Fq 'cashback promocional del 2 % aún no están activados' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           ! grep -Fq '1 % en tu monedero Club EMDO' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'Ofertas que apetecen.' elmercadodeorigen-child/templates/black-friday-2026-preview.php
-          grep -Fq 'Cada productor tiene su propia promoción' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'Descubre las ofertas disponibles y sus ventajas' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           ! grep -Fiq 'dos productores' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           ! grep -Fiq 'dos cupones' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           ! grep -Fiq 'pedidos válidos' elmercadodeorigen-child/templates/black-friday-2026-preview.php
@@ -205,13 +210,10 @@ jobs:
           CODE="$(curl -sSL --retry 3 --max-time 45 -A 'Mozilla/5.0 EMDO BF Preview' -D "/tmp/bf-preview-$RUN.headers" -o "/tmp/bf-preview-$RUN.html" -w '%{http_code}' "https://www.elmercadodeorigen.com/vista-previa-black-friday-2026/?verify=$RUN")"
           test "$CODE" = 200
           grep -Fq 'id="bf26-overlay"' "/tmp/bf-preview-$RUN.html"
-          grep -Fq 'Hidalgo' "/tmp/bf-preview-$RUN.html"
-          grep -Fq 'Montjam' "/tmp/bf-preview-$RUN.html"
-          grep -Fq 'BFEMDO' "/tmp/bf-preview-$RUN.html"
-          grep -Fq 'data-bf26-copy="BFEMDOM"' "/tmp/bf-preview-$RUN.html"
-          grep -Fq '2,5 % adicional' "/tmp/bf-preview-$RUN.html"
-          grep -Fq 'automáticamente en el carrito' "/tmp/bf-preview-$RUN.html"
-          grep -Fq 'fuet de regalo' "/tmp/bf-preview-$RUN.html"
+          # The launched lineup is editorial: hidden producers must not be required by the live check.
+          grep -Eq 'class="bf26-offer bf26-offer--[a-z]+' "/tmp/bf-preview-$RUN.html"
+          grep -Fq 'data-bf26-copy="' "/tmp/bf-preview-$RUN.html"
+          ! grep -Fq 'con su propio cupón' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'bf26-offer__cashback' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'durante Black Friday la duplicamos al 2 % en todas tus compras' "/tmp/bf-preview-$RUN.html"
           grep -Fq '2 % de cashback este Black Friday' "/tmp/bf-preview-$RUN.html"
@@ -219,16 +221,14 @@ jobs:
           grep -Fq 'cashback promocional del 2 % aún no están activados' "/tmp/bf-preview-$RUN.html"
           ! grep -Fq '1 % en tu monedero Club EMDO' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'Ofertas que apetecen.' "/tmp/bf-preview-$RUN.html"
-          grep -Fq 'Cada productor tiene su propia promoción' "/tmp/bf-preview-$RUN.html"
+          grep -Fq 'Descubre las ofertas disponibles y sus ventajas' "/tmp/bf-preview-$RUN.html"
           ! grep -Fiq 'dos productores' "/tmp/bf-preview-$RUN.html"
           ! grep -Fiq 'dos cupones' "/tmp/bf-preview-$RUN.html"
           ! grep -Fiq 'pedidos válidos' "/tmp/bf-preview-$RUN.html"
           ! grep -Fq 'Un sobre de chorizo + uno de salchichón' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'bf26-offer__coupon-row' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'bf26-hidalgo-benefits' "/tmp/bf-preview-$RUN.html"
-          grep -Fq '7,5–8 kg' "/tmp/bf-preview-$RUN.html"
-          grep -Fq '8–8,5 kg' "/tmp/bf-preview-$RUN.html"
-          grep -Fq 'miniqueso Pajarete de 90 g' "/tmp/bf-preview-$RUN.html"
+
           ! grep -Fq 'miniqueso Pajarete de 100 g' "/tmp/bf-preview-$RUN.html"
           ! grep -Fq 'Introduce el código' "/tmp/bf-preview-$RUN.html"
           ! grep -Fq 'BFM2' "/tmp/bf-preview-$RUN.html"
