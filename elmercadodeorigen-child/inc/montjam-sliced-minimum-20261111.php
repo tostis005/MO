@@ -94,7 +94,7 @@ add_filter(
 		}
 		return $args;
 	},
-	100,
+	PHP_INT_MAX,
 	2
 );
 
