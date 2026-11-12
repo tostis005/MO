@@ -80,6 +80,13 @@ jobs:
               if [ "$file" = /tmp/bfhome-headers ]; then grep -i -E '^(HTTP/|server:|cache-control:|x-|age:|vary:)' "$file" | head -30 || true; fi
             fi
           done
+          echo "CUSTOM_HOME_CACHE_SOURCE"
+          for file in "$ROOT/wp-content/mu-plugins/elmercado-home-fresh.php" "$ROOT/wp-content/mu-plugins/elmercado-home-critical-path-010254.php" "$ROOT/wp-content/advanced-cache.php"; do
+            if [ -f "$file" ]; then
+              echo "CUSTOM_CACHE_FILE=$file"
+              grep -nE 'function |cache|CACHE|purge|flush|delete|unlink|write|file_put_contents|wp-content|transient|ob_start|parse_url|is_front_page|REQUEST_URI|query_string|header' "$file" | head -110 || true
+            fi
+          done
           echo "BF_BOOTSTRAP_PRESENT"
           ls -l "$ROOT/wp-content/mu-plugins/emdo-black-friday-2026-preview.php" "$ROOT/wp-content/mu-plugins/emdo-black-friday-2026-preview/curtain.css" 2>&1 || true
           REMOTE
