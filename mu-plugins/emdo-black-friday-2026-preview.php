@@ -65,8 +65,8 @@ add_action( 'template_redirect', static function (): void {
 
 /**
  * Mostrar en el escaparate una sola vez al día por navegador.
- * Se excluyen carrito, checkout y área de cuenta para no interrumpir compras,
- * pagos, accesos ni la confirmación de un pedido.
+ * Disponible desde cualquier página pública, sin excepciones en checkout
+ * ni carrito: el visitante solo la ve la primera vez del día.
  */
 function emdo_bf2026_global_curtain_eligible(): bool {
 	if ( emdo_bf2026_production_preview_route()
@@ -75,13 +75,7 @@ function emdo_bf2026_global_curtain_eligible(): bool {
 		|| ( defined( 'REST_REQUEST' ) && REST_REQUEST )
 		|| ( defined( 'DOING_CRON' ) && DOING_CRON )
 		|| is_feed()
-		|| is_404()
 		|| 'yes' !== get_option( 'emdo_bf2026_global_curtain_enabled', 'yes' ) ) {
-		return false;
-	}
-	if ( ( function_exists( 'is_checkout' ) && is_checkout() )
-		|| ( function_exists( 'is_cart' ) && is_cart() )
-		|| ( function_exists( 'is_account_page' ) && is_account_page() ) ) {
 		return false;
 	}
 	return true;
@@ -189,7 +183,7 @@ add_action( 'wp_footer', static function (): void {
 			<div class="bf26-overlay__layout">
 				<div class="bf26-overlay__copy">
 					<h2 id="bf26-overlay-title">BLACK<br><em>FRIDAY</em></h2>
-					<p id="bf26-overlay-desc">Ya está aquí nuestro Black Friday: <strong>descuentos especiales, ventajas en jamones seleccionados y regalos</strong>. Además, estrenamos el <strong>Club EMDO con un 2 % de cashback</strong> en las compras realizadas con tu cuenta registrada.</p>
+					<p id="bf26-overlay-desc">Ya está aquí nuestro Black Friday con <strong>descuentos, regalos y ventajas especiales</strong>. Además, estrenamos el <strong>Club EMDO con un 2 % de cashback</strong> al comprar con tu cuenta registrada. <strong>Próximamente iremos incorporando nuevas promociones, ¡estate atento!</strong></p>
 					<div class="bf26-overlay__buttons">
 						<a class="bf26-overlay__cta" href="<?php echo esc_url( home_url( '/black-friday-2026/' ) ); ?>">Descubrir las ofertas <span aria-hidden="true">↗</span></a>
 						<button type="button" class="bf26-overlay__skip" data-bf26-close>Ahora no, seguir comprando</button>
@@ -202,7 +196,7 @@ add_action( 'wp_footer', static function (): void {
 						if ( $photo ) {
 							echo wp_kses_post( $photo );
 						} else {
-							echo '<div class="bf26-image-fallback">CALIDAD<br><strong>DE ORIGEN</strong></div>';
+							echo '<div class="bf26-image-fallback">BLACK<br><strong>FRIDAY</strong></div>';
 						}
 						?>
 					</div>

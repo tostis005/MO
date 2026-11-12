@@ -101,7 +101,7 @@ get_header();
 					<p class="bf26-eyebrow">LAS PROMOCIONES</p>
 					<h2>Promociones para elegir.<br><em>Ofertas para disfrutar.</em></h2>
 				</div>
-				<p>Descubre las ofertas disponibles y consulta las ventajas y condiciones de cada promoción. Hay mucho por disfrutar este Black Friday.</p>
+				<p>Descubre las ofertas disponibles y las condiciones de cada promoción. <strong>Próximamente iremos incorporando nuevas promociones, así que estate atento a las novedades.</strong></p>
 			</div>
 
 			<?php if ( $bf26_show_hidalgo ) : $bf26_offer_position++; ?>
@@ -217,7 +217,7 @@ get_header();
 		<div class="bf26-wrap bf26-club__footer">
 			<div class="bf26-club__conditions">
 				<span>Durante Black Friday, las compras con cuenta registrada acumulan un 2 % de cashback en el monedero; después de la campaña, acumularán el 1 %. No incluye gastos de envío, recargas ni tarjetas regalo.</span>
-				<small>La campaña todavía no se ha anunciado oficialmente. Los regalos y las mejoras de peso están sujetos a las condiciones de cada oferta.</small>
+				<small>Los regalos y las mejoras de peso están sujetos a las condiciones de cada oferta. Consulta los detalles de cada promoción antes de comprar.</small>
 			</div>
 			<button type="button" class="bf26-reopen" data-bf26-open>Volver a ver la presentación ↗</button>
 		</div>
@@ -231,7 +231,7 @@ get_header();
 		<div class="bf26-overlay__layout">
 			<div class="bf26-overlay__copy">
 				<h2 id="bf26-overlay-title">BLACK<br><em>FRIDAY</em></h2>
-				<p id="bf26-overlay-desc">Este Black Friday llegan <strong>descuentos, regalos y promociones especiales</strong> de nuestros productores. Además, estrenamos el <strong>Club EMDO</strong> con un <strong>2 % de cashback</strong> en todas tus compras durante la campaña si compras con tu cuenta.</p>
+				<p id="bf26-overlay-desc">Nuestro Black Friday trae <strong>descuentos, regalos y ventajas especiales</strong>. Además, estrenamos el <strong>Club EMDO</strong> con un <strong>2 % de cashback</strong> al comprar con tu cuenta registrada. <strong>Próximamente incorporaremos nuevas promociones. ¡Estate atento!</strong></p>
 				<div class="bf26-overlay__buttons">
 					<button type="button" class="bf26-overlay__cta" data-bf26-enter>Descubrir las promociones <span aria-hidden="true">↗</span></button>
 					<button type="button" class="bf26-overlay__skip" data-bf26-close>Ahora no, ver la página</button>
