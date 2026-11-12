@@ -85,4 +85,22 @@ jobs:
               grep -rliE --include='*.php' 'cashback|emdo_wallet|monedero|reward_percent|reward_rate' "$d" 2>/dev/null | head -80 || true
             fi
           done
+          echo "CASHBACK_IMPLEMENTATION_REFERENCE"
+          FILE="$ROOT/wp-content/mu-plugins/mdo-my-account-premium-20261105.php"
+          if [ -f "$FILE" ]; then
+            grep -n -C 5 -E 'mdo_club_reward_percent|mdo_club_rewards_enabled|shipping_total|shipping|cashback|monedero|user_id|customer_id|is_user_logged_in' "$FILE" | tail -220 || true
+          fi
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            $u=get_user_by("id",6);
+            if($u){
+              echo "BFEMDO_AUTHOR=".wp_json_encode(array("id"=>$u->ID,"display_name"=>$u->display_name,"roles"=>$u->roles))."\n";
+            }
+            $author_products=get_posts(array("post_type"=>"product","post_status"=>"publish","author"=>6,"posts_per_page"=>7,"fields"=>"ids"));
+            foreach($author_products as $id)echo "BFEMDO_AUTHOR_PRODUCT=".wp_json_encode(array("id"=>$id,"name"=>get_the_title($id)))."\n";
+            $hidalgo_terms=get_terms(array("taxonomy"=>get_object_taxonomies("product"),"hide_empty"=>false,"search"=>"Hidalgo","number"=>25));
+            if(!is_wp_error($hidalgo_terms))foreach($hidalgo_terms as $t){
+              echo "HIDALGO_TERM=".wp_json_encode(array("taxonomy"=>$t->taxonomy,"slug"=>$t->slug,"id"=>$t->term_id,"count"=>$t->count))."\n";
+            }
+            echo "CASHBACK_EFFECTIVE_PERCENT=".get_option("mdo_club_reward_percent","missing")."\n";
+          ' --path="$ROOT" --allow-root
           REMOTE
