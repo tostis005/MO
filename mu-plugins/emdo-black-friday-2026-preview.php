@@ -183,7 +183,7 @@ add_action( 'wp_footer', static function (): void {
 			<div class="bf26-overlay__layout">
 				<div class="bf26-overlay__copy">
 					<h2 id="bf26-overlay-title">BLACK<br><em>FRIDAY</em></h2>
-					<p id="bf26-overlay-desc">Ya está aquí nuestro Black Friday: <strong>15 % de descuento con BFEMDO en Hidalgo de la Jara</strong>, ventajas en jamones seleccionados, regalos y <strong>2 % de cashback con el Club EMDO</strong> al comprar con tu cuenta registrada. <strong>Próximamente sumaremos más promociones: ¡estate atento!</strong></p>
+					<p id="bf26-overlay-desc">Ya está aquí nuestro Black Friday con <strong>descuentos, regalos y ventajas especiales</strong>. Además, estrenamos el <strong>Club EMDO con un 2 % de cashback</strong> al comprar con tu cuenta registrada. <strong>Próximamente iremos incorporando nuevas promociones, ¡estate atento!</strong></p>
 					<div class="bf26-overlay__buttons">
 						<a class="bf26-overlay__cta" href="<?php echo esc_url( home_url( '/black-friday-2026/' ) ); ?>">Descubrir las ofertas <span aria-hidden="true">↗</span></a>
 						<button type="button" class="bf26-overlay__skip" data-bf26-close>Ahora no, seguir comprando</button>
