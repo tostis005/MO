@@ -231,7 +231,7 @@ get_header();
 		<div class="bf26-overlay__layout">
 			<div class="bf26-overlay__copy">
 				<h2 id="bf26-overlay-title">BLACK<br><em>FRIDAY</em></h2>
-				<p id="bf26-overlay-desc">Descubre nuestro <strong>Black Friday con Hidalgo de la Jara</strong>: 15 % con <strong>BFEMDO</strong>, regalos y ventajas especiales. Además, estrenamos el <strong>Club EMDO</strong> con un <strong>2 % de cashback</strong> al comprar con tu cuenta. <strong>Próximamente llegarán nuevas promociones.</strong></p>
+				<p id="bf26-overlay-desc">Nuestro Black Friday trae <strong>descuentos, regalos y ventajas especiales</strong>. Además, estrenamos el <strong>Club EMDO</strong> con un <strong>2 % de cashback</strong> al comprar con tu cuenta registrada. <strong>Próximamente incorporaremos nuevas promociones. ¡Estate atento!</strong></p>
 				<div class="bf26-overlay__buttons">
 					<button type="button" class="bf26-overlay__cta" data-bf26-enter>Descubrir las promociones <span aria-hidden="true">↗</span></button>
 					<button type="button" class="bf26-overlay__skip" data-bf26-close>Ahora no, ver la página</button>
