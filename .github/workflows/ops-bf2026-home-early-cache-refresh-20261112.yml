@@ -1,0 +1,61 @@
+name: One-time reset of stale homepage HTML cache for Black Friday
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ops-bf2026-home-early-cache-refresh-20261112.yml'
+permissions:
+  contents: read
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Invalidate exact anonymous homepage cache and inspect normal URL
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          sshpass -e ssh -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$PORT" "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          FILE="$ROOT/wp-content/uploads/elmercado-home-static/index.html"
+          BACKUP="$HOME/.elmercado-rollbacks/bf2026-home-cache-20261112"
+          install -d -m 0700 "$BACKUP"
+          if [ -e "$FILE" ]; then
+            echo "CACHE_BEFORE"
+            ls -l "$FILE"
+            stat -c 'CACHE_SIZE=%s CACHE_MTIME=%Y' "$FILE"
+            cp -p "$FILE" "$BACKUP/index-before.html"
+            rm -f -- "$FILE"
+            test ! -e "$FILE"
+            echo "EARLY_HOME_CACHE_FILE_DELETED"
+          else
+            echo "NO_EARLY_HOME_CACHE_FILE"
+          fi
+          for i in 1 2 3; do
+            CODE="$(curl -sSL --max-time 50 -A 'Mozilla/5.0 BF cache refresh' -D /tmp/bf-refresh-headers -o /tmp/bf-refresh-body -w '%{http_code}' 'https://www.elmercadodeorigen.com/')"
+            echo "NORMAL_HOME_RESPONSE_$i=$CODE"
+            grep -iE '^(HTTP/|x-el-mercado-home-early-cache|x-el-mercado-home-fresh|cache-control:|age:|x-cache:)' /tmp/bf-refresh-headers | head -20 || true
+            for token in 'id="bf26-overlay"' 'curtain.css' 'preview.js'; do
+              printf 'NORMAL_HOME_%s=%s\n' "$token" "$(grep -oF "$token" /tmp/bf-refresh-body | wc -l || true)"
+            done
+            if [ "$CODE" = 200 ] && grep -Fq 'id="bf26-overlay"' /tmp/bf-refresh-body; then
+              echo "BF_NORMAL_HOME_CURTAIN_VISIBLE_AFTER_PURGE"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "BF_NORMAL_HOME_STILL_STALE"
+          exit 12
+          REMOTE
