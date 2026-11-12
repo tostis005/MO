@@ -331,6 +331,21 @@ jobs:
           esac
           echo "$PAGE_TOKEN"
           test "$("$PHP" -d memory_limit=512M "$WP" post get "${PAGE_TOKEN##*:}" --field=post_name --path="$ROOT" --allow-root)" = "black-friday-2026"
+          # The themed homepage has TWO caches: transient + static file.
+          # Deleting only index.html recreates it from an old transient.
+          # Always call the theme's canonical invalidation API first.
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            if(!function_exists("elmercado_flush_home_cache") ||
+               !function_exists("elmercado_home_cache_key")){
+              fwrite(STDERR,"BF_HOME_CACHE_FLUSH_API_MISSING\n");exit(41);
+            }
+            $key=elmercado_home_cache_key();
+            elmercado_flush_home_cache();
+            if(false!==get_transient($key)){
+              fwrite(STDERR,"BF_HOME_TRANSIENT_STILL_CACHED\n");exit(42);
+            }
+            echo "BF_HOME_THEME_TRANSIENT_AND_STATIC_FLUSHED\n";
+          ' --path="$ROOT" --allow-root
           # The shop has custom HTML early caches (advanced-cache.php)
           # which serve old pages BEFORE WordPress loads any new MU plugin.
           # Invalidate only rebuildable HTML, preserving .lock files,
