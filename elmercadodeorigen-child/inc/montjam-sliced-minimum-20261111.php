@@ -12,11 +12,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-// The same module may be loaded as an MU plugin in production and by the child theme.
-// Whichever copy loads first registers the hooks exactly once.
-if ( function_exists( 'elmercado_is_montjam_sliced_minimum_20261111' ) ) {
+// Loaded in both the child theme and as a production MU plugin.
+// A constant (rather than function_exists) guards runtime hook registration:
+// top-level PHP functions are already defined before this code executes.
+if ( defined( 'ELMERCADO_MONTJAM_MINIMUM_LOADED_20261111' ) ) {
 	return;
 }
+define( 'ELMERCADO_MONTJAM_MINIMUM_LOADED_20261111', true );
 
 /**
  * Identify only the sliced Montjam embutidos, never the whole pieces.
@@ -27,6 +29,7 @@ if ( function_exists( 'elmercado_is_montjam_sliced_minimum_20261111' ) ) {
  *
  * @param WC_Product|int $product Product object or ID.
  */
+if ( ! function_exists( 'elmercado_is_montjam_sliced_minimum_20261111' ) ) {
 function elmercado_is_montjam_sliced_minimum_20261111( $product ): bool {
 	if ( is_numeric( $product ) ) {
 		$product = wc_get_product( (int) $product );
@@ -63,10 +66,12 @@ function elmercado_is_montjam_sliced_minimum_20261111( $product ): bool {
 			|| str_contains( $slug, '90-g' )
 		);
 }
+}
 
 /**
  * Total quantity of the same sliced product already in the cart.
  */
+if ( ! function_exists( 'elmercado_montjam_sliced_cart_quantity_20261111' ) ) {
 function elmercado_montjam_sliced_cart_quantity_20261111( int $product_id ): int {
 	if ( ! function_exists( 'WC' ) || ! WC()->cart ) {
 		return 0;
@@ -78,6 +83,7 @@ function elmercado_montjam_sliced_cart_quantity_20261111( int $product_id ): int
 		}
 	}
 	return $quantity;
+}
 }
 
 /** Start at five on product pages and keep the step at one everywhere. */
