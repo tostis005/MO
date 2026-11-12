@@ -15,7 +15,7 @@ jobs:
       USER: ${{ secrets.STAGING_USER }}
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Confirm visible sellers and inspect BFEMDO coupon without modifying WooCommerce
+      - name: Confirm visible sellers and inspect BFM2 coupon without modifying WooCommerce
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -38,12 +38,12 @@ jobs:
             echo "BF_VISIBLE_SELLERS=".wp_json_encode($visible)."\n";
             echo "BF_PRELAUNCH_LINEUP_FLAG=".$marker."\n";
             if (!class_exists("WC_Coupon") || !function_exists("wc_get_coupon_id_by_code")) {
-              echo "BFEMDO_AUDIT=WOOCOMMERCE_NOT_LOADED\n";
+              echo "BFM2_AUDIT=WOOCOMMERCE_NOT_LOADED\n";
               exit;
             }
-            $id=(int)wc_get_coupon_id_by_code("BFEMDO");
+            $id=(int)wc_get_coupon_id_by_code("BFM2");
             if (!$id) {
-              echo "BFEMDO_AUDIT=COUPON_NOT_FOUND\n";
+              echo "BFM2_AUDIT=COUPON_NOT_FOUND\n";
               exit;
             }
             $coupon=new WC_Coupon($id);
@@ -51,7 +51,7 @@ jobs:
             $exp=$coupon->get_date_expires();
             $keys=array();
             foreach($coupon->get_meta_data() as $meta) { $keys[]=$meta->key; }
-            echo "BFEMDO_AUDIT=".wp_json_encode(array(
+            echo "BFM2_AUDIT=".wp_json_encode(array(
               "post_status"=>$post?$post->post_status:"unknown",
               "discount_type"=>$coupon->get_discount_type(),
               "amount"=>$coupon->get_amount(),
