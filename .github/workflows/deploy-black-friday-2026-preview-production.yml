@@ -7,9 +7,11 @@ on:
       - 'mu-plugins/emdo-black-friday-2026-preview.php'
       - 'elmercadodeorigen-child/templates/black-friday-2026-preview.php'
       - 'elmercadodeorigen-child/assets/css/black-friday-2026-preview.css'
+      - 'elmercadodeorigen-child/assets/css/black-friday-2026-global-curtain.css'
       - 'elmercadodeorigen-child/assets/js/black-friday-2026-preview.js'
       - '.github/workflows/deploy-black-friday-2026-preview-production.yml'
       - '.github/scripts/check-black-friday-2026-fullbleed.cjs'
+      - '.github/scripts/check-black-friday-2026-global-daily.cjs'
   workflow_dispatch:
 
 permissions:
@@ -80,6 +82,11 @@ jobs:
           grep -Fq 'Después de Black Friday, el cashback será del 1 %.' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           ! grep -Fq 'bf26-coupon-section' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           test -s elmercadodeorigen-child/assets/css/black-friday-2026-preview.css
+          test -s elmercadodeorigen-child/assets/css/black-friday-2026-global-curtain.css
+          test -s .github/scripts/check-black-friday-2026-global-daily.cjs
+          grep -Fq 'emdo_bf2026_global_curtain_eligible' mu-plugins/emdo-black-friday-2026-preview.php
+          grep -Fq 'emdo_bf2026_curtain_last_seen' elmercadodeorigen-child/assets/js/black-friday-2026-preview.js
+          grep -Fq 'setHours(24, 0, 0, 0)' elmercadodeorigen-child/assets/js/black-friday-2026-preview.js
           test -s elmercadodeorigen-child/assets/js/black-friday-2026-preview.js
           test -s .github/scripts/check-black-friday-2026-fullbleed.cjs
           grep -Fq 'bf26-club__wallet' elmercadodeorigen-child/templates/black-friday-2026-preview.php
@@ -90,7 +97,7 @@ jobs:
           ! grep -Eq 'wc_create_coupon|woocommerce_before_calculate_totals|wc_create_order' mu-plugins/emdo-black-friday-2026-preview.php
           test -n "$HOST" && test -n "$USER" && test -n "$SSHPASS"
 
-      - name: Upload only the dedicated four preview files
+      - name: Upload only the dedicated five campaign files
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -110,6 +117,7 @@ jobs:
           sshpass -e scp $SCP mu-plugins/emdo-black-friday-2026-preview.php "$USER@$HOST:$STAGE/bootstrap.php"
           sshpass -e scp $SCP elmercadodeorigen-child/templates/black-friday-2026-preview.php "$USER@$HOST:$STAGE/landing.php"
           sshpass -e scp $SCP elmercadodeorigen-child/assets/css/black-friday-2026-preview.css "$USER@$HOST:$STAGE/preview.css"
+          sshpass -e scp $SCP elmercadodeorigen-child/assets/css/black-friday-2026-global-curtain.css "$USER@$HOST:$STAGE/curtain.css"
           sshpass -e scp $SCP elmercadodeorigen-child/assets/js/black-friday-2026-preview.js "$USER@$HOST:$STAGE/preview.js"
 
       - name: Deploy to production only with backup, rollback and live smoke test
@@ -132,7 +140,7 @@ jobs:
           NEW="$MU/.emdo-bfpreview-new-$RUN"
           test -f "$ROOT/wp-config.php" && test -d "$MU" && test -x "$PHP"
           for f in bootstrap.php landing.php; do "$PHP" -l "$STAGE/$f" >/dev/null; done
-          test -s "$STAGE/preview.js" && test -s "$STAGE/preview.css"
+          test -s "$STAGE/preview.js" && test -s "$STAGE/preview.css" && test -s "$STAGE/curtain.css"
           SITE="$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --allow-root --skip-plugins --skip-themes)"
           case "$SITE" in
             https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
@@ -188,6 +196,7 @@ jobs:
           install -d -m 0755 "$NEW"
           install -m 0644 "$STAGE/landing.php" "$NEW/landing.php"
           install -m 0644 "$STAGE/preview.css" "$NEW/preview.css"
+          install -m 0644 "$STAGE/curtain.css" "$NEW/curtain.css"
           install -m 0644 "$STAGE/preview.js" "$NEW/preview.js"
           CHANGED=1
           rm -rf "$DEST"
@@ -311,6 +320,14 @@ jobs:
           CODE="$(curl -sSL --retry 3 --max-time 45 -A 'Mozilla/5.0 EMDO BF Preview' -D "/tmp/bf-preview-$RUN.headers" -o "/tmp/bf-preview-$RUN.html" -w '%{http_code}' "https://www.elmercadodeorigen.com/black-friday-2026/?verify=$RUN")"
           test "$CODE" = 200
           grep -Fq 'id="bf26-overlay"' "/tmp/bf-preview-$RUN.html"
+          # A regular public shop page must contain the daily global curtain,
+          # but never load the heavyweight landing layout stylesheet.
+          GLOBAL_CODE="$(curl -sSL --retry 3 --max-time 45 -A 'Mozilla/5.0 EMDO BF Global' -o "/tmp/bf-global-$RUN.html" -w '%{http_code}' "https://www.elmercadodeorigen.com/?bf_global_deploy=$RUN")"
+          test "$GLOBAL_CODE" = 200
+          grep -Fq 'id="bf26-overlay"' "/tmp/bf-global-$RUN.html"
+          grep -Fq 'curtain.css' "/tmp/bf-global-$RUN.html"
+          grep -Fq '/black-friday-2026/' "/tmp/bf-global-$RUN.html"
+          ! grep -Fq 'class="bf26-offer bf26-offer--montjam"' "/tmp/bf-global-$RUN.html"
           LEGACY_REDIRECT="$(curl -sS --retry 2 --max-time 30 -o /dev/null -w '%{http_code}|%{redirect_url}' "https://www.elmercadodeorigen.com/vista-previa-black-friday-2026/?legacy_verify=$RUN")"
           case "$LEGACY_REDIRECT" in
             "301|https://www.elmercadodeorigen.com/black-friday-2026/"|"301|https://elmercadodeorigen.com/black-friday-2026/") ;;
@@ -366,7 +383,7 @@ jobs:
           grep -Eiq '<footer|site-footer' "/tmp/bf-preview-$RUN.html"
           grep -Eiq '^x-robots-tag:.*noindex' "/tmp/bf-preview-$RUN.headers"
           ! grep -Eiq 'Fatal error:|Parse error:|Uncaught Error:|critical error on this website' "/tmp/bf-preview-$RUN.html"
-          rm -f "/tmp/bf-preview-$RUN.html" "/tmp/bf-preview-$RUN.headers"
+          rm -f "/tmp/bf-preview-$RUN.html" "/tmp/bf-preview-$RUN.headers" "/tmp/bf-global-$RUN.html"
           CHANGED=0
           echo "BF_PREVIEW_PRODUCTION_OK"
           echo "BACKUP=$BACKUP"
@@ -385,6 +402,7 @@ jobs:
           grep -Eiq 'class="[^"]*site-header' /tmp/bf-preview-live.html
           grep -Eiq 'shopping-cart|cart-contents|shop-cart-count|cart-count' /tmp/bf-preview-live.html
           curl -fsSIL --max-time 30 'https://www.elmercadodeorigen.com/wp-content/mu-plugins/emdo-black-friday-2026-preview/preview.css' >/dev/null
+          curl -fsSIL --max-time 30 'https://www.elmercadodeorigen.com/wp-content/mu-plugins/emdo-black-friday-2026-preview/curtain.css' >/dev/null
           curl -fsSIL --max-time 30 'https://www.elmercadodeorigen.com/wp-content/mu-plugins/emdo-black-friday-2026-preview/preview.js' >/dev/null
           echo "BLACK_FRIDAY_PREVIEW_PUBLIC_VERIFIED"
 
@@ -396,6 +414,14 @@ jobs:
           export CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
           test -n "$CHROME"
           node .github/scripts/check-black-friday-2026-fullbleed.cjs
+
+      - name: Verify daily curtain on home and categories, 320/360/390/768/1440 px
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          test -n "$CHROME"
+          node .github/scripts/check-black-friday-2026-global-daily.cjs
 
       - name: Upload optional browser snapshots for review
         if: always()
