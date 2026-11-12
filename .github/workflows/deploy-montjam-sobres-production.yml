@@ -139,6 +139,17 @@ jobs:
                 throw new Exception("Product not recognized: ".$slug);
               $args = apply_filters("woocommerce_quantity_input_args",
                 array("min_value"=>1, "step"=>1, "input_value"=>1), $p);
+              $quantity_hooks = $GLOBALS["wp_filter"]["woocommerce_quantity_input_args"] ?? null;
+              echo "MONTJAM_DIAGNOSTIC ".wp_json_encode(array(
+                "slug"=>$p->get_slug(),
+                "type"=>$p->get_type(),
+                "min"=>$args["min_value"] ?? null,
+                "step"=>$args["step"] ?? null,
+                "input_value"=>$args["input_value"] ?? null,
+                "hook_present"=>(bool)$quantity_hooks,
+                "priorities"=>$quantity_hooks ? array_keys($quantity_hooks->callbacks) : array(),
+                "module_loaded"=>function_exists("elmercado_is_montjam_sliced_minimum_20261111"),
+              ))."\\n";
               if ((int)$args["min_value"] !== 5 || (int)$args["step"] !== 1)
                 throw new Exception("Incorrect minimum/step for ".$slug);
               echo "PRODUCT_MINIMUM_5_STEP_1 ".$slug."\n";
