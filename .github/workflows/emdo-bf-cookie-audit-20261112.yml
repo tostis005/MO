@@ -1,0 +1,83 @@
+name: EMDO BF cookie cache-bypass audit read-only 20261112
+on:
+  push:
+    branches: [diagnostics/emdo-live-performance-20261112]
+    paths: ['.github/workflows/emdo-bf-cookie-audit-20261112.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Read-only cache timings with exact Black Friday dismissal cookie
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq >/dev/null
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 \
+            -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no \
+            -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          ROOT=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+          echo '=== CACHE GATE COOKIE AUDIT ==='
+          for path in / /tienda/ /producto/jamon-de-bellota-100-iberico/; do
+            echo "PATH=$path"
+            for mode in none analytics bf_curtain cart; do
+              H=$(mktemp)
+              case "$mode" in
+                none) COOKIE='' ;;
+                analytics) COOKIE='_ga=test' ;;
+                bf_curtain) COOKIE='emdo_bf2026_curtain_last_seen=2026-11-12' ;;
+                cart) COOKIE='woocommerce_items_in_cart=1' ;;
+              esac
+              if test "$mode" = none; then
+                curl -ksS --connect-timeout 3 --max-time 15 -D "$H" -o /dev/null \
+                  -w "mode=$mode code=%{http_code} ttfb=%{time_starttransfer}s\n" "https://www.elmercadodeorigen.com$path" || true
+              else
+                curl -ksS --connect-timeout 3 --max-time 15 -H "Cookie: $COOKIE" -D "$H" -o /dev/null \
+                  -w "mode=$mode code=%{http_code} ttfb=%{time_starttransfer}s\n" "https://www.elmercadodeorigen.com$path" || true
+              fi
+              grep -Ei '^(x-el-mercado-(home-early-cache|hot-early-cache|product-early-cache|cache)|x-emdo-(public-cache|nginx-hot-cache)):' "$H" | tr -d '\r' || true
+              rm -f "$H"
+            done
+          done
+          echo '=== BOT USER AGENT SUMMARY (NO PERSONAL DATA) ==='
+          python3 - <<'PY'
+          import os,re,datetime,collections,urllib.parse
+          p='/var/www/vhosts/system/elmercadodeorigen.com/logs/proxy_access_ssl_log'
+          now=datetime.datetime.now(datetime.timezone.utc);cut=now-datetime.timedelta(minutes=25)
+          rx=re.compile(r'^\S+\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"([^"]+)"\s+(\d{3})\s+\S+\s+"[^"]*"\s+"([^"]*)"')
+          a=collections.Counter();total=0
+          try:
+              with open(p,'rb') as f:
+                  f.seek(0,2);f.seek(max(0,f.tell()-30000000))
+                  if f.tell():f.readline()
+                  for raw in f:
+                      m=rx.match(raw.decode('utf8','replace'))
+                      if not m:continue
+                      try:dt=datetime.datetime.strptime(m[1],'%d/%b/%Y:%H:%M:%S %z').astimezone(datetime.timezone.utc)
+                      except ValueError:continue
+                      if dt<cut or dt>now:continue
+                      req=m[2].split()
+                      if len(req)<2:continue
+                      if 'add-to-cart' not in urllib.parse.parse_qs(urllib.parse.urlsplit(req[1]).query):continue
+                      ua=m[4].strip()
+                      if not any(b in ua.lower() for b in ('bot','spider','crawler','ahrefs','semrush','bytespider','headless')):continue
+                      total+=1
+                      # Print only known search client product and sanitized bot family, not raw UA/IP.
+                      kind='other crawler'
+                      for frag in ('Googlebot','Bingbot','Bytespider','AhrefsBot','SemrushBot','PetalBot','YandexBot','MJ12bot','GPTBot','ClaudeBot','DotBot','Applebot','Baiduspider','DataForSeoBot','BLEXBot'):
+                          if frag.lower() in ua.lower():kind=frag;break
+                      a[kind]+=1
+              print('CRAWLER_ADD_TO_CART_LAST25M',total,'CLIENTS',a.most_common(15))
+          except Exception as e:print('ERROR',type(e).__name__)
+          PY
+          echo 'COOKIE_READONLY_AUDIT_COMPLETE'
+          REMOTE
