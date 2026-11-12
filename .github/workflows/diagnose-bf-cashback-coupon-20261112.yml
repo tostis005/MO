@@ -102,6 +102,8 @@ jobs:
               echo "HIDALGO_TERM=".wp_json_encode(array("taxonomy"=>$t->taxonomy,"slug"=>$t->slug,"id"=>$t->term_id,"count"=>$t->count))."\n";
             }
             echo "CASHBACK_EFFECTIVE_PERCENT=".get_option("mdo_club_reward_percent","missing")."\n";
+            echo "CASHBACK_RELEASE_GATE=".(defined("MDO_CLUB_RELEASE_APPROVED")?(MDO_CLUB_RELEASE_APPROVED?"true":"false"):"undefined")."\n";
+            echo "CASHBACK_REWARDS_ENABLED=".(class_exists("MDO_Club")?(MDO_Club::enabled("rewards")?"true":"false"):"class-missing")."\n";
           ' --path="$ROOT" --allow-root
           echo "CASHBACK_CORE_SOURCE_MATCHES"
           for d in "$ROOT/wp-content/mu-plugins" "$ROOT/wp-content/plugins" "$ROOT/wp-content/themes"; do
