@@ -48,6 +48,7 @@ if ( ! empty( $_COOKIE ) ) {
 		'viewed_cookie_policy',
 		'total_page',
 		'emdo_filter_pass', // Token firmado del filtro: no personaliza el HTML en caché.
+		'emdo_bf2026_curtain_last_seen', // Solo controla visibilidad local de la cortinilla; no personaliza el HTML.
 	);
 
 	foreach ( array_keys( $_COOKIE ) as $cookie_name ) {
@@ -82,6 +83,23 @@ $path        = parse_url( $request_uri, PHP_URL_PATH );
 $path        = is_string( $path ) && '' !== $path ? '/' . ltrim( $path, '/' ) : '/';
 $path        = '/' !== $path ? rtrim( $path, '/' ) . '/' : '/';
 
+
+/**
+ * Known crawler add-to-cart GETs are not purchase intent.
+ * Redirect only ClaudeBot's query URLs to their clean public page before
+ * WooCommerce is bootstrapped. Never intercept customers or session cookies:
+ * unsafe/personal cookies have already returned from this drop-in above.
+ */
+if ( '' !== $query && isset( $_GET['add-to-cart'] ) ) {
+	$agent = isset( $_SERVER['HTTP_USER_AGENT'] ) ? (string) $_SERVER['HTTP_USER_AGENT'] : '';
+	if ( false !== stripos( $agent, 'ClaudeBot' ) ) {
+		header( 'Cache-Control: private, no-store, max-age=0' );
+		header( 'Vary: Cookie, User-Agent', false );
+		header( 'X-EMDO-Bot-Cart-Guard: REDIRECT' );
+		header( 'Location: ' . $path, true, 302 );
+		exit;
+	}
+}
 
 /**
  * Anonymous front-page fast path. The existing WordPress home cache already
