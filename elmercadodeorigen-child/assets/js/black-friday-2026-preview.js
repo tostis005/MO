@@ -1,4 +1,4 @@
-/* Solo vista previa: no añade cortinillas al resto del sitio. */
+/* Black Friday 2026: cortinilla de campaña compartida y control diario. */
 (function () {
 	'use strict';
 
@@ -9,19 +9,49 @@
 		var panel = overlay.querySelector('.bf26-overlay__panel');
 		var enterButton = overlay.querySelector('[data-bf26-enter]');
 		var previousFocus = null;
-		var dismissedKey = 'emdo_bf2026_curtain_dismissed';
+		var seenKey = 'emdo_bf2026_curtain_last_seen';
+		var fallbackSessionKey = 'emdo_bf2026_curtain_session_seen';
+
+		// Use the visitor's calendar date, not a rolling 24-hour timer.
+		// This makes the curtain eligible again on the following local day.
+		function todayLocal() {
+			var now = new Date();
+			return String(now.getFullYear()) + '-' +
+				String(now.getMonth() + 1).padStart(2, '0') + '-' +
+				String(now.getDate()).padStart(2, '0');
+		}
 
 		function curtainSeen() {
-			try { return window.sessionStorage.getItem(dismissedKey) === '1'; }
+			var today = todayLocal();
+			try { if (window.localStorage.getItem(seenKey) === today) { return true; } }
+			catch (error) { /* Fall through to cookie and session storage. */ }
+			try {
+				if (document.cookie.split(';').some(function (part) {
+					return part.trim() === seenKey + '=' + today;
+				})) { return true; }
+			} catch (error) { /* Cookie access may be disabled. */ }
+			try { return window.sessionStorage.getItem(fallbackSessionKey) === today; }
 			catch (error) { return false; }
 		}
 
 		function rememberDismissal() {
-			try { window.sessionStorage.setItem(dismissedKey, '1'); }
-			catch (error) { /* Storage may be unavailable; navigation still works. */ }
+			var today = todayLocal();
+			try { window.localStorage.setItem(seenKey, today); }
+			catch (error) { /* Cookie/session fallback below. */ }
+			try {
+				var tomorrow = new Date();
+				tomorrow.setHours(24, 0, 0, 0);
+				document.cookie = seenKey + '=' + today +
+					';expires=' + tomorrow.toUTCString() + ';path=/;SameSite=Lax';
+			} catch (error) { /* Cookie access may be disabled. */ }
+			try { window.sessionStorage.setItem(fallbackSessionKey, today); }
+			catch (error) { /* The close action remains functional. */ }
 		}
 
 		function openCurtain() {
+			// Record the impression as soon as it is shown. Navigation before
+			// dismissal must not cause a second popup on another page.
+			rememberDismissal();
 			previousFocus = document.activeElement;
 			overlay.hidden = false;
 			document.body.classList.add('bf26-modal-open');
@@ -100,9 +130,8 @@
 			});
 		});
 
-		// La presentación se muestra una vez por sesión. Al volver de la tienda
-		// el menú, el carrito y la navegación siguen disponibles sin interrupción.
-		// Se puede abrir de nuevo con el botón al final de la landing.
+		// Both the landing and the rest of the shop use the same daily key.
+		// A user can reopen the presentation explicitly from the landing.
 		if (!curtainSeen()) { openCurtain(); }
 	}
 
