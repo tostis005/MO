@@ -1,0 +1,66 @@
+name: Temporary Black Friday home and curtain diagnostics
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/diagnose-bf-home-curtain-20261112.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Inspect home markup, cache, WP front page and custom sources
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          sshpass -e ssh -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$PORT" "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            echo "FRONT_OPTION=".get_option("show_on_front","?")."\n";
+            echo "FRONT_PAGE_ID=".get_option("page_on_front","?")."\n";
+            $front=get_post((int)get_option("page_on_front",0));
+            if($front){
+              echo "FRONT_TITLE=".get_the_title($front)."\n";
+              echo "FRONT_TEMPLATE=".get_page_template_slug($front)."\n";
+              echo "FRONT_CONTENT_BYTES=".strlen($front->post_content)."\n";
+              echo "FRONT_CONTENT_SNIPPET=".substr(wp_strip_all_tags($front->post_content),0,900)."\n";
+            }
+            echo "BF_GLOBAL_ENABLED=".get_option("emdo_bf2026_global_curtain_enabled","default")."\n";
+            echo "BF_GLOBAL_FUNCTION=".(function_exists("emdo_bf2026_global_curtain_eligible")?"yes":"no")."\n";
+            echo "HOME_THEME=".get_stylesheet()."\n";
+          ' --path="$ROOT" --allow-root
+          echo "RELEVANT_HOME_PHP_FILES"
+          find "$ROOT/wp-content/mu-plugins" "$ROOT/wp-content/themes" -maxdepth 4 -type f \( -iname '*home*' -o -iname '*front*' -o -iname '*banner*' \) 2>/dev/null | head -75
+          echo "HOME_MARKUP_MATCH_FILES"
+          grep -rl -m1 --include='*.php' --include='*.js' -e 'Ya está aquí la cosecha' -e 'Cestas de Navidad para empresas' "$ROOT/wp-content/mu-plugins" "$ROOT/wp-content/themes" 2>/dev/null | head -40 || true
+          echo "HOME_HTTP_REMOTE"
+          for suffix in '' '?bf_diagnose=nov12-different-182' '?nocache=1'; do
+            url="https://www.elmercadodeorigen.com/$suffix"
+            curl -k -sSL --max-time 35 -D /tmp/bfhome-headers -o /tmp/bfhome-response "$url"
+            echo "URL=$url"
+            grep -iE '^(HTTP/|cache-control:|age:|x-cache|cf-cache|x-litespeed|x-rocket|vary:|server:)' /tmp/bfhome-headers | head -13 || true
+            echo "HTML_BYTES=$(wc -c </tmp/bfhome-response)"
+            for p in 'id="bf26-overlay"' 'curtain.css' 'preview.js' 'Ya está aquí la cosecha' 'Cestas de Navidad'; do
+              n="$(grep -oF "$p" /tmp/bfhome-response | wc -l || true)"
+              echo "HTML_MATCH=$p:$n"
+            done
+          done
+          echo "BF_BOOTSTRAP_PRESENT"
+          ls -l "$ROOT/wp-content/mu-plugins/emdo-black-friday-2026-preview.php" "$ROOT/wp-content/mu-plugins/emdo-black-friday-2026-preview/curtain.css" 2>&1 || true
+          REMOTE
