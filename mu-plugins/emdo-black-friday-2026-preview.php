@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: EMDO — Black Friday 2026 (campaña preparada)
- * Description: Landing en URL definitiva, todavía sin indexar ni enlazar. No modifica precios, cupones, monedero ni carrito.
+ * Description: Landing de Black Friday y cortinilla pública diaria. No modifica precios, cupones, monedero ni carrito.
  * Version: 1.0.0
  * Author: El Mercado de Origen
  *
@@ -14,8 +14,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * La landing ya utiliza la URL definitiva /black-friday-2026/.
- * Permanece sin enlazar, no indexable y con cortinilla SOLO dentro de
- * la landing; su activación global se reserva para el lanzamiento.
+ * La landing mantiene su URL definitiva y su estructura separada.
+ * La cortinilla global usa el mismo JS con frecuencia máxima diaria.
  */
 function emdo_bf2026_requested_path(): string {
 	if ( is_admin() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
@@ -63,22 +63,47 @@ add_action( 'template_redirect', static function (): void {
 	exit;
 }, -100 );
 
+/**
+ * Mostrar en el escaparate una sola vez al día por navegador.
+ * Se excluyen carrito, checkout y área de cuenta para no interrumpir compras,
+ * pagos, accesos ni la confirmación de un pedido.
+ */
+function emdo_bf2026_global_curtain_eligible(): bool {
+	if ( emdo_bf2026_production_preview_route()
+		|| is_admin()
+		|| wp_doing_ajax()
+		|| ( defined( 'REST_REQUEST' ) && REST_REQUEST )
+		|| ( defined( 'DOING_CRON' ) && DOING_CRON )
+		|| is_feed()
+		|| is_404()
+		|| 'yes' !== get_option( 'emdo_bf2026_global_curtain_enabled', 'yes' ) ) {
+		return false;
+	}
+	if ( ( function_exists( 'is_checkout' ) && is_checkout() )
+		|| ( function_exists( 'is_cart' ) && is_cart() )
+		|| ( function_exists( 'is_account_page' ) && is_account_page() ) ) {
+		return false;
+	}
+	return true;
+}
+
 add_action( 'wp_enqueue_scripts', static function (): void {
-	if ( ! emdo_bf2026_production_preview_route() ) {
+	$is_landing = emdo_bf2026_production_preview_route();
+	if ( ! $is_landing && ! emdo_bf2026_global_curtain_eligible() ) {
 		return;
 	}
 	$base_url = content_url( '/mu-plugins/emdo-black-friday-2026-preview/' );
 	$base_dir = __DIR__ . '/emdo-black-friday-2026-preview/';
-
-	// Reemplaza los handles equivalentes si el módulo del tema está instalado.
-	// Nunca carga dos scripts de cortinilla a la vez.
+	// La hoja global solo contiene estilos de la cortinilla: no afecta al
+	// tema ni al rendimiento de las páginas de producto/tienda.
+	$css_file = $is_landing ? 'preview.css' : 'curtain.css';
 	wp_dequeue_style( 'emdo-bf2026-preview' );
 	wp_deregister_style( 'emdo-bf2026-preview' );
 	wp_enqueue_style(
 		'emdo-bf2026-preview',
-		$base_url . 'preview.css',
+		$base_url . $css_file,
 		array(),
-		is_readable( $base_dir . 'preview.css' ) ? (string) filemtime( $base_dir . 'preview.css' ) : '1.0'
+		is_readable( $base_dir . $css_file ) ? (string) filemtime( $base_dir . $css_file ) : '1.0'
 	);
 	wp_dequeue_script( 'emdo-bf2026-preview' );
 	wp_deregister_script( 'emdo-bf2026-preview' );
@@ -130,3 +155,62 @@ add_filter( 'wp_sitemaps_posts_query_args', static function ( array $args, strin
 	$args['post__not_in'] = array_unique( $excluded );
 	return $args;
 }, 10, 2 );
+
+
+/**
+ * Inserta la cortinilla al final de las páginas públicas (una sola instancia).
+ * Se mantiene separada de los contenidos SEO y no duplica la landing.
+ */
+add_action( 'wp_footer', static function (): void {
+	if ( ! emdo_bf2026_global_curtain_eligible() ) {
+		return;
+	}
+	// Es la misma paleta que aparece en la landing, pero el resto de la web
+	// nunca depende de la plantilla de Black Friday para renderizarse.
+	$paleta = get_page_by_path( 'paleta-de-bellota-100-iberico', OBJECT, 'product' );
+	$photo = '';
+	if ( $paleta instanceof WP_Post && has_post_thumbnail( $paleta->ID ) ) {
+		$photo = get_the_post_thumbnail(
+			$paleta->ID,
+			'large',
+			array(
+				'class'    => 'bf26-photo',
+				'alt'      => 'Paleta ibérica de Hidalgo de la Jara',
+				'loading'  => 'lazy',
+				'decoding' => 'async',
+			)
+		);
+	}
+	?>
+	<div class="bf26-overlay" id="bf26-overlay" role="dialog" aria-modal="true" aria-labelledby="bf26-overlay-title" aria-describedby="bf26-overlay-desc" hidden>
+		<div class="bf26-overlay__backdrop" aria-hidden="true"></div>
+		<div class="bf26-overlay__panel" tabindex="-1">
+			<button class="bf26-overlay__close" type="button" data-bf26-close aria-label="Cerrar promoción de Black Friday">✕ <span>CERRAR</span></button>
+			<div class="bf26-overlay__layout">
+				<div class="bf26-overlay__copy">
+					<h2 id="bf26-overlay-title">BLACK<br><em>FRIDAY</em></h2>
+					<p id="bf26-overlay-desc">Ya está aquí nuestro Black Friday: <strong>descuentos especiales, ventajas en jamones seleccionados y regalos</strong>. Además, estrenamos el <strong>Club EMDO con un 2 % de cashback</strong> en las compras realizadas con tu cuenta registrada.</p>
+					<div class="bf26-overlay__buttons">
+						<a class="bf26-overlay__cta" href="<?php echo esc_url( home_url( '/black-friday-2026/' ) ); ?>">Descubrir las ofertas <span aria-hidden="true">↗</span></a>
+						<button type="button" class="bf26-overlay__skip" data-bf26-close>Ahora no, seguir comprando</button>
+					</div>
+				</div>
+				<div class="bf26-overlay__art" aria-hidden="true">
+					<div class="bf26-overlay__circle"></div>
+					<div class="bf26-overlay__photo">
+						<?php
+						if ( $photo ) {
+							echo wp_kses_post( $photo );
+						} else {
+							echo '<div class="bf26-image-fallback">CALIDAD<br><strong>DE ORIGEN</strong></div>';
+						}
+						?>
+					</div>
+					<div class="bf26-overlay__discount bf26-campaign-stamp"><small>EDICIÓN 2026</small><strong>BLACK<em>FRIDAY</em></strong><span>OFERTAS <b aria-hidden="true">✳</b> REGALOS</span></div>
+					<div class="bf26-overlay__asterisk">✳</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<?php
+}, 99 );
