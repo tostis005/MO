@@ -46,7 +46,7 @@ jobs:
             echo "HOME_THEME=".get_stylesheet()."\n";
           ' --path="$ROOT" --allow-root
           echo "RELEVANT_HOME_PHP_FILES"
-          find "$ROOT/wp-content/mu-plugins" "$ROOT/wp-content/themes" -maxdepth 4 -type f \( -iname '*home*' -o -iname '*front*' -o -iname '*banner*' \) 2>/dev/null | head -75
+          find "$ROOT/wp-content/mu-plugins" "$ROOT/wp-content/themes" -maxdepth 4 -type f \( -iname '*home*' -o -iname '*front*' -o -iname '*banner*' \) 2>/dev/null | head -75 || true
           echo "HOME_MARKUP_MATCH_FILES"
           grep -rl -m1 --include='*.php' --include='*.js' -e 'Ya está aquí la cosecha' -e 'Cestas de Navidad para empresas' "$ROOT/wp-content/mu-plugins" "$ROOT/wp-content/themes" 2>/dev/null | head -40 || true
           echo "HOME_HTTP_REMOTE"
