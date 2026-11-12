@@ -151,7 +151,7 @@ const {chromium} = require('playwright-core');
             clubWalletText.includes('1 % DESPUÉS DEL BLACK FRIDAY') &&
             clubFooterText.includes('un 2 % de cashback') &&
             clubFooterText.includes('acumularán el 1 %') &&
-            clubFooterText.includes('todavía no se ha anunciado oficialmente') &&
+            clubFooterText.includes('Los regalos y las mejoras de peso están sujetos') &&
             overlayText.includes('2 % de cashback') &&
             overlayText.includes('Club EMDO') &&
             !overlayText.includes('1 % en tu monedero'),
