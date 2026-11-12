@@ -53,6 +53,24 @@ jobs:
                 echo "SUBSCRIBER_COUNTS=".wp_json_encode($counts)."\n";
               }
             }
+            if(class_exists("FluentCrm\App\Models\Campaign")){
+              $campaign=\FluentCrm\App\Models\Campaign::find(12);
+              if($campaign){
+                $body=$campaign->email_body;
+                $settings=$campaign->settings;
+                echo "CAMPAIGN_REFERENCE=".wp_json_encode(array(
+                  "id"=>$campaign->id,
+                  "design_template"=>$campaign->design_template,
+                  "body_type"=>gettype($body),
+                  "body_length"=>is_string($body)?strlen($body):0,
+                  "body_head"=>is_string($body)?substr($body,0,250):"",
+                  "settings_type"=>gettype($settings),
+                  "settings_keys"=>is_array($settings)?array_keys($settings):array(),
+                  "utm_status"=>$campaign->utm_status,
+                  "template_id"=>$campaign->template_id
+                ))."\n";
+              }
+            }
             echo "DRAFT_INSPECTION_COMPLETE\n";
           ' --path="$ROOT" --allow-root
           REMOTE
