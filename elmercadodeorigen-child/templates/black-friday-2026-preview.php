@@ -39,14 +39,15 @@ $club_wallet_url  = function_exists( 'wc_get_account_endpoint_url' ) ? wc_get_ac
 
 /**
  * Control de visibilidad de la landing, independiente de WooCommerce.
- * Por defecto se muestran los dos productores en revisión.
- * Para el lanzamiento con Hidalgo, configurar la opción WordPress
- * emdo_bf2026_visible_sellers con el array ['hidalgo'].
- * Más adelante se puede volver a incluir 'montjam' sin retocar el copy.
+ * Primera fase del lanzamiento: únicamente Hidalgo de la Jara.
+ * Montjam conserva su ficha y sus condiciones, pero permanece oculto
+ * hasta que se autorice su incorporación posterior.
+ * La opción emdo_bf2026_visible_sellers controla las fichas y fotos.
  */
 $bf26_known_sellers = array( 'hidalgo', 'montjam' );
-$bf26_enabled_option = get_option( 'emdo_bf2026_visible_sellers', $bf26_known_sellers );
-$bf26_enabled_option = is_array( $bf26_enabled_option ) ? $bf26_enabled_option : $bf26_known_sellers;
+$bf26_launch_sellers = array( 'hidalgo' );
+$bf26_enabled_option = get_option( 'emdo_bf2026_visible_sellers', $bf26_launch_sellers );
+$bf26_enabled_option = is_array( $bf26_enabled_option ) ? $bf26_enabled_option : $bf26_launch_sellers;
 $bf26_visible_sellers = array_values( array_intersect( $bf26_known_sellers, array_map( 'sanitize_key', $bf26_enabled_option ) ) );
 $bf26_show_hidalgo = in_array( 'hidalgo', $bf26_visible_sellers, true );
 $bf26_show_montjam = in_array( 'montjam', $bf26_visible_sellers, true );
