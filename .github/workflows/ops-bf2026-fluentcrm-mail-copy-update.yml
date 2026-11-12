@@ -1,0 +1,73 @@
+name: One-time update of unsent FluentCRM Black Friday draft copy
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ops-bf2026-fluentcrm-mail-copy-update.yml'
+permissions:
+  contents: read
+jobs:
+  revise-draft:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Replace launch headline and mention forthcoming new offers in draft only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          sshpass -e ssh -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$PORT" "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            if(!class_exists("FluentCrm\App\Models\Campaign"))exit(21);
+            $campaign=\FluentCrm\App\Models\Campaign::find(13);
+            if(!$campaign || "draft"!==$campaign->status || $campaign->scheduled_at){
+              fwrite(STDERR,"BF_MAIL_NOT_UNSENT_DRAFT\n");exit(22);
+            }
+            $original=(string)$campaign->email_body;
+            $old="Este Black Friday,<br>el origen tiene premio.";
+            $new="Black Friday:<br>¡empiezan las sorpresas!";
+            if(strpos($original,$old)===false && strpos($original,$new)===false){
+              fwrite(STDERR,"BF_MAIL_UNEXPECTED_HEADLINE\n");exit(23);
+            }
+            $body=str_replace($old,$new,$original);
+            $before="Ya está aquí nuestro Black Friday. Para estrenarlo, descubre una promoción especial de <strong>Hidalgo de la Jara</strong>.";
+            $after="Ya está aquí nuestro Black Friday. Para estrenarlo, descubre una promoción especial de <strong>Hidalgo de la Jara</strong>. <strong>Y esto es solo el principio:</strong> próximamente iremos incorporando nuevas promociones y productores. ¡Estate atento a las próximas novedades!";
+            if(strpos($body,$before)===false && strpos($body,$after)===false){
+              fwrite(STDERR,"BF_MAIL_UNEXPECTED_INTRO\n");exit(24);
+            }
+            $body=str_replace($before,$after,$body);
+            $newSubject="Black Friday: 15 % en Hidalgo y nuevas promociones por llegar";
+            $newPreheader="Empezamos con BFEMDO y un 2 % de cashback. Próximamente, más ofertas y productores.";
+            $campaign->email_body=$body;
+            $campaign->email_subject=$newSubject;
+            $campaign->email_pre_header=$newPreheader;
+            $campaign->save();
+            $saved=\FluentCrm\App\Models\Campaign::find(13);
+            if(!$saved || "draft"!==$saved->status || $saved->scheduled_at ||
+              strpos((string)$saved->email_body,"el origen tiene premio")!==false ||
+              strpos((string)$saved->email_body,"próximamente iremos incorporando nuevas promociones")===false ||
+              strpos((string)$saved->email_body,"BFEMDO")===false ||
+              strpos((string)$saved->email_body,"2 % de cashback")===false){
+              fwrite(STDERR,"BF_MAIL_DRAFT_VERIFICATION_FAILED\n");exit(25);
+            }
+            echo "BF_MAIL_DRAFT_UPDATED=".wp_json_encode(array(
+              "id"=>$saved->id,"status"=>$saved->status,
+              "subject"=>$saved->email_subject,"preheader"=>$saved->email_pre_header,
+              "scheduled_at"=>$saved->scheduled_at,"body_bytes"=>strlen((string)$saved->email_body)
+            ))."\n";
+          ' --path="$ROOT" --allow-root
+          REMOTE
