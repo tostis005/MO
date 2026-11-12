@@ -73,4 +73,20 @@ jobs:
             }
             echo "DRAFT_INSPECTION_COMPLETE\n";
           ' --path="$ROOT" --allow-root
+          echo "FLUENTCRM_MODEL_REFERENCE"
+          FILE="$ROOT/wp-content/plugins/fluent-crm/app/Models/Campaign.php"
+          if [ -f "$FILE" ]; then
+            sed -n '1,150p' "$FILE" | head -145
+          fi
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            $c=\FluentCrm\App\Models\Campaign::find(12);
+            if($c){
+              $st=(array)$c->settings;
+              foreach(array("subscribers","excludedSubscribers","sending_filter","template_config","sending_type","mailer_settings","footer_settings") as $key){
+                $v=$st[$key]??null;
+                echo "SETTINGS_SHAPE=".wp_json_encode(array("key"=>$key,"type"=>gettype($v),"keys"=>is_array($v)?array_keys($v):array(),"value"=>is_scalar($v)&&!preg_match("/mailer|footer/i",$key)?(string)$v:null))."\n";
+              }
+              echo "CAMPAIGN_BODY_SAMPLE=".substr((string)$c->email_body,0,1450)."\n";
+            }
+          ' --path="$ROOT" --allow-root
           REMOTE
