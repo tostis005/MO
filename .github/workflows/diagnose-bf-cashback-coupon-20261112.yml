@@ -103,4 +103,26 @@ jobs:
             }
             echo "CASHBACK_EFFECTIVE_PERCENT=".get_option("mdo_club_reward_percent","missing")."\n";
           ' --path="$ROOT" --allow-root
+          echo "CASHBACK_CORE_SOURCE_MATCHES"
+          for d in "$ROOT/wp-content/mu-plugins" "$ROOT/wp-content/plugins" "$ROOT/wp-content/themes"; do
+            if [ -d "$d" ]; then
+              grep -rl -m1 --include='*.php' 'mdo_club_reward_percent' "$d" 2>/dev/null | head -16 || true
+              grep -rl -m1 --include='*.php' 'class MDO_Club_Ledger' "$d" 2>/dev/null | head -10 || true
+            fi
+          done
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            $ids=get_posts(array(
+              "post_type"=>"product",
+              "post_status"=>"publish",
+              "posts_per_page"=>-1,
+              "fields"=>"ids",
+              "tax_query"=>array(array("taxonomy"=>"pa_productor","field"=>"slug","terms"=>array("hidalgo-de-la-jara"))),
+            ));
+            echo "HIDALGO_COUPON_ELIGIBLE_COUNT=".count($ids)."\n";
+            foreach(array_slice($ids,0,8) as $id){
+              echo "HIDALGO_ELIGIBLE_SAMPLE=".wp_json_encode(array("id"=>$id,"title"=>get_the_title($id),"author"=>get_post_field("post_author",$id)))."\n";
+            }
+            $all=get_posts(array("post_type"=>"product","post_status"=>"publish","posts_per_page"=>-1,"fields"=>"ids","author"=>6));
+            echo "COUPON_AUTHOR_PRODUCT_COUNT=".count($all)."\n";
+          ' --path="$ROOT" --allow-root
           REMOTE
