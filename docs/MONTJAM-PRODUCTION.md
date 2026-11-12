@@ -16,20 +16,24 @@ También queda preparada para un futuro producto de salchichón **loncheado** Mo
 
 El comprador empieza en 5 sobres y puede pedir 6, 7, 8, etc. Cada producto exige su propio mínimo.
 
-## Secrets requeridos
+## Conexión de producción reutilizada
 
-Configurar en el entorno GitHub Actions `production` (Settings → Environments → production → Environment secrets):
+El workflow reutiliza las credenciales que ya utiliza
+`.github/workflows/publish-approved-producer-banners-20261020.yml`:
 
-| Secret | Valor |
-| --- | --- |
-| `PRODUCTION_HOST` | Host/IP de SSH verificado del servidor de producción (sin protocolo) |
-| `PRODUCTION_PORT` | Puerto SSH, normalmente 22 (opcional) |
-| `PRODUCTION_USER` | Usuario SSH con permiso para editar `wp-content/mu-plugins` |
-| `PRODUCTION_PASSWORD` | Contraseña SSH, **no** la contraseña de WordPress |
-| `PRODUCTION_KNOWN_HOSTS` | Clave/huella de host obtenida y **verificada** fuera de banda |
-| `PRODUCTION_WP_PATH` | Ruta absoluta de la instalación WordPress de producción que contiene `wp-config.php` |
+- `STAGING_HOST`
+- `STAGING_PORT` (si no existe, 22)
+- `STAGING_USER`
+- `STAGING_PASSWORD`
 
-No escribir credenciales en archivos versionados. No copiar los secretos de desarrollo sin verificar permisos y destino.
+Aunque se llamen `STAGING_*`, el workflow de banners las usa para editar **producción**.
+El destino está limitado a la instalación de WordPress confirmada en ese workflow:
+
+`/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs`
+
+**Antes de escribir**, el workflow verifica `wp-config.php` y la opción `siteurl` para confirmar que la instalación es `elmercadodeorigen.com`. Si no puede comprobarlo, se detiene.
+
+La publicación NO necesita secretos nuevos `PRODUCTION_*` ni sincroniza archivos del tema. La misma conexión SSH que publicaba los banners permite escribir exclusivamente el plugin MU de los sobres Montjam.
 
 ## Ejecución
 
@@ -39,7 +43,7 @@ No escribir credenciales en archivos versionados. No copiar los secretos de desa
 - Antes de reemplazar un MU plugin existente, hace una copia de seguridad; si falla la comprobación de las reglas, restaura la copia o elimina el nuevo archivo.
 - Finalmente vacía la caché de objetos de WP-CLI y comprueba que las páginas públicas contienen «Pedido mínimo».
 
-La ejecución se detiene **sin modificar producción** si falta algún secret o si el destino no corresponde exactamente a `elmercadodeorigen.com`.
+La ejecución se detiene **sin modificar producción** si faltan las credenciales SSH existentes o si el destino no corresponde exactamente a `elmercadodeorigen.com`. Al finalizar correctamente publica el estado `montjam/production-verified` en el commit de GitHub, pero únicamente después de comprobar el servidor y las fichas públicas.
 
 ## Comprobación manual
 
