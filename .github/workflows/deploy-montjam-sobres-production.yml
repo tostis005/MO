@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 concurrency:
   group: elmercado-montjam-sachets-production
@@ -157,3 +158,19 @@ jobs:
             grep -q 'Pedido mínimo:' "/tmp/$slug.html"
             echo "LIVE_PUBLIC_MINIMUM_CONFIRMED $slug"
           done
+
+      - name: Record verified production status on this commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Publish success only after both server-side and public URL checks pass.
+          curl --fail --silent --show-error --retry 3 \
+            -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -d '{"state":"success","context":"montjam/production-verified","description":"Verified min 5, step 1 and live product pages"}'
+          echo "PRODUCTION_VERIFIED_STATUS_PUBLISHED"
