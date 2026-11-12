@@ -302,12 +302,12 @@ jobs:
           ' --path="$ROOT" --allow-root)"
           PAGE_TOKEN="$(printf '%s\n' "$PAGE_RESULT" | grep '^EMDO_BF_PAGE_STATE=' | tail -n 1)"
           case "$PAGE_TOKEN" in
-            EMDO_BF_PAGE_STATE=CREATED:*) CREATED_PAGE_ID="\${PAGE_TOKEN##*:}" ;;
+            EMDO_BF_PAGE_STATE=CREATED:*) CREATED_PAGE_ID="${PAGE_TOKEN##*:}" ;;
             EMDO_BF_PAGE_STATE=RENAMED:*|EMDO_BF_PAGE_STATE=EXISTING:*) ;;
             *) echo "UNEXPECTED_PAGE_CREATION_STATUS"; exit 14 ;;
           esac
           echo "$PAGE_TOKEN"
-          test "$("$PHP" -d memory_limit=512M "$WP" post get "\${PAGE_TOKEN##*:}" --field=post_name --path="$ROOT" --allow-root)" = "black-friday-2026"
+          test "$("$PHP" -d memory_limit=512M "$WP" post get "${PAGE_TOKEN##*:}" --field=post_name --path="$ROOT" --allow-root)" = "black-friday-2026"
           CODE="$(curl -sSL --retry 3 --max-time 45 -A 'Mozilla/5.0 EMDO BF Preview' -D "/tmp/bf-preview-$RUN.headers" -o "/tmp/bf-preview-$RUN.html" -w '%{http_code}' "https://www.elmercadodeorigen.com/black-friday-2026/?verify=$RUN")"
           test "$CODE" = 200
           grep -Fq 'id="bf26-overlay"' "/tmp/bf-preview-$RUN.html"
