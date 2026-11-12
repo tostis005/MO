@@ -1,0 +1,138 @@
+name: EMDO current production performance read-only 20261112
+on:
+  push:
+    branches: [diagnostics/emdo-live-performance-20261112]
+    paths:
+      - '.github/workflows/emdo-live-performance-20261112.yml'
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Sample live load, PHP, cache, traffic and DB counters without changing production
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq >/dev/null
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=12 \
+            -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no \
+            -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          ROOT=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+          LOGS=/var/www/vhosts/system/elmercadodeorigen.com/logs
+          echo '=== MEASUREMENT TIME UTC ==='
+          date -u
+          echo '=== 4 CORE HOST STATUS ==='
+          uptime
+          cat /proc/loadavg
+          free -m | head -n 3
+          df -h / | tail -n 1
+          echo '=== CPU TOP PROCESS FAMILIES ==='
+          ps -eo comm,pcpu,rss --no-headers | awk '{n[$1]++;cpu[$1]+=$2;rss[$1]+=$3} END {for(k in n) printf "%s n=%d cpu_pct_sum=%.1f rss_MiB=%.0f\n",k,n[k],cpu[k],rss[k]/1024}' | sort -t= -k3,3nr | head -n 12
+          echo '=== PHP FPM POOL STATUS ==='
+          ps -eo stat,pcpu,rss,args | awk '/php-fpm: pool elmercadodeorigen.com/ && !/awk/ {n++;if ($1 ~ /^R/)run++;cpu+=$2;rss+=$3} END {printf "workers=%d running=%d cpu_pct_sum=%.1f rss_MiB=%.0f\n",n,run,cpu,rss/1024}'
+          grep -E '^pm.(max_children|start_servers|min_spare_servers|max_spare_servers|process_idle_timeout)' /opt/plesk/php/8.2/etc/php-fpm.d/elmercadodeorigen.com.conf | head -n 8 || true
+          echo '=== WORDPRESS CACHE AND CRON CONFIG ==='
+          if test -e "$ROOT/wp-content/object-cache.php"; then echo 'object_cache_dropin=PRESENT'; else echo 'object_cache_dropin=ABSENT'; fi
+          if test -e "$ROOT/wp-content/advanced-cache.php"; then echo 'advanced_cache_dropin=PRESENT'; else echo 'advanced_cache_dropin=ABSENT'; fi
+          /opt/plesk/php/8.2/bin/php -r 'echo "php_redis=".(extension_loaded("redis")?"yes":"no")."\n";'
+          echo '=== HOME STATIC FILE STATUS ==='
+          test -f "$ROOT/wp-content/uploads/elmercado-home-static/index.html" && stat -c 'home_html_bytes=%s modified_epoch=%Y' "$ROOT/wp-content/uploads/elmercado-home-static/index.html" || echo 'home_html=ABSENT'
+          echo '=== SELECTIVE HTTP TIMINGS (ANONYMOUS / CACHED) ==='
+          for path in / /tienda/ /categoria-producto/jamones-paletas/ /producto/jamon-de-bellota-100-iberico/ /black-friday-2026/; do
+            echo "PATH=$path"
+            for attempt in 1 2; do
+              h=$(mktemp)
+              curl -ksS --connect-timeout 3 --max-time 16 --compressed -D "$h" -o /dev/null \
+                -w "sample=$attempt status=%{http_code} ttfb=%{time_starttransfer}s total=%{time_total}s response_bytes=%{size_download}\n" \
+                "https://www.elmercadodeorigen.com$path" || true
+              grep -Ei '^(x-el-mercado-(home-early-cache|cache|hot-early-cache|product-early-cache|category-early-cache)|x-emdo-(public-cache|nginx-hot-cache)):' "$h" | tr -d '\r' || true
+              rm -f "$h"
+            done
+          done
+          echo '=== STATEFUL BYPASS TIMING (NO MUTATION) ==='
+          for path in / /tienda/; do
+            h=$(mktemp)
+            curl -ksS --connect-timeout 3 --max-time 18 --compressed \
+              -H 'Cookie: woocommerce_items_in_cart=1' -D "$h" -o /dev/null \
+              -w "bypass_path=$path status=%{http_code} ttfb=%{time_starttransfer}s total=%{time_total}s\n" \
+              "https://www.elmercadodeorigen.com$path" || true
+            grep -Ei '^(x-el-mercado-(home-early-cache|cache|hot-early-cache)|x-emdo-(public-cache|nginx-hot-cache)):' "$h" | tr -d '\r' || true
+            rm -f "$h"
+          done
+          echo '=== MYSQL & ACTION SCHEDULER READ-ONLY COUNTS ==='
+          WP=/usr/local/bin/wp
+          PHP=/opt/plesk/php/8.2/bin/php
+          timeout 12 "$PHP" "$WP" db query --path="$ROOT" --allow-root --skip-column-names "SHOW GLOBAL STATUS LIKE 'Threads_running';" 2>&1 | head -n 5 || true
+          timeout 12 "$PHP" "$WP" db query --path="$ROOT" --allow-root --skip-column-names "SHOW GLOBAL STATUS LIKE 'Slow_queries';" 2>&1 | head -n 5 || true
+          timeout 12 "$PHP" "$WP" db query --path="$ROOT" --allow-root --skip-column-names \
+            "SELECT status,COUNT(*) FROM wp_actionscheduler_actions GROUP BY status;" 2>&1 | head -n 12 || true
+          timeout 12 "$PHP" "$WP" db query --path="$ROOT" --allow-root --skip-column-names \
+            "SELECT hook,COUNT(*) FROM wp_actionscheduler_actions WHERE status IN ('pending','in-progress') GROUP BY hook ORDER BY COUNT(*) DESC LIMIT 12;" 2>&1 | head -n 15 || true
+          echo '=== RECENT ACCESS & SLOWLOG AGGREGATES ==='
+          python3 - "$LOGS" <<'PY'
+          import sys,os,re,datetime,collections,urllib.parse
+          now=datetime.datetime.now(datetime.timezone.utc); cut=now-datetime.timedelta(minutes=15)
+          rx=re.compile(r'^\S+\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"([^"]+)"\s+(\d{3})')
+          for name in ('access_ssl_log','proxy_access_ssl_log'):
+              fname=os.path.join(sys.argv[1],name)
+              counters=collections.Counter();status=collections.Counter();paths=collections.Counter();qkeys=collections.Counter();mins=collections.Counter()
+              try:
+                  with open(fname,'rb') as f:
+                      f.seek(0,2);f.seek(max(0,f.tell()-16000000))
+                      if f.tell():f.readline()
+                      for raw in f:
+                          m=rx.match(raw.decode('utf-8','replace'))
+                          if not m:continue
+                          try: dt=datetime.datetime.strptime(m[1],'%d/%b/%Y:%H:%M:%S %z').astimezone(datetime.timezone.utc)
+                          except ValueError: continue
+                          if dt<cut or dt>now:continue
+                          parts=m[2].split()
+                          if len(parts)<2:continue
+                          u=urllib.parse.urlsplit(parts[1]);p=u.path.lower()
+                          params=urllib.parse.parse_qs(u.query)
+                          counters['requests']+=1;status[m[3]]+=1;mins[dt.strftime('%H:%M')]+=1
+                          if 'add-to-cart' in params:qkeys['add-to-cart']+=1
+                          if any(k.startswith(('filter_','query_type_')) for k in params):qkeys['faceted-filter']+=1
+                          if 'orderby' in params:qkeys['orderby']+=1
+                          if 's' in params:qkeys['search']+=1
+                          if p == '/wp-admin/admin-ajax.php':paths['admin-ajax']+=1
+                          elif p.startswith('/wp-json/'):paths['REST']+=1
+                          elif p.startswith('/wp-content/') or p.startswith('/wp-includes/'):paths['static-assets']+=1
+                          elif p.startswith('/tienda/'):paths['shop-and-vendors']+=1
+                          elif p.startswith('/producto/'):paths['product']+=1
+                          elif p.startswith('/categoria-producto/'):paths['category']+=1
+                          elif p in ('/','/index.php'):paths['home']+=1
+                          elif p.startswith('/black-friday'):paths['black-friday']+=1
+                          elif p.startswith('/wp-cron.php'):paths['wp-cron']+=1
+                          else:paths['other']+=1
+                  print('LOG',name,'requests',counters['requests'],'status',dict(status),'paths',dict(paths),'queries',dict(qkeys),'per_minute',dict(sorted(mins.items())[-8:]))
+              except Exception as e:print('LOG',name,'ERROR',type(e).__name__)
+          fp=os.path.join(sys.argv[1],'php-fpm_slow.log')
+          try:
+              with open(fp,'rb') as f:f.seek(0,2);f.seek(max(0,f.tell()-7000000));s=f.read().decode('utf-8','replace')
+              patterns=collections.Counter();types=collections.Counter();total=0
+              for block in re.split(r'(?=\[\d{2}-[A-Za-z]{3}-\d{4} )',s):
+                  m=re.match(r'\[(\d{2}-[A-Za-z]{3}-\d{4} \d{2}:\d{2}:\d{2})',block)
+                  if not m:continue
+                  try:t=datetime.datetime.strptime(m[1],'%d-%b-%Y %H:%M:%S').replace(tzinfo=datetime.timezone.utc)
+                  except ValueError:continue
+                  if t<cut or t>now:continue
+                  total+=1
+                  p=re.search(r'/wp-content/plugins/([^/]+)/',block)
+                  patterns[p.group(1) if p else 'core-theme-other']+=1
+                  funcs=re.findall(r'\]\s+([a-zA-Z_][\w:]*)\(',block)
+                  for fn in set(funcs[:3]):types[fn]+=1
+              print('SLOWLOG_last15min',total,'first_plugin',patterns.most_common(12),'top_functions',types.most_common(8))
+          except Exception as e:print('SLOWLOG_ERROR',type(e).__name__)
+          PY
+          echo 'LIVE_READONLY_DIAGNOSTIC_COMPLETE'
+          REMOTE
