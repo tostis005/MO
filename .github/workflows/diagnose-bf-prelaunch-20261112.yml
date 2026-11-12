@@ -1,0 +1,67 @@
+name: Temporary BF2026 Hidalgo prelaunch audit (read only)
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/diagnose-bf-prelaunch-20261112.yml'
+permissions:
+  contents: read
+jobs:
+  prelaunch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Confirm visible sellers and inspect BFEMDO coupon without modifying WooCommerce
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          sshpass -e ssh -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$PORT" "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            $visible=get_option("emdo_bf2026_visible_sellers",array());
+            $marker=get_option("emdo_bf2026_hidalgo_first_launch_prepared_v1","");
+            echo "BF_VISIBLE_SELLERS=".wp_json_encode($visible)."\n";
+            echo "BF_PRELAUNCH_LINEUP_FLAG=".$marker."\n";
+            if (!class_exists("WC_Coupon") || !function_exists("wc_get_coupon_id_by_code")) {
+              echo "BFEMDO_AUDIT=WOOCOMMERCE_NOT_LOADED\n";
+              exit;
+            }
+            $id=(int)wc_get_coupon_id_by_code("BFEMDO");
+            if (!$id) {
+              echo "BFEMDO_AUDIT=COUPON_NOT_FOUND\n";
+              exit;
+            }
+            $coupon=new WC_Coupon($id);
+            $post=get_post($id);
+            $exp=$coupon->get_date_expires();
+            $keys=array();
+            foreach($coupon->get_meta_data() as $meta) { $keys[]=$meta->key; }
+            echo "BFEMDO_AUDIT=".wp_json_encode(array(
+              "post_status"=>$post?$post->post_status:"unknown",
+              "discount_type"=>$coupon->get_discount_type(),
+              "amount"=>$coupon->get_amount(),
+              "expires"=>$exp?$exp->date("Y-m-d H:i:s"):"none",
+              "restricted_product_count"=>count($coupon->get_product_ids()),
+              "restricted_category_count"=>count($coupon->get_product_categories()),
+              "excluded_product_count"=>count($coupon->get_excluded_product_ids()),
+              "usage_count"=>$coupon->get_usage_count(),
+              "usage_limit"=>$coupon->get_usage_limit(),
+              "meta_keys"=>array_values(array_filter($keys,static function($k) {return preg_match("/coupon|vendor|brand|seller|discount|enable|schedule|date|product|category/i",$k);}))
+            ))."\n";
+          ' --path="$ROOT" --allow-root
+          REMOTE
