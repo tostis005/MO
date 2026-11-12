@@ -5,6 +5,7 @@ on:
       - '.github/workflows/diagnose-bf-home-curtain-20261112.yml'
 permissions:
   contents: read
+  actions: read
 jobs:
   audit:
     runs-on: ubuntu-24.04
@@ -15,6 +16,20 @@ jobs:
       USER: ${{ secrets.STAGING_USER }}
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
+      - name: Inspect latest failed Black Friday production workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "BF_WORKFLOW_RECENT"
+          gh run list -w deploy-black-friday-2026-preview-production.yml -b main -L 3 --json databaseId,conclusion,status,headSha
+          ID="$(gh run list -w deploy-black-friday-2026-preview-production.yml -b main -L 1 --json databaseId --jq '.[0].databaseId')"
+          if [ -n "$ID" ] && [ "$ID" != null ]; then
+            echo "BF_FAILED_RUN_ID=$ID"
+            gh run view "$ID" --log-failed | tail -170 || true
+          fi
+
       - name: Inspect home markup, cache, WP front page and custom sources
         shell: bash
         run: |
