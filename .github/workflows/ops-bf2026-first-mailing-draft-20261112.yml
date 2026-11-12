@@ -1,0 +1,139 @@
+name: One-time FluentCRM BF2026 Hidalgo first mailing draft (never send)
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ops-bf2026-first-mailing-draft-20261112.yml'
+permissions:
+  contents: read
+jobs:
+  create-draft:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Create editable FluentCRM draft without scheduling or sending
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          sshpass -e ssh -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$PORT" "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            if(!class_exists("FluentCrm\App\Models\Campaign") ||
+              !class_exists("WC_Coupon") || !class_exists("MDO_Club")){
+              fwrite(STDERR,"BF_EMAIL_BLOCKED_INTEGRATION_MISSING\n");exit(30);
+            }
+            $sellers=(array)get_option("emdo_bf2026_visible_sellers",array());
+            $id=(int)wc_get_coupon_id_by_code("BFEMDO");
+            $coupon=$id?new WC_Coupon($id):null;
+            if($sellers!==array("hidalgo") || !$coupon ||
+              "15"!==(string)$coupon->get_amount() || "publish"!==get_post_status($id) ||
+              count($coupon->get_product_ids())<15 ||
+              !MDO_Club::enabled("rewards") || abs(MDO_Club::percent()-2)>0.0001){
+              fwrite(STDERR,"BF_EMAIL_BLOCKED_PROMOTION_MISMATCH\n");exit(31);
+            }
+            $title="Black Friday 2026 | Lanzamiento Hidalgo de la Jara | Primer correo";
+            $subject="Black Friday: 15 % en Hidalgo de la Jara y regalos especiales";
+            $preheader="Estrenamos Club EMDO: 2 % de cashback, medio kilo más en jamones seleccionados y regalos por importe.";
+            $ref=\FluentCrm\App\Models\Campaign::find(12);
+            if(!$ref || "simple"!==(string)$ref->design_template){
+              fwrite(STDERR,"BF_EMAIL_BLOCKED_REFERENCE_TEMPLATE_MISSING\n");exit(32);
+            }
+            $old=\FluentCrm\App\Models\Campaign::where("title",$title)->first();
+            if($old){
+              if("draft"!==$old->status){
+                fwrite(STDERR,"BF_EMAIL_BLOCKED_NON_DRAFT_EXISTS\n");exit(33);
+              }
+              echo "BF_EMAIL_DRAFT_ALREADY_EXISTS=".wp_json_encode(array("id"=>$old->id,"status"=>$old->status))."\n";
+              exit;
+            }
+            $product=get_page_by_path("jamon-de-bellota-100-iberico",OBJECT,"product");
+            $photo=$product instanceof WP_Post?get_the_post_thumbnail_url($product->ID,"large"):"";
+            $photoHtml=$photo?"<img src=\"".esc_url($photo)."\" width=\"420\" alt=\"Jamón de bellota 100 % ibérico Hidalgo de la Jara\" style=\"display:block;width:100%;max-width:420px;height:auto;margin:auto;border:0\">":"";
+            $body=<<<EMAIL
+<!-- wp:html -->
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:640px;margin:0 auto;background:#fffefa;color:#274232;font-family:Arial,Helvetica,sans-serif">
+<tr><td align="center" style="padding:24px"><img src="https://www.elmercadodeorigen.com/wp-content/uploads/2021/03/Logo-sin-fondo-150x150.jpg" width="110" alt="El Mercado de Origen" style="display:block;width:110px;height:auto;border:0"></td></tr>
+<tr><td align="center" style="background:#153c2c;padding:40px 32px 43px">
+<p style="margin:0 0 12px;color:#e1c68f;font-size:11px;letter-spacing:2px;font-weight:700">EL MERCADO DE ORIGEN · BLACK FRIDAY 2026</p>
+<h1 style="margin:0 0 18px;color:#fff9eb;font:normal 36px/1.17 Georgia,serif">Este Black Friday,<br>el origen tiene premio.</h1>
+<p style="margin:0;color:#e9ebe1;font-size:16px;line-height:1.7">Empezamos por Hidalgo de la Jara: ibéricos de Los Pedroches, ventajas especiales y regalos por importe.</p>
+</td></tr>
+<tr><td style="padding:28px 32px 12px"><p style="margin:0;font-size:15px;line-height:1.8">Hola,</p><p style="margin:14px 0 0;font-size:15px;line-height:1.8">Ya está aquí nuestro Black Friday. Para estrenarlo, descubre una promoción especial de <strong>Hidalgo de la Jara</strong>.</p></td></tr>
+<tr><td align="center" style="padding:20px 24px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1e7d1;border:1px solid #e0d1af;border-radius:8px"><tr><td align="center" style="padding:26px 18px">
+<p style="margin:0 0 8px;color:#3d5a45;font-size:12px;letter-spacing:1px">TODOS LOS PRODUCTOS HIDALGO</p>
+<p style="margin:0 0 8px;color:#173e2e;font:normal 50px/1 Georgia,serif">−15 %</p>
+<p style="margin:0 0 5px;font-size:13px;color:#5c705e">INTRODUCE EL CUPÓN</p>
+<p style="margin:0;color:#173e2e;font-size:24px;font-weight:800;letter-spacing:2px">BFEMDO</p>
+</td></tr></table>
+</td></tr>
+<tr><td align="center" style="padding:4px 32px 10px">$photoHtml</td></tr>
+<tr><td style="padding:12px 32px">
+<h2 style="margin:4px 0 17px;color:#173e2e;font:normal 26px/1.3 Georgia,serif">Y aún hay más...</h2>
+<p style="margin:0 0 13px;font-size:15px;line-height:1.75"><strong>+0,5 kg en jamones seleccionados.</strong> En jamones de brida negra desde el tramo de 7,5–8 kg en adelante, recibes el siguiente tramo de peso sin coste adicional (con o sin DOP).</p>
+<p style="margin:0 0 13px;font-size:15px;line-height:1.75"><strong>Compras superiores a 150 € en productos Hidalgo:</strong> te regalamos un sobre de salchichón.</p>
+<p style="margin:0 0 13px;font-size:15px;line-height:1.75"><strong>Compras superiores a 250 €:</strong> te llevas el salchichón y un <strong>miniqueso Pajarete de 90 g</strong>.</p>
+</td></tr>
+<tr><td style="padding:13px 32px 22px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eff4ec;border:1px solid #dce5d5;border-radius:7px"><tr><td style="padding:22px">
+<h3 style="margin:0 0 10px;color:#173e2e;font-size:18px">Además, estrenamos el Club EMDO</h3>
+<p style="margin:0;color:#395844;font-size:14px;line-height:1.7"><strong>2 % de cashback durante Black Friday</strong> en compras realizadas con tu cuenta registrada e iniciada sesión. Acumúlalo en tu monedero para futuras compras. Después de la campaña, el cashback será del 1 %.</p>
+</td></tr></table>
+</td></tr>
+<tr><td align="center" style="padding:13px 26px 34px">
+<a href="https://www.elmercadodeorigen.com/black-friday-2026/?utm_source=fluentcrm&amp;utm_medium=email&amp;utm_campaign=black_friday_2026_lanzamiento_1" style="display:inline-block;padding:17px 27px;border-radius:5px;background:#153f2f;color:#fff!important;text-decoration:none;font-size:15px;font-weight:700">Descubrir las ofertas →</a>
+<p style="margin:17px 0 0;font-size:12px;line-height:1.6;color:#6d786d">Consulta todas las condiciones en la página de Black Friday.</p>
+</td></tr>
+<tr><td style="padding:18px 28px;background:#f5f1e9;color:#687568;font-size:11px;line-height:1.7;border-top:1px solid #e5e0d7">La mejora de peso corresponde a jamones de brida negra seleccionados desde 7,5–8 kg. Los regalos se conceden al superar los importes indicados en productos Hidalgo. El cashback no incluye gastos de envío, recargas ni tarjetas regalo y requiere una cuenta registrada con sesión iniciada.</td></tr>
+</table>
+<!-- /wp:html -->
+EMAIL;
+            $settings=(array)$ref->settings;
+            $settings["subscribers"]=array(array("list"=>"all","tag"=>"all"));
+            $settings["excludedSubscribers"]=array(array("list"=>null,"tag"=>null));
+            $settings["sending_filter"]="list_tag";
+            $settings["dynamic_segment"]=array("id"=>"","slug"=>"");
+            $settings["sending_type"]="instant";
+            $settings["is_transactional"]="no";
+            $settings["footer_settings"]["disable_footer"]="no";
+            $settings["footer_settings"]["custom_footer"]="no";
+            $settings["mailer_settings"]["is_custom"]="no";
+            $created=\FluentCrm\App\Models\Campaign::create(array(
+              "title"=>$title,"type"=>"campaign","status"=>"draft",
+              "email_subject"=>$subject,"email_pre_header"=>$preheader,
+              "email_body"=>$body,"template_id"=>(int)$ref->template_id,
+              "design_template"=>"simple","settings"=>$settings,
+              "recipients_count"=>0,"created_by"=>(int)$ref->created_by,
+              "utm_status"=>0
+            ));
+            $saved=\FluentCrm\App\Models\Campaign::find((int)$created->id);
+            if(!$saved || $saved->status!=="draft" ||
+              $saved->email_subject!==$subject ||
+              strpos((string)$saved->email_body,"BFEMDO")===false ||
+              strpos((string)$saved->email_body,"black-friday-2026/")===false ||
+              strpos((string)$saved->email_body,"2 % de cashback")===false ||
+              $saved->scheduled_at){
+              fwrite(STDERR,"BF_EMAIL_DRAFT_NEEDS_REVIEW_ID=".(int)$created->id."\n");exit(35);
+            }
+            echo "BF_EMAIL_DRAFT_CREATED=".wp_json_encode(array(
+              "id"=>$saved->id,"title"=>$saved->title,"status"=>$saved->status,
+              "subject"=>$saved->email_subject,"preheader"=>$saved->email_pre_header,
+              "body_length"=>strlen((string)$saved->email_body),
+              "scheduled_at"=>$saved->scheduled_at,"design_template"=>$saved->design_template
+            ))."\n";
+          ' --path="$ROOT" --allow-root
+          REMOTE
