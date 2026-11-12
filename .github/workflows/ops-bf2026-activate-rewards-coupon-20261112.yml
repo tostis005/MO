@@ -1,0 +1,126 @@
+name: One-time BF2026 coupon and Club EMDO percentage update
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ops-bf2026-activate-rewards-coupon-20261112.yml'
+permissions:
+  contents: read
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Set 2 percent cashback and BFEMDO 15 percent only for Hidalgo
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          sshpass -e ssh -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$PORT" "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          BACKUP="$HOME/.elmercado-rollbacks/bf2026-coupon-cashback"
+          mkdir -p -m 0700 "$BACKUP"
+          BF_SETTINGS_BACKUP="$BACKUP/bf2026-settings-before-20261112.json" "$PHP" -d memory_limit=768M "$WP" eval '
+            $opt="mdo_club_reward_percent";
+            $code="BFEMDO";
+            if(!class_exists("WC_Coupon") || !class_exists("MDO_Club") ||
+              !class_exists("MDO_Club_Ledger") || !function_exists("wc_get_coupon_id_by_code")){
+              fwrite(STDERR,"BF2026_BLOCKED_MISSING_WOOCOMMERCE_OR_CLUB\n"); exit(20);
+            }
+            if(!defined("MDO_CLUB_RELEASE_APPROVED") || true!==MDO_CLUB_RELEASE_APPROVED ||
+              !MDO_Club::enabled("rewards") || "yes"!==get_option("mdo_club_rewards_enabled")){
+              fwrite(STDERR,"BF2026_BLOCKED_CASHBACK_NOT_RELEASED\n"); exit(21);
+            }
+            $id=(int)wc_get_coupon_id_by_code($code);
+            if(8715!==$id){
+              fwrite(STDERR,"BF2026_BLOCKED_COUPON_ID_MISMATCH\n"); exit(22);
+            }
+            $coupon=new WC_Coupon($id);
+            if("publish"!==get_post_status($id) || "percent"!==$coupon->get_discount_type() ||
+              6!==(int)get_post_field("post_author",$id)){
+              fwrite(STDERR,"BF2026_BLOCKED_COUPON_CONFIGURATION_CHANGED\n"); exit(23);
+            }
+            $ids=get_posts(array("post_type"=>"product","post_status"=>"publish","posts_per_page"=>-1,
+              "fields"=>"ids","tax_query"=>array(array("taxonomy"=>"pa_productor","field"=>"slug",
+              "terms"=>array("hidalgo-de-la-jara")))));
+            $ids=array_values(array_unique(array_map("intval",$ids)));
+            sort($ids,SORT_NUMERIC);
+            if(count($ids)<15 || count($ids)>80){
+              fwrite(STDERR,"BF2026_BLOCKED_ELIGIBLE_PRODUCTS_UNEXPECTED_COUNT=".count($ids)."\n"); exit(24);
+            }
+            $current_ids=array_map("intval",$coupon->get_product_ids());
+            sort($current_ids,SORT_NUMERIC);
+            $old_rate=(string)get_option($opt,"missing");
+            $old_amount=(string)$coupon->get_amount();
+            if(!in_array($old_rate,array("1","2"),true) ||
+              !in_array($old_amount,array("10","15"),true) ||
+              ($current_ids && $current_ids!==$ids)){
+              fwrite(STDERR,"BF2026_BLOCKED_EXISTING_COUPON_OR_REWARD_DIFFERS\n"); exit(25);
+            }
+            $snapshot=array("timestamp"=>gmdate("c"),"coupon_id"=>$id,
+              "coupon_amount"=>$old_amount,"coupon_product_ids"=>$current_ids,
+              "club_reward_percent"=>$old_rate,"new_hidalgo_product_count"=>count($ids));
+            $backup_file=getenv("BF_SETTINGS_BACKUP");
+            if(!is_file($backup_file)){
+              if(false===file_put_contents($backup_file,wp_json_encode($snapshot)) ||
+                 !chmod($backup_file,0600)){
+                fwrite(STDERR,"BF2026_BLOCKED_CANNOT_BACKUP\n"); exit(26);
+              }
+            }
+            $changed=false;
+            try{
+              $coupon->set_amount("15");
+              $coupon->set_product_ids($ids);
+              $coupon->save();
+              $changed=true;
+              update_option($opt,"2",false);
+              $after=new WC_Coupon($id);
+              $actual_ids=array_map("intval",$after->get_product_ids());
+              sort($actual_ids,SORT_NUMERIC);
+              if("15"!==(string)$after->get_amount() || $actual_ids!==$ids ||
+                 "2"!==(string)get_option($opt,"missing") || abs(MDO_Club::percent()-2)>0.00001 ||
+                 "publish"!==get_post_status($id) || "percent"!==$after->get_discount_type()){
+                throw new RuntimeException("Post-change verification mismatch");
+              }
+              echo "BF2026_UPDATE_SUCCESS=".wp_json_encode(array(
+                "cashback_percent"=>MDO_Club::percent(),
+                "cashback_enabled"=>MDO_Club::enabled("rewards"),
+                "coupon_code"=>$code,"coupon_id"=>$id,
+                "coupon_percent"=>(float)$after->get_amount(),
+                "coupon_discount_type"=>$after->get_discount_type(),
+                "coupon_status"=>get_post_status($id),
+                "restricted_to_hidalgo_products"=>count($actual_ids),
+                "existing_excluded_product_count"=>count($after->get_excluded_product_ids()),
+                "existing_usage_count"=>$after->get_usage_count()
+              ))."\n";
+            }catch(Throwable $e){
+              if($changed){
+                try{
+                  $rollback=new WC_Coupon($id);
+                  $rollback->set_amount($old_amount);
+                  $rollback->set_product_ids($current_ids);
+                  $rollback->save();
+                  update_option($opt,$old_rate,false);
+                  echo "BF2026_SETTINGS_ROLLED_BACK\n";
+                }catch(Throwable $rollback_err){
+                  fwrite(STDERR,"BF2026_ROLLBACK_REQUIRES_MANUAL_INSPECTION\n");
+                }
+              }
+              fwrite(STDERR,"BF2026_UPDATE_FAILED=".$e->getMessage()."\n");
+              exit(27);
+            }
+          ' --path="$ROOT" --allow-root
+          REMOTE
