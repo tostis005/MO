@@ -228,3 +228,53 @@ add_action(
 	},
 	10
 );
+
+/**
+ * Quick-add cards can be cached with data-quantity="1". Correct the quantity
+ * before WooCommerce AJAX handlers read it, including AJAX-loaded cards.
+ * No override of the existing store/theme quick-add implementation is needed.
+ */
+add_action(
+	'wp_footer',
+	static function (): void {
+		if ( is_admin() ) {
+			return;
+		}
+		?>
+		<script id="elmercado-montjam-sachets-quick-add-20261111">
+		(() => {
+			'use strict';
+			const isMontjamSachet = (href) => {
+				const url = String(href || '').toLowerCase();
+				return url.includes('lomo-bellota-100-iberico-loncheado-montjam-90g')
+					|| url.includes('chorizo-cular-iberico-extra-loncheado-montjam-90g')
+					|| (url.includes('montjam') && url.includes('salchichon')
+						&& /lonchead|sobre|90-?g/.test(url));
+			};
+			const update = () => {
+				document.querySelectorAll('ul.products li.product').forEach(card => {
+					const href = card.querySelector('a.woocommerce-LoopProduct-link[href],a[href*="/producto/"]')?.href;
+					if (!isMontjamSachet(href)) return;
+					card.querySelectorAll('a.add_to_cart_button,a.emo-card-quick-add,a.emo-card-quick-add-source').forEach(link => {
+						if (link.dataset.quantity !== '5') link.dataset.quantity = '5';
+					});
+				});
+			};
+			if (document.readyState === 'loading') {
+				document.addEventListener('DOMContentLoaded', update, {once:true});
+			} else {
+				update();
+			}
+			let queued = false;
+			const observer = new MutationObserver(() => {
+				if (queued) return;
+				queued = true;
+				requestAnimationFrame(() => { queued = false; update(); });
+			});
+			observer.observe(document.body, {subtree:true,childList:true});
+		})();
+		</script>
+		<?php
+	},
+	PHP_INT_MAX
+);
