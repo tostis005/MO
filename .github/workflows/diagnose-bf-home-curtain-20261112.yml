@@ -61,6 +61,25 @@ jobs:
               echo "HTML_MATCH=$p:$n"
             done
           done
+          echo "CACHE_DISCOVERY"
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            echo "WP_CACHE=".(defined("WP_CACHE")?(WP_CACHE?"1":"0"):"undefined")."\n";
+            foreach((array)get_option("active_plugins",array()) as $p){
+              if(preg_match("/cache|rocket|litespeed|optim|perfmatters|nitro|w3|autoptimize/i",$p)){
+                echo "ACTIVE_CACHE_PLUGIN=".$p."\n";
+              }
+            }
+            foreach(array("rocket_clean_domain","w3tc_flush_all","wp_cache_clear_cache","litespeed_purge_all","sg_cachepress_purge_cache") as $fn){
+              echo "PURGE_FUNCTION=".$fn.":".(function_exists($fn)?"yes":"no")."\n";
+            }
+          ' --path="$ROOT" --allow-root
+          find "$ROOT/wp-content" -maxdepth 3 -type d -iname "*cache*" 2>/dev/null | head -25 || true
+          for file in /tmp/bfhome-headers /tmp/bfhome-response; do
+            if [ -f "$file" ]; then
+              echo "LAST_FILE=$file"
+              if [ "$file" = /tmp/bfhome-headers ]; then grep -i -E '^(HTTP/|server:|cache-control:|x-|age:|vary:)' "$file" | head -30 || true; fi
+            fi
+          done
           echo "BF_BOOTSTRAP_PRESENT"
           ls -l "$ROOT/wp-content/mu-plugins/emdo-black-friday-2026-preview.php" "$ROOT/wp-content/mu-plugins/emdo-black-friday-2026-preview/curtain.css" 2>&1 || true
           REMOTE
