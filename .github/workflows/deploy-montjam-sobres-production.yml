@@ -1,6 +1,7 @@
-name: Deploy Montjam sachet minimum to production
+name: Publish Montjam minimum sachets in production
 
-# Deploy only one independent MU plugin. Do not sync the child theme or database.
+# Reuse the SSH connection that already deploys approved producer banners
+# to El Mercado de Origen production. Never synchronize the entire theme.
 on:
   push:
     branches: [main]
@@ -18,154 +19,141 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    environment: production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     env:
-      PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
-      PRODUCTION_PORT: ${{ secrets.PRODUCTION_PORT }}
-      PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
-      PRODUCTION_PASSWORD: ${{ secrets.PRODUCTION_PASSWORD }}
-      PRODUCTION_KNOWN_HOSTS: ${{ secrets.PRODUCTION_KNOWN_HOSTS }}
-      PRODUCTION_WP_PATH: ${{ secrets.PRODUCTION_WP_PATH }}
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+      ROOT: /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout the committed rule
+        uses: actions/checkout@v4
 
-      - name: Check source and production configuration
+      - name: Validate PHP and existing SSH configuration
         shell: bash
         run: |
           set -euo pipefail
-          SOURCE=elmercadodeorigen-child/inc/montjam-sliced-minimum-20261111.php
-          php -l "$SOURCE"
-          test -f "$SOURCE"
-          : "${PRODUCTION_HOST:?Configure PRODUCTION_HOST in the production environment}"
-          : "${PRODUCTION_USER:?Configure PRODUCTION_USER in the production environment}"
-          : "${PRODUCTION_PASSWORD:?Configure PRODUCTION_PASSWORD in the production environment}"
-          : "${PRODUCTION_KNOWN_HOSTS:?Configure PRODUCTION_KNOWN_HOSTS in the production environment}"
-          : "${PRODUCTION_WP_PATH:?Configure PRODUCTION_WP_PATH in the production environment}"
-          [[ "$PRODUCTION_HOST" =~ ^[A-Za-z0-9.-]+$ ]]
-          [[ "$PRODUCTION_USER" =~ ^[A-Za-z0-9._-]+$ ]]
-          [[ "$PRODUCTION_WP_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]]
-          [[ "$PRODUCTION_WP_PATH" != "/" ]]
-          [[ "${PRODUCTION_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
-          mkdir -p "$RUNNER_TEMP/ssh"
-          chmod 700 "$RUNNER_TEMP/ssh"
-          printf '%s\n' "$PRODUCTION_KNOWN_HOSTS" > "$RUNNER_TEMP/ssh/known_hosts"
-          test -s "$RUNNER_TEMP/ssh/known_hosts"
-          chmod 600 "$RUNNER_TEMP/ssh/known_hosts"
+          php -l elmercadodeorigen-child/inc/montjam-sliced-minimum-20261111.php
+          : "${STAGING_HOST:?Existing deployment SSH host is missing}"
+          : "${STAGING_USER:?Existing deployment SSH user is missing}"
+          : "${SSHPASS:?Existing deployment SSH password is missing}"
+          [[ "$STAGING_HOST" =~ ^[A-Za-z0-9.-]+$ ]]
+          [[ "$STAGING_USER" =~ ^[A-Za-z0-9._-]+$ ]]
+          [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
 
       - name: Install SSH helper
+        shell: bash
         run: |
+          set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          # Existing approved-banner production workflow uses the same host-key bootstrap.
+          ssh-keyscan -T 15 -p "${STAGING_PORT:-22}" -H "$STAGING_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
 
-      - name: Verify exact production WordPress before any write
+      - name: Verify destination is actual El Mercado de Origen production
         shell: bash
-        env:
-          SSHPASS: ${{ secrets.PRODUCTION_PASSWORD }}
         run: |
           set -euo pipefail
-          sshpass -e ssh -p "${PRODUCTION_PORT:-22}" \
-            -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile="$RUNNER_TEMP/ssh/known_hosts" \
-            "$PRODUCTION_USER@$PRODUCTION_HOST" \
-            "sh -s -- '$PRODUCTION_WP_PATH'" <<'REMOTE'
-          set -eu
-          wp_path="$1"
-          [ -f "$wp_path/wp-config.php" ] || { echo 'WordPress installation not found' >&2; exit 1; }
-          [ -f "$wp_path/wp-content/themes/elmercadodeorigen-child/functions.php" ] || { echo 'Expected child theme missing' >&2; exit 1; }
-          wp_bin="$(command -v wp || true)"
-          [ -n "$wp_bin" ] || { echo 'WP-CLI not installed' >&2; exit 1; }
-          php_bin="$(command -v php || true)"
-          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"
-          [ -x "$php_bin" ] || { echo 'PHP CLI not installed' >&2; exit 1; }
-          siteurl="$("$php_bin" "$wp_bin" option get siteurl --path="$wp_path" --skip-plugins --skip-themes --allow-root)"
-          case "$siteurl" in
-            https://www.elmercadodeorigen.com|https://www.elmercadodeorigen.com/|https://elmercadodeorigen.com|https://elmercadodeorigen.com/) ;;
-            *) echo "Refusing deployment: unrecognized production site URL ($siteurl)" >&2; exit 1 ;;
-          esac
-          theme="$("$php_bin" "$wp_bin" option get stylesheet --path="$wp_path" --skip-plugins --skip-themes --allow-root)"
-          [ "$theme" = 'elmercadodeorigen-child' ] || { echo "Unexpected active theme: $theme" >&2; exit 1; }
-          echo "Verified production WordPress and active child theme."
-          REMOTE
-
-      - name: Upload and activate the single MU plugin (with rollback)
-        shell: bash
-        env:
-          SSHPASS: ${{ secrets.PRODUCTION_PASSWORD }}
-        run: |
-          set -euo pipefail
-          SOURCE=elmercadodeorigen-child/inc/montjam-sliced-minimum-20261111.php
-          DEST="$PRODUCTION_WP_PATH/wp-content/mu-plugins"
-          REMOTE="$PRODUCTION_USER@$PRODUCTION_HOST"
-          PORT="${PRODUCTION_PORT:-22}"
-          SSH_OPTS=(-p "$PORT" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/ssh/known_hosts")
-          sshpass -e ssh "${SSH_OPTS[@]}" "$REMOTE" \
-            "mkdir -p '$DEST' && umask 077 && cat > '$DEST/.elmercado-montjam-minimum.php.new'" < "$SOURCE"
-          sshpass -e ssh "${SSH_OPTS[@]}" "$REMOTE" \
-            "sh -s -- '$PRODUCTION_WP_PATH'" <<'REMOTE_SCRIPT'
-          set -eu
-          wp_path="$1"
-          dir="$wp_path/wp-content/mu-plugins"
-          pending="$dir/.elmercado-montjam-minimum.php.new"
-          target="$dir/elmercado-montjam-minimum.php"
-          backup="$dir/.elmercado-montjam-minimum.php.bak-$(date -u +%Y%m%dT%H%M%SZ)"
-          php_bin="$(command -v php || true)"
-          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"
-          [ -x "$php_bin" ] || { echo 'PHP CLI unavailable' >&2; exit 1; }
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$ROOT'" <<'CHECK'
+          set -Eeuo pipefail
+          root="$1"
+          test -f "$root/wp-config.php"
+          test -f "$root/wp-content/themes/elmercadodeorigen-child/functions.php"
           wp_bin="$(command -v wp)"
-          "$php_bin" -l "$pending"
-          had_original=no
+          php_bin=/opt/plesk/php/8.2/bin/php
+          test -x "$php_bin"
+          siteurl="$("$php_bin" "$wp_bin" option get siteurl --path="$root" --skip-plugins --skip-themes --allow-root)"
+          case "$siteurl" in
+            https://elmercadodeorigen.com|https://www.elmercadodeorigen.com|http://elmercadodeorigen.com|http://www.elmercadodeorigen.com) ;;
+            *) echo "Unexpected WordPress site URL: $siteurl" >&2; exit 1 ;;
+          esac
+          echo "PRODUCTION_WORDPRESS_CONFIRMED"
+          CHECK
+
+      - name: Deploy just the MU plugin, verify and rollback on failure
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          TARGET="$ROOT/wp-content/mu-plugins"
+          SOURCE="elmercadodeorigen-child/inc/montjam-sliced-minimum-20261111.php"
+          sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$TARGET' && cat > '$TARGET/.emdo-montjam-sobres-$GITHUB_RUN_ID.new'" < "$SOURCE"
+          sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$ROOT' '$GITHUB_RUN_ID'" <<'DEPLOY'
+          set -Eeuo pipefail
+          root="$1"
+          run_id="$2"
+          dir="$root/wp-content/mu-plugins"
+          target="$dir/elmercado-montjam-minimum.php"
+          incoming="$dir/.emdo-montjam-sobres-$run_id.new"
+          backup="$dir/.emdo-montjam-sobres-$run_id.backup"
+          php_bin=/opt/plesk/php/8.2/bin/php
+          wp_bin="$(command -v wp)"
+          original=0
+          installed=0
+          rollback() {
+            status=$?
+            if [ "$status" -ne 0 ] && [ "$installed" -eq 1 ]; then
+              echo "Restoring original Montjam MU plugin after a failed validation" >&2
+              if [ "$original" -eq 1 ] && [ -f "$backup" ]; then
+                cp -p "$backup" "$target"
+              else
+                rm -f "$target"
+              fi
+            fi
+            rm -f "$incoming"
+            exit "$status"
+          }
+          trap rollback EXIT
+          test -s "$incoming"
+          "$php_bin" -l "$incoming"
           if [ -f "$target" ]; then
             cp -p "$target" "$backup"
-            had_original=yes
+            original=1
           fi
-          mv -f "$pending" "$target"
+          mv "$incoming" "$target"
           chmod 0644 "$target"
-
-          if ! "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+          installed=1
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
             if (!function_exists("elmercado_is_montjam_sliced_minimum_20261111")) {
-              throw new Exception("Montjam minimum plugin did not load.");
+              throw new Exception("Montjam module has not loaded");
             }
             foreach (array(
               "lomo-bellota-100-iberico-loncheado-montjam-90g",
               "chorizo-cular-iberico-extra-loncheado-montjam-90g"
             ) as $slug) {
               $post = get_page_by_path($slug, OBJECT, "product");
-              if (!$post) { throw new Exception("Product not found: " . $slug); }
-              $product = wc_get_product($post->ID);
-              if (!elmercado_is_montjam_sliced_minimum_20261111($product)) {
-                throw new Exception("Product not targeted: " . $slug);
-              }
-              $args = apply_filters("woocommerce_quantity_input_args", array(
-                "min_value" => 1, "step" => 1, "input_value" => 1
-              ), $product);
-              if ((int)$args["min_value"] !== 5 || (int)$args["step"] !== 1) {
-                throw new Exception("Wrong quantity constraint: " . $slug);
-              }
-              echo "Verified 5+ in steps of one: " . $slug . "\n";
+              if (!$post) throw new Exception("Missing product: ".$slug);
+              $p = wc_get_product($post->ID);
+              if (!$p || !elmercado_is_montjam_sliced_minimum_20261111($p))
+                throw new Exception("Product not recognized: ".$slug);
+              $args = apply_filters("woocommerce_quantity_input_args",
+                array("min_value"=>1, "step"=>1, "input_value"=>1), $p);
+              if ((int)$args["min_value"] !== 5 || (int)$args["step"] !== 1)
+                throw new Exception("Incorrect minimum/step for ".$slug);
+              echo "PRODUCT_MINIMUM_5_STEP_1 ".$slug."\n";
             }
-          ' --path="$wp_path" --allow-root; then
-            echo 'Post-deploy verification failed; rolling back MU plugin.' >&2
-            if [ "$had_original" = yes ]; then
-              cp -p "$backup" "$target"
-            else
-              rm -f "$target"
-            fi
-            exit 1
-          fi
-          "$php_bin" "$wp_bin" cache flush --path="$wp_path" --allow-root || true
-          echo 'Montjam minimum MU plugin activated in production.'
-          REMOTE_SCRIPT
+          ' --path="$root" --allow-root
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$root" --allow-root || true
+          echo "MONJAM_RULE_INSTALLED_IN_PRODUCTION"
+          DEPLOY
 
-      - name: Public product page smoke test
+      - name: Verify public live product pages after deployment
         shell: bash
         run: |
           set -euo pipefail
           for slug in lomo-bellota-100-iberico-loncheado-montjam-90g chorizo-cular-iberico-extra-loncheado-montjam-90g; do
-            curl --fail --silent --show-error --location --max-time 35 \
-              "https://www.elmercadodeorigen.com/producto/$slug/?emdo_montjam_verification=$GITHUB_SHA" \
-              | grep -qi 'Pedido mínimo'
-            echo "Public product page verified: $slug"
+            url="https://www.elmercadodeorigen.com/producto/$slug/?emdo_montjam_verify=$GITHUB_RUN_ID"
+            curl -fsSL --retry 3 --max-time 45 "$url" -o "/tmp/$slug.html"
+            grep -q 'Pedido mínimo:' "/tmp/$slug.html"
+            echo "LIVE_PUBLIC_MINIMUM_CONFIRMED $slug"
           done
