@@ -148,6 +148,21 @@ jobs:
             trap - EXIT
             if [ "$code" -ne 0 ] && [ "$CHANGED" -eq 1 ]; then
               echo "ROLLING_BACK_BF_PREVIEW"
+              # Restore the previous editorial seller list if the one-time
+              # Hidalgo-first preparation occurred in this run.
+              if [ -f "$BACKUP/seller-visibility-before.json" ]; then
+                BF_PREP_BACKUP="$BACKUP" "$PHP" -d memory_limit=768M "$WP" eval '
+                  $state=json_decode(file_get_contents(getenv("BF_PREP_BACKUP")."/seller-visibility-before.json"),true);
+                  if (is_array($state)) {
+                    if (!empty($state["present"])) {
+                      update_option("emdo_bf2026_visible_sellers",$state["value"],false);
+                    } else {
+                      delete_option("emdo_bf2026_visible_sellers");
+                    }
+                    delete_option("emdo_bf2026_hidalgo_first_launch_prepared_v1");
+                  }
+                ' --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+              fi
               rm -f "$MODULE"
               if [ "$HAD_MODULE" -eq 1 ]; then cp -p "$BACKUP/previous-module.php" "$MODULE"; fi
               rm -rf "$DEST"
@@ -173,6 +188,59 @@ jobs:
           "$PHP" -d memory_limit=768M "$WP" eval '
             if (!function_exists("emdo_bf2026_production_preview_route")) { exit(9); }
             echo "BF_PREVIEW_MU_PLUGIN_ACTIVE\n";
+          ' --path="$ROOT" --allow-root
+          # Prepare ONLY the initial Hidalgo product lineup now, once.
+          # The marker prevents future deployments from hiding producers
+          # deliberately re-enabled in WordPress after the launch.
+          # This does not activate any coupon, cashback or cart rule.
+          BF_PREP_BACKUP="$BACKUP" "$PHP" -d memory_limit=768M "$WP" eval '
+            $key="emdo_bf2026_visible_sellers";
+            $marker="emdo_bf2026_hidalgo_first_launch_prepared_v1";
+            if ("yes" !== get_option($marker,"")) {
+              $previous=get_option($key,null);
+              $backup=array("present"=>null!==$previous,"value"=>$previous);
+              $file=getenv("BF_PREP_BACKUP")."/seller-visibility-before.json";
+              if (false===file_put_contents($file,wp_json_encode($backup))) {
+                fwrite(STDERR,"UNABLE_TO_BACKUP_BF_SELLER_VISIBILITY\n");
+                exit(22);
+              }
+              update_option($key,array("hidalgo"),false);
+              update_option($marker,"yes",false);
+              if (array("hidalgo")!==get_option($key,array())) {
+                fwrite(STDERR,"BF_HIDALGO_ONLY_CONFIGURATION_FAILED\n");
+                exit(23);
+              }
+              echo "BF2026_INITIAL_VISIBLE_SELLERS=hidalgo\n";
+            } else {
+              echo "BF2026_INITIAL_LINEUP_PREPARED_PREVIOUSLY\n";
+              echo "BF2026_VISIBLE_SELLERS=".implode(",",(array)get_option($key,array("hidalgo")))."\n";
+            }
+          ' --path="$ROOT" --allow-root
+          # Read-only coupon readiness audit. Do not publish/enable the coupon.
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            if (!class_exists("WC_Coupon") || !function_exists("wc_get_coupon_id_by_code")) {
+              echo "BFEMDO_PRELAUNCH_AUDIT=WOOCOMMERCE_NOT_LOADED\n";
+            } else {
+              $id=(int)wc_get_coupon_id_by_code("BFEMDO");
+              if (!$id) {
+                echo "BFEMDO_PRELAUNCH_AUDIT=NOT_FOUND\n";
+              } else {
+                $coupon=new WC_Coupon($id);
+                $post=get_post($id);
+                $expiry=$coupon->get_date_expires();
+                echo "BFEMDO_PRELAUNCH_AUDIT=".wp_json_encode(array(
+                  "post_status"=>$post?$post->post_status:"unknown",
+                  "discount_type"=>$coupon->get_discount_type(),
+                  "amount"=>$coupon->get_amount(),
+                  "expires"=>$expiry?$expiry->date("Y-m-d H:i:s"):"none",
+                  "restricted_products"=>count($coupon->get_product_ids()),
+                  "restricted_categories"=>count($coupon->get_product_categories()),
+                  "excluded_products"=>count($coupon->get_excluded_product_ids()),
+                  "usage_limit"=>$coupon->get_usage_limit(),
+                  "usage_count"=>$coupon->get_usage_count(),
+                ))."\n";
+              }
+            }
           ' --path="$ROOT" --allow-root
           # An actual WordPress page ensures is_page() / body classes are identical
           # to an ordinary shop page. Nothing is added to site navigation.
@@ -220,6 +288,11 @@ jobs:
           # Montjam once its editorial card is hidden for the initial launch.
           grep -Fq 'data-bf26-visible-sellers=' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'data-bf26-seller="' "/tmp/bf-preview-$RUN.html"
+          if [ -f "$BACKUP/seller-visibility-before.json" ]; then
+            grep -Fq 'data-bf26-visible-sellers="hidalgo"' "/tmp/bf-preview-$RUN.html"
+            grep -Fq 'data-bf26-seller="hidalgo"' "/tmp/bf-preview-$RUN.html"
+            ! grep -Fq 'data-bf26-seller="montjam"' "/tmp/bf-preview-$RUN.html"
+          fi
           grep -Fq 'bf26-offer__cashback' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'Black Friday acumulas un 2 % de cashback en todas tus compras' "/tmp/bf-preview-$RUN.html"
           grep -Fq '<strong>2<span>%</span></strong>' "/tmp/bf-preview-$RUN.html"
