@@ -12,6 +12,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+// The same module may be loaded as an MU plugin in production and by the child theme.
+// Whichever copy loads first registers the hooks exactly once.
+if ( function_exists( 'elmercado_is_montjam_sliced_minimum_20261111' ) ) {
+	return;
+}
+
 /**
  * Identify only the sliced Montjam embutidos, never the whole pieces.
  *
