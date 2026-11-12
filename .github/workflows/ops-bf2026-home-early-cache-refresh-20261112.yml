@@ -29,6 +29,19 @@ jobs:
           sshpass -e ssh -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$PORT" "$USER@$HOST" 'bash -s' <<'REMOTE'
           set -Eeuo pipefail
           ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            if (!function_exists("elmercado_flush_home_cache")) {
+              fwrite(STDERR,"HOME_TRANSIENT_FLUSH_FUNCTION_MISSING\n"); exit(22);
+            }
+            $key=elmercado_home_cache_key();
+            elmercado_flush_home_cache();
+            if(false!==get_transient($key)){
+              fwrite(STDERR,"HOME_TRANSIENT_STILL_PRESENT\n"); exit(23);
+            }
+            echo "HOME_FULL_THEME_TRANSIENT_FLUSHED\n";
+          ' --path="$ROOT" --allow-root
           FILE="$ROOT/wp-content/uploads/elmercado-home-static/index.html"
           BACKUP="$HOME/.elmercado-rollbacks/bf2026-home-cache-20261112"
           install -d -m 0700 "$BACKUP"
