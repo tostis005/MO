@@ -1,0 +1,88 @@
+name: Temporary BF2026 WooCommerce settings audit (read only)
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/diagnose-bf-cashback-coupon-20261112.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Read cashback configuration and BFEMDO coupon without changing either
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          sshpass -e ssh -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$PORT" "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            global $wpdb;
+            echo "AUDIT_START\n";
+            echo "VISIBLE_SELLERS=".wp_json_encode(get_option("emdo_bf2026_visible_sellers",array()))."\n";
+            if(class_exists("WC_Coupon")&&function_exists("wc_get_coupon_id_by_code")){
+              $id=(int)wc_get_coupon_id_by_code("BFEMDO");
+              if($id){
+                $c=new WC_Coupon($id);
+                $post=get_post($id);
+                $data=array(
+                  "id"=>$id,"status"=>$post?$post->post_status:null,
+                  "author"=>$post?(int)$post->post_author:null,
+                  "type"=>$c->get_discount_type(),
+                  "amount"=>$c->get_amount(),
+                  "individual_use"=>$c->get_individual_use(),
+                  "product_ids"=>$c->get_product_ids(),
+                  "excluded_product_ids"=>$c->get_excluded_product_ids(),
+                  "product_categories"=>$c->get_product_categories(),
+                  "excluded_product_categories"=>$c->get_excluded_product_categories(),
+                  "exclude_sale_items"=>$c->get_exclude_sale_items(),
+                  "usage_limit"=>$c->get_usage_limit(),
+                  "usage_count"=>$c->get_usage_count(),
+                  "min_spend"=>$c->get_minimum_amount(),
+                  "max_spend"=>$c->get_maximum_amount(),
+                  "date_expires"=>$c->get_date_expires()?$c->get_date_expires()->date("c"):null
+                );
+                echo "BFEMDO_COUPON=".wp_json_encode($data)."\n";
+                foreach($c->get_meta_data() as $meta){
+                  $k=(string)$meta->key;
+                  if(preg_match("/secret|password|token|api|authorization|credential/i",$k)){continue;}
+                  $v=$meta->value;
+                  $safe=is_scalar($v)?substr((string)$v,0,250):"complex value";
+                  echo "BFEMDO_META=".wp_json_encode(array("key"=>$k,"value"=>$safe))."\n";
+                }
+              }else{echo "BFEMDO_COUPON=NOT_FOUND\n";}
+            }
+            $opts=$wpdb->get_results("SELECT option_name,option_value FROM ".$wpdb->options." WHERE option_name LIKE \"%cashback%\" OR option_name LIKE \"%monedero%\" OR option_name LIKE \"%wallet%\" OR option_name LIKE \"%reward%\" OR option_name LIKE \"%emdo%\" LIMIT 300",ARRAY_A);
+            foreach($opts as $opt){
+              $key=$opt["option_name"];
+              if(preg_match("/secret|password|token|api|authorization|credential|key|license|smtp|client/i",$key)){continue;}
+              $val=$opt["option_value"];
+              $v=strlen($val)<110&&preg_match("/^[a-zA-Z0-9_.,:% -]*$/",$val)?$val:"[structured or long]";
+              echo "OPTION=".wp_json_encode(array("name"=>$key,"value"=>$v))."\n";
+            }
+            $active=(array)get_option("active_plugins",array());
+            foreach($active as $p)if(preg_match("/wallet|monedero|cashback|reward|point|market|origin/i",$p)){echo "ACTIVE_PLUGIN=".$p."\n";}
+            echo "AUDIT_FINISH\n";
+          ' --path="$ROOT" --allow-root
+          echo "CASHBACK_SOURCE_FILES"
+          for d in "$ROOT/wp-content/mu-plugins" "$ROOT/wp-content/themes/elmercadodeorigen-child"; do
+            if [ -d "$d" ]; then
+              grep -rliE --include='*.php' 'cashback|emdo_wallet|monedero|reward_percent|reward_rate' "$d" 2>/dev/null | head -80 || true
+            fi
+          done
+          REMOTE
