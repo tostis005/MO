@@ -223,18 +223,6 @@ add_filter(
 	4
 );
 
-/** Explain the rule next to the selector on the three product pages. */
-add_action(
-	'woocommerce_before_add_to_cart_quantity',
-	static function (): void {
-		global $product;
-		if ( $product instanceof WC_Product && elmercado_is_montjam_sliced_minimum_20261111( $product ) ) {
-			echo '<p class="elmercado-montjam-minimum" style="margin:0 0 10px;font-size:14px;">Pedido mínimo: <strong>5 sobres</strong>. Después puedes elegir 6, 7, 8 o más.</p>';
-		}
-	},
-	10
-);
-
 /**
  * Quick-add cards can be cached with data-quantity="1". Correct the quantity
  * before WooCommerce AJAX handlers read it, including AJAX-loaded cards.

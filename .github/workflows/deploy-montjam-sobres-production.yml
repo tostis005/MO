@@ -166,8 +166,30 @@ jobs:
           for slug in lomo-bellota-100-iberico-loncheado-montjam-90g chorizo-cular-iberico-extra-loncheado-montjam-90g; do
             url="https://www.elmercadodeorigen.com/producto/$slug/?emdo_montjam_verify=$GITHUB_RUN_ID"
             curl -fsSL --retry 3 --max-time 45 "$url" -o "/tmp/$slug.html"
-            grep -q 'Pedido mínimo:' "/tmp/$slug.html"
-            echo "LIVE_PUBLIC_MINIMUM_CONFIRMED $slug"
+            # The user requested that the explanatory text be removed, but the selector
+            # must keep min=5 and step=1 on the public product page.
+            python3 - "/tmp/$slug.html" "$slug" <<'PY'
+          import sys
+          from html.parser import HTMLParser
+          class Inputs(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.quantity = []
+              def handle_starttag(self, tag, attrs):
+                  if tag == "input":
+                      d = dict(attrs)
+                      if d.get("name") == "quantity":
+                          self.quantity.append(d)
+          html = open(sys.argv[1], encoding="utf-8").read()
+          if 'class="elmercado-montjam-minimum"' in html or "Pedido mínimo: <strong>5 sobres</strong>" in html:
+              raise SystemExit("Obsolete explanatory text still visible on " + sys.argv[2])
+          parser = Inputs()
+          parser.feed(html)
+          if not any(float(i.get("min", "0")) == 5 and float(i.get("step", "1")) == 1
+                     for i in parser.quantity):
+              raise SystemExit("Quantity input with min=5 step=1 not found on " + sys.argv[2])
+          print("LIVE_PUBLIC_MINIMUM_5_NO_EXPLANATORY_TEXT", sys.argv[2])
+          PY
           done
 
       - name: Record verified production status on this commit
