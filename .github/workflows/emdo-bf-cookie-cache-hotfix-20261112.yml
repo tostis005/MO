@@ -117,16 +117,25 @@ jobs:
           sleep 3
           BASE=https://www.elmercadodeorigen.com
           for endpoint in / /tienda/ /producto/jamon-de-bellota-100-iberico/; do
-            H=$(mktemp)
-            code=$(curl -ksS --connect-timeout 3 --max-time 15 \
-              -H 'Cookie: emdo_bf2026_curtain_last_seen=2026-11-12' \
-              -D "$H" -o /dev/null -w "%{http_code} ttfb=%{time_starttransfer}s" "$BASE$endpoint")
-            echo "BF_COOKIE_AFTER_FIX path=$endpoint $code"
-            grep -Ei '^(x-el-mercado-(home-early-cache|hot-early-cache|product-early-cache)|x-emdo-public-cache):' "$H" | tr -d '\r' || true
-            if test "$endpoint" = /; then grep -qi '^x-el-mercado-home-early-cache: HIT' "$H"; fi
-            if test "$endpoint" = /tienda/; then grep -qi '^x-el-mercado-hot-early-cache: HIT' "$H"; fi
-            if test "$endpoint" = /producto/jamon-de-bellota-100-iberico/; then grep -qi '^x-el-mercado-product-early-cache: HIT' "$H"; fi
-            rm -f "$H"
+            echo "CHECK_PATH=$endpoint"
+            matched=0
+            for attempt in 1 2 3 4; do
+              H=$(mktemp)
+              code=$(curl -ksS --connect-timeout 3 --max-time 15 \
+                -H 'Cookie: emdo_bf2026_curtain_last_seen=2026-11-12' \
+                -D "$H" -o /dev/null -w "%{http_code} ttfb=%{time_starttransfer}s" "$BASE$endpoint")
+              echo "BF_COOKIE_AFTER_FIX path=$endpoint attempt=$attempt $code"
+              grep -Ei '^(x-el-mercado-(home-early-cache|hot-early-cache|product-early-cache)|x-emdo-public-cache):' "$H" | tr -d '\r' || true
+              status=$(printf '%s' "$code" | cut -d' ' -f1)
+              test "$status" = 200
+              if test "$endpoint" = /; then grep -qi '^x-el-mercado-home-early-cache: HIT' "$H" && matched=1; fi
+              if test "$endpoint" = /tienda/; then grep -qi '^x-el-mercado-hot-early-cache: HIT' "$H" && matched=1; fi
+              if test "$endpoint" = /producto/jamon-de-bellota-100-iberico/; then grep -qi '^x-el-mercado-product-early-cache: HIT' "$H" && matched=1; fi
+              rm -f "$H"
+              if test "$matched" = 1; then break; fi
+              sleep 1
+            done
+            test "$matched" = 1 || { echo 'CACHE_MISSED_AFTER_REVALIDATION'; exit 1; }
           done
           H=$(mktemp)
           code=$(curl -ksS --connect-timeout 3 --max-time 10 -H 'User-Agent: ClaudeBot/1.0 (+https://www.anthropic.com)' \
