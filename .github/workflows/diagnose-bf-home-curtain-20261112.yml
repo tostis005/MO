@@ -87,6 +87,11 @@ jobs:
               grep -nE 'function |cache|CACHE|purge|flush|delete|unlink|write|file_put_contents|wp-content|transient|ob_start|parse_url|is_front_page|REQUEST_URI|query_string|header' "$file" | head -110 || true
             fi
           done
+          echo "HOME_FAST_PATH_DETAILS"
+          sed -n '1,55p' "$ROOT/wp-content/mu-plugins/elmercado-home-fresh.php" || true
+          sed -n '78,116p' "$ROOT/wp-content/advanced-cache.php" || true
+          echo "CACHED_HOME_FILE_MATCHES"
+          find "$ROOT/wp-content/uploads" -maxdepth 3 -type f -name "*.html" 2>/dev/null | grep -Ei "home|index|front" | head -40 || true
           echo "BF_BOOTSTRAP_PRESENT"
           ls -l "$ROOT/wp-content/mu-plugins/emdo-black-friday-2026-preview.php" "$ROOT/wp-content/mu-plugins/emdo-black-friday-2026-preview/curtain.css" 2>&1 || true
           REMOTE
