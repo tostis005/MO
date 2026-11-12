@@ -39,6 +39,8 @@ jobs:
           set -Eeuo pipefail
           php -l mu-plugins/emdo-black-friday-2026-preview.php
           php -l elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq "return 'black-friday-2026' === emdo_bf2026_requested_path()" mu-plugins/emdo-black-friday-2026-preview.php
+          grep -Fq "wp_safe_redirect( home_url( '/black-friday-2026/' ), 301" mu-plugins/emdo-black-friday-2026-preview.php
           grep -Fq 'vista-previa-black-friday-2026' mu-plugins/emdo-black-friday-2026-preview.php
           grep -Fq 'noindex, nofollow, noarchive' mu-plugins/emdo-black-friday-2026-preview.php
           grep -Fq 'id="bf26-overlay"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
@@ -170,6 +172,13 @@ jobs:
               if [ "$CREATED_PAGE_ID" -gt 0 ]; then
                 "$PHP" -d memory_limit=512M "$WP" post delete "$CREATED_PAGE_ID" --force --path="$ROOT" --allow-root >/dev/null 2>&1 || true
               fi
+              # Restore the original slug if this deployment migrated the page.
+              if [ -s "$BACKUP/renamed-page-id" ]; then
+                OLD_PAGE_ID="$(cat "$BACKUP/renamed-page-id")"
+                if [[ "$OLD_PAGE_ID" =~ ^[0-9]+$ ]]; then
+                  "$PHP" -d memory_limit=768M "$WP" post update "$OLD_PAGE_ID" --post_name=vista-previa-black-friday-2026 --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+                fi
+              fi
               echo "BF_PREVIEW_ROLLBACK_COMPLETE"
             fi
             rm -rf "$NEW" "$STAGE"
@@ -242,17 +251,38 @@ jobs:
               }
             }
           ' --path="$ROOT" --allow-root
-          # An actual WordPress page ensures is_page() / body classes are identical
-          # to an ordinary shop page. Nothing is added to site navigation.
-          PAGE_RESULT="$("$PHP" -d memory_limit=768M "$WP" eval '
-            $slug = "vista-previa-black-friday-2026";
+          # Keep the same WordPress page ID and native header/cart.
+          # Migrate the old slug once; refuse collision with another page.
+          PAGE_RESULT="$(BF_PREP_BACKUP="$BACKUP" "$PHP" -d memory_limit=768M "$WP" eval '
+            $slug = "black-friday-2026";
+            $old_slug = "vista-previa-black-friday-2026";
             $page = get_page_by_path($slug, OBJECT, "page");
+            $legacy = get_page_by_path($old_slug, OBJECT, "page");
             if ($page instanceof WP_Post) {
               if ("publish" !== $page->post_status) {
-                fwrite(STDERR, "Existing unpublished preview page: refusing override\n");
+                fwrite(STDERR,"Canonical page exists but is not published: refusing override\n");
                 exit(12);
               }
+              if ($legacy instanceof WP_Post && (int)$legacy->ID !== (int)$page->ID) {
+                fwrite(STDERR,"Canonical and legacy pages both exist: refusing duplicate migration\n");
+                exit(14);
+              }
               echo "EMDO_BF_PAGE_STATE=EXISTING:" . $page->ID . "\n";
+            } elseif ($legacy instanceof WP_Post) {
+              if ("publish" !== $legacy->post_status) {
+                fwrite(STDERR,"Legacy page exists but is not published: refusing override\n");
+                exit(15);
+              }
+              if (false===file_put_contents(getenv("BF_PREP_BACKUP")."/renamed-page-id",(string)$legacy->ID)) {
+                fwrite(STDERR,"Unable to back up legacy WordPress page ID\n");
+                exit(16);
+              }
+              $id=wp_update_post(array("ID"=>$legacy->ID,"post_name"=>$slug),true);
+              if (is_wp_error($id) || (int)$id!==(int)$legacy->ID || get_post_field("post_name",$id)!==$slug) {
+                fwrite(STDERR,"Unable to migrate Black Friday page slug\n");
+                exit(17);
+              }
+              echo "EMDO_BF_PAGE_STATE=RENAMED:" . $id . "\n";
             } else {
               $id = wp_insert_post(array(
                 "post_type" => "page",
@@ -263,8 +293,8 @@ jobs:
                 "comment_status" => "closed",
                 "ping_status" => "closed",
               ), true);
-              if (is_wp_error($id) || !$id) {
-                fwrite(STDERR, "Unable to create normal WordPress campaign page\n");
+              if (is_wp_error($id) || !$id || get_post_field("post_name",$id)!==$slug) {
+                fwrite(STDERR,"Unable to create canonical Black Friday page\n");
                 exit(13);
               }
               echo "EMDO_BF_PAGE_STATE=CREATED:" . $id . "\n";
@@ -272,16 +302,20 @@ jobs:
           ' --path="$ROOT" --allow-root)"
           PAGE_TOKEN="$(printf '%s\n' "$PAGE_RESULT" | grep '^EMDO_BF_PAGE_STATE=' | tail -n 1)"
           case "$PAGE_TOKEN" in
-            EMDO_BF_PAGE_STATE=CREATED:*) CREATED_PAGE_ID="${PAGE_TOKEN##*:}" ;;
-            EMDO_BF_PAGE_STATE=EXISTING:*) ;;
+            EMDO_BF_PAGE_STATE=CREATED:*) CREATED_PAGE_ID="\${PAGE_TOKEN##*:}" ;;
+            EMDO_BF_PAGE_STATE=RENAMED:*|EMDO_BF_PAGE_STATE=EXISTING:*) ;;
             *) echo "UNEXPECTED_PAGE_CREATION_STATUS"; exit 14 ;;
           esac
           echo "$PAGE_TOKEN"
-          # Confirm that permalink resolution gives a genuine page query.
-          test "$("$PHP" -d memory_limit=512M "$WP" post get "${PAGE_TOKEN##*:}" --field=post_name --path="$ROOT" --allow-root)" = "vista-previa-black-friday-2026"
-          CODE="$(curl -sSL --retry 3 --max-time 45 -A 'Mozilla/5.0 EMDO BF Preview' -D "/tmp/bf-preview-$RUN.headers" -o "/tmp/bf-preview-$RUN.html" -w '%{http_code}' "https://www.elmercadodeorigen.com/vista-previa-black-friday-2026/?verify=$RUN")"
+          test "$("$PHP" -d memory_limit=512M "$WP" post get "\${PAGE_TOKEN##*:}" --field=post_name --path="$ROOT" --allow-root)" = "black-friday-2026"
+          CODE="$(curl -sSL --retry 3 --max-time 45 -A 'Mozilla/5.0 EMDO BF Preview' -D "/tmp/bf-preview-$RUN.headers" -o "/tmp/bf-preview-$RUN.html" -w '%{http_code}' "https://www.elmercadodeorigen.com/black-friday-2026/?verify=$RUN")"
           test "$CODE" = 200
           grep -Fq 'id="bf26-overlay"' "/tmp/bf-preview-$RUN.html"
+          LEGACY_REDIRECT="$(curl -sS --retry 2 --max-time 30 -o /dev/null -w '%{http_code}|%{redirect_url}' "https://www.elmercadodeorigen.com/vista-previa-black-friday-2026/?legacy_verify=$RUN")"
+          case "$LEGACY_REDIRECT" in
+            "301|https://www.elmercadodeorigen.com/black-friday-2026/"|"301|https://elmercadodeorigen.com/black-friday-2026/") ;;
+            *) echo "WRONG_LEGACY_BF_REDIRECT $LEGACY_REDIRECT"; exit 18 ;;
+          esac
           test "$(grep -oF 'bf26-campaign-stamp' "/tmp/bf-preview-$RUN.html" | wc -l)" -ge 2
           test "$(grep -oF '<strong>BLACK<em>FRIDAY</em></strong>' "/tmp/bf-preview-$RUN.html" | wc -l)" -eq 2
           # The page may have one or more visible sellers. Do not require
@@ -342,9 +376,11 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          URL="https://www.elmercadodeorigen.com/vista-previa-black-friday-2026/?final_verify=$GITHUB_RUN_ID"
+          URL="https://www.elmercadodeorigen.com/black-friday-2026/?final_verify=$GITHUB_RUN_ID"
           curl -fsSL --retry 2 --max-time 45 -A 'Mozilla/5.0 EMDO BF' "$URL" -o /tmp/bf-preview-live.html
           grep -Fq 'id="bf26-overlay"' /tmp/bf-preview-live.html
+          grep -Fq 'data-bf26-visible-sellers="hidalgo"' /tmp/bf-preview-live.html
+          ! grep -Fq 'data-bf26-seller="montjam"' /tmp/bf-preview-live.html
           grep -Fq 'emdo-bf2026-preview' /tmp/bf-preview-live.html
           grep -Eiq 'class="[^"]*site-header' /tmp/bf-preview-live.html
           grep -Eiq 'shopping-cart|cart-contents|shop-cart-count|cart-count' /tmp/bf-preview-live.html
