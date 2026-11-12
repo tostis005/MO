@@ -1,7 +1,7 @@
 <?php
 /**
- * Plugin Name: EMDO — vista previa Black Friday 2026 (producción)
- * Description: Publica exclusivamente una landing no indexable para revisión. No modifica precios, cupones ni carrito.
+ * Plugin Name: EMDO — Black Friday 2026 (campaña preparada)
+ * Description: Landing en URL definitiva, todavía sin indexar ni enlazar. No modifica precios, cupones, monedero ni carrito.
  * Version: 1.0.0
  * Author: El Mercado de Origen
  *
@@ -13,12 +13,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * La URL se mantiene sin enlazar y se sirve como ruta virtual.
- * A diferencia de la campaña futura, no se añade cortinilla al resto del sitio.
+ * La landing ya utiliza la URL definitiva /black-friday-2026/.
+ * Permanece sin enlazar, no indexable y con cortinilla SOLO dentro de
+ * la landing; su activación global se reserva para el lanzamiento.
  */
-function emdo_bf2026_production_preview_route(): bool {
+function emdo_bf2026_requested_path(): string {
 	if ( is_admin() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
-		return false;
+		return '';
 	}
 	$uri  = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
 	$path = trim( (string) wp_parse_url( $uri, PHP_URL_PATH ), '/' );
@@ -26,8 +27,21 @@ function emdo_bf2026_production_preview_route(): bool {
 	if ( $base && 0 === strpos( $path, $base . '/' ) ) {
 		$path = substr( $path, strlen( $base ) + 1 );
 	}
-	return 'vista-previa-black-friday-2026' === $path;
+	return $path;
 }
+
+function emdo_bf2026_production_preview_route(): bool {
+	return 'black-friday-2026' === emdo_bf2026_requested_path();
+}
+
+// Conservar los enlaces compartidos de la antigua vista previa, sin contenido duplicado.
+add_action( 'template_redirect', static function (): void {
+	if ( 'vista-previa-black-friday-2026' !== emdo_bf2026_requested_path() ) {
+		return;
+	}
+	wp_safe_redirect( home_url( '/black-friday-2026/' ), 301, 'EMDO Black Friday' );
+	exit;
+}, -101 );
 
 add_action( 'template_redirect', static function (): void {
 	if ( ! emdo_bf2026_production_preview_route() ) {
@@ -106,11 +120,13 @@ add_filter( 'wp_sitemaps_posts_query_args', static function ( array $args, strin
 	if ( 'page' !== $post_type ) {
 		return $args;
 	}
-	$page = get_page_by_path( 'vista-previa-black-friday-2026', OBJECT, 'page' );
-	if ( $page instanceof WP_Post ) {
-		$excluded = isset( $args['post__not_in'] ) && is_array( $args['post__not_in'] ) ? $args['post__not_in'] : array();
-		$excluded[] = (int) $page->ID;
-		$args['post__not_in'] = array_unique( $excluded );
+	$excluded = isset( $args['post__not_in'] ) && is_array( $args['post__not_in'] ) ? $args['post__not_in'] : array();
+	foreach ( array( 'black-friday-2026', 'vista-previa-black-friday-2026' ) as $slug ) {
+		$page = get_page_by_path( $slug, OBJECT, 'page' );
+		if ( $page instanceof WP_Post ) {
+			$excluded[] = (int) $page->ID;
+		}
 	}
+	$args['post__not_in'] = array_unique( $excluded );
 	return $args;
 }, 10, 2 );

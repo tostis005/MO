@@ -18,7 +18,7 @@ const {chromium} = require('playwright-core');
       ['desktop', 1440, 900],
     ]) {
       const page = await browser.newPage({viewport:{width, height}, deviceScaleFactor:1});
-      const url='https://www.elmercadodeorigen.com/vista-previa-black-friday-2026/?bf_visual_check='
+      const url='https://www.elmercadodeorigen.com/black-friday-2026/?bf_visual_check='
         + encodeURIComponent(process.env.GITHUB_RUN_ID || 'manual') + '_' + label;
       const response = await page.goto(url, {waitUntil:'domcontentloaded',timeout:90000});
       if (!response || response.status() !== 200) {
