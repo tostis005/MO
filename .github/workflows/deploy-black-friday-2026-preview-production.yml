@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'mu-plugins/emdo-black-friday-2026-preview.php'
+      - 'mu-plugins/emdo-home-black-friday-feature-20261112.php'
       - 'elmercadodeorigen-child/templates/black-friday-2026-preview.php'
       - 'elmercadodeorigen-child/assets/css/black-friday-2026-preview.css'
       - 'elmercadodeorigen-child/assets/css/black-friday-2026-global-curtain.css'
@@ -40,6 +41,9 @@ jobs:
         run: |
           set -Eeuo pipefail
           php -l mu-plugins/emdo-black-friday-2026-preview.php
+          php -l mu-plugins/emdo-home-black-friday-feature-20261112.php
+          grep -Fq 'data-emdo-bf26-home-feature="2026"' mu-plugins/emdo-home-black-friday-feature-20261112.php
+          grep -Fq 'the_content' mu-plugins/emdo-home-black-friday-feature-20261112.php
           php -l elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq "return 'black-friday-2026' === emdo_bf2026_requested_path()" mu-plugins/emdo-black-friday-2026-preview.php
           grep -Fq "wp_safe_redirect( home_url( '/black-friday-2026/' ), 301" mu-plugins/emdo-black-friday-2026-preview.php
@@ -56,7 +60,9 @@ jobs:
           grep -Fq 'Black Friday acumulas un 2 % de cashback en todas tus compras' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq '2 % de cashback durante Black Friday' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq '<strong>2<span>%</span></strong>' elmercadodeorigen-child/templates/black-friday-2026-preview.php
-          grep -Fq 'todavía no se ha anunciado oficialmente' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'Los regalos y las mejoras de peso están sujetos' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'Próximamente iremos incorporando nuevas promociones' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          ! grep -Fq 'todavía no se ha anunciado oficialmente' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           ! grep -Fq '1 % en tu monedero Club EMDO' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'Ofertas que apetecen.' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'Descubre las ofertas disponibles' elmercadodeorigen-child/templates/black-friday-2026-preview.php
@@ -97,7 +103,7 @@ jobs:
           ! grep -Eq 'wc_create_coupon|woocommerce_before_calculate_totals|wc_create_order' mu-plugins/emdo-black-friday-2026-preview.php
           test -n "$HOST" && test -n "$USER" && test -n "$SSHPASS"
 
-      - name: Upload only the dedicated five campaign files
+      - name: Upload only the dedicated six campaign files
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -115,6 +121,7 @@ jobs:
           STAGE="/tmp/emdo-bfpreview-$GITHUB_RUN_ID"
           sshpass -e ssh $SSH "$USER@$HOST" "install -d -m 0700 '$STAGE'"
           sshpass -e scp $SCP mu-plugins/emdo-black-friday-2026-preview.php "$USER@$HOST:$STAGE/bootstrap.php"
+          sshpass -e scp $SCP mu-plugins/emdo-home-black-friday-feature-20261112.php "$USER@$HOST:$STAGE/home-banner.php"
           sshpass -e scp $SCP elmercadodeorigen-child/templates/black-friday-2026-preview.php "$USER@$HOST:$STAGE/landing.php"
           sshpass -e scp $SCP elmercadodeorigen-child/assets/css/black-friday-2026-preview.css "$USER@$HOST:$STAGE/preview.css"
           sshpass -e scp $SCP elmercadodeorigen-child/assets/css/black-friday-2026-global-curtain.css "$USER@$HOST:$STAGE/curtain.css"
@@ -135,11 +142,12 @@ jobs:
           STAGE="/tmp/emdo-bfpreview-$RUN"
           MU="$ROOT/wp-content/mu-plugins"
           MODULE="$MU/emdo-black-friday-2026-preview.php"
+          HOME_BANNER="$MU/emdo-home-black-friday-feature-20261112.php"
           DEST="$MU/emdo-black-friday-2026-preview"
           BACKUP="$HOME/.elmercado-rollbacks/black-friday-2026-preview/$RUN"
           NEW="$MU/.emdo-bfpreview-new-$RUN"
           test -f "$ROOT/wp-config.php" && test -d "$MU" && test -x "$PHP"
-          for f in bootstrap.php landing.php; do "$PHP" -l "$STAGE/$f" >/dev/null; done
+          for f in bootstrap.php landing.php home-banner.php; do "$PHP" -l "$STAGE/$f" >/dev/null; done
           test -s "$STAGE/preview.js" && test -s "$STAGE/preview.css" && test -s "$STAGE/curtain.css"
           SITE="$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --allow-root --skip-plugins --skip-themes)"
           case "$SITE" in
@@ -148,10 +156,12 @@ jobs:
           esac
           install -d -m 0700 "$BACKUP"
           HAD_MODULE=0
+          HAD_HOME_BANNER=0
           HAD_ASSETS=0
           CREATED_PAGE_ID=0
           CHANGED=0
           if [ -f "$MODULE" ]; then cp -p "$MODULE" "$BACKUP/previous-module.php"; HAD_MODULE=1; fi
+          if [ -f "$HOME_BANNER" ]; then cp -p "$HOME_BANNER" "$BACKUP/previous-home-banner.php"; HAD_HOME_BANNER=1; fi
           if [ -d "$DEST" ]; then cp -a "$DEST" "$BACKUP/previous-assets"; HAD_ASSETS=1; fi
           rollback() {
             code=$?
@@ -175,6 +185,8 @@ jobs:
               fi
               rm -f "$MODULE"
               if [ "$HAD_MODULE" -eq 1 ]; then cp -p "$BACKUP/previous-module.php" "$MODULE"; fi
+              rm -f "$HOME_BANNER"
+              if [ "$HAD_HOME_BANNER" -eq 1 ]; then cp -p "$BACKUP/previous-home-banner.php" "$HOME_BANNER"; fi
               rm -rf "$DEST"
               if [ "$HAD_ASSETS" -eq 1 ]; then cp -a "$BACKUP/previous-assets" "$DEST"; fi
               if [ "$CREATED_PAGE_ID" -gt 0 ]; then
@@ -202,10 +214,12 @@ jobs:
           rm -rf "$DEST"
           mv "$NEW" "$DEST"
           install -m 0644 "$STAGE/bootstrap.php" "$MODULE"
+          install -m 0644 "$STAGE/home-banner.php" "$HOME_BANNER"
           "$PHP" -l "$MODULE" >/dev/null
+          "$PHP" -l "$HOME_BANNER" >/dev/null
           "$PHP" -d memory_limit=768M "$WP" eval '
-            if (!function_exists("emdo_bf2026_production_preview_route")) { exit(9); }
-            echo "BF_PREVIEW_MU_PLUGIN_ACTIVE\n";
+            if (!function_exists("emdo_bf2026_production_preview_route") || !function_exists("emdo_bf26_home_banner_html")) { exit(9); }
+            echo "BF_PREVIEW_AND_HOME_BANNER_ACTIVE\n";
           ' --path="$ROOT" --allow-root
           # Prepare ONLY the initial Hidalgo product lineup now, once.
           # The marker prevents future deployments from hiding producers
@@ -317,14 +331,31 @@ jobs:
           esac
           echo "$PAGE_TOKEN"
           test "$("$PHP" -d memory_limit=512M "$WP" post get "${PAGE_TOKEN##*:}" --field=post_name --path="$ROOT" --allow-root)" = "black-friday-2026"
+          # The shop has custom HTML early caches (advanced-cache.php)
+          # which serve old pages BEFORE WordPress loads any new MU plugin.
+          # Invalidate only rebuildable HTML, preserving .lock files,
+          # product data, object caches and customer sessions.
+          HTML_CACHE="$ROOT/wp-content/uploads"
+          for cache_dir in "$HTML_CACHE/elmercado-home-static" "$HTML_CACHE/elmercado-hot-static-v1" "$HTML_CACHE/elmercado-product-static-v1" "$HTML_CACHE/elmercado-category-static-v1"; do
+            if [ -d "$cache_dir" ]; then
+              find "$cache_dir" -maxdepth 1 -type f -name '*.html' -delete
+            fi
+          done
+          echo "BF2026_STALE_EARLY_HTML_CACHES_CLEARED"
           CODE="$(curl -sSL --retry 3 --max-time 45 -A 'Mozilla/5.0 EMDO BF Preview' -D "/tmp/bf-preview-$RUN.headers" -o "/tmp/bf-preview-$RUN.html" -w '%{http_code}' "https://www.elmercadodeorigen.com/black-friday-2026/?verify=$RUN")"
           test "$CODE" = 200
           grep -Fq 'id="bf26-overlay"' "/tmp/bf-preview-$RUN.html"
           # A regular public shop page must contain the daily global curtain,
           # but never load the heavyweight landing layout stylesheet.
-          GLOBAL_CODE="$(curl -sSL --retry 3 --max-time 45 -A 'Mozilla/5.0 EMDO BF Global' -o "/tmp/bf-global-$RUN.html" -w '%{http_code}' "https://www.elmercadodeorigen.com/?bf_global_deploy=$RUN")"
+          GLOBAL_CODE="$(curl -sSL --retry 3 --max-time 45 -A 'Mozilla/5.0 EMDO BF Global' -o "/tmp/bf-global-$RUN.html" -w '%{http_code}' "https://www.elmercadodeorigen.com/")"
           test "$GLOBAL_CODE" = 200
           grep -Fq 'id="bf26-overlay"' "/tmp/bf-global-$RUN.html"
+          test "$(grep -oF 'data-emdo-bf26-home-feature="2026"' "/tmp/bf-global-$RUN.html" | wc -l)" -eq 1
+          grep -Fq 'Próximamente incorporaremos más promociones' "/tmp/bf-global-$RUN.html"
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            if(!function_exists("emdo_bf26_home_banner_html"))exit(21);
+            echo "BF_HOME_BANNER_MU_PLUGIN_LOADED\n";
+          ' --path="$ROOT" --allow-root
           grep -Fq 'curtain.css' "/tmp/bf-global-$RUN.html"
           grep -Fq '/black-friday-2026/' "/tmp/bf-global-$RUN.html"
           ! grep -Fq 'class="bf26-offer bf26-offer--montjam"' "/tmp/bf-global-$RUN.html"
@@ -347,7 +378,7 @@ jobs:
           grep -Fq 'bf26-offer__cashback' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'Black Friday acumulas un 2 % de cashback en todas tus compras' "/tmp/bf-preview-$RUN.html"
           grep -Fq '<strong>2<span>%</span></strong>' "/tmp/bf-preview-$RUN.html"
-          grep -Fq 'todavía no se ha anunciado oficialmente' "/tmp/bf-preview-$RUN.html"
+          grep -Fq 'Los regalos y las mejoras de peso están sujetos' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'Ofertas que apetecen.' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'Descubre las ofertas disponibles' "/tmp/bf-preview-$RUN.html"
           ! grep -Fiq 'dos productores' "/tmp/bf-preview-$RUN.html"
