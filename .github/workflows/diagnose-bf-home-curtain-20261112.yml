@@ -123,6 +123,14 @@ jobs:
               fi
             fi
           done
+          echo "HOME_CACHE_WRITERS"
+          grep -RIl -m1 --include='*.php' -e 'elmercado-home-static' -e 'X-El-Mercado-Home-Early-Cache' -e 'elmercado_home_fresh_output_010244' "$ROOT/wp-content/mu-plugins" "$ROOT/wp-content/themes/elmercadodeorigen-child" "$ROOT/wp-content/advanced-cache.php" 2>/dev/null | head -35 || true
+          echo "HOME_CACHE_SOURCE_MATCHES"
+          grep -Rn -m8 --include='*.php' -e 'elmercado-home-static' -e 'X-El-Mercado-Home-Early-Cache' "$ROOT/wp-content/mu-plugins" "$ROOT/wp-content/themes/elmercadodeorigen-child" "$ROOT/wp-content/advanced-cache.php" 2>/dev/null | head -70 || true
+          echo "HOME_OUTPUT_HOOK_TAIL"
+          sed -n '620,717p' "$ROOT/wp-content/mu-plugins/elmercado-home-fresh.php" || true
+          echo "FAST_CACHE_SEED"
+          sed -n '90,118p' "$ROOT/wp-content/advanced-cache.php" || true
           echo "BF_BOOTSTRAP_PRESENT"
           ls -l "$ROOT/wp-content/mu-plugins/emdo-black-friday-2026-preview.php" "$ROOT/wp-content/mu-plugins/emdo-black-friday-2026-preview/curtain.css" 2>&1 || true
           REMOTE
