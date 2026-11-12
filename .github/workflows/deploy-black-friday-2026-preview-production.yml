@@ -54,7 +54,7 @@ jobs:
           grep -Fq 'Black Friday acumulas un 2 % de cashback en todas tus compras' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq '2 % de cashback durante Black Friday' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq '<strong>2<span>%</span></strong>' elmercadodeorigen-child/templates/black-friday-2026-preview.php
-          grep -Fq 'cashback promocional del 2 % aún no están activados' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'todavía no se ha anunciado oficialmente' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           ! grep -Fq '1 % en tu monedero Club EMDO' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'Ofertas que apetecen.' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'Descubre las ofertas disponibles' elmercadodeorigen-child/templates/black-friday-2026-preview.php
@@ -330,7 +330,7 @@ jobs:
           grep -Fq 'bf26-offer__cashback' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'Black Friday acumulas un 2 % de cashback en todas tus compras' "/tmp/bf-preview-$RUN.html"
           grep -Fq '<strong>2<span>%</span></strong>' "/tmp/bf-preview-$RUN.html"
-          grep -Fq 'cashback promocional del 2 % aún no están activados' "/tmp/bf-preview-$RUN.html"
+          grep -Fq 'todavía no se ha anunciado oficialmente' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'Ofertas que apetecen.' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'Descubre las ofertas disponibles' "/tmp/bf-preview-$RUN.html"
           ! grep -Fiq 'dos productores' "/tmp/bf-preview-$RUN.html"
