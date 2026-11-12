@@ -1,0 +1,58 @@
+name: Temporary FluentCRM Black Friday draft inspection (read only)
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/diagnose-fluentcrm-bf2026-draft.yml'
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Inspect FluentCRM campaign schema and recent drafts without subscriber details
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          sshpass -e ssh -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$PORT" "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            global $wpdb;
+            echo "FLUENTCRM_AVAILABLE=".(class_exists("FluentCrm\\App\\Models\\Campaign")?"yes":"no")."\n";
+            echo "FLUENTCRM_FUNCTION=".(function_exists("FluentCrmApi")?"yes":"no")."\n";
+            foreach(array("fc_campaigns","fc_campaign_emails","fc_campaign_meta","fc_subscribers","fc_lists","fc_tags") as $name){
+              $table=$wpdb->prefix.$name;
+              $exists=$wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s",$table));
+              if($exists!==$table){echo "TABLE_NOT_FOUND=".$name."\n";continue;}
+              $cols=$wpdb->get_col("SHOW COLUMNS FROM `".$table."`",0);
+              echo "TABLE_SCHEMA=".$name.":".implode(",",$cols)."\n";
+              if($name==="fc_campaigns"){
+                $rows=$wpdb->get_results("SELECT * FROM `".$table."` ORDER BY id DESC LIMIT 6",ARRAY_A);
+                foreach($rows as $row){
+                  foreach(array_keys($row) as $k)if(!in_array($k,array("id","title","status","type","created_at","updated_at","scheduled_at","email_subject","email_pre_header"),true))unset($row[$k]);
+                  echo "CAMPAIGN_RECENT=".wp_json_encode($row)."\n";
+                }
+              }
+              if($name==="fc_subscribers"&&in_array("status",$cols,true)){
+                $counts=$wpdb->get_results("SELECT status,COUNT(*) AS count FROM `".$table."` GROUP BY status",ARRAY_A);
+                echo "SUBSCRIBER_COUNTS=".wp_json_encode($counts)."\n";
+              }
+            }
+            echo "DRAFT_INSPECTION_COMPLETE\n";
+          ' --path="$ROOT" --allow-root
+          REMOTE
