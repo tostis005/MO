@@ -54,6 +54,7 @@ $bf26_show_montjam = in_array( 'montjam', $bf26_visible_sellers, true );
 $bf26_offer_position = 0;
 
 $hidalgo_ham   = emdo_bf2026_photo( 'jamon-de-bellota-100-iberico', 'Jamón de bellota 100 % ibérico de Hidalgo de la Jara' );
+$hidalgo_ham_dop = emdo_bf2026_photo( 'jamon-de-bellota-100-iberico-con-dop-los-pedroches-brida-negra', 'Jamón de bellota 100 % ibérico con DOP Los Pedroches de Hidalgo de la Jara' );
 $hidalgo_palet = emdo_bf2026_photo( 'paleta-de-bellota-100-iberico', 'Paleta de bellota 100 % ibérica de Hidalgo de la Jara' );
 $montjam_ham   = emdo_bf2026_photo( 'jamon-de-bellota-100-iberico-montjam', 'Jamón de bellota 100 % ibérico de Montjam' );
 $montjam_slice = emdo_bf2026_photo( 'jamon-bellota-100-iberico-loncheado-montjam-90g', 'Sobre de jamón de bellota 100 % ibérico loncheado Montjam' );
@@ -107,8 +108,19 @@ get_header();
 			<?php if ( $bf26_show_hidalgo ) : $bf26_offer_position++; ?>
 			<article class="bf26-offer bf26-offer--hidalgo" id="hidalgo-oferta" data-bf26-seller="hidalgo" aria-labelledby="bf26-hidalgo-title">
 				<div class="bf26-offer__media">
-					<div class="bf26-offer__photobg">
-						<?php if ( $hidalgo_ham ) { echo $hidalgo_ham; } else { echo '<div class="bf26-image-fallback">HIDALGO<br><strong>DE LA JARA</strong></div>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+					<div class="bf26-offer__photobg bf26-offer__photobg--hidalgo-duo">
+						<figure class="bf26-hidalgo-piece">
+							<div class="bf26-hidalgo-piece__photo">
+								<?php if ( $hidalgo_ham ) { echo $hidalgo_ham; } else { echo '<div class="bf26-image-fallback">JAMÓN<br><strong>SIN DOP</strong></div>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+							</div>
+							<figcaption>JAMÓN SIN DOP</figcaption>
+						</figure>
+						<figure class="bf26-hidalgo-piece">
+							<div class="bf26-hidalgo-piece__photo">
+								<?php if ( $hidalgo_ham_dop ) { echo $hidalgo_ham_dop; } else { echo '<div class="bf26-image-fallback">JAMÓN<br><strong>CON DOP</strong></div>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+							</div>
+							<figcaption>JAMÓN CON DOP</figcaption>
+						</figure>
 					</div>
 					<div class="bf26-offer__imagecaption">HIDALGO DE LA JARA <span>·</span> LOS PEDROCHES</div>
 					<div class="bf26-offer__number"><?php echo esc_html( sprintf( '%02d', $bf26_offer_position ) ); ?></div>
@@ -124,8 +136,8 @@ get_header();
 							<div class="bf26-hidalgo-upgrade__copy" id="hidalgo-condiciones">
 								<span class="bf26-hidalgo-benefits__eyebrow">VENTAJA EXTRA EN JAMONES SELECCIONADOS <a href="#hidalgo-condiciones" aria-label="Ver condiciones de los jamones seleccionados de Hidalgo">*</a></span>
 								<h4>Compras un peso. <em>Recibes el siguiente.</em></h4>
-								<p>Desde el tramo de <strong>7,5–8 kg</strong> en adelante, te enviamos el tramo superior, <strong>medio kilo más sin coste adicional</strong>. Por ejemplo, eliges 7,5–8 kg y recibes 8–8,5 kg.</p>
-								<p class="bf26-hidalgo-upgrade__note"><strong>* Condiciones de los jamones seleccionados:</strong> exclusivamente jamones de <strong>brida negra</strong> de Hidalgo de la Jara, desde el tramo de <strong>7,5–8 kg</strong> en adelante, tanto con Denominación de Origen Protegida (DOP) como sin DOP. No incluye paletas ni tramos inferiores.</p>
+								<p>Desde el tramo de <strong>7–7,5 kg</strong> en adelante, te enviamos el tramo superior, <strong>medio kilo más sin coste adicional</strong>. Por ejemplo, eliges 7–7,5 kg y recibes 7,5–8 kg.</p>
+								<p class="bf26-hidalgo-upgrade__note"><strong>* Condiciones de los jamones seleccionados:</strong> exclusivamente jamones de <strong>brida negra</strong> de Hidalgo de la Jara, desde el tramo de <strong>7–7,5 kg</strong> en adelante, tanto con Denominación de Origen Protegida (DOP) como sin DOP. No incluye paletas ni tramos inferiores.</p>
 							</div>
 						</div>
 						<div class="bf26-hidalgo-rewards">
