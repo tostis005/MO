@@ -41,6 +41,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           php -l mu-plugins/emdo-black-friday-2026-preview.php
+          grep -Fq 'emdo_bf2026_is_hidalgo_piece' mu-plugins/emdo-black-friday-2026-preview.php
           php -l mu-plugins/emdo-home-black-friday-feature-20261112.php
           grep -Fq 'data-emdo-bf26-home-feature="2026"' mu-plugins/emdo-home-black-friday-feature-20261112.php
           grep -Fq 'the_content' mu-plugins/emdo-home-black-friday-feature-20261112.php
@@ -76,8 +77,10 @@ jobs:
           ! grep -Fq 'Un sobre de chorizo + uno de salchichón' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'bf26-offer__coupon-row' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'bf26-hidalgo-benefits' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'jamon-de-bellota-100-iberico-con-dop-los-pedroches-brida-negra' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'bf26-offer__photobg--hidalgo-duo' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq '7–7,5 kg' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq '7,5–8 kg' elmercadodeorigen-child/templates/black-friday-2026-preview.php
-          grep -Fq '8–8,5 kg' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'miniqueso Pajarete de 90 g' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           ! grep -Fq 'miniqueso Pajarete de 100 g' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'BF2026 v6' elmercadodeorigen-child/assets/css/black-friday-2026-preview.css
@@ -409,8 +412,11 @@ jobs:
           if grep -Fq 'data-bf26-seller="hidalgo"' "/tmp/bf-preview-$RUN.html"; then
             grep -Fq 'data-bf26-copy="BFEMDO"' "/tmp/bf-preview-$RUN.html"
             grep -Fq 'bf26-hidalgo-benefits' "/tmp/bf-preview-$RUN.html"
+            grep -Fq '7–7,5 kg' "/tmp/bf-preview-$RUN.html"
+            grep -Fq 'JAMÓN SIN DOP' "/tmp/bf-preview-$RUN.html"
+            grep -Fq 'JAMÓN CON DOP' "/tmp/bf-preview-$RUN.html"
+            test "$(grep -oF 'class="bf26-hidalgo-piece"' "/tmp/bf-preview-$RUN.html" | wc -l)" -eq 2
             grep -Fq '7,5–8 kg' "/tmp/bf-preview-$RUN.html"
-            grep -Fq '8–8,5 kg' "/tmp/bf-preview-$RUN.html"
             grep -Fq 'miniqueso Pajarete de 90 g' "/tmp/bf-preview-$RUN.html"
           fi
           if grep -Fq 'data-bf26-seller="montjam"' "/tmp/bf-preview-$RUN.html"; then
