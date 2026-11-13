@@ -185,8 +185,11 @@ const {chromium} = require('playwright-core');
               !!el.querySelector('a[href="#club-emdo"]')),
           finalHidalgoTerms:!enabledSellers.includes('hidalgo') || (!!hidalgo &&
             hidalgoText.includes('15 % de descuento en todos los productos Hidalgo') &&
+            hidalgoText.includes('7–7,5 kg') &&
             hidalgoText.includes('7,5–8 kg') &&
-            hidalgoText.includes('8–8,5 kg') &&
+            hidalgo.querySelectorAll('.bf26-hidalgo-piece').length===2 &&
+            hidalgoText.includes('JAMÓN SIN DOP') &&
+            hidalgoText.includes('JAMÓN CON DOP') &&
             hidalgoText.includes('brida negra') &&
             hidalgoText.includes('sin DOP') &&
             hidalgoText.includes('150 €') &&
