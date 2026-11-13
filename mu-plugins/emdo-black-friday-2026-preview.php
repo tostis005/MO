@@ -208,3 +208,54 @@ add_action( 'wp_footer', static function (): void {
 	</div>
 	<?php
 }, 99 );
+
+
+/**
+ * Distintivo únicamente para piezas enteras publicadas por Hidalgo de la Jara.
+ * Excluye sobres, packs, surtidos, loncheados y todos los demás productores.
+ */
+function emdo_bf2026_is_hidalgo_piece( int $product_id ): bool {
+	$post = get_post( $product_id );
+	if ( ! $post instanceof WP_Post || 'product' !== $post->post_type || 'publish' !== $post->post_status ) {
+		return false;
+	}
+	$vendor = get_userdata( (int) $post->post_author );
+	if ( ! $vendor || false === stripos( (string) $vendor->display_name, 'Hidalgo de la Jara' ) ) {
+		return false;
+	}
+	return ! preg_match( '/(?:en-sobres|sobres|lonchead|pack|surtido|cata)/i', (string) $post->post_name );
+}
+
+function emdo_bf2026_piece_badge(): void {
+	global $product;
+	if ( ! $product instanceof WC_Product || ! emdo_bf2026_is_hidalgo_piece( (int) $product->get_id() ) ) {
+		return;
+	}
+	$english = ( function_exists( 'mdo_sst_is_english' ) && mdo_sst_is_english() )
+		|| ( function_exists( 'mdo_en_is_request' ) && mdo_en_is_request() );
+	$label = $english ? 'BLACK FRIDAY OFFER' : 'PROMOCIÓN BLACK FRIDAY';
+	printf( '<span class="emdo-bf26-piece-badge" aria-label="%1$s">%1$s</span>', esc_html( $label ) );
+}
+add_action( 'woocommerce_before_shop_loop_item_title', 'emdo_bf2026_piece_badge', 7 );
+add_action( 'woocommerce_product_thumbnails', 'emdo_bf2026_piece_badge', 7 );
+
+add_action( 'wp_head', static function (): void {
+	if ( is_admin() ) { return; }
+	?>
+	<style id="emdo-bf26-hidalgo-piece-badge-css">
+	.woocommerce ul.products li.product,
+	.woocommerce-page ul.products li.product,
+	.woocommerce div.product div.images .woocommerce-product-gallery{position:relative}
+	.woocommerce .emdo-bf26-piece-badge{
+		position:absolute;top:12px;right:12px;z-index:35;display:inline-flex;
+		max-width:calc(100% - 24px);box-sizing:border-box;padding:7px 10px;
+		border:1px solid #eed39d;border-radius:5px;background:#173f2f;color:#fff;
+		box-shadow:0 4px 14px rgba(10,35,25,.22);font-size:10px;font-weight:850;
+		line-height:1.3;letter-spacing:.075em;text-align:center;pointer-events:none;
+	}
+	@media(max-width:600px){
+		.woocommerce .emdo-bf26-piece-badge{top:8px;right:8px;padding:6px 7px;font-size:9px;letter-spacing:.03em}
+	}
+	</style>
+	<?php
+}, 92 );
