@@ -1165,3 +1165,34 @@ html body.emdo-bf2026-page :is(.site-footer,#colophon) {
   .bf26-campaign-stamp > span b {font-size:8px}
   .bf26-offer__tag {line-height:1.4}
 }
+
+
+/* Dos piezas de Hidalgo, norma y DOP; no afecta a otros vendedores. */
+.bf26-offer--hidalgo .bf26-offer__photobg--hidalgo-duo{
+ display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch;
+ gap:12px;inset:45px 22px 72px;
+}
+.bf26-offer--hidalgo .bf26-hidalgo-piece{
+ min-width:0;height:100%;display:flex;flex-direction:column;align-items:center;
+ justify-content:flex-end;gap:12px;margin:0;position:relative;z-index:1;
+}
+.bf26-offer--hidalgo .bf26-hidalgo-piece__photo{
+ min-height:0;flex:1;width:100%;display:flex;align-items:center;justify-content:center;
+}
+.bf26-offer--hidalgo .bf26-hidalgo-piece__photo .bf26-photo{
+ max-width:100%;height:100%;width:100%;object-fit:contain;object-position:center bottom;
+}
+.bf26-offer--hidalgo .bf26-hidalgo-piece figcaption{
+ flex:none;width:100%;max-width:190px;text-align:center;
+ padding:8px 6px;border:1px solid #dfd6c2;border-radius:5px;
+ background:rgba(255,253,247,.92);color:#1e4d38;
+ font-size:10px;font-weight:850;letter-spacing:.09em;line-height:1.4;
+}
+@media(max-width:780px){
+ .bf26-offer--hidalgo .bf26-offer__photobg--hidalgo-duo{inset:16px 18px 48px;gap:10px}
+ .bf26-offer--hidalgo .bf26-hidalgo-piece{gap:7px}
+}
+@media(max-width:420px){
+ .bf26-offer--hidalgo .bf26-offer__photobg--hidalgo-duo{inset:11px 12px 41px;gap:7px}
+ .bf26-offer--hidalgo .bf26-hidalgo-piece figcaption{font-size:9px;letter-spacing:.04em;padding:6px 3px}
+}
