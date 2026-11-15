@@ -247,14 +247,23 @@ add_action( 'wp_head', static function (): void {
 	.woocommerce-page ul.products li.product,
 	.woocommerce div.product div.images .woocommerce-product-gallery{position:relative}
 	.woocommerce .emdo-bf26-piece-badge{
-		position:absolute;top:12px;right:12px;z-index:35;display:inline-flex;
+		position:absolute;top:12px;right:12px;z-index:9;display:inline-flex;
 		max-width:calc(100% - 24px);box-sizing:border-box;padding:7px 10px;
 		border:1px solid #eed39d;border-radius:5px;background:#173f2f;color:#fff;
 		box-shadow:0 4px 14px rgba(10,35,25,.22);font-size:10px;font-weight:850;
 		line-height:1.3;letter-spacing:.075em;text-align:center;pointer-events:none;
 	}
+	/* El acceso rápido al carrito ocupa la esquina superior derecha (58 x 53px).
+	   Colocar la promoción por debajo evita taparlo tanto en móvil como en escritorio.
+	   :has reacciona también cuando el botón se añade con JavaScript al catálogo. */
+	.woocommerce ul.products li.product:has(> a.emo-card-quick-add) .emdo-bf26-piece-badge{
+		top:64px;right:12px;
+	}
 	@media(max-width:600px){
 		.woocommerce .emdo-bf26-piece-badge{top:8px;right:8px;padding:6px 7px;font-size:9px;letter-spacing:.03em}
+		.woocommerce ul.products li.product:has(> a.emo-card-quick-add) .emdo-bf26-piece-badge{
+			top:63px;right:8px;
+		}
 	}
 	</style>
 	<?php
