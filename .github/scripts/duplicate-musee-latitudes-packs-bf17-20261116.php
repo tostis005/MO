@@ -45,7 +45,7 @@ foreach ($ids as $sourceId => [$key, $extra]) {
         (int)get_post_field('post_author', $sourceId) !== 4949 ||
         get_post_meta($sourceId, '_emdo_mentta_only', true) !== 'yes' ||
         get_post_meta($sourceId, '_emdo_mentta_pack_key', true) !== $key ||
-        !in_array($sourceId, $exclusive, true) ||
+        !(in_array($sourceId, $exclusive, true) || $source->get_catalog_visibility('edit') === 'hidden') ||
         !in_array($tax['mentta'], array_map('intval', $source->get_category_ids()), true) ||
         !$source->get_image_id()) {
         $errors[] = "MENTTA_SOURCE_MISMATCH $sourceId $key"; continue;
