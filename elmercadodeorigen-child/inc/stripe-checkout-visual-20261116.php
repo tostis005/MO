@@ -113,7 +113,7 @@ add_action(
 		<style id="elmercado-stripe-checkout-visual-20261116">
 			/* Older checkout rules color every .payment_box child white;
 			   Stripe's wrapper needs a light, independent reading surface. */
-			html body.elmercado-child-theme.woocommerce-checkout #payment .payment_box.payment_method_stripe {
+			html body.elmercado-child-theme.woocommerce-checkout #order_review #payment .payment_box.payment_method_stripe {
 				box-sizing: border-box !important;
 				min-width: 0 !important;
 				width: 100% !important;
@@ -128,11 +128,11 @@ add_action(
 				box-shadow: 0 8px 24px rgba(13, 33, 27, .08) !important;
 			}
 
-			html body.elmercado-child-theme.woocommerce-checkout #payment .payment_box.payment_method_stripe :is(p, label, legend, span, small, strong) {
+			html body.elmercado-child-theme.woocommerce-checkout #order_review #payment .payment_box.payment_method_stripe :is(p, label, legend, span, small, strong) {
 				color: #173f32 !important;
 			}
 
-			html body.elmercado-child-theme.woocommerce-checkout #payment .payment_box.payment_method_stripe :is(.wc-upe-form, #wc-stripe-upe-form, .wc-stripe-upe-element) {
+			html body.elmercado-child-theme.woocommerce-checkout #order_review #payment .payment_box.payment_method_stripe :is(.wc-upe-form, #wc-stripe-upe-form, .wc-stripe-upe-element) {
 				box-sizing: border-box !important;
 				display: block;
 				min-width: 0 !important;
@@ -144,14 +144,14 @@ add_action(
 				background: transparent !important;
 			}
 
-			html body.elmercado-child-theme.woocommerce-checkout #payment .payment_box.payment_method_stripe .wc-stripe-upe-element iframe {
+			html body.elmercado-child-theme.woocommerce-checkout #order_review #payment .payment_box.payment_method_stripe .wc-stripe-upe-element iframe {
 				max-width: 100% !important;
 				border: 0 !important;
 				background: transparent !important;
 			}
 
 			/* Respect native card selection and saved-card choices; never clip Stripe's labels. */
-			html body.elmercado-child-theme.woocommerce-checkout #payment .payment_box.payment_method_stripe :is(
+			html body.elmercado-child-theme.woocommerce-checkout #order_review #payment .payment_box.payment_method_stripe :is(
 				#wc-stripe-cc-form,
 				.wc-stripe-save-source,
 				.wc-stripe-new-payment-method,
@@ -165,7 +165,7 @@ add_action(
 				box-sizing: border-box !important;
 			}
 
-			html body.elmercado-child-theme.woocommerce-checkout #payment .payment_box.payment_method_stripe :is(
+			html body.elmercado-child-theme.woocommerce-checkout #order_review #payment .payment_box.payment_method_stripe :is(
 				.wc-stripe-save-source,
 				.wc-stripe-new-payment-method,
 				.wc-payment-form,
@@ -175,7 +175,7 @@ add_action(
 				line-height: 1.5 !important;
 			}
 
-			html body.elmercado-child-theme.woocommerce-checkout #payment .payment_box.payment_method_stripe .form-row :is(input:not([type="radio"]):not([type="checkbox"]), select) {
+			html body.elmercado-child-theme.woocommerce-checkout #order_review #payment .payment_box.payment_method_stripe .form-row :is(input:not([type="radio"]):not([type="checkbox"]), select) {
 				max-width: 100% !important;
 				min-height: 44px !important;
 				font-size: 16px !important;
@@ -193,7 +193,7 @@ add_action(
 			}
 
 			/* Fallback for older Stripe card-field implementations. */
-			html body.elmercado-child-theme.woocommerce-checkout #payment .payment_box.payment_method_stripe .wc-stripe-elements-field {
+			html body.elmercado-child-theme.woocommerce-checkout #order_review #payment .payment_box.payment_method_stripe .wc-stripe-elements-field {
 				box-sizing: border-box !important;
 				width: 100% !important;
 				max-width: 100% !important;
@@ -206,25 +206,25 @@ add_action(
 				color: #173f32 !important;
 			}
 
-			html body.elmercado-child-theme.woocommerce-checkout #payment .payment_box.payment_method_stripe .wc-stripe-elements-field:focus-within {
+			html body.elmercado-child-theme.woocommerce-checkout #order_review #payment .payment_box.payment_method_stripe .wc-stripe-elements-field:focus-within {
 				border-color: #173f32 !important;
 				box-shadow: 0 0 0 2px rgba(23, 63, 50, .14) !important;
 			}
 
-			html body.elmercado-child-theme.woocommerce-checkout #payment .payment_box.payment_method_stripe :is(#wc-stripe-upe-errors, .woocommerce-error, .stripe-source-errors) {
+			html body.elmercado-child-theme.woocommerce-checkout #order_review #payment .payment_box.payment_method_stripe :is(#wc-stripe-upe-errors, .woocommerce-error, .stripe-source-errors) {
 				color: #9b3030 !important;
 				font-size: 13px !important;
 				line-height: 1.5 !important;
 			}
 
-			html body.elmercado-child-theme.woocommerce-checkout #payment .payment_box.payment_method_stripe .form-row {
+			html body.elmercado-child-theme.woocommerce-checkout #order_review #payment .payment_box.payment_method_stripe .form-row {
 				box-sizing: border-box !important;
 				min-width: 0 !important;
 				max-width: 100% !important;
 			}
 
 			@media (max-width: 600px) {
-				html body.elmercado-child-theme.woocommerce-checkout #payment .payment_box.payment_method_stripe {
+				html body.elmercado-child-theme.woocommerce-checkout #order_review #payment .payment_box.payment_method_stripe {
 					padding: 12px 10px !important;
 					border-radius: 12px !important;
 				}
