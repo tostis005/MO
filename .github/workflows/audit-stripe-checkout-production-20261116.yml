@@ -60,10 +60,13 @@ jobs:
         run: |
           set -Eeuo pipefail
           if [ "$AUDIT_RESULT" = "success" ]; then
-            PAYLOAD="{\"state\":\"success\",\"context\":\"emdo/stripe-checkout-browser\",\"description\":\"Live Stripe checkout visual regression passed\"}"
+            STATE=success
+            MESSAGE="Live Stripe checkout visual regression passed"
           else
-            PAYLOAD="{\"state\":\"failure\",\"context\":\"emdo/stripe-checkout-browser\",\"description\":\"Live Stripe checkout visual audit failed; inspect artifacts\"}"
+            STATE=failure
+            MESSAGE="Live Stripe checkout visual audit failed; inspect screenshots"
           fi
+          PAYLOAD="$(printf '{"state":"%s","context":"emdo/stripe-checkout-browser","description":"%s","target_url":"https://github.com/%s/actions/runs/%s"}' "$STATE" "$MESSAGE" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")"
           curl -fsS --retry 3 -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GITHUB_TOKEN_FOR_STATUS" \
