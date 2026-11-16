@@ -45,6 +45,33 @@ async function closePromotion(page) {
         addHttp: add?.status(), addUrl: page.url(),
         cartText: (await page.locator('body').innerText()).includes('se ha añadido a tu carrito'),
       };
+      // A fresh GitHub runner is outside Spain. Set an actual Spanish delivery
+      // destination in the native WooCommerce cart calculator before checkout.
+      await page.goto(BASE + '/carrito/', {
+        waitUntil: 'domcontentloaded', timeout: 90000,
+      });
+      const shippingToggle = page.locator('.shipping-calculator-button').first();
+      if (await shippingToggle.count() && await shippingToggle.isVisible()) {
+        await shippingToggle.click({force:true}).catch(()=>{});
+      }
+      const country = page.locator('select#calc_shipping_country');
+      if (await country.count()) {
+        await country.selectOption('ES').catch(()=>{});
+      }
+      const postcode = page.locator('#calc_shipping_postcode');
+      if (await postcode.count()) {
+        await postcode.fill('28001').catch(()=>{});
+      }
+      const calc = page.locator('button[name="calc_shipping"]');
+      if (await calc.count() && await calc.isVisible()) {
+        await calc.click({force:true}).catch(()=>{});
+        await page.waitForTimeout(1600);
+      }
+      console.log('STRIPE_CART_BEFORE_CHECKOUT=' + JSON.stringify({
+        country: await country.count() ? await country.inputValue().catch(()=>null) : null,
+        postal: await postcode.count() ? await postcode.inputValue().catch(()=>null) : null,
+        summary: (await page.locator('body').innerText()).slice(0,420),
+      }));
       const checkout = await page.goto(BASE + '/finalizar-compra/?stripe_visual_audit=1', {
         waitUntil: 'domcontentloaded', timeout: 90000,
       });
