@@ -48,8 +48,12 @@ async function closePromotion(page) {
       const checkout = await page.goto(BASE + '/finalizar-compra/?stripe_visual_audit=1', {
         waitUntil: 'domcontentloaded', timeout: 90000,
       });
+      await page.waitForTimeout(4000);
+      await page.waitForSelector('#payment, form.checkout, .wc-block-checkout', {timeout:8000}).catch(() => {});
+      const bodyExtract = (await page.locator('body').innerText()).slice(0, 1200).replace(/\\s+/g, ' ');
       const state = {
         product: p.id, ...addState, checkoutHttp: checkout?.status(),
+        bodyExtract, title: await page.title(),
         checkoutUrl: page.url(),
         hasClassicPayment: await page.locator('#payment').count(),
         hasCheckoutForm: await page.locator('form.checkout').count(),
@@ -64,7 +68,10 @@ async function closePromotion(page) {
         break;
       }
     }
-    if (!picked) throw Error('Unable to reach classic checkout: ' + JSON.stringify(observations));
+    if (!picked) {
+      await page.screenshot({path:'/tmp/emdo-stripe-checkout-landing.png',fullPage:true});
+      throw Error('Unable to reach classic checkout: ' + JSON.stringify(observations));
+    }
 
     for (const test of TESTS) {
       await page.setViewportSize({width: test.width, height: test.height});
