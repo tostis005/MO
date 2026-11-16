@@ -1,0 +1,107 @@
+name: Publish seven Latitudes Black Friday storefront packs (17 percent)
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-latitudes-seven-blackfriday-packs-20261116.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: latitudes-blackfriday-seven-web-packs-production
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate guarded production scripts
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/duplicate-musee-latitudes-packs-bf17-20261116.php
+          php -l mu-plugins/emdo-latitudes-storefront-blackfriday-packs-20261116.php
+          : "${STAGING_HOST:?missing host}"
+          : "${STAGING_USER:?missing user}"
+          : "${STAGING_PASSWORD:?missing password}"
+      - name: Clone seven current live-price packs to WooCommerce public categories
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$PORT")
+          SCP=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P "$PORT")
+          TARGET="$STAGING_USER@$STAGING_HOST"
+          SITE="$(sshpass -e ssh "${SSH[@]}" "$TARGET" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${SITE:?Production WordPress root not found}"
+          RUN="$GITHUB_RUN_ID"
+          SCRIPT="/tmp/latitudes-web-bf17-$RUN.php"
+          PLUGIN="/tmp/latitudes-web-bf17-stock-$RUN.php"
+          LIVE="$SITE/wp-content/mu-plugins/emdo-latitudes-storefront-blackfriday-packs-20261116.php"
+          sshpass -e scp "${SCP[@]}" .github/scripts/duplicate-musee-latitudes-packs-bf17-20261116.php "$TARGET:$SCRIPT"
+          sshpass -e scp "${SCP[@]}" mu-plugins/emdo-latitudes-storefront-blackfriday-packs-20261116.php "$TARGET:$PLUGIN"
+          SUCCESS=0
+          cleanup() {
+            if [[ "$SUCCESS" != 1 ]]; then
+              echo "::warning::Production verification failed; reverting only new public copies to drafts"
+              sshpass -e ssh "${SSH[@]}" "$TARGET" "bash -s -- '$SITE' '$SCRIPT'" <<'ROLLBACK' || true
+          SITE="$1"; SCRIPT="$2"
+          PHP_BIN="$(command -v php || true)"
+          [ -n "$PHP_BIN" ] || PHP_BIN="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          WP_BIN="$(command -v wp)"
+          MDO_WEB_PACKS_MODE=rollback "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "$SCRIPT" --path="$SITE" --allow-root
+          ROLLBACK
+            fi
+          }
+          trap cleanup EXIT
+          sshpass -e ssh "${SSH[@]}" "$TARGET" "bash -s -- '$SITE' '$RUN'" <<'REMOTE'
+          set -euo pipefail
+          SITE="$1"; RUN="$2"
+          PHP_BIN="$(command -v php || true)"
+          [ -n "$PHP_BIN" ] || PHP_BIN="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          WP_BIN="$(command -v wp)"
+          SCRIPT="/tmp/latitudes-web-bf17-$RUN.php"
+          PLUGIN="/tmp/latitudes-web-bf17-stock-$RUN.php"
+          LIVE="$SITE/wp-content/mu-plugins/emdo-latitudes-storefront-blackfriday-packs-20261116.php"
+          "$PHP_BIN" -l "$SCRIPT"
+          "$PHP_BIN" -l "$PLUGIN"
+          install -m 0644 "$PLUGIN" "$LIVE"
+          MDO_WEB_PACKS_MODE=preflight "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "$SCRIPT" --path="$SITE" --allow-root
+          MDO_WEB_PACKS_MODE=apply "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "$SCRIPT" --path="$SITE" --allow-root
+          MDO_WEB_PACKS_MODE=verify "$PHP_BIN" -d memory_limit=768M "$WP_BIN" eval-file "$SCRIPT" --path="$SITE" --allow-root
+          REMOTE
+          for KEY in pasaporte-salvaje reserva-de-caza safari-africano vuelta-al-mundo parrilla-sin-fronteras-xl universo-wagyu leyendas-del-vacuno; do
+            URL="https://www.elmercadodeorigen.com/producto/pack-musee-$KEY-black-friday/"
+            OUTPUT="/tmp/latitudes-bf17-$KEY.html"
+            CODE="$(curl -sSL --connect-timeout 10 --max-time 55 -o "$OUTPUT" -w '%{http_code}' "$URL")"
+            echo "STOREFRONT_PACK $KEY HTTP=$CODE bytes=$(wc -c < "$OUTPUT") url=$URL"
+            test "$CODE" = 200
+            grep -Eiq 'single-product|woocommerce-product-gallery|product_title' "$OUTPUT"
+            grep -Eiq 'add-to-cart|single_add_to_cart_button|out.of.stock|agotado' "$OUTPUT"
+          done
+          for KEY in pasaporte-salvaje safari-africano vuelta-al-mundo; do
+            CODE="$(curl -sSL --connect-timeout 10 --max-time 35 -o /dev/null -w '%{http_code}' "https://www.elmercadodeorigen.com/producto/pack-musee-mentta-$KEY/")"
+            echo "MENTTA_SOURCE_STILL_PRIVATE $KEY HTTP=$CODE"
+            test "$CODE" = 404
+          done
+          SUCCESS=1
+          echo "LATITUDES_BLACK_FRIDAY_SEVEN_PUBLISHED_VERIFIED_ORIGINALS_INTACT"
