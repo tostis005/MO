@@ -21,13 +21,13 @@ function emdo_bf26_home_banner_html(): string {
 		. '<div class="emdo-bf26-home-feature__inner">'
 		. '<div class="emdo-bf26-home-feature__copy">'
 		. '<span class="emdo-bf26-home-feature__eyebrow"><span class="emdo-bf26-home-feature__spark" aria-hidden="true">✳</span> BLACK FRIDAY 2026 <span class="emdo-bf26-home-feature__spark" aria-hidden="true">✳</span></span>'
-		. '<strong class="emdo-bf26-home-feature__title">Las primeras ofertas <em>ya están aquí.</em></strong>'
-		. '<span class="emdo-bf26-home-feature__lead"><strong>15 % en Hidalgo de la Jara</strong> con el cupón BFEMDO, regalos especiales y <strong>2 % de cashback</strong> en el Club EMDO.</span>'
-		. '<span class="emdo-bf26-home-feature__note">Próximamente incorporaremos más promociones. ¡Estate atento!</span>'
+		. '<strong class="emdo-bf26-home-feature__title">Este Black Friday, <em>hay mucho por descubrir.</em></strong>'
+		. '<span class="emdo-bf26-home-feature__lead">Descuentos, regalos y ventajas especiales de nuestros productores, reunidos en un mismo lugar. <strong>Explora todas las promociones disponibles</strong> y descubre las que más te apetezcan.</span>'
+		. '<span class="emdo-bf26-home-feature__note">Todas las ofertas y sus condiciones, en nuestra página especial de Black Friday.</span>'
 		. '</div>'
 		. '<div class="emdo-bf26-home-feature__action">'
-		. '<div class="emdo-bf26-home-feature__seal" aria-hidden="true"><small>HIDALGO</small><strong>−15<span>%</span></strong><small>BFEMDO</small></div>'
-		. '<a class="emdo-bf26-home-feature__cta" href="' . $href . '">Descubrir las ofertas <span aria-hidden="true">↗</span></a>'
+		. '<div class="emdo-bf26-home-feature__seal" aria-hidden="true"><small>BLACK FRIDAY</small><strong>2026</strong><small>OFERTAS · REGALOS</small></div>'
+		. '<a class="emdo-bf26-home-feature__cta" href="' . $href . '">Ver todas las promociones <span aria-hidden="true">↗</span></a>'
 		. '</div>'
 		. '</div></aside>';
 }
@@ -127,7 +127,7 @@ add_action( 'wp_head', static function (): void {
  .emdo-bf26-home-feature .emdo-bf26-home-feature__action{gap:9px}
  .emdo-bf26-home-feature .emdo-bf26-home-feature__seal{width:76px;height:76px}
  .emdo-bf26-home-feature .emdo-bf26-home-feature__seal strong{font-size:23px}
- .emdo-bf26-home-feature .emdo-bf26-home-feature__cta{gap:6px;font-size:12px}
+ .emdo-bf26-home-feature .emdo-bf26-home-feature__cta{gap:6px;font-size:11px;padding:9px 10px}
 }
 @media(prefers-reduced-motion:reduce){.emdo-bf26-home-feature *{transition:none!important}}
 </style>
