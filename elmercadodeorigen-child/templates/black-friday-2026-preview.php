@@ -85,6 +85,7 @@ foreach ( $bf26_exotic_catalog as $pack_key => $pack_name ) {
         || ! $pack_product->get_price() ) {
         continue;
     }
+    // Load the seven lightweight previews eagerly to avoid blank desktop tiles.
     $bf26_exotic_packs[] = array(
         'title' => $pack_name,
         'url'   => get_permalink( $pack_post->ID ),
