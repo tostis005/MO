@@ -1,0 +1,107 @@
+// Visual-only regression of the live WooCommerce checkout; never submits an order.
+// Uses a fresh anonymous browser session and a purchasable simple product.
+const { chromium } = require('playwright-core');
+
+const BASE = 'https://www.elmercadodeorigen.com';
+const TESTS = [
+  { name: 'mobile', width: 390, height: 844 },
+  { name: 'desktop', width: 1440, height: 900 },
+];
+
+async function closePromotion(page) {
+  await page.evaluate(() => {
+    const close = document.querySelector('#bf26-overlay [data-bf26-close]');
+    if (close) close.click();
+  });
+}
+
+(async () => {
+  const chrome = process.env.CHROME;
+  if (!chrome) throw Error('Chrome executable is required');
+  const browser = await chromium.launch({
+    executablePath: chrome,
+    headless: true,
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  });
+  try {
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      deviceScaleFactor: 1,
+      locale: 'es-ES',
+    });
+    const page = await context.newPage();
+    let products;
+    const endpoint = BASE + '/wp-json/wc/store/v1/products?per_page=100';
+    const catalog = await context.request.get(endpoint, {timeout: 60000});
+    if (!catalog.ok()) throw Error('Public Store API HTTP ' + catalog.status());
+    products = await catalog.json();
+    if (!Array.isArray(products)) throw Error('Store API has no product list');
+    const candidates = products.filter(p =>
+      p.type === 'simple' && p.is_in_stock && p.is_purchasable &&
+      !p.has_options && Number(p.prices?.price || 0) > 0
+    );
+    if (!candidates.length) throw Error('No purchasable simple product for checkout visual audit');
+
+    let picked = null;
+    for (const p of candidates.slice(0, 12)) {
+      await page.goto(BASE + '/?add-to-cart=' + encodeURIComponent(p.id), {
+        waitUntil: 'domcontentloaded', timeout: 90000,
+      });
+      await page.goto(BASE + '/finalizar-compra/?stripe_visual_audit=1', {
+        waitUntil: 'domcontentloaded', timeout: 90000,
+      });
+      if (!page.url().includes('/carrito/') && await page.locator('#payment').count()) {
+        picked = p.id;
+        break;
+      }
+    }
+    if (!picked) throw Error('Unable to reach checkout with an anonymous cart');
+
+    for (const test of TESTS) {
+      await page.setViewportSize({width: test.width, height: test.height});
+      await closePromotion(page);
+      const selector = '#payment .payment_box.payment_method_stripe';
+      const radio = page.locator('#payment input[name="payment_method"][value="stripe"]');
+      if (await radio.count()) {
+        await radio.check({force: true, timeout: 10000});
+      }
+      const box = page.locator(selector).first();
+      await box.waitFor({state: 'visible', timeout: 30000});
+      await page.waitForTimeout(3500);
+      const metrics = await box.evaluate(el => {
+        const r = el.getBoundingClientRect();
+        const css = getComputedStyle(el);
+        const iframes = [...el.querySelectorAll('iframe')].map(frame => {
+          const b = frame.getBoundingClientRect();
+          return {width:b.width,height:b.height,left:b.left,right:b.right};
+        });
+        const badChildren = [...el.querySelectorAll('input,select,.wc-stripe-upe-element,.StripeElement')].filter(node => {
+          const b = node.getBoundingClientRect();
+          return b.width > 0 && (b.right > window.innerWidth + 4 || b.left < -4);
+        }).length;
+        return {
+          left:r.left,right:r.right,width:r.width,height:r.height,
+          background:css.backgroundColor,color:css.color,
+          iframes,badChildren, viewport:window.innerWidth,
+        };
+      });
+      const screenshot = '/tmp/emdo-stripe-checkout-' + test.name + '.png';
+      await page.screenshot({path:screenshot, fullPage:true, timeout:60000});
+      console.log('STRIPE_CHECKOUT_' + test.name.toUpperCase() + '=' + JSON.stringify(metrics));
+      if (metrics.width < 200 || metrics.height < 40 ||
+          metrics.left < -4 || metrics.right > test.width + 4 || metrics.badChildren) {
+        throw Error('Stripe form layout exceeds ' + test.name + ' viewport');
+      }
+      if (!/rgb\(255, (253|255), (248|255)\)/.test(metrics.background)) {
+        throw Error('Stripe payment box is not using the light surface on ' + test.name);
+      }
+      if (!metrics.iframes.some(f => f.width > 160 && f.height > 12)) {
+        throw Error('Secure Stripe payment iframe not visible on ' + test.name);
+      }
+    }
+    console.log('STRIPE_CHECKOUT_VISUAL_AUDIT_OK product=' + picked);
+    await context.close();
+  } finally {
+    await browser.close();
+  }
+})().catch(e => { console.error('STRIPE_CHECKOUT_VISUAL_AUDIT_FAILED:', e.stack || e); process.exitCode = 1; });
