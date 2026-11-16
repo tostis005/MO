@@ -89,7 +89,7 @@ foreach ( $bf26_exotic_catalog as $pack_key => $pack_name ) {
         'title' => $pack_name,
         'url'   => get_permalink( $pack_post->ID ),
         'price' => (float) $pack_product->get_price(),
-        'image' => $pack_product->get_image_id() ? wp_get_attachment_image( $pack_product->get_image_id(), 'thumbnail', false, array( 'alt' => '', 'class' => 'bf26-photo', 'loading' => 'lazy', 'decoding' => 'async' ) ) : '',
+        'image' => $pack_product->get_image_id() ? wp_get_attachment_image( $pack_product->get_image_id(), 'thumbnail', false, array( 'alt' => '', 'class' => 'bf26-photo', 'loading' => 'eager', 'decoding' => 'async' ) ) : '',
     );
 }
 
