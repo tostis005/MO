@@ -101,6 +101,7 @@ jobs:
           # Revalidate all seven with decimal-normalized WooCommerce price checks.
           # Remove the unexpected default uncategorized term from newly created product copies.
           # Add explicit Woo default product category removal plus persisted-taxonomy verification.
+          # Verify required public categories even if site-wide taxonomy sync adds auxiliary terms.
           # The Mentta originals may be native WooCommerce hidden products with
           # directly accessible URLs, or hard-excluded 404 products. Both are
           # valid; the WP-CLI verification above guards the originals and their IDs.
