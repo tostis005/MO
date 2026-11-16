@@ -68,6 +68,65 @@ const {chromium} = require('playwright-core');
         !placement.link || !placement.campaignWide) {
         throw Error('Banner not before harvest and Christmas at '+label+': '+JSON.stringify(placement));
       }
+      // Check actual glyph rectangles, not just the outer banner height:
+      // long CTA labels and circular stamps may look fine to box-only tests
+      // while their text is visibly cut at mobile breakpoints.
+      const bannerTypography=await page.evaluate(() => {
+        const root=document.querySelector('[data-emdo-bf26-home-feature="2026"]');
+        const issue=[];
+        const rootRect=root.getBoundingClientRect();
+        const tracked=[
+          '.emdo-bf26-home-feature__eyebrow',
+          '.emdo-bf26-home-feature__title',
+          '.emdo-bf26-home-feature__lead',
+          '.emdo-bf26-home-feature__note',
+          '.emdo-bf26-home-feature__seal small',
+          '.emdo-bf26-home-feature__seal strong',
+          '.emdo-bf26-home-feature__cta-label',
+          '.emdo-bf26-home-feature__arrow'
+        ];
+        for(const selector of tracked) {
+          const el=root.querySelector(selector);
+          if(!el) {issue.push('Missing '+selector);continue;}
+          const bounds=el.getBoundingClientRect();
+          const minX=rootRect.left+4,maxX=rootRect.right-4;
+          const clipParent=el.closest('.emdo-bf26-home-feature__seal,.emdo-bf26-home-feature__cta');
+          const parentRect=clipParent?.getBoundingClientRect();
+          const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);
+          let node;
+          while((node=walker.nextNode())) {
+            if(!node.textContent.trim())continue;
+            const range=document.createRange();range.selectNodeContents(node);
+            for(const rect of Array.from(range.getClientRects())) {
+              if(rect.width<=0 || rect.height<=0)continue;
+              if(rect.left<minX-2 || rect.right>maxX+2 ||
+                 rect.top<rootRect.top-2 || rect.bottom>rootRect.bottom+2) {
+                issue.push('Banner clipped '+selector+' ['+rect.left.toFixed(1)+','+
+                  rect.right.toFixed(1)+'] within ['+minX.toFixed(1)+','+
+                  maxX.toFixed(1)+']');
+              }
+              if(parentRect && (rect.left<parentRect.left-3 || rect.right>parentRect.right+3)) {
+                issue.push('Stamp/CTA text overflow '+selector+' ['+rect.left.toFixed(1)+','+
+                  rect.right.toFixed(1)+'] within ['+parentRect.left.toFixed(1)+','+
+                  parentRect.right.toFixed(1)+']');
+              }
+            }
+          }
+          if(el.scrollWidth>el.clientWidth+3 && el.clientWidth>0) {
+            issue.push('Text box horizontal overflow '+selector);
+          }
+          if(bounds.height>0 && el.scrollHeight>el.clientHeight+4 && el.clientHeight>0) {
+            issue.push('Text box vertical overflow '+selector);
+          }
+        }
+        const action=root.querySelector('.emdo-bf26-home-feature__action');
+        return {issue,actionWidth:action?.getBoundingClientRect().width,
+          rootWidth:rootRect.width,viewport:window.innerWidth};
+      });
+      if(bannerTypography.issue.length) {
+        throw Error('Black Friday home banner has clipped text at '+label+': '+
+          JSON.stringify(bannerTypography));
+      }
       await page.locator('#bf26-overlay [data-bf26-close]').first().click();
       if(await page.locator('#bf26-overlay').evaluate(el=>!el.hidden)) {
         throw Error('Close button failed at '+label);
