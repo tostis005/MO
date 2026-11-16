@@ -13,6 +13,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+// The same module can be deployed as an independent production MU plugin.
+// If the child theme is later deployed as well, do not register hooks twice.
+if ( defined( 'EMDO_STRIPE_CHECKOUT_VISUAL_LOADED' ) ) {
+	return;
+}
+define( 'EMDO_STRIPE_CHECKOUT_VISUAL_LOADED', true );
+
 /**
  * Style the official WooCommerce Stripe gateway fields, including the iframe.
  * Explicit colors and a stable 16px base avoid inheriting the dark review
@@ -84,7 +91,7 @@ add_filter(
 add_action(
 	'init',
 	static function (): void {
-		$version = '20261116-1';
+		$version = '20261116-2';
 		if ( $version === get_option( 'elmercado_stripe_checkout_appearance_version' ) ) {
 			return;
 		}
@@ -141,6 +148,48 @@ add_action(
 				max-width: 100% !important;
 				border: 0 !important;
 				background: transparent !important;
+			}
+
+			/* Respect native card selection and saved-card choices; never clip Stripe's labels. */
+			html body.elmercado-child-theme.woocommerce-checkout #payment .payment_box.payment_method_stripe :is(
+				#wc-stripe-cc-form,
+				.wc-stripe-save-source,
+				.wc-stripe-new-payment-method,
+				.wc-stripe-payment-request-wrapper,
+				.wc-stripe-upe-element,
+				fieldset,
+				.form-row
+			) {
+				min-width: 0 !important;
+				max-width: 100% !important;
+				box-sizing: border-box !important;
+			}
+
+			html body.elmercado-child-theme.woocommerce-checkout #payment .payment_box.payment_method_stripe :is(
+				.wc-stripe-save-source,
+				.wc-stripe-new-payment-method,
+				.wc-payment-form,
+				.wc-saved-payment-methods
+			) :is(label, span, small, p) {
+				color: #173f32 !important;
+				line-height: 1.5 !important;
+			}
+
+			html body.elmercado-child-theme.woocommerce-checkout #payment .payment_box.payment_method_stripe .form-row :is(input:not([type="radio"]):not([type="checkbox"]), select) {
+				max-width: 100% !important;
+				min-height: 44px !important;
+				font-size: 16px !important;
+				line-height: 1.3 !important;
+				border-color: #b9c7bf !important;
+				background-color: #fff !important;
+				color: #173f32 !important;
+			}
+
+			html body.elmercado-child-theme.woocommerce-checkout #payment li.payment_method_stripe > label img {
+				max-width: 42px !important;
+				height: auto !important;
+				vertical-align: middle !important;
+				margin: 0 0 0 6px !important;
 			}
 
 			/* Fallback for older Stripe card-field implementations. */
