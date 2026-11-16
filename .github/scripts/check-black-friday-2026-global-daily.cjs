@@ -60,12 +60,12 @@ const {chromium} = require('playwright-core');
              !!(harvest.compareDocumentPosition(christmas) & Node.DOCUMENT_POSITION_FOLLOWING),
           bannerHeight:a?.height||0,harvestHeight:b?.height||0,
           link:bf?.querySelector('a[href*="black-friday-2026"]')?.getAttribute('href'),
-          future:bf?.textContent.includes('Próximamente incorporaremos más promociones')
+          campaignWide:bf?.textContent.includes('Ver todas las promociones') && bf?.textContent.includes('hay mucho por descubrir') && !bf?.textContent.includes('−15%')
         };
       });
       if(placement.count!==1 || !placement.correctOrder ||
         placement.bannerHeight<=placement.harvestHeight ||
-        !placement.link || !placement.future) {
+        !placement.link || !placement.campaignWide) {
         throw Error('Banner not before harvest and Christmas at '+label+': '+JSON.stringify(placement));
       }
       await page.locator('#bf26-overlay [data-bf26-close]').first().click();
