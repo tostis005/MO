@@ -98,6 +98,7 @@ jobs:
             grep -Eiq 'single-product|woocommerce-product-gallery|product_title' "$OUTPUT"
             grep -Eiq 'add-to-cart|single_add_to_cart_button|out.of.stock|agotado' "$OUTPUT"
           done
+          # Revalidate all seven with decimal-normalized WooCommerce price checks.
           # The Mentta originals may be native WooCommerce hidden products with
           # directly accessible URLs, or hard-excluded 404 products. Both are
           # valid; the WP-CLI verification above guards the originals and their IDs.
