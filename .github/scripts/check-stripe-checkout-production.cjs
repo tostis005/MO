@@ -33,12 +33,12 @@ async function closePromotion(page) {
     // Live storefront publicly exposes a purchasable simple product:
     // Lote barbacoa, whose Add to cart link resolves to ?add-to-cart=11139.
     // Avoid the unrelated /wp-json/wc/store/v1/products endpoint (HTTP 500).
-    const candidates = [{id: 11139}];
+    const candidates = [{id: 11139}]; // Two units clear Tolecarnes' EUR 60 minimum.
 
     let picked = null;
     const observations = [];
     for (const p of candidates.slice(0, 12)) {
-      const add = await page.goto(BASE + '/tienda/?add-to-cart=' + encodeURIComponent(p.id), {
+      const add = await page.goto(BASE + '/tienda/?add-to-cart=' + encodeURIComponent(p.id) + '&quantity=2', {
         waitUntil: 'domcontentloaded', timeout: 90000,
       });
       const addState = {
