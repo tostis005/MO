@@ -125,6 +125,18 @@ async function closePromotion(page) {
         return {
           left:r.left,right:r.right,width:r.width,height:r.height,
           background:css.backgroundColor,color:css.color,
+          bodyClass:document.body.className,
+          stripeClass:el.className,
+          injectedStripeStyles:[...document.querySelectorAll('style[id*="stripe" i]')].map(x=>({id:x.id,len:x.textContent.length})),
+          stripeRuleMatched:[...document.styleSheets].flatMap(sheet=>{
+            try {
+              return [...sheet.cssRules].filter(rule=>{
+                if(!rule.selectorText || !rule.style?.backgroundColor) return false;
+                try { return el.matches(rule.selectorText); } catch { return false; }
+              }).map(rule=>({selector:rule.selectorText.slice(0,180),bg:rule.style.backgroundColor,
+                important:rule.style.getPropertyPriority('background-color')}));
+            } catch { return []; }
+          }).slice(-15),
           iframes,badChildren, viewport:window.innerWidth,
         };
       });
