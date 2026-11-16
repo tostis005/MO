@@ -30,21 +30,14 @@ async function closePromotion(page) {
       locale: 'es-ES',
     });
     const page = await context.newPage();
-    let products;
-    const endpoint = BASE + '/wp-json/wc/store/v1/products?per_page=100';
-    const catalog = await context.request.get(endpoint, {timeout: 60000});
-    if (!catalog.ok()) throw Error('Public Store API HTTP ' + catalog.status());
-    products = await catalog.json();
-    if (!Array.isArray(products)) throw Error('Store API has no product list');
-    const candidates = products.filter(p =>
-      p.type === 'simple' && p.is_in_stock && p.is_purchasable &&
-      !p.has_options && Number(p.prices?.price || 0) > 0
-    );
-    if (!candidates.length) throw Error('No purchasable simple product for checkout visual audit');
+    // Live storefront publicly exposes a purchasable simple product:
+    // Lote barbacoa, whose Add to cart link resolves to ?add-to-cart=11139.
+    // Avoid the unrelated /wp-json/wc/store/v1/products endpoint (HTTP 500).
+    const candidates = [{id: 11139}];
 
     let picked = null;
     for (const p of candidates.slice(0, 12)) {
-      await page.goto(BASE + '/?add-to-cart=' + encodeURIComponent(p.id), {
+      await page.goto(BASE + '/tienda/?add-to-cart=' + encodeURIComponent(p.id), {
         waitUntil: 'domcontentloaded', timeout: 90000,
       });
       await page.goto(BASE + '/finalizar-compra/?stripe_visual_audit=1', {
