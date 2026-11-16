@@ -227,8 +227,8 @@ foreach ($rows as $r) {
     if (!$p || $p->get_status() !== 'publish' ||
         $p->get_catalog_visibility('edit') !== 'visible' ||
         $cats !== $required ||
-        (string)$p->get_regular_price('edit') !== (string)$r['regular'] ||
-        (string)$p->get_sale_price('edit') !== (string)$r['sale'] ||
+        abs((float)$p->get_regular_price('edit') - (float)$r['regular']) > 0.001 ||
+        abs((float)$p->get_sale_price('edit') - (float)$r['sale']) > 0.001 ||
         $p->get_name('edit') !== $source->get_name('edit') ||
         $p->get_description('edit') !== $source->get_description('edit') ||
         $p->get_short_description('edit') !== $source->get_short_description('edit') ||
@@ -241,6 +241,27 @@ foreach ($rows as $r) {
         get_post_meta($id, '_emdo_mentta_only', true) === 'yes' ||
         (is_array($visTerms) && array_intersect($visTerms, ['exclude-from-catalog','exclude-from-search'])) ||
         in_array($tax['mentta'],$cats,true) || in_array($tax['mentta-carnes'],$cats,true)) {
+        echo 'WEB_PACK_VERIFICATION_DETAIL '.wp_json_encode([
+            'key'=>$r['key'], 'id'=>$id,
+            'status'=>$p ? $p->get_status() : 'missing',
+            'visibility'=>$p ? $p->get_catalog_visibility('edit') : '',
+            'categories_actual'=>$cats, 'categories_wanted'=>$required,
+            'regular_actual'=>$p ? $p->get_regular_price('edit') : null,
+            'regular_wanted'=>$r['regular'],
+            'sale_actual'=>$p ? $p->get_sale_price('edit') : null,
+            'sale_wanted'=>$r['sale'],
+            'name_matches'=>$p && $p->get_name('edit') === $source->get_name('edit'),
+            'description_matches'=>$p && $p->get_description('edit') === $source->get_description('edit'),
+            'short_description_matches'=>$p && $p->get_short_description('edit') === $source->get_short_description('edit'),
+            'image_matches'=>$p && $p->get_image_id() === $source->get_image_id(),
+            'gallery_matches'=>$p && $p->get_gallery_image_ids() === $source->get_gallery_image_ids(),
+            'weight_matches'=>$p && $p->get_weight('edit') === $source->get_weight('edit'),
+            'lines_match'=>get_post_meta($id, '_emdo_web_pack_lines', true) === $r['components'],
+            'vendor_id'=>get_post_field('post_author',$id),
+            'is_mentta_exclusive'=>in_array($id, emdo_mentta_exclusive_ids(), true),
+            'mentta_flag'=>get_post_meta($id,'_emdo_mentta_only',true),
+            'product_visibility_terms'=>$visTerms
+        ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
         fwrite(STDERR, "WEB_PACK_VERIFICATION_FAILED {$r['key']} id=$id\n");
         exit(7);
     }
