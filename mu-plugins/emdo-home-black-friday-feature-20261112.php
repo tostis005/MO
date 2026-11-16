@@ -26,8 +26,8 @@ function emdo_bf26_home_banner_html(): string {
 		. '<span class="emdo-bf26-home-feature__note">Todas las ofertas y sus condiciones, en nuestra página especial de Black Friday.</span>'
 		. '</div>'
 		. '<div class="emdo-bf26-home-feature__action">'
-		. '<div class="emdo-bf26-home-feature__seal" aria-hidden="true"><small>BLACK FRIDAY</small><strong>2026</strong><small>OFERTAS · REGALOS</small></div>'
-		. '<a class="emdo-bf26-home-feature__cta" href="' . $href . '">Ver todas las promociones <span aria-hidden="true">↗</span></a>'
+		. '<div class="emdo-bf26-home-feature__seal" aria-hidden="true"><small>BLACK FRIDAY</small><strong>2026</strong><small>OFERTAS</small></div>'
+		. '<a class="emdo-bf26-home-feature__cta" href="' . $href . '"><span class="emdo-bf26-home-feature__cta-label">Ver todas las promociones</span> <span class="emdo-bf26-home-feature__arrow" aria-hidden="true">↗</span></a>'
 		. '</div>'
 		. '</div></aside>';
 }
@@ -76,11 +76,11 @@ add_action( 'wp_head', static function (): void {
   margin:0 auto;padding:40px 0;display:grid;
   grid-template-columns:minmax(0,1fr) minmax(210px,300px);gap:40px;align-items:center
 }
-.emdo-bf26-home-feature .emdo-bf26-home-feature__copy{display:flex;flex-direction:column;gap:10px;min-width:0}
+.emdo-bf26-home-feature .emdo-bf26-home-feature__copy{display:flex;flex-direction:column;gap:10px;min-width:0;max-width:100%;overflow:visible}
 .emdo-bf26-home-feature .emdo-bf26-home-feature__eyebrow{color:#e0c58f;font-size:11px;line-height:1.5;font-weight:850;letter-spacing:.16em}
 .emdo-bf26-home-feature .emdo-bf26-home-feature__spark{color:#d9b477;margin:0 5px}
 .emdo-bf26-home-feature .emdo-bf26-home-feature__title{
-  display:block;color:#fffaf2;font:normal 500 clamp(29px,3vw,44px)/1.15 Georgia,serif;letter-spacing:-.032em
+  display:block;max-width:100%;min-width:0;padding-block:3px;white-space:normal;overflow-wrap:break-word;color:#fffaf2;font:normal 500 clamp(29px,3vw,44px)/1.27 Georgia,serif;letter-spacing:-.032em
 }
 .emdo-bf26-home-feature .emdo-bf26-home-feature__title em{color:#eed09a;font-style:italic}
 .emdo-bf26-home-feature .emdo-bf26-home-feature__lead{
@@ -97,7 +97,7 @@ add_action( 'wp_head', static function (): void {
   outline:4px solid #e4c999;background:radial-gradient(circle at 30% 22%,#ffedc6,#e0bd7e 65%,#c29a60);
   color:#163b2a;transform:rotate(8deg);box-shadow:0 13px 34px #071c1540
 }
-.emdo-bf26-home-feature .emdo-bf26-home-feature__seal small{font-size:10px;letter-spacing:.13em;font-weight:850}
+.emdo-bf26-home-feature .emdo-bf26-home-feature__seal small{display:block;max-width:calc(100% - 20px);white-space:nowrap;text-align:center;font-size:10px;line-height:1.35;letter-spacing:.1em;font-weight:850}
 .emdo-bf26-home-feature .emdo-bf26-home-feature__seal strong{font:normal 700 41px/.95 Georgia,serif;letter-spacing:-.06em}
 .emdo-bf26-home-feature .emdo-bf26-home-feature__seal strong span{font-size:.58em;letter-spacing:-.02em}
 .emdo-bf26-home-feature .emdo-bf26-home-feature__cta,
@@ -108,6 +108,9 @@ add_action( 'wp_head', static function (): void {
   font-size:14px;line-height:1.3;font-weight:850;text-decoration:none!important;text-align:center;
   box-shadow:0 8px 23px #00180d3d;transition:background-color .2s,transform .2s
 }
+.emdo-bf26-home-feature .emdo-bf26-home-feature__cta-label{display:block;min-width:0;max-width:100%;white-space:normal;overflow-wrap:break-word;line-height:1.45}
+.emdo-bf26-home-feature .emdo-bf26-home-feature__arrow{display:inline-flex;align-items:center;justify-content:center;flex:none;line-height:1}
+.emdo-bf26-home-feature .emdo-bf26-home-feature__seal>*{flex:none;min-width:0}
 .emdo-bf26-home-feature .emdo-bf26-home-feature__cta:hover{background:#fff0cf!important;transform:translateY(-2px)}
 .emdo-bf26-home-feature .emdo-bf26-home-feature__cta:focus-visible{outline:3px solid #f0d29c;outline-offset:4px}
 @media(max-width:760px){
@@ -120,14 +123,26 @@ add_action( 'wp_head', static function (): void {
  }
  .emdo-bf26-home-feature .emdo-bf26-home-feature__seal{width:89px;height:89px;outline-width:3px}
  .emdo-bf26-home-feature .emdo-bf26-home-feature__seal strong{font-size:27px}
- .emdo-bf26-home-feature .emdo-bf26-home-feature__seal small{font-size:7px}
- .emdo-bf26-home-feature .emdo-bf26-home-feature__cta{min-height:43px;padding:10px 14px;font-size:13px}
+ .emdo-bf26-home-feature .emdo-bf26-home-feature__seal small{font-size:7px;letter-spacing:.06em;max-width:calc(100% - 12px)}
+ .emdo-bf26-home-feature .emdo-bf26-home-feature__cta{min-height:43px;padding:10px 14px;font-size:13px;min-width:0}
+}
+@media(max-width:540px){
+ .emdo-bf26-home-feature .emdo-bf26-home-feature__inner{gap:16px;padding:26px 0 28px}
+ .emdo-bf26-home-feature .emdo-bf26-home-feature__copy{gap:9px}
+ .emdo-bf26-home-feature .emdo-bf26-home-feature__title{font-size:clamp(27px,7.8vw,34px);line-height:1.3}
+ .emdo-bf26-home-feature .emdo-bf26-home-feature__lead{font-size:14px;line-height:1.65}
+ .emdo-bf26-home-feature .emdo-bf26-home-feature__action{flex-direction:column;align-items:stretch;justify-content:center;gap:13px;min-width:0}
+ .emdo-bf26-home-feature .emdo-bf26-home-feature__seal{align-self:center;width:95px;height:95px}
+ .emdo-bf26-home-feature .emdo-bf26-home-feature__seal small{font-size:7.3px}
+ .emdo-bf26-home-feature .emdo-bf26-home-feature__seal strong{font-size:28px}
+ .emdo-bf26-home-feature .emdo-bf26-home-feature__cta{width:100%;max-width:100%;align-self:stretch;min-height:48px;padding:11px 17px;gap:9px;white-space:normal;font-size:14px}
+ .emdo-bf26-home-feature .emdo-bf26-home-feature__cta-label{flex:0 1 auto}
 }
 @media(max-width:370px){
- .emdo-bf26-home-feature .emdo-bf26-home-feature__action{gap:9px}
- .emdo-bf26-home-feature .emdo-bf26-home-feature__seal{width:76px;height:76px}
- .emdo-bf26-home-feature .emdo-bf26-home-feature__seal strong{font-size:23px}
- .emdo-bf26-home-feature .emdo-bf26-home-feature__cta{gap:6px;font-size:11px;padding:9px 10px}
+ .emdo-bf26-home-feature .emdo-bf26-home-feature__action{gap:12px}
+ .emdo-bf26-home-feature .emdo-bf26-home-feature__seal{width:90px;height:90px}
+ .emdo-bf26-home-feature .emdo-bf26-home-feature__seal strong{font-size:27px}
+ .emdo-bf26-home-feature .emdo-bf26-home-feature__cta{gap:8px;font-size:13px;padding:10px 12px}
 }
 @media(prefers-reduced-motion:reduce){.emdo-bf26-home-feature *{transition:none!important}}
 </style>
