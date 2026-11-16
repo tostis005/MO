@@ -89,6 +89,7 @@ foreach ( $bf26_exotic_catalog as $pack_key => $pack_name ) {
         'title' => $pack_name,
         'url'   => get_permalink( $pack_post->ID ),
         'price' => (float) $pack_product->get_price(),
+        'image' => $pack_product->get_image_id() ? wp_get_attachment_image( $pack_product->get_image_id(), 'thumbnail', false, array( 'alt' => '', 'class' => 'bf26-photo', 'loading' => 'lazy', 'decoding' => 'async' ) ) : '',
     );
 }
 
@@ -164,6 +165,8 @@ get_header();
 					<h3 id="bf26-hidalgo-title">Hidalgo <em>de la Jara</em></h3>
 					<p class="bf26-offer__description"><strong>15 % de descuento en todos los productos Hidalgo de la Jara de nuestra tienda.</strong> Aplica el cupón <strong>BFEMDO</strong> al hacer tu pedido. Además, descubre el salto al tramo de peso superior en jamones seleccionados y los regalos por importe.</p>
 					<div class="bf26-offer__discount"><strong>–15<span>%</span></strong><div class="bf26-offer__discount-details"><span>EN TODOS SUS PRODUCTOS</span><div class="bf26-offer__coupon-row"><span class="bf26-offer__coupon-hint">CÓDIGO</span><button type="button" class="bf26-coupon" data-bf26-copy="BFEMDO" aria-label="Copiar cupón BFEMDO">BFEMDO <span aria-hidden="true">⧉</span></button></div></div></div>
+					</div>
+				<div class="bf26-offer__details">
 					<div class="bf26-hidalgo-benefits" aria-label="Ventajas especiales de Black Friday para Hidalgo de la Jara">
 						<div class="bf26-hidalgo-upgrade">
 							<div class="bf26-hidalgo-upgrade__emblem" aria-hidden="true"><strong>+0,5</strong><span>KG</span></div>
@@ -189,8 +192,10 @@ get_header();
 							<p class="bf26-hidalgo-rewards__note">Se tiene en cuenta el importe de los productos de Hidalgo de la Jara de tu pedido. <strong>Los regalos son acumulables:</strong> al superar los 250 €, recibes ambos.</p>
 						</div>
 					</div>
-					<p class="bf26-offer__cashback"><span aria-hidden="true">✳</span> <strong>Estrenamos el Club EMDO:</strong> compra con tu cuenta y acumula <strong>2 % de cashback durante Black Friday</strong> en tu monedero. Después de la campaña, seguirás acumulando el 1 %. <a href="#club-emdo">Descubre el club ↗</a></p>
-					<a href="<?php echo esc_url( $hidalgo_url ); ?>" class="bf26-button bf26-button--green">Explorar Hidalgo de la Jara <span aria-hidden="true">↗</span></a>
+					<div class="bf26-offer__closing">
+						<p class="bf26-offer__cashback"><span aria-hidden="true">✳</span> <strong>Estrenamos el Club EMDO:</strong> compra con tu cuenta y acumula <strong>2 % de cashback durante Black Friday</strong> en tu monedero. Después de la campaña, seguirás acumulando el 1 %. <a href="#club-emdo">Descubre el club ↗</a></p>
+						<a href="<?php echo esc_url( $hidalgo_url ); ?>" class="bf26-button bf26-button--green">Explorar Hidalgo de la Jara <span aria-hidden="true">↗</span></a>
+					</div>
 					
 				</div>
 			</article>
@@ -252,8 +257,8 @@ get_header();
 				<div class="bf26-exotic__grid" aria-label="Los siete packs de carnes exóticas y cortes premium">
 					<?php foreach ( $bf26_exotic_packs as $bf26_exotic_pack ) : ?>
 					<a class="bf26-exotic__item" href="<?php echo esc_url( $bf26_exotic_pack['url'] ); ?>" aria-label="<?php echo esc_attr( 'Ver ' . $bf26_exotic_pack['title'] . ', ' . wp_strip_all_tags( wc_price( $bf26_exotic_pack['price'] ) ) ); ?>">
-						<span class="bf26-exotic__name"><?php echo esc_html( $bf26_exotic_pack['title'] ); ?></span>
-						<span class="bf26-exotic__price"><?php echo wp_kses_post( wc_price( $bf26_exotic_pack['price'] ) ); ?></span>
+						<span class="bf26-exotic__media" aria-hidden="true"><?php if ( $bf26_exotic_pack['image'] ) { echo $bf26_exotic_pack['image']; } else { echo '<span class="bf26-exotic__placeholder">✳</span>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></span>
+						<span class="bf26-exotic__info"><span class="bf26-exotic__name"><?php echo esc_html( $bf26_exotic_pack['title'] ); ?></span><span class="bf26-exotic__price"><?php echo wp_kses_post( wc_price( $bf26_exotic_pack['price'] ) ); ?></span></span>
 						<span class="bf26-exotic__arrow" aria-hidden="true">↗</span>
 					</a>
 					<?php endforeach; ?>
