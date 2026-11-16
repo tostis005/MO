@@ -207,7 +207,17 @@ if ($mode === 'apply') {
             if (is_wp_error($assigned) || count((array)$assigned) !== count($wantedCats)) {
                 throw new RuntimeException('FINAL_PRODUCT_CATEGORIES_FAILED '.$r['key']);
             }
+            $defaultTerm = (int)get_option('default_product_cat', 0);
+            if ($defaultTerm && !in_array($defaultTerm, $wantedCats, true)) {
+                wp_remove_object_terms($id, $defaultTerm, 'product_cat');
+            }
             clean_object_term_cache($id, 'product');
+            $actualTerms = wp_get_object_terms($id, 'product_cat', ['fields'=>'ids']);
+            echo 'WEB_PACK_CATEGORY_AFTER_WRITE '.wp_json_encode([
+                'key'=>$r['key'], 'raw_terms'=>is_wp_error($actualTerms)?[]:array_map('intval',$actualTerms),
+                'default_term'=>$defaultTerm,
+                'model_terms'=>$p->get_category_ids('edit')
+            ])."\\n";
             clean_post_cache($id); wc_delete_product_transients($id);
             if (function_exists('rocket_clean_post')) rocket_clean_post($id);
         }
@@ -231,6 +241,8 @@ foreach ($rows as $r) {
     $p = $id ? wc_get_product($id) : false;
     $cats = $p ? array_map('intval', $p->get_category_ids()) : [];
     $visTerms = $p ? wp_get_object_terms($id,'product_visibility',['fields'=>'slugs']) : [];
+    $rawProductCats = $p ? wp_get_object_terms($id, 'product_cat', ['fields'=>'ids']) : [];
+    $rawProductCats = is_wp_error($rawProductCats) ? [] : array_map('intval', (array)$rawProductCats);
     $required = [$tax['carnes'],$tax['packs-y-lotes'],$tax[$r['extra']]];
     sort($cats); sort($required);
     if (!$p || $p->get_status() !== 'publish' ||
@@ -255,6 +267,7 @@ foreach ($rows as $r) {
             'status'=>$p ? $p->get_status() : 'missing',
             'visibility'=>$p ? $p->get_catalog_visibility('edit') : '',
             'categories_actual'=>$cats, 'categories_wanted'=>$required,
+            'raw_wp_terms'=>$rawProductCats, 'default_cat_option'=>get_option('default_product_cat'),
             'regular_actual'=>$p ? $p->get_regular_price('edit') : null,
             'regular_wanted'=>$r['regular'],
             'sale_actual'=>$p ? $p->get_sale_price('edit') : null,
