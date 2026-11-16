@@ -369,7 +369,9 @@ jobs:
           test "$GLOBAL_CODE" = 200
           grep -Fq 'id="bf26-overlay"' "/tmp/bf-global-$RUN.html"
           test "$(grep -oF 'data-emdo-bf26-home-feature="2026"' "/tmp/bf-global-$RUN.html" | wc -l)" -eq 1
-          grep -Fq 'Próximamente incorporaremos más promociones' "/tmp/bf-global-$RUN.html"
+          grep -Fq 'Este Black Friday' "/tmp/bf-global-$RUN.html"
+          grep -Fq 'Ver todas las promociones' "/tmp/bf-global-$RUN.html"
+          ! grep -Fq 'Las primeras ofertas' "/tmp/bf-global-$RUN.html"
           "$PHP" -d memory_limit=768M "$WP" eval '
             if(!function_exists("emdo_bf26_home_banner_html"))exit(21);
             echo "BF_HOME_BANNER_MU_PLUGIN_LOADED\n";
