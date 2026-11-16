@@ -258,7 +258,7 @@ get_header();
 					</a>
 					<?php endforeach; ?>
 				</div>
-				<p class="bf26-exotic__note">Precios finales de los packs, sin necesidad de cupón. El 2 % del Club EMDO está sujeto a las <a href="#club-emdo">condiciones del monedero</a>.</p>
+				<p class="bf26-exotic__note">El 2 % del Club EMDO está sujeto a las <a href="#club-emdo">condiciones del monedero</a>.</p>
 			</section>
 			<?php endif; ?>
 		</div>
