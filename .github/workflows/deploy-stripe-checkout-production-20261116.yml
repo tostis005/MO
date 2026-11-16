@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 concurrency:
   group: emdo-stripe-checkout-visual-production
@@ -122,3 +123,23 @@ jobs:
           test "$PROBE" = 200 || { echo "STRIPE_VISUAL_PUBLIC_CART_HTTP=$PROBE" >&2; exit 43; }
           echo "STRIPE_VISUAL_PRODUCTION_DEPLOYED=1"
           REMOTE
+
+      - name: Report verified production deployment status
+        if: always()
+        shell: bash
+        env:
+          GITHUB_TOKEN_FOR_STATUS: ${{ github.token }}
+          DEPLOY_RESULT: ${{ job.status }}
+        run: |
+          set -Eeuo pipefail
+          if [ "$DEPLOY_RESULT" = "success" ]; then
+            PAYLOAD='{"state":"success","context":"emdo/stripe-visual-production","description":"Stripe checkout style deployed and WordPress hooks verified"}'
+          else
+            PAYLOAD='{"state":"failure","context":"emdo/stripe-visual-production","description":"Stripe checkout deployment failed or rolled back; inspect logs"}'
+          fi
+          curl -fsS --retry 3 -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GITHUB_TOKEN_FOR_STATUS" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -d "$PAYLOAD" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" >/dev/null
