@@ -1196,3 +1196,56 @@ html body.emdo-bf2026-page :is(.site-footer,#colophon) {
  .bf26-offer--hidalgo .bf26-offer__photobg--hidalgo-duo{inset:11px 12px 41px;gap:7px}
  .bf26-offer--hidalgo .bf26-hidalgo-piece figcaption{font-size:9px;letter-spacing:.04em;padding:6px 3px}
 }
+
+
+/* Black Friday 2026 · bloque terciario y discreto de packs Latitudes. */
+.bf26 .bf26-exotic{
+  margin-top:30px;padding:30px 34px 26px;border:1px solid #dedfd6;border-radius:10px;
+  background:#fcfbf8;box-shadow:0 9px 26px rgba(16,49,34,.035);
+}
+.bf26 .bf26-exotic__head{display:flex;justify-content:space-between;gap:35px;align-items:center;margin-bottom:24px}
+.bf26 .bf26-exotic__intro{flex:1;min-width:0;max-width:720px}
+.bf26 .bf26-exotic__eyebrow{margin:0 0 8px;color:#637464;font-size:10px;font-weight:850;letter-spacing:.11em}
+.bf26 .bf26-exotic__eyebrow span{color:#a88955;font-size:15px;vertical-align:-1px;margin-right:4px}
+.bf26 .bf26-exotic h3{margin:0 0 8px;color:#214b37;font-size:clamp(25px,2.9vw,33px);font-weight:680;letter-spacing:-.04em;line-height:1.17}
+.bf26 .bf26-exotic h3 em{font:italic 400 .98em Georgia,serif;color:#9b7a4a}
+.bf26 .bf26-exotic__intro>p:last-child{margin:0;color:#627063;font-size:13px;line-height:1.7}
+.bf26 .bf26-exotic__intro strong{color:#244f3b}
+.bf26 .bf26-exotic__wallet{
+  display:flex;align-items:flex-start;gap:10px;flex:0 1 320px;
+  border-left:2px solid #d4c4a8;padding:3px 0 3px 18px;
+}
+.bf26 .bf26-exotic__wallet-icon{color:#b08d55;font-size:17px;line-height:1.2}
+.bf26 .bf26-exotic__wallet p{margin:0;color:#6a7569;font-size:11px;line-height:1.6}
+.bf26 .bf26-exotic__wallet strong{display:block;margin-bottom:4px;color:#214b37;font-size:13px;line-height:1.4}
+.bf26 .bf26-exotic__wallet span:not(.bf26-exotic__wallet-icon){display:block}
+.bf26 .bf26-exotic__grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.bf26 .bf26-exotic__item{
+  box-sizing:border-box;display:flex;align-items:center;gap:9px;min-width:0;
+  padding:14px 15px;border:1px solid #e7e7df;border-radius:6px;background:#fff;
+  color:#254a38;text-decoration:none;transition:background .18s ease,border-color .18s ease,transform .18s ease;
+}
+.bf26 .bf26-exotic__item:hover,.bf26 .bf26-exotic__item:focus-visible{
+  background:#f1f5ef;border-color:#b7cbbb;transform:translateY(-1px);color:#183f2d;
+}
+.bf26 .bf26-exotic__name{flex:1;min-width:0;font-size:12px;font-weight:700;line-height:1.45}
+.bf26 .bf26-exotic__price{white-space:nowrap;font-weight:800;font-size:13px;color:#234c36}
+.bf26 .bf26-exotic__price .woocommerce-Price-amount{white-space:nowrap}
+.bf26 .bf26-exotic__arrow{font-size:16px;color:#8d9f8f;line-height:1}
+.bf26 .bf26-exotic__note{margin:17px 0 0;font-size:11px;color:#718075;line-height:1.6}
+.bf26 .bf26-exotic__note a{color:#315d43;text-decoration:underline;text-underline-offset:2px}
+@media(max-width:960px){
+  .bf26 .bf26-exotic__head{align-items:flex-start;flex-direction:column;gap:13px}
+  .bf26 .bf26-exotic__wallet{flex:0 1 auto;width:100%;box-sizing:border-box;padding-top:1px;padding-bottom:1px}
+  .bf26 .bf26-exotic__grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:600px){
+  .bf26 .bf26-exotic{padding:22px 17px;margin-top:23px}
+  .bf26 .bf26-exotic h3{font-size:28px}
+  .bf26 .bf26-exotic__grid{grid-template-columns:1fr;gap:7px}
+  .bf26 .bf26-exotic__item{padding:12px 13px}
+}
+@media(prefers-reduced-motion:reduce){
+  .bf26 .bf26-exotic__item{transition:none}
+  .bf26 .bf26-exotic__item:hover{transform:none}
+}
