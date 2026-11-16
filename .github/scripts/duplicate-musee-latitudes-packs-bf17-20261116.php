@@ -247,7 +247,7 @@ foreach ($rows as $r) {
     sort($cats); sort($required);
     if (!$p || $p->get_status() !== 'publish' ||
         $p->get_catalog_visibility('edit') !== 'visible' ||
-        $cats !== $required ||
+        count(array_diff($required, $cats)) !== 0 ||
         abs((float)$p->get_regular_price('edit') - (float)$r['regular']) > 0.001 ||
         abs((float)$p->get_sale_price('edit') - (float)$r['sale']) > 0.001 ||
         $p->get_name('edit') !== $source->get_name('edit') ||
@@ -291,6 +291,7 @@ foreach ($rows as $r) {
         'web_id'=>$id, 'source_id'=>$r['sourceId'], 'name'=>$p->get_name(),
         'regular_price'=>$p->get_regular_price('edit'), 'black_friday_price'=>$p->get_sale_price('edit'),
         'in_stock'=>$p->is_in_stock(), 'categories'=>['carnes','packs-y-lotes',$r['extra']],
+        'additional_categories'=>array_map(static function($termId) { $t=get_term($termId,'product_cat'); return $t instanceof WP_Term ? ['id'=>$termId,'slug'=>$t->slug,'name'=>$t->name]:['id'=>$termId]; }, array_values(array_diff($cats,$required))),
         'permalink'=>get_permalink($id)
     ];
 }
