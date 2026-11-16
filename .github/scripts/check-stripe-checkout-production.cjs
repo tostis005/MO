@@ -150,6 +150,9 @@ async function closePromotion(page) {
       if (!/rgb\(255, (253|255), (248|255)\)/.test(metrics.background)) {
         throw Error('Stripe payment box is not using the light surface on ' + test.name);
       }
+      if (metrics.color !== 'rgb(23, 63, 50)') {
+        throw Error('Stripe payment box has unreadable text color on ' + test.name);
+      }
       if (!metrics.iframes.some(f => f.width > 160 && f.height > 12)) {
         throw Error('Secure Stripe payment iframe not visible on ' + test.name);
       }
