@@ -1,0 +1,124 @@
+name: Deploy isolated Stripe checkout visual fix to production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/inc/stripe-checkout-visual-20261116.php'
+      - '.github/workflows/deploy-stripe-checkout-production-20261116.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emdo-stripe-checkout-visual-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate isolated Stripe visual module
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SOURCE=elmercadodeorigen-child/inc/stripe-checkout-visual-20261116.php
+          php -l "$SOURCE"
+          grep -Fq "EMDO_STRIPE_CHECKOUT_VISUAL_LOADED" "$SOURCE"
+          grep -Fq "wc_stripe_upe_params" "$SOURCE"
+          grep -Fq "payment_box.payment_method_stripe" "$SOURCE"
+          grep -Fq "20261116-2" "$SOURCE"
+          test -n "$HOST" && test -n "$USER" && test -n "$SSHPASS"
+
+      - name: Upload only the Stripe visual module and deploy with rollback
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SOURCE=elmercadodeorigen-child/inc/stripe-checkout-visual-20261116.php
+          EXPECTED_SHA="$(sha256sum "$SOURCE" | cut -d' ' -f1)"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          SSH_PORT="${PORT:-22}"
+          [[ "$SSH_PORT" =~ ^[0-9]{1,5}$ ]]
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$SSH_PORT" -H "$HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $SSH_PORT"
+          SCP="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $SSH_PORT"
+          STAGE="/tmp/emdo-stripe-visual-$GITHUB_RUN_ID.php"
+          sshpass -e scp $SCP "$SOURCE" "$USER@$HOST:$STAGE"
+          sshpass -e ssh $SSH "$USER@$HOST" "bash -s -- '$GITHUB_RUN_ID' '$EXPECTED_SHA'" <<'REMOTE'
+          set -Eeuo pipefail
+          RUN="$1"
+          EXPECTED_SHA="$2"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          SOURCE="/tmp/emdo-stripe-visual-$RUN.php"
+          MU="$ROOT/wp-content/mu-plugins"
+          TARGET="$MU/emdo-stripe-checkout-visual-20261116.php"
+          BACKUP="$HOME/.elmercado-rollbacks/stripe-checkout-visual/$RUN"
+          test -f "$ROOT/wp-config.php" && test -d "$MU" && test -x "$PHP" && test -x "$WP"
+          test -s "$SOURCE"
+          echo "$EXPECTED_SHA  $SOURCE" | sha256sum -c -
+          "$PHP" -l "$SOURCE"
+          SITE="$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --allow-root --skip-plugins --skip-themes)"
+          case "$SITE" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
+            *) echo "REFUSING_NON_PRODUCTION_SITE=$SITE" >&2; exit 21 ;;
+          esac
+          install -d -m 0700 "$BACKUP"
+          WAS_PRESENT=0
+          CHANGED=0
+          if [ -f "$TARGET" ]; then
+            cp -p "$TARGET" "$BACKUP/previous.php"
+            WAS_PRESENT=1
+          fi
+          finish() {
+            code=$?
+            trap - EXIT
+            if [ "$code" -ne 0 ] && [ "$CHANGED" -eq 1 ]; then
+              echo "STRIPE_VISUAL_ROLLBACK_START"
+              rm -f "$TARGET"
+              if [ "$WAS_PRESENT" -eq 1 ]; then
+                cp -p "$BACKUP/previous.php" "$TARGET"
+              fi
+              echo "STRIPE_VISUAL_ROLLBACK_COMPLETE"
+            fi
+            rm -f "$SOURCE"
+            exit "$code"
+          }
+          trap finish EXIT
+          CHANGED=1
+          install -m 0644 "$SOURCE" "$TARGET.new-$RUN"
+          mv -f "$TARGET.new-$RUN" "$TARGET"
+          "$PHP" -l "$TARGET"
+          echo "$EXPECTED_SHA  $TARGET" | sha256sum -c -
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            if (!defined("EMDO_STRIPE_CHECKOUT_VISUAL_LOADED")) {
+              fwrite(STDERR,"STRIPE_VISUAL_NOT_LOADED\n"); exit(41);
+            }
+            $params = apply_filters("wc_stripe_upe_params", array());
+            foreach (array("appearance","blocksAppearance") as $key) {
+              if (!isset($params[$key]) || !is_object($params[$key]) || "above" !== ($params[$key]->labels ?? null)) {
+                fwrite(STDERR,"STRIPE_APPEARANCE_NOT_APPLIED_".$key."\n"); exit(42);
+              }
+            }
+            echo "STRIPE_VISUAL_WORDPRESS_HOOK_VERIFIED\n";
+          ' --path="$ROOT" --allow-root
+          PROBE="$(curl -ksSL --connect-timeout 10 --max-time 35 -o /dev/null -w '%{http_code}' "https://www.elmercadodeorigen.com/carrito/?emdo_stripe_visual_check=$RUN" || true)"
+          test "$PROBE" = 200 || { echo "STRIPE_VISUAL_PUBLIC_CART_HTTP=$PROBE" >&2; exit 43; }
+          echo "STRIPE_VISUAL_PRODUCTION_DEPLOYED=1"
+          REMOTE
