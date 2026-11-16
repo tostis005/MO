@@ -199,6 +199,15 @@ if ($mode === 'apply') {
             $p = wc_get_product($id);
             $p->set_status('publish');
             $p->save();
+            // WordPress may insert its fallback Sin categorizar term when a product
+            // is first created. Replace all categories after publication to ensure
+            // only native public storefront terms, with no extra default term.
+            $wantedCats = [$tax['carnes'], $tax['packs-y-lotes'], $tax[$r['extra']]];
+            $assigned = wp_set_object_terms($id, $wantedCats, 'product_cat', false);
+            if (is_wp_error($assigned) || count((array)$assigned) !== count($wantedCats)) {
+                throw new RuntimeException('FINAL_PRODUCT_CATEGORIES_FAILED '.$r['key']);
+            }
+            clean_object_term_cache($id, 'product');
             clean_post_cache($id); wc_delete_product_transients($id);
             if (function_exists('rocket_clean_post')) rocket_clean_post($id);
         }
