@@ -36,19 +36,35 @@ async function closePromotion(page) {
     const candidates = [{id: 11139}];
 
     let picked = null;
+    const observations = [];
     for (const p of candidates.slice(0, 12)) {
-      await page.goto(BASE + '/tienda/?add-to-cart=' + encodeURIComponent(p.id), {
+      const add = await page.goto(BASE + '/tienda/?add-to-cart=' + encodeURIComponent(p.id), {
         waitUntil: 'domcontentloaded', timeout: 90000,
       });
-      await page.goto(BASE + '/finalizar-compra/?stripe_visual_audit=1', {
+      const addState = {
+        addHttp: add?.status(), addUrl: page.url(),
+        cartText: (await page.locator('body').innerText()).includes('se ha añadido a tu carrito'),
+      };
+      const checkout = await page.goto(BASE + '/finalizar-compra/?stripe_visual_audit=1', {
         waitUntil: 'domcontentloaded', timeout: 90000,
       });
-      if (!page.url().includes('/carrito/') && await page.locator('#payment').count()) {
+      const state = {
+        product: p.id, ...addState, checkoutHttp: checkout?.status(),
+        checkoutUrl: page.url(),
+        hasClassicPayment: await page.locator('#payment').count(),
+        hasCheckoutForm: await page.locator('form.checkout').count(),
+        hasBlockCheckout: await page.locator('.wc-block-checkout').count(),
+        paymentMethods: await page.locator('[name="payment_method"]').count(),
+        cookieNames: (await context.cookies(BASE)).map(x => x.name),
+      };
+      observations.push(state);
+      console.log('STRIPE_CHECKOUT_SESSION=' + JSON.stringify(state));
+      if (!page.url().includes('/carrito/') && state.hasClassicPayment) {
         picked = p.id;
         break;
       }
     }
-    if (!picked) throw Error('Unable to reach checkout with an anonymous cart');
+    if (!picked) throw Error('Unable to reach classic checkout: ' + JSON.stringify(observations));
 
     for (const test of TESTS) {
       await page.setViewportSize({width: test.width, height: test.height});
