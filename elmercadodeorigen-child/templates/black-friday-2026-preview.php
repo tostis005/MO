@@ -59,6 +59,40 @@ $hidalgo_palet = emdo_bf2026_photo( 'paleta-de-bellota-100-iberico', 'Paleta de 
 $montjam_ham   = emdo_bf2026_photo( 'jamon-de-bellota-100-iberico-montjam', 'Jamón de bellota 100 % ibérico de Montjam' );
 $montjam_slice = emdo_bf2026_photo( 'jamon-bellota-100-iberico-loncheado-montjam-90g', 'Sobre de jamón de bellota 100 % ibérico loncheado Montjam' );
 
+/**
+ * Siete packs públicos de Latitudes, independientes de los originales Mentta.
+ * Sus precios ya son precios finales, sin comparar con un PVP que no estuvo
+ * a la venta en este escaparate.
+ */
+$bf26_exotic_catalog = array(
+    'pasaporte-salvaje'       => 'Pasaporte Salvaje',
+    'reserva-de-caza'        => 'La Reserva de Caza',
+    'safari-africano'        => 'Safari Africano',
+    'vuelta-al-mundo'        => 'La Vuelta al Mundo',
+    'parrilla-sin-fronteras-xl' => 'Parrilla Sin Fronteras XL',
+    'universo-wagyu'         => 'Universo Wagyu',
+    'leyendas-del-vacuno'    => 'Leyendas del Vacuno',
+);
+$bf26_exotic_packs = array();
+foreach ( $bf26_exotic_catalog as $pack_key => $pack_name ) {
+    $pack_post = get_page_by_path( 'pack-musee-' . $pack_key . '-black-friday', OBJECT, 'product' );
+    if ( ! $pack_post instanceof WP_Post || 'publish' !== $pack_post->post_status ) {
+        continue;
+    }
+    $pack_product = function_exists( 'wc_get_product' ) ? wc_get_product( $pack_post->ID ) : false;
+    if ( ! $pack_product instanceof WC_Product
+        || (string) get_post_meta( $pack_post->ID, '_emdo_web_pack_key', true ) !== $pack_key
+        || ! $pack_product->get_price() ) {
+        continue;
+    }
+    $bf26_exotic_packs[] = array(
+        'title' => $pack_name,
+        'url'   => get_permalink( $pack_post->ID ),
+        'price' => (float) $pack_product->get_price(),
+    );
+}
+
+
 get_header();
 ?>
 <main id="contenido" class="bf26" aria-labelledby="bf26-title" data-bf26-visible-sellers="<?php echo esc_attr( implode( ',', $bf26_visible_sellers ) ); ?>">
@@ -200,6 +234,32 @@ get_header();
 					
 				</div>
 			</article>
+			<?php endif; ?>
+
+			<?php if ( $bf26_exotic_packs ) : ?>
+			<section class="bf26-exotic" id="packs-carnes-exoticas" aria-labelledby="bf26-exotic-title">
+				<div class="bf26-exotic__head">
+					<div class="bf26-exotic__intro">
+						<p class="bf26-exotic__eyebrow"><span aria-hidden="true">✳</span> SELECCIÓN ESPECIAL · BLACK FRIDAY</p>
+						<h3 id="bf26-exotic-title">Packs de <em>carnes exóticas</em></h3>
+						<p>Descubre nuestras selecciones de carnes exóticas, de caza y wagyu premium, reunidas en siete packs a <strong>precios especiales</strong>.</p>
+					</div>
+					<div class="bf26-exotic__wallet">
+						<span class="bf26-exotic__wallet-icon" aria-hidden="true">✳</span>
+						<p><strong>Y además, un 2 % para tu monedero.</strong><span>Compra con tu cuenta registrada y la sesión iniciada. El cashback se calcula sobre los productos, sin gastos de envío, y se acredita cuando se complete el pedido.</span></p>
+					</div>
+				</div>
+				<div class="bf26-exotic__grid" aria-label="Los siete packs de carnes exóticas y cortes premium">
+					<?php foreach ( $bf26_exotic_packs as $bf26_exotic_pack ) : ?>
+					<a class="bf26-exotic__item" href="<?php echo esc_url( $bf26_exotic_pack['url'] ); ?>" aria-label="<?php echo esc_attr( 'Ver ' . $bf26_exotic_pack['title'] . ', ' . wp_strip_all_tags( wc_price( $bf26_exotic_pack['price'] ) ) ); ?>">
+						<span class="bf26-exotic__name"><?php echo esc_html( $bf26_exotic_pack['title'] ); ?></span>
+						<span class="bf26-exotic__price"><?php echo wp_kses_post( wc_price( $bf26_exotic_pack['price'] ) ); ?></span>
+						<span class="bf26-exotic__arrow" aria-hidden="true">↗</span>
+					</a>
+					<?php endforeach; ?>
+				</div>
+				<p class="bf26-exotic__note">Precios finales de los packs, sin necesidad de cupón. El 2 % del Club EMDO está sujeto a las <a href="#club-emdo">condiciones del monedero</a>.</p>
+			</section>
 			<?php endif; ?>
 		</div>
 	</section>
