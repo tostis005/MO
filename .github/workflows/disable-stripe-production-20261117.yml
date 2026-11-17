@@ -1,0 +1,161 @@
+name: Disable Stripe checkout gateway in production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/disable-stripe-production-20261117.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emdo-disable-stripe-production
+  cancel-in-progress: false
+
+jobs:
+  disable-stripe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - name: Validate production connection
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "$STAGING_HOST" && test -n "$STAGING_USER" && test -n "$SSHPASS"
+          [[ "$STAGING_HOST" =~ ^[A-Za-z0-9.-]+$ ]]
+          [[ "$STAGING_USER" =~ ^[A-Za-z0-9._-]+$ ]]
+          PORT="$STAGING_PORT"
+          if [ -z "$PORT" ]; then PORT=22; fi
+          [[ "$PORT" =~ ^[0-9]{1,5}$ ]]
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Disable only Stripe WooCommerce gateways and verify
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="$STAGING_PORT"
+          if [ -z "$PORT" ]; then PORT=22; fi
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "bash -s -- '$GITHUB_RUN_ID'" <<'REMOTE'
+          set -Eeuo pipefail
+          RUN="$1"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          test -f "$ROOT/wp-config.php" && test -x "$PHP" && test -x "$WP"
+          SITE="$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --allow-root --skip-plugins --skip-themes)"
+          case "$SITE" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
+            *) echo "REFUSING_NON_PRODUCTION_SITE=$SITE" >&2; exit 21 ;;
+          esac
+          BACKUP_DIR="$HOME/.elmercado-rollbacks/stripe-payment-gateway/$RUN"
+          install -d -m 0700 "$BACKUP_DIR"
+          export EMDO_STRIPE_BACKUP="$BACKUP_DIR/previous-options.serialized"
+          SCRIPT="/tmp/emdo-disable-stripe-$RUN.php"
+          VERIFY="/tmp/emdo-verify-stripe-$RUN.php"
+          trap 'rm -f "$SCRIPT" "$VERIFY"' EXIT
+          cat > "$SCRIPT" <<'PHP'
+          <?php
+          if (!function_exists('WC') || !function_exists('wc_get_payment_gateway_by_order')) {
+              // Check WooCommerce via WC() below; no plugin settings are touched without it.
+              if (!function_exists('WC')) {
+                  throw new RuntimeException('WooCommerce is not loaded');
+              }
+          }
+          $gateway_ids = ['stripe'];
+          foreach (WC()->payment_gateways()->payment_gateways() as $gateway_id => $gateway) {
+              $id = (string) ($gateway->id ?? $gateway_id);
+              if ($id === 'stripe' || strpos($id, 'stripe_') === 0) {
+                  $gateway_ids[] = $id;
+              }
+          }
+          $gateway_ids = array_unique($gateway_ids);
+          $before = [];
+          foreach ($gateway_ids as $id) {
+              $option_name = 'woocommerce_' . $id . '_settings';
+              $value = get_option($option_name, null);
+              if (is_array($value)) {
+                  $before[$option_name] = $value;
+              }
+          }
+          $backup = getenv('EMDO_STRIPE_BACKUP');
+          if (!$backup || file_put_contents($backup, serialize($before), LOCK_EX) === false) {
+              throw new RuntimeException('Failed to back up current payment settings');
+          }
+          chmod($backup, 0600);
+          $changed = 0;
+          try {
+              foreach ($before as $option_name => $settings) {
+                  if (($settings['enabled'] ?? 'no') !== 'no') {
+                      $settings['enabled'] = 'no';
+                      if (!update_option($option_name, $settings)) {
+                          throw new RuntimeException('Could not disable ' . $option_name);
+                      }
+                      $changed++;
+                  }
+              }
+              foreach (array_keys($before) as $option_name) {
+                  $saved = get_option($option_name, null);
+                  if (!is_array($saved) || ($saved['enabled'] ?? 'no') !== 'no') {
+                      throw new RuntimeException('Stripe gateway still enabled: ' . $option_name);
+                  }
+              }
+          } catch (Throwable $error) {
+              foreach ($before as $option_name => $settings) {
+                  update_option($option_name, $settings);
+              }
+              throw $error;
+          }
+          echo 'STRIPE_SETTINGS_DISABLED=1' . PHP_EOL;
+          echo 'STRIPE_GATEWAY_OPTIONS_FOUND=' . count($before) . PHP_EOL;
+          echo 'STRIPE_GATEWAY_OPTIONS_CHANGED=' . $changed . PHP_EOL;
+          echo 'OTHER_PAYMENT_METHOD_SETTINGS_UNCHANGED=1' . PHP_EOL;
+          PHP
+          cat > "$VERIFY" <<'PHP'
+          <?php
+          if (!function_exists('WC')) {
+              throw new RuntimeException('WooCommerce not loaded for verification');
+          }
+          $gateways = WC()->payment_gateways()->payment_gateways();
+          $other_enabled = [];
+          foreach ($gateways as $gateway_id => $gateway) {
+              $id = (string) ($gateway->id ?? $gateway_id);
+              if ($id === 'stripe' || strpos($id, 'stripe_') === 0) {
+                  if ($gateway->enabled === 'yes') {
+                      throw new RuntimeException('Stripe still active: ' . $id);
+                  }
+                  $settings = get_option('woocommerce_' . $id . '_settings', []);
+                  if (is_array($settings) && ($settings['enabled'] ?? 'no') === 'yes') {
+                      throw new RuntimeException('Stripe option still enabled: ' . $id);
+                  }
+              } elseif ($gateway->enabled === 'yes') {
+                  $other_enabled[] = $id;
+              }
+          }
+          $main = get_option('woocommerce_stripe_settings', []);
+          if (is_array($main) && ($main['enabled'] ?? 'no') === 'yes') {
+              throw new RuntimeException('Main Stripe gateway remains enabled');
+          }
+          echo 'STRIPE_GATEWAYS_VERIFIED_DISABLED=1' . PHP_EOL;
+          echo 'OTHER_ENABLED_GATEWAY_IDS=' . implode(',', $other_enabled) . PHP_EOL;
+          PHP
+          "$PHP" -l "$SCRIPT"
+          "$PHP" -l "$VERIFY"
+          "$PHP" -d memory_limit=768M "$WP" eval-file "$SCRIPT" --path="$ROOT" --allow-root
+          "$PHP" -d memory_limit=768M "$WP" eval-file "$VERIFY" --path="$ROOT" --allow-root
+          echo 'STRIPE_PRODUCTION_DISABLED_AND_VERIFIED=1'
+          REMOTE
