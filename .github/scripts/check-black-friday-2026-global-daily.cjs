@@ -161,9 +161,12 @@ const {chromium} = require('playwright-core');
         page.waitForURL(/\/black-friday-2026\//,{timeout:45000}),
         page.locator('#bf26-overlay .bf26-overlay__cta').click()
       ]);
-      await page.waitForSelector('[data-bf26-visible-sellers="hidalgo"]',{timeout:20000});
-      if(await page.locator('[data-bf26-seller="montjam"]').count()) {
-        throw Error('Montjam unexpectedly visible on campaign landing');
+      await page.waitForSelector('[data-bf26-visible-sellers="hidalgo,montjam"]',{timeout:20000});
+      if(await page.locator('[data-bf26-seller="montjam"]').count()!==1) {
+        throw Error('Montjam should be visible once on the campaign landing');
+      }
+      if(!await page.locator('.bf26-offer--montjam').getByText('Medio morcón de regalo.').count()) {
+        throw Error('Montjam half-morcon gift heading is missing from the landing');
       }
       if(await page.locator('#bf26-overlay').evaluate(el=>!el.hidden)) {
         throw Error('Landing repeated already-seen daily curtain at '+label);
