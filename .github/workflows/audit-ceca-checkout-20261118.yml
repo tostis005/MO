@@ -1,0 +1,61 @@
+name: Verify CECA checkout restored after Stripe style removal
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-ceca-checkout-20261118.yml'
+      - '.github/scripts/audit-ceca-checkout-20261118.cjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate read-only browser test
+        run: node --check .github/scripts/audit-ceca-checkout-20261118.cjs
+      - name: Install browser driver
+        run: npm install --no-save --no-audit --no-fund playwright-core@1.56.1
+      - name: Test CECA checkout on mobile and desktop without ordering
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          test -x "$CHROME"
+          node .github/scripts/audit-ceca-checkout-20261118.cjs
+      - name: Save visual diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ceca-checkout-restored-${{ github.run_id }}
+          path: /tmp/ceca-checkout-*.png
+          if-no-files-found: ignore
+          retention-days: 3
+      - name: Report CECA visual audit
+        if: always()
+        shell: bash
+        env:
+          TOKEN: ${{ github.token }}
+          RESULT: ${{ job.status }}
+        run: |
+          set -Eeuo pipefail
+          if [ "$RESULT" = "success" ]; then
+            STATE=success
+            MESSAGE="CECA checkout visible and no Stripe style in mobile/desktop"
+          else
+            STATE=failure
+            MESSAGE="CECA visual audit failed; inspect browser screenshots"
+          fi
+          PAYLOAD="$(printf '{"state":"%s","context":"emdo/ceca-visual-restored","description":"%s","target_url":"https://github.com/%s/actions/runs/%s"}' "$STATE" "$MESSAGE" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")"
+          curl -fsS --retry 3 -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -d "$PAYLOAD" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" >/dev/null
