@@ -85,15 +85,16 @@ jobs:
           SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $SSH_PORT"
           sshpass -e scp $SCP "$SOURCE" "$USER@$HOST:$TMP"
 
-          sshpass -e ssh $SSH "$USER@$HOST" "sh -s -- '$ROOT' '$TMP' '$SHA'" <<'REMOTE'
+          sshpass -e ssh $SSH "$USER@$HOST" "sh -s -- '$ROOT' '$TMP' '$SHA' '$GITHUB_RUN_ID'" <<'REMOTE'
           set -eu
           ROOT="$1"
           TMP="$2"
           EXPECTED_SHA="$3"
+          DEPLOY_RUN_ID="$4"
           PHP='/opt/plesk/php/8.2/bin/php'
           WP='/usr/local/bin/wp'
           DEST="$ROOT/wp-content/mu-plugins/emdo-admin-quick-tracking-20261118.php"
-          BACKUP="$DEST.bak-${GITHUB_RUN_ID}"
+          BACKUP="$DEST.bak-${DEPLOY_RUN_ID}"
           ORIGINAL='no'
           CHANGED='no'
           clean_up() {
