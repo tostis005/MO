@@ -1,0 +1,128 @@
+name: Deploy order tracking quick notes to production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/emdo-admin-quick-tracking-20261118.php'
+      - '.github/workflows/deploy-admin-quick-tracking-20261118.yml'
+  pull_request:
+    paths:
+      - 'mu-plugins/emdo-admin-quick-tracking-20261118.php'
+      - '.github/workflows/deploy-admin-quick-tracking-20261118.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emdo-admin-quick-tracking-${{ github.event_name }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate WooCommerce quick tracking
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          FILE='mu-plugins/emdo-admin-quick-tracking-20261118.php'
+          test -f "$FILE"
+          php -l "$FILE"
+          grep -Fq 'manage_woocommerce_page_wc-orders_columns' "$FILE"
+          grep -Fq 'manage_edit-shop_order_columns' "$FILE"
+          grep -Fq 'manage_woocommerce_page_wc-orders_custom_column' "$FILE"
+          grep -Fq 'manage_shop_order_posts_custom_column' "$FILE"
+          grep -Fq 'wp_ajax_elmercado_send_order_tracking' "$FILE"
+          grep -Fq 'add_order_note( $message, 1, true )' "$FILE"
+          grep -Fq 'check_ajax_referer' "$FILE"
+          grep -Fq 'current_user_can' "$FILE"
+
+  deploy:
+    needs: validate
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install and verify only the MU plugin on production
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          : "${HOST:?Missing server host}"
+          : "${USER:?Missing SSH user}"
+          : "${SSHPASS:?Missing SSH password}"
+          SOURCE='mu-plugins/emdo-admin-quick-tracking-20261118.php'
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          TMP="/tmp/emdo-admin-quick-tracking-${GITHUB_RUN_ID}.php"
+          SHA="$(sha256sum "$SOURCE" | awk '{print $1}')"
+          SSH_PORT="${PORT:-22}"
+          [[ "$SSH_PORT" =~ ^[0-9]{1,5}$ ]]
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$SSH_PORT" -H "$HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $SSH_PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $SSH_PORT"
+          sshpass -e scp $SCP "$SOURCE" "$USER@$HOST:$TMP"
+
+          sshpass -e ssh $SSH "$USER@$HOST" "sh -s -- '$ROOT' '$TMP' '$SHA'" <<'REMOTE'
+          set -eu
+          ROOT="$1"
+          TMP="$2"
+          EXPECTED_SHA="$3"
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          DEST="$ROOT/wp-content/mu-plugins/emdo-admin-quick-tracking-20261118.php"
+          MODE='existing'
+          clean_up() {
+            result=$?
+            rm -f -- "$TMP"
+            if [ "$result" -ne 0 ] && [ "$MODE" = 'new' ]; then
+              rm -f -- "$DEST"
+              echo 'EMDO_QUICK_TRACKING_ROLLED_BACK'
+            fi
+          }
+          trap clean_up EXIT
+          test -f "$ROOT/wp-config.php"
+          test -d "$ROOT/wp-content/mu-plugins"
+          test -f "$TMP"
+          "$PHP" -l "$TMP" >/dev/null
+          test "$(sha256sum "$TMP" | awk '{print $1}')" = "$EXPECTED_SHA"
+          SITE_URL=$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --allow-root --skip-plugins --skip-themes)
+          case "$SITE_URL" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
+            *) echo "ABORT: Unknown WordPress site; no files changed" >&2; exit 7 ;;
+          esac
+          if [ -f "$DEST" ]; then
+            cmp -s "$DEST" "$TMP" || { echo 'ABORT: Existing plugin differs; no overwrite' >&2; exit 8; }
+          else
+            install -m 0644 "$TMP" "$DEST"
+            MODE='new'
+          fi
+          test "$(sha256sum "$DEST" | awk '{print $1}')" = "$EXPECTED_SHA"
+          "$PHP" -l "$DEST" >/dev/null
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            if (
+              ! function_exists("elmercado_tracking_orders_columns_20261118")
+              || ! function_exists("elmercado_tracking_orders_cell_20261118")
+              || ! has_filter("manage_woocommerce_page_wc-orders_columns", "elmercado_tracking_orders_columns_20261118")
+              || ! has_filter("manage_edit-shop_order_columns", "elmercado_tracking_orders_columns_20261118")
+              || ! has_action("wp_ajax_elmercado_send_order_tracking")
+            ) {
+              fwrite(STDERR, "QUICK_TRACKING_HOOKS_NOT_REGISTERED\n");
+              exit(9);
+            }
+            echo "EMDO_ADMIN_QUICK_TRACKING_HOOKS_OK\n";
+          ' --path="$ROOT" --allow-root --skip-plugins --skip-themes
+          echo 'EMDO_QUICK_TRACKING_PRODUCTION_DEPLOY_OK'
+          REMOTE
