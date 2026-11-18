@@ -1,0 +1,81 @@
+name: Audit legacy CECA payment gateways (read-only)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-ceca-gateways-20261118.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emdo-audit-ceca-gateways
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Inspect CECA configuration without revealing credentials or changing settings
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "$HOST" && test -n "$USER" && test -n "$SSHPASS"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${PORT:-22}"
+          [[ "$PORT" =~ ^[0-9]{1,5}$ ]]
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          test -s ~/.ssh/known_hosts && chmod 600 ~/.ssh/known_hosts
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH "$USER@$HOST" "bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          SITE="$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --allow-root --skip-plugins --skip-themes)"
+          case "$SITE" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;; *) exit 20;; esac
+          SCRIPT="/tmp/emdo-ceca-readonly-$$.php"
+          trap 'rm -f "$SCRIPT"' EXIT
+          cat > "$SCRIPT" <<'PHP'
+          <?php
+          if (!function_exists('WC')) throw new RuntimeException('WooCommerce not loaded');
+          global $wpdb;
+          echo "CECA_AUDIT_PRODUCTION=1\n";
+          $all = WC()->payment_gateways()->payment_gateways();
+          foreach ($all as $k => $gateway) {
+              $id = (string) ($gateway->id ?? $k);
+              echo 'GATEWAY=' . wp_json_encode(['id'=>$id,'title'=>wp_strip_all_tags($gateway->get_title()),'enabled'=>$gateway->enabled], JSON_UNESCAPED_UNICODE) . "\n";
+          }
+          $plugins = get_plugins();
+          $active = (array)get_option('active_plugins',[]);
+          foreach ($plugins as $path=>$meta) {
+              if (preg_match('/ceca|tpv|bank|redsys/i', $path . ' ' . ($meta['Name']??''))) {
+                  echo 'POTENTIAL_PLUGIN=' . wp_json_encode(['path'=>$path,'name'=>$meta['Name']??'','active'=>in_array($path,$active,true)], JSON_UNESCAPED_UNICODE) . "\n";
+              }
+          }
+          $rows = $wpdb->get_results("SELECT option_name, option_value FROM {$wpdb->options} WHERE (option_name LIKE 'woocommerce_%ceca%_settings' OR option_name LIKE 'woocommerce_%tpv%_settings' OR option_name LIKE 'woocommerce_%redsys%_settings')", ARRAY_A);
+          foreach ($rows as $row) {
+              $v = maybe_unserialize($row['option_value']);
+              if (!is_array($v)) continue;
+              $fields = [];
+              foreach ($v as $key=>$value) {
+                  if (!is_string($key)) continue;
+                  $sensitive = preg_match('/secret|key|clave|pass|token|merchant|comercio|terminal|id.*com|url|signature|sha|license/i', $key);
+                  $fields[$key] = $sensitive ? '[redacted]' : (in_array($key,['enabled','testmode','test_mode','modo_pruebas','debug'],true) && is_scalar($value) ? (string)$value : (empty($value)?'empty':'configured'));
+              }
+              echo 'PAYMENT_OPTION=' . wp_json_encode(['option'=>$row['option_name'],'fields'=>$fields], JSON_UNESCAPED_UNICODE) . "\n";
+          }
+          PHP
+          "$PHP" -l "$SCRIPT"
+          "$PHP" -d memory_limit=768M "$WP" eval-file "$SCRIPT" --path="$ROOT" --allow-root
+          REMOTE
