@@ -44,6 +44,9 @@ if ( count( $product_ids ) > 500 ) {
     exit( 4 );
 }
 
+// Only Hidalgo de la Jara IDs identified in the original audit may be removed.
+// Do not change Mentta membership for oils, coffee, meats, Montjam, or other vendors.
+$hidalgo_nonham_ids = array( 1375, 1380, 1382, 1586, 1693, 1695, 4188, 5080, 5091, 5336, 5343, 5348 );
 $eligible = array();
 $exclude = array();
 foreach ( $product_ids as $id ) {
@@ -74,7 +77,7 @@ foreach ( $product_ids as $id ) {
         'mentta_terms' => $assigned_mentta,
         'status' => $product->get_status(),
     );
-    if ( $has_ham && ! $contains_other ) {
+    if ( ! in_array( $id, $hidalgo_nonham_ids, true ) || ( $has_ham && ! $contains_other ) ) {
         $eligible[] = $row;
     } else {
         $row['reason'] = $contains_other ? 'includes_non_ham_product' : 'not_ham_or_paleta';
