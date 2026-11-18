@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - 'mu-plugins/emdo-admin-quick-tracking-20261118.php'
+      - 'tests/order-tracking-paste-normalization.test.cjs'
       - '.github/workflows/deploy-admin-quick-tracking-20261118.yml'
   pull_request:
     paths:
       - 'mu-plugins/emdo-admin-quick-tracking-20261118.php'
+      - 'tests/order-tracking-paste-normalization.test.cjs'
       - '.github/workflows/deploy-admin-quick-tracking-20261118.yml'
   workflow_dispatch:
 
@@ -42,6 +44,8 @@ jobs:
           grep -Fq 'current_user_can' "$FILE"
           grep -Fq 'event.stopPropagation()' "$FILE"
           grep -Fq 'rows="4"' "$FILE"
+          grep -Fq 'normalizeTrackingPaste' "$FILE"
+          grep -Fq 'wp_timezone_string()' "$FILE"
           python3 - <<'PY'
           from pathlib import Path
           source = Path('mu-plugins/emdo-admin-quick-tracking-20261118.php').read_text()
@@ -49,6 +53,7 @@ jobs:
           Path('/tmp/emdo-admin-quick-tracking.js').write_text(script)
           PY
           node --check /tmp/emdo-admin-quick-tracking.js
+          node tests/order-tracking-paste-normalization.test.cjs
 
   deploy:
     needs: validate
@@ -137,6 +142,8 @@ jobs:
           test "$(sha256sum "$DEST" | awk '{print $1}')" = "$EXPECTED_SHA"
           grep -Fq 'event.stopPropagation()' "$DEST"
           grep -Fq 'rows="4"' "$DEST"
+          grep -Fq 'normalizeTrackingPaste' "$DEST"
+          grep -Fq 'wp_timezone_string()' "$DEST"
           "$PHP" -l "$DEST" >/dev/null
           "$PHP" -d memory_limit=768M "$WP" eval '
             if (
