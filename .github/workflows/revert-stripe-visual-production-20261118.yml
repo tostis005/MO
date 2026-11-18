@@ -1,0 +1,183 @@
+name: Revert obsolete Stripe checkout styles from live CECA checkout
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/revert-stripe-visual-production-20261118.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: emdo-stripe-visual-revert-production
+  cancel-in-progress: false
+
+jobs:
+  revert:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify deployment prerequisites
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "$HOST" && test -n "$USER" && test -n "$SSHPASS"
+          if grep -Fq "'inc/stripe-checkout-visual-20261116.php'," elmercadodeorigen-child/functions.php; then
+            echo "Repository still registers obsolete Stripe visual module" >&2
+            exit 31
+          fi
+          test ! -e .github/workflows/deploy-stripe-checkout-production-20261116.yml || ! grep -Fq "Deploy isolated Stripe checkout visual fix to production" .github/workflows/deploy-stripe-checkout-production-20261116.yml
+
+      - name: Revert only the temporary Stripe visual MU plugin with backup
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          SSH_PORT="${PORT:-22}"
+          [[ "$SSH_PORT" =~ ^[0-9]{1,5}$ ]]
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$SSH_PORT" -H "$HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $SSH_PORT"
+          sshpass -e ssh $SSH "$USER@$HOST" "bash -s -- '$GITHUB_RUN_ID'" <<'REMOTE'
+          set -Eeuo pipefail
+          RUN="$1"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          THEME="$ROOT/wp-content/themes/elmercadodeorigen-child"
+          TARGET="$ROOT/wp-content/mu-plugins/emdo-stripe-checkout-visual-20261116.php"
+          BACKUP="$HOME/.elmercado-rollbacks/stripe-checkout-visual-revert/$RUN"
+          test -f "$ROOT/wp-config.php" && test -d "$THEME" && test -d "$ROOT/wp-content/mu-plugins"
+          test -x "$PHP" && test -x "$WP"
+          SITE="$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --allow-root --skip-plugins --skip-themes)"
+          case "$SITE" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
+            *) echo "REFUSING_NON_PRODUCTION_SITE $SITE" >&2; exit 41 ;;
+          esac
+
+          # Do not touch any other MU plugin or any WooCommerce settings.
+          install -d -m 0700 "$BACKUP"
+          PREVIOUS=0
+          CHANGED=0
+          if [ -f "$TARGET" ]; then
+            grep -Fq "EMDO_STRIPE_CHECKOUT_VISUAL_LOADED" "$TARGET" || { echo "REFUSING_UNKNOWN_MU_PLUGIN" >&2; exit 42; }
+            grep -Fq "elmercado-stripe-checkout-visual-20261116" "$TARGET" || { echo "REFUSING_UNKNOWN_CONTENT" >&2; exit 43; }
+            cp -p "$TARGET" "$BACKUP/previous-stripe-visual.php"
+            PREVIOUS=1
+          fi
+
+          rollback() {
+            code=$?
+            trap - EXIT
+            if [ "$code" -ne 0 ] && [ "$CHANGED" -eq 1 ]; then
+              echo "STRIPE_VISUAL_REVERT_ROLLBACK_START"
+              rm -f "$TARGET"
+              if [ "$PREVIOUS" -eq 1 ]; then
+                cp -p "$BACKUP/previous-stripe-visual.php" "$TARGET"
+              fi
+              echo "STRIPE_VISUAL_REVERT_ROLLBACK_COMPLETE"
+            fi
+            exit "$code"
+          }
+          trap rollback EXIT
+
+          # The production child theme may still be an older revision with a
+          # direct require_once of the Stripe visual file. Its guard supports a
+          # tiny no-op sentinel. Leave the original theme untouched.
+          LIVE_THEME_USES_STRIPE=0
+          if [ -f "$THEME/functions.php" ] && [ -f "$THEME/inc/stripe-checkout-visual-20261116.php" ] \
+            && grep -Fq "'inc/stripe-checkout-visual-20261116.php'," "$THEME/functions.php"; then
+            LIVE_THEME_USES_STRIPE=1
+          fi
+
+          CHANGED=1
+          if [ "$LIVE_THEME_USES_STRIPE" -eq 1 ]; then
+            cat >"$TARGET.new-$RUN" <<'PHPFILE'
+          <?php
+          /**
+           * Temporary no-op compatibility guard for the old production child theme.
+           * Registers no styling, filters, scripts or gateway changes.
+           */
+          if ( ! defined( 'ABSPATH' ) ) { exit; }
+          if ( ! defined( 'EMDO_STRIPE_CHECKOUT_VISUAL_LOADED' ) ) {
+              define( 'EMDO_STRIPE_CHECKOUT_VISUAL_LOADED', true );
+          }
+          PHPFILE
+            "$PHP" -l "$TARGET.new-$RUN"
+            chmod 0644 "$TARGET.new-$RUN"
+            mv -f "$TARGET.new-$RUN" "$TARGET"
+            echo "STRIPE_VISUAL_REVERT_MODE=NOOP_GUARD_FOR_OLDER_THEME"
+          else
+            rm -f "$TARGET"
+            echo "STRIPE_VISUAL_REVERT_MODE=REMOVED"
+          fi
+
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            global $wp_filter;
+            foreach (array("wp_head","wc_stripe_upe_params") as $hook) {
+              $listeners = isset($wp_filter[$hook]) ? $wp_filter[$hook]->callbacks : array();
+              foreach ($listeners as $priority_callbacks) {
+                foreach ($priority_callbacks as $listener) {
+                  $fn = $listener["function"] ?? null;
+                  if (!$fn instanceof Closure) { continue; }
+                  $source = (new ReflectionFunction($fn))->getFileName();
+                  if (is_string($source) && str_ends_with($source,"/stripe-checkout-visual-20261116.php")) {
+                    fwrite(STDERR,"STRIPE_VISUAL_CALLBACK_STILL_ACTIVE=".$hook."\n");
+                    exit(52);
+                  }
+                }
+              }
+            }
+            echo "STRIPE_VISUAL_HOOKS_ABSENT=1\n";
+            if (function_exists("WC") && WC() && WC()->payment_gateways()) {
+              foreach (WC()->payment_gateways()->payment_gateways() as $gateway) {
+                if ("yes" === $gateway->enabled) {
+                  echo "ENABLED_GATEWAY_ID=".$gateway->id."\n";
+                }
+              }
+            }
+          ' --path="$ROOT" --allow-root
+
+          STATUS="$(curl -ksSL --connect-timeout 10 --max-time 35 -o /dev/null -w '%{http_code}' "https://www.elmercadodeorigen.com/carrito/?stripe_visual_revert=$RUN" || true)"
+          test "$STATUS" = "200" || { echo "LIVE_CART_HTTP=$STATUS" >&2; exit 54; }
+          CHANGED=0
+          echo "STRIPE_VISUAL_REVERT_PRODUCTION_OK=1"
+          echo "BACKUP=$BACKUP"
+          REMOTE
+
+      - name: Publish rollback status
+        if: always()
+        shell: bash
+        env:
+          GITHUB_TOKEN_FOR_STATUS: ${{ github.token }}
+          DEPLOY_RESULT: ${{ job.status }}
+        run: |
+          set -Eeuo pipefail
+          if [ "$DEPLOY_RESULT" = "success" ]; then
+            STATE=success
+            MESSAGE="Obsolete Stripe styling removed or neutralized in live WordPress"
+          else
+            STATE=failure
+            MESSAGE="Stripe styling revert failed or rolled back; inspect run"
+          fi
+          PAYLOAD="$(printf '{"state":"%s","context":"emdo/stripe-style-revert-production","description":"%s","target_url":"https://github.com/%s/actions/runs/%s"}' "$STATE" "$MESSAGE" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")"
+          curl -fsS --retry 3 -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GITHUB_TOKEN_FOR_STATUS" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -d "$PAYLOAD" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" >/dev/null
