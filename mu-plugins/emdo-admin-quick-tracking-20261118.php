@@ -80,7 +80,7 @@ function elmercado_tracking_orders_cell_20261118( $column, $order_or_id ): void 
 	<div class="emo-quick-tracking" data-order-id="<?php echo esc_attr( $order_id ); ?>">
 		<textarea
 			class="emo-tracking-message"
-			rows="2"
+			rows="4"
 			maxlength="5000"
 			placeholder="Texto o enlace de seguimiento…"
 			aria-label="<?php echo esc_attr( sprintf( 'Seguimiento del pedido %s', $order->get_order_number() ) ); ?>"
@@ -105,25 +105,25 @@ add_action(
 			return;
 		}
 
-		wp_register_style( 'elmercado-order-quick-tracking', false, array(), ELMERCADO_THEME_VERSION );
+		wp_register_style( 'elmercado-order-quick-tracking', false, array(), ( defined( 'ELMERCADO_THEME_VERSION' ) ? ELMERCADO_THEME_VERSION : '20261118.2' ) );
 		wp_enqueue_style( 'elmercado-order-quick-tracking' );
 		wp_add_inline_style(
 			'elmercado-order-quick-tracking',
 			<<<'CSS'
-.wp-list-table .column-emo_quick_tracking{width:252px;min-width:225px}
-.emo-quick-tracking{max-width:250px;box-sizing:border-box}
-.emo-quick-tracking .emo-tracking-message{display:block;box-sizing:border-box;width:100%;min-height:54px;padding:6px 8px;margin:0 0 6px;border:1px solid #aab5ae;border-radius:5px;background:#fff;font-size:12px;line-height:1.45;resize:vertical}
+.wp-list-table .column-emo_quick_tracking{width:330px;min-width:290px}
+.emo-quick-tracking{position:relative;z-index:2;isolation:isolate;max-width:330px;box-sizing:border-box}
+.emo-quick-tracking .emo-tracking-message{display:block;position:relative;z-index:1;box-sizing:border-box;width:100%;min-height:104px;padding:9px 10px;margin:0 0 8px;border:1px solid #aab5ae;border-radius:6px;background:#fff;color:#1d2327;font-size:13px;line-height:1.5;resize:vertical;cursor:text}
 .emo-quick-tracking .emo-tracking-message:focus{border-color:#2271b1;box-shadow:0 0 0 1px #2271b1}
 .emo-tracking-actions{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
 .emo-tracking-actions .button{min-height:29px;line-height:1.4;padding:4px 10px;white-space:normal;text-align:center}
 .emo-tracking-feedback{font-size:12px;line-height:1.35;color:#b32d2e}
 .emo-tracking-badge{display:inline-block;color:#176a40;font-size:12px;font-weight:700}
 .emo-tracking-date{display:block;margin-top:3px;color:#646970;font-size:11px;white-space:nowrap}
-@media(max-width:782px){.wp-list-table .column-emo_quick_tracking{width:auto;min-width:200px}.emo-quick-tracking{max-width:100%}}
+@media(max-width:782px){.wp-list-table .column-emo_quick_tracking{width:auto;min-width:230px}.emo-quick-tracking{max-width:100%}}
 CSS
 		);
 
-		wp_register_script( 'elmercado-order-quick-tracking', false, array(), ELMERCADO_THEME_VERSION, true );
+		wp_register_script( 'elmercado-order-quick-tracking', false, array(), ( defined( 'ELMERCADO_THEME_VERSION' ) ? ELMERCADO_THEME_VERSION : '20261118.2' ), true );
 		wp_enqueue_script( 'elmercado-order-quick-tracking' );
 		wp_add_inline_script(
 			'elmercado-order-quick-tracking',
@@ -142,7 +142,18 @@ CSS
 	"use strict";
 	const config = window.elmercadoOrderQuickTracking || {};
 
-	document.addEventListener("click", async function (event) {
+	// The standard WooCommerce orders table has a row-level click-to-open
+	// handler. Keep pointer, click and keyboard events inside our controls.
+	// Do not preventDefault: textarea focus, selection, paste and buttons
+	// must continue to behave exactly like normal form controls.
+	document.querySelectorAll(".emo-quick-tracking").forEach(function (trackingControl) {
+		["pointerdown", "mousedown", "mouseup", "click", "dblclick", "touchstart", "keydown"].forEach(function (eventName) {
+			trackingControl.addEventListener(eventName, function (event) {
+				event.stopPropagation();
+			});
+		});
+
+		trackingControl.addEventListener("click", async function (event) {
 		if (!(event.target instanceof Element)) return;
 		const button = event.target.closest(".emo-tracking-send");
 		if (!button || button.disabled) return;
@@ -201,6 +212,7 @@ CSS
 			textarea.disabled = false;
 			button.textContent = "Enviar al cliente";
 		}
+		});
 	});
 })();
 JS
