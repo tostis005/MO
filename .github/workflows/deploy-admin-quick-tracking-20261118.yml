@@ -40,6 +40,15 @@ jobs:
           grep -Fq 'add_order_note( $message, 1, true )' "$FILE"
           grep -Fq 'check_ajax_referer' "$FILE"
           grep -Fq 'current_user_can' "$FILE"
+          grep -Fq 'event.stopPropagation()' "$FILE"
+          grep -Fq 'rows="4"' "$FILE"
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('mu-plugins/emdo-admin-quick-tracking-20261118.php').read_text()
+          script = source.split("<<<'JS'", 1)[1].split("\nJS", 1)[0]
+          Path('/tmp/emdo-admin-quick-tracking.js').write_text(script)
+          PY
+          node --check /tmp/emdo-admin-quick-tracking.js
 
   deploy:
     needs: validate
@@ -84,13 +93,22 @@ jobs:
           PHP='/opt/plesk/php/8.2/bin/php'
           WP='/usr/local/bin/wp'
           DEST="$ROOT/wp-content/mu-plugins/emdo-admin-quick-tracking-20261118.php"
-          MODE='existing'
+          BACKUP="$DEST.bak-${GITHUB_RUN_ID}"
+          ORIGINAL='no'
+          CHANGED='no'
           clean_up() {
             result=$?
             rm -f -- "$TMP"
-            if [ "$result" -ne 0 ] && [ "$MODE" = 'new' ]; then
-              rm -f -- "$DEST"
+            if [ "$result" -ne 0 ] && [ "$CHANGED" = 'yes' ]; then
+              if [ "$ORIGINAL" = 'yes' ]; then
+                install -m 0644 "$BACKUP" "$DEST"
+              else
+                rm -f -- "$DEST"
+              fi
               echo 'EMDO_QUICK_TRACKING_ROLLED_BACK'
+            fi
+            if [ "$result" -eq 0 ]; then
+              rm -f -- "$BACKUP"
             fi
           }
           trap clean_up EXIT
@@ -105,12 +123,19 @@ jobs:
             *) echo "ABORT: Unknown WordPress site; no files changed" >&2; exit 7 ;;
           esac
           if [ -f "$DEST" ]; then
-            cmp -s "$DEST" "$TMP" || { echo 'ABORT: Existing plugin differs; no overwrite' >&2; exit 8; }
+            if ! cmp -s "$DEST" "$TMP"; then
+              cp -p "$DEST" "$BACKUP"
+              ORIGINAL='yes'
+              CHANGED='yes'
+              install -m 0644 "$TMP" "$DEST"
+            fi
           else
+            CHANGED='yes'
             install -m 0644 "$TMP" "$DEST"
-            MODE='new'
           fi
           test "$(sha256sum "$DEST" | awk '{print $1}')" = "$EXPECTED_SHA"
+          grep -Fq 'event.stopPropagation()' "$DEST"
+          grep -Fq 'rows="4"' "$DEST"
           "$PHP" -l "$DEST" >/dev/null
           "$PHP" -d memory_limit=768M "$WP" eval '
             if (
