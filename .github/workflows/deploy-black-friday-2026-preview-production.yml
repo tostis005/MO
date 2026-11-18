@@ -55,7 +55,9 @@ jobs:
           grep -Fq 'data-bf26-copy="BFMONTJAM"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq '2,5 % adicional' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'automáticamente en el carrito' elmercadodeorigen-child/templates/black-friday-2026-preview.php
-          grep -Fq 'fuet de regalo' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'medio morcón de regalo' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq '400–500 g' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          ! grep -Fiq 'fuet de regalo' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'bf26-offer__cashback' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'Lanzamos el' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'Black Friday acumulas un 2 % de cashback en todas tus compras' elmercadodeorigen-child/templates/black-friday-2026-preview.php
@@ -171,6 +173,20 @@ jobs:
             trap - EXIT
             if [ "$code" -ne 0 ] && [ "$CHANGED" -eq 1 ]; then
               echo "ROLLING_BACK_BF_PREVIEW"
+              # Restore the original options if Montjam was activated in this run.
+              if [ -f "$BACKUP/montjam-visibility-before.json" ]; then
+                BF_PREP_BACKUP="$BACKUP" "$PHP" -d memory_limit=768M "$WP" eval '
+                  $state=json_decode(file_get_contents(getenv("BF_PREP_BACKUP")."/montjam-visibility-before.json"),true);
+                  if (is_array($state)) {
+                    if (!empty($state["present"])) {
+                      update_option("emdo_bf2026_visible_sellers",$state["value"],false);
+                    } else {
+                      delete_option("emdo_bf2026_visible_sellers");
+                    }
+                    delete_option("emdo_bf2026_montjam_launch_enabled_v1");
+                  }
+                ' --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+              fi
               # Restore the previous editorial seller list if the one-time
               # Hidalgo-first preparation occurred in this run.
               if [ -f "$BACKUP/seller-visibility-before.json" ]; then
@@ -250,6 +266,36 @@ jobs:
               echo "BF2026_INITIAL_LINEUP_PREPARED_PREVIOUSLY\n";
               echo "BF2026_VISIBLE_SELLERS=".implode(",",(array)get_option($key,array("hidalgo")))."\n";
             }
+          ' --path="$ROOT" --allow-root
+          # Montjam joins Hidalgo now that the seller campaign has been approved.
+          # This one-time change persists in WordPress and does not touch coupons,
+          # product prices, cart discounts, shipping or gift fulfillment.
+          BF_PREP_BACKUP="$BACKUP" "$PHP" -d memory_limit=768M "$WP" eval '
+            $key="emdo_bf2026_visible_sellers";
+            $marker="emdo_bf2026_montjam_launch_enabled_v1";
+            $expected=array("hidalgo","montjam");
+            if ("yes" !== get_option($marker,"")) {
+              $previous=get_option($key,null);
+              $backup=array("present"=>null!==$previous,"value"=>$previous);
+              $file=getenv("BF_PREP_BACKUP")."/montjam-visibility-before.json";
+              if (false===file_put_contents($file,wp_json_encode($backup))) {
+                fwrite(STDERR,"UNABLE_TO_BACKUP_BF_MONTJAM_VISIBILITY\n");
+                exit(24);
+              }
+              update_option($key,$expected,false);
+              if ($expected !== array_values((array)get_option($key,array()))) {
+                fwrite(STDERR,"BF_MONTJAM_VISIBILITY_UPDATE_FAILED\n");
+                exit(25);
+              }
+              update_option($marker,"yes",false);
+              echo "BF2026_MONTJAM_ACTIVATED\n";
+            }
+            $visible=array_values((array)get_option($key,$expected));
+            if (!in_array("hidalgo",$visible,true) || !in_array("montjam",$visible,true)) {
+              fwrite(STDERR,"BF_MONTJAM_NOT_VISIBLE\n");
+              exit(26);
+            }
+            echo "BF2026_VISIBLE_SELLERS=".implode(",",$visible)."\n";
           ' --path="$ROOT" --allow-root
           # Read-only coupon readiness audit. Do not publish/enable the coupon.
           "$PHP" -d memory_limit=768M "$WP" eval '
@@ -388,8 +434,9 @@ jobs:
           test "$(grep -oF '<strong>BLACK<em>FRIDAY</em></strong>' "/tmp/bf-preview-$RUN.html" | wc -l)" -eq 2
           # The page may have one or more visible sellers. Do not require
           # Montjam once its editorial card is hidden for the initial launch.
-          grep -Fq 'data-bf26-visible-sellers=' "/tmp/bf-preview-$RUN.html"
-          grep -Fq 'data-bf26-seller="' "/tmp/bf-preview-$RUN.html"
+          grep -Fq 'data-bf26-visible-sellers="hidalgo,montjam"' "/tmp/bf-preview-$RUN.html"
+          grep -Fq 'data-bf26-seller="hidalgo"' "/tmp/bf-preview-$RUN.html"
+          grep -Fq 'data-bf26-seller="montjam"' "/tmp/bf-preview-$RUN.html"
           if [ -f "$BACKUP/seller-visibility-before.json" ]; then
             grep -Fq 'data-bf26-visible-sellers="hidalgo"' "/tmp/bf-preview-$RUN.html"
             grep -Fq 'data-bf26-seller="hidalgo"' "/tmp/bf-preview-$RUN.html"
@@ -428,7 +475,9 @@ jobs:
             ! grep -Fq 'incluye los de 7 kg exactos' "/tmp/bf-preview-$RUN.html"
             grep -Fq 'jamones de menos de 7 kg' "/tmp/bf-preview-$RUN.html"
             grep -Fq 'automáticamente en el carrito' "/tmp/bf-preview-$RUN.html"
-            grep -Fq 'fuet de regalo' "/tmp/bf-preview-$RUN.html"
+            grep -Fq 'medio morcón de regalo' "/tmp/bf-preview-$RUN.html"
+            grep -Fq '400–500 g' "/tmp/bf-preview-$RUN.html"
+            ! grep -Fiq 'fuet de regalo' "/tmp/bf-preview-$RUN.html"
           fi
           # Native site header / nav / cart / footer: this must be a real shop page.
           grep -Eiq 'class="[^"]*site-header' "/tmp/bf-preview-$RUN.html"
@@ -450,8 +499,12 @@ jobs:
           URL="https://www.elmercadodeorigen.com/black-friday-2026/?final_verify=$GITHUB_RUN_ID"
           curl -fsSL --retry 2 --max-time 45 -A 'Mozilla/5.0 EMDO BF' "$URL" -o /tmp/bf-preview-live.html
           grep -Fq 'id="bf26-overlay"' /tmp/bf-preview-live.html
-          grep -Fq 'data-bf26-visible-sellers="hidalgo"' /tmp/bf-preview-live.html
-          ! grep -Fq 'data-bf26-seller="montjam"' /tmp/bf-preview-live.html
+          grep -Fq 'data-bf26-visible-sellers="hidalgo,montjam"' /tmp/bf-preview-live.html
+          grep -Fq 'data-bf26-seller="hidalgo"' /tmp/bf-preview-live.html
+          grep -Fq 'data-bf26-seller="montjam"' /tmp/bf-preview-live.html
+          grep -Fq 'medio morcón de regalo' /tmp/bf-preview-live.html
+          grep -Fq '400–500 g' /tmp/bf-preview-live.html
+          ! grep -Fiq 'fuet de regalo' /tmp/bf-preview-live.html
           grep -Fq 'emdo-bf2026-preview' /tmp/bf-preview-live.html
           grep -Eiq 'class="[^"]*site-header' /tmp/bf-preview-live.html
           grep -Eiq 'shopping-cart|cart-contents|shop-cart-count|cart-count' /tmp/bf-preview-live.html

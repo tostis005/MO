@@ -120,7 +120,7 @@ const {chromium} = require('playwright-core');
           couponPresent:enabledSellers.length>0 && 
             (!enabledSellers.includes('hidalgo') || !!hidalgoCoupon) &&
             (!enabledSellers.includes('montjam') || !!montjamCoupon),
-          sellerVisibilityConsistent:enabledSellers.length>0 &&
+          sellerVisibilityConsistent:enabledSellers.length===2 && enabledSellers.includes('hidalgo') && enabledSellers.includes('montjam') &&
             actualSellers.length===enabledSellers.length &&
             actualSellers.every((seller,i)=>seller===enabledSellers[i]) &&
             sellerLabels.every((label,i)=>label===String(i+1).padStart(2,'0')) &&
@@ -170,7 +170,9 @@ const {chromium} = require('playwright-core');
             montjamText.includes('menos de 7 kg') &&
             !montjamText.includes('7 kg o menos') &&
             montjamText.includes('bellota 100 % ibérico') &&
-            montjamText.includes('fuet de regalo') &&
+            montjamText.includes('medio morcón de regalo') &&
+            montjamText.includes('400–500 g') &&
+            !montjamText.toLowerCase().includes('fuet') &&
             !montjamText.includes('sobre de chorizo') &&
             !montjamText.includes('sobre de salchichón')),
           selectedConditionsAccessible:

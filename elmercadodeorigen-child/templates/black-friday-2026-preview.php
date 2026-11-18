@@ -39,13 +39,12 @@ $club_wallet_url  = function_exists( 'wc_get_account_endpoint_url' ) ? wc_get_ac
 
 /**
  * Control de visibilidad de la landing, independiente de WooCommerce.
- * Primera fase del lanzamiento: únicamente Hidalgo de la Jara.
- * Montjam conserva su ficha y sus condiciones, pero permanece oculto
- * hasta que se autorice su incorporación posterior.
+ * Hidalgo de la Jara y Montjam participan en la campaña.
+ * La lista puede seguir gestionándose en WordPress tras la activación inicial.
  * La opción emdo_bf2026_visible_sellers controla las fichas y fotos.
  */
 $bf26_known_sellers = array( 'hidalgo', 'montjam' );
-$bf26_launch_sellers = array( 'hidalgo' );
+$bf26_launch_sellers = array( 'hidalgo', 'montjam' );
 $bf26_enabled_option = get_option( 'emdo_bf2026_visible_sellers', $bf26_launch_sellers );
 $bf26_enabled_option = is_array( $bf26_enabled_option ) ? $bf26_enabled_option : $bf26_launch_sellers;
 $bf26_visible_sellers = array_values( array_intersect( $bf26_known_sellers, array_map( 'sanitize_key', $bf26_enabled_option ) ) );
@@ -214,7 +213,7 @@ get_header();
 				<div class="bf26-offer__content">
 					<div class="bf26-offer__top"><span class="bf26-offer__origin">EL CARÁCTER DE LOS IBÉRICOS DE HUELVA</span><span class="bf26-offer__tag">15 % EN TODA SU SELECCIÓN</span></div>
 					<h3 id="bf26-montjam-title">Montjam<em>.</em></h3>
-					<p class="bf26-offer__description"><strong>15 % de descuento en todos los productos Montjam de nuestra tienda.</strong> Introduce <strong>BFMONTJAM</strong> al hacer tu pedido. Y si eliges uno de los jamones seleccionados*, tendrás un descuento adicional automático en el carrito. <strong>Todos sus jamones incluyen un fuet de regalo.</strong></p>
+					<p class="bf26-offer__description"><strong>15 % de descuento en todos los productos Montjam de nuestra tienda.</strong> Introduce <strong>BFMONTJAM</strong> al hacer tu pedido. Y si eliges uno de los jamones seleccionados*, tendrás un descuento adicional automático en el carrito. <strong>Todos sus jamones incluyen medio morcón de regalo (aproximadamente 400–500 g).</strong></p>
 					<div class="bf26-offer__discount"><strong>–15<span>%</span></strong><div class="bf26-offer__discount-details"><span>EN TODOS LOS PRODUCTOS MONTJAM</span><div class="bf26-offer__coupon-row"><span class="bf26-offer__coupon-hint">CÓDIGO</span><button type="button" class="bf26-coupon" data-bf26-copy="BFMONTJAM" aria-label="Copiar cupón BFMONTJAM">BFMONTJAM <span aria-hidden="true">⧉</span></button></div></div></div>
 					<div class="bf26-montjam-extras" aria-label="Promociones adicionales de Montjam">
 						<div class="bf26-montjam-extra" id="montjam-condiciones">
@@ -230,8 +229,8 @@ get_header();
 							<div class="bf26-montjam-gift__emblem" aria-hidden="true">✳</div>
 							<div>
 								<span class="bf26-hidalgo-benefits__eyebrow">REGALO EN TODOS LOS JAMONES</span>
-								<h4>Un fuet de regalo.</h4>
-								<p>Con la compra de <strong>cualquier jamón Montjam</strong>. No necesitas llegar a un importe mínimo.</p>
+								<h4>Medio morcón de regalo.</h4>
+								<p>Con la compra de <strong>cualquier jamón Montjam</strong> recibirás <strong>medio morcón de aproximadamente 400–500 g</strong>. No necesitas llegar a un importe mínimo.</p>
 							</div>
 						</div>
 					</div>
