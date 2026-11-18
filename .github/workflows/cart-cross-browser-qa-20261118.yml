@@ -1,0 +1,58 @@
+name: Cart Safari and cross-browser responsive QA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/cart-cross-browser-20261118.cjs'
+      - '.github/workflows/cart-cross-browser-qa-20261118.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cross-browser-cart:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SITE_URL: https://www.elmercadodeorigen.com
+      TOLE_PRODUCT_ID: ${{ secrets.TOLE_PRODUCT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify production cart patch before browser tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 8); do
+            if curl -fsSL --compressed --max-time 35 "${SITE_URL}/carrito/?cart_browser_deploy=${GITHUB_RUN_ID}-${attempt}" | grep -q 'elmercado-cart-cross-browser-layout-20261118'; then
+              echo "Production cart patch found."
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Updated cart module is not visible in production HTML" >&2
+          exit 1
+
+      - name: Install Playwright and browser engines
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium firefox webkit
+
+      - name: Test cart with real product at 13 responsive widths in three engines
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tests/cart-cross-browser-20261118.cjs
+
+      - name: Save screenshots and measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cart-browser-QA-${{ github.run_id }}
+          path: cart-browser-artifacts/
+          if-no-files-found: ignore
+          retention-days: 7
