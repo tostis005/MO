@@ -186,7 +186,6 @@ $elmercado_modules = array(
 	'inc/montjam-sliced-minimum-20261111.php',
 	'inc/product-gallery-controls-010318.php',
 	'inc/catalog-quick-add-20261026.php',
-	'inc/stripe-checkout-visual-20261116.php',
 	'inc/admin-quick-tracking-20261118.php',
 );
 
