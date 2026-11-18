@@ -1,0 +1,164 @@
+name: Reactivate original CECA card gateway in production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/reactivate-ceca-card-production-20261118.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emdo-ceca-card-production
+  cancel-in-progress: false
+
+jobs:
+  activate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - name: Verify connection to production
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "$HOST" && test -n "$USER" && test -n "$SSHPASS"
+          PORT="${PORT:-22}"
+          [[ "$PORT" =~ ^[0-9]{1,5}$ ]]
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          test -s ~/.ssh/known_hosts && chmod 600 ~/.ssh/known_hosts
+
+      - name: Enable CECA only with secure backup, live-mode checks and rollback
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${PORT:-22}"
+          SSH="-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH "$USER@$HOST" "bash -s -- '$GITHUB_RUN_ID'" <<'REMOTE'
+          set -Eeuo pipefail
+          RUN="$1"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          test -f "$ROOT/wp-config.php" && test -x "$PHP" && test -x "$WP"
+          SITE="$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --allow-root --skip-plugins --skip-themes)"
+          case "$SITE" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
+            *) echo "CECA_REFUSING_NON_PRODUCTION_SITE" >&2; exit 20 ;;
+          esac
+          BACKUP_DIR="$HOME/.elmercado-rollbacks/ceca-card-payment/$RUN"
+          install -d -m 0700 "$BACKUP_DIR"
+          export EMDO_CECA_BACKUP="$BACKUP_DIR/previous-option.serialized"
+          SCRIPT="/tmp/emdo-reactivate-ceca-$RUN.php"
+          VERIFY="/tmp/emdo-verify-ceca-$RUN.php"
+          ROLLBACK="/tmp/emdo-restore-ceca-$RUN.php"
+          CHANGED=0
+          cleanup() {
+            code=$?
+            trap - EXIT
+            if [ "$code" -ne 0 ] && [ "$CHANGED" = "1" ]; then
+              echo 'CECA_ACTIVATION_FAILED_RESTORING_PREVIOUS_STATE'
+              "$PHP" -d memory_limit=768M "$WP" eval-file "$ROLLBACK" --path="$ROOT" --allow-root || true
+            fi
+            rm -f "$SCRIPT" "$VERIFY" "$ROLLBACK"
+            exit "$code"
+          }
+          trap cleanup EXIT
+          cat > "$SCRIPT" <<'PHP'
+          <?php
+          if (!function_exists('WC')) throw new RuntimeException('WooCommerce is not loaded');
+          $active_plugins = (array)get_option('active_plugins', []);
+          if (!in_array('cecabank-woocommerce/wc_gateway_cecabank.php', $active_plugins, true)) {
+              throw new RuntimeException('Expected original CECA plugin not active');
+          }
+          $gateways = WC()->payment_gateways()->payment_gateways();
+          $ceca = $gateways['cecabank_gateway'] ?? null;
+          if (!$ceca || $ceca->id !== 'cecabank_gateway' || wp_strip_all_tags($ceca->get_title()) !== 'Pago con tarjeta') {
+              throw new RuntimeException('Expected CECA card gateway not found or renamed');
+          }
+          if (!isset($gateways['redsys']) || $gateways['redsys']->enabled !== 'no') {
+              throw new RuntimeException('Redsys was unexpectedly active/missing; require review');
+          }
+          if (!isset($gateways['stripe']) || $gateways['stripe']->enabled !== 'no') {
+              throw new RuntimeException('Stripe was unexpectedly active/missing; require review');
+          }
+          $option = 'woocommerce_cecabank_gateway_settings';
+          $settings = get_option($option, []);
+          if (!is_array($settings) || $settings === []) throw new RuntimeException('CECA settings unavailable');
+          if (($settings['environment'] ?? '') !== 'real') throw new RuntimeException('CECA is not in real mode');
+          foreach (['merchant','acquirer','secret_key','terminal'] as $key) {
+              if (!isset($settings[$key]) || trim((string)$settings[$key]) === '') {
+                  throw new RuntimeException('CECA credentials missing: '.$key);
+              }
+          }
+          if (!in_array(($settings['enabled'] ?? 'no'), ['yes','no'], true)) {
+              throw new RuntimeException('Unexpected CECA enabled value');
+          }
+          $backup = getenv('EMDO_CECA_BACKUP');
+          if (!$backup || file_put_contents($backup, serialize($settings), LOCK_EX) === false) {
+              throw new RuntimeException('Could not back up CECA settings');
+          }
+          chmod($backup, 0600);
+          if (($settings['enabled'] ?? 'no') !== 'yes') {
+              $settings['enabled'] = 'yes';
+              if (!update_option($option, $settings)) throw new RuntimeException('CECA settings update failed');
+              echo "CECA_OPTION_ACTIVATED=1\n";
+          } else {
+              echo "CECA_ALREADY_ACTIVE=1\n";
+          }
+          PHP
+          cat > "$VERIFY" <<'PHP'
+          <?php
+          if (!function_exists('WC')) throw new RuntimeException('WooCommerce missing for verification');
+          $gw = WC()->payment_gateways()->payment_gateways();
+          if (!isset($gw['cecabank_gateway']) || $gw['cecabank_gateway']->enabled !== 'yes') {
+              throw new RuntimeException('CECA gateway not active after update');
+          }
+          if (!isset($gw['stripe']) || $gw['stripe']->enabled !== 'no') {
+              throw new RuntimeException('Stripe must remain disabled');
+          }
+          if (!isset($gw['redsys']) || $gw['redsys']->enabled !== 'no') {
+              throw new RuntimeException('Redsys must remain disabled');
+          }
+          $settings = get_option('woocommerce_cecabank_gateway_settings',[]);
+          if (!is_array($settings) || ($settings['enabled']??'')!=='yes' || ($settings['environment']??'')!=='real') {
+              throw new RuntimeException('CECA settings did not persist in real mode');
+          }
+          $others=[];
+          foreach ($gw as $id=>$gateway) {
+              if (!in_array($id,['cecabank_gateway','stripe','redsys'],true) && $gateway->enabled==='yes') {
+                  $others[]=$id;
+              }
+          }
+          echo 'CECA_CARD_GATEWAY_ENABLED_VERIFIED=1' . PHP_EOL;
+          echo 'CECA_LIVE_MODE_VERIFIED=1' . PHP_EOL;
+          echo 'STRIPE_REDSYS_STILL_DISABLED=1' . PHP_EOL;
+          echo 'OTHER_ENABLED_GATEWAYS=' . implode(',',$others) . PHP_EOL;
+          PHP
+          cat > "$ROLLBACK" <<'PHP'
+          <?php
+          $backup=getenv('EMDO_CECA_BACKUP');
+          if (!$backup || !is_file($backup)) throw new RuntimeException('CECA backup missing');
+          $old=unserialize(file_get_contents($backup),['allowed_classes'=>false]);
+          if (!is_array($old)) throw new RuntimeException('Invalid CECA backup');
+          update_option('woocommerce_cecabank_gateway_settings',$old);
+          echo "CECA_PREVIOUS_STATE_RESTORED=1\n";
+          PHP
+          "$PHP" -l "$SCRIPT"
+          "$PHP" -l "$VERIFY"
+          "$PHP" -l "$ROLLBACK"
+          "$PHP" -d memory_limit=768M "$WP" eval-file "$SCRIPT" --path="$ROOT" --allow-root
+          CHANGED=1
+          "$PHP" -d memory_limit=768M "$WP" eval-file "$VERIFY" --path="$ROOT" --allow-root
+          echo "CECA_PRODUCTION_REACTIVATION_SUCCESS=1"
+          REMOTE
