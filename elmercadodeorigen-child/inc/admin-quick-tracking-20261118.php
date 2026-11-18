@@ -128,6 +128,8 @@ CSS
 				array(
 					'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 					'nonce'   => wp_create_nonce( 'elmercado_send_order_tracking' ),
+					'timeZone' => wp_timezone_string(),
+					'utcOffsetMinutes' => (int) round( wp_timezone()->getOffset( new DateTimeImmutable( 'now', new DateTimeZone( 'UTC' ) ) ) / 60 ),
 				)
 			) . ';',
 			'before'
@@ -139,6 +141,57 @@ CSS
 	"use strict";
 	const config = window.elmercadoOrderQuickTracking || {};
 
+	// Hora local de WordPress (normalmente Espana): se recalcula en cada pegado.
+	// El fallback admite sitios configurados con un desplazamiento UTC fijo.
+	function greetingForNow() {
+		let hour;
+		try {
+			const parts = new Intl.DateTimeFormat("en-GB", {
+				timeZone: config.timeZone || "UTC",
+				hour: "2-digit",
+				hourCycle: "h23"
+			}).formatToParts(new Date());
+			hour = Number(parts.find((part) => part.type === "hour")?.value);
+			if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw new Error("Invalid timezone hour");
+		} catch (error) {
+			const offset = Number(config.utcOffsetMinutes);
+			hour = new Date(Date.now() + (Number.isFinite(offset) ? offset : 0) * 60000).getUTCHours();
+		}
+		if (hour >= 6 && hour < 14) return "Buenos días";
+		if (hour >= 14 && hour < 21) return "Buenas tardes";
+		return "Buenas noches";
+	}
+
+	function normalizeTrackingPaste(raw) {
+		let message = String(raw).trim();
+		if (!message) return message;
+
+		// Unicamente las comillas exteriores; nunca tocar las del mensaje.
+		const quoted = (message.startsWith('"') && message.endsWith('"'))
+			|| (message.startsWith("“") && message.endsWith("”"));
+		if (quoted && message.length >= 2) message = message.slice(1, -1).trim();
+
+		// El encabezamiento es la unica parte personalizada del texto.
+		const greeting = /^(?:buenos\s+d[ií]as|buenas\s+tardes|buenas\s+noches)\b/iu;
+		const match = message.match(greeting);
+		if (!match) return message;
+		message = greetingForNow() + message.slice(match[0].length);
+
+		// El nombre va al principio, tras el saludo, y termina en coma +
+		// salto de linea. No alterar las lineas posteriores ni otros nombres.
+		const header = message.match(/^(?:Buenos días|Buenas tardes|Buenas noches)([ \t]*,?[ \t]*)([^\r\n,]{1,120}),([ \t]*)(\r?\n|$)/u);
+		if (header) {
+			const fullName = header[2].trim();
+			const firstName = fullName.split(/\s+/u)[0];
+			// Evitar truncar una frase cualquiera si no parece un nombre.
+			if (/^\p{Lu}[\p{L}\p{M}'’\-]*$/u.test(firstName) && /^[\p{L}\p{M}'’\- ]+$/u.test(fullName)) {
+				const separator = header[1].includes(",") ? ", " : " ";
+				message = greetingForNow() + separator + firstName + "," + header[3] + header[4] + message.slice(header[0].length);
+			}
+		}
+		return message;
+	}
+
 	// The standard WooCommerce orders table has a row-level click-to-open
 	// handler. Keep pointer, click and keyboard events inside our controls.
 	// Do not preventDefault: textarea focus, selection, paste and buttons
@@ -149,6 +202,23 @@ CSS
 				event.stopPropagation();
 			});
 		});
+
+
+		const textarea = trackingControl.querySelector(".emo-tracking-message");
+		if (textarea) {
+			textarea.addEventListener("paste", function (event) {
+				const clipboard = event.clipboardData;
+				if (!clipboard || typeof clipboard.getData !== "function") return;
+				const raw = clipboard.getData("text/plain");
+				if (typeof raw !== "string" || !raw) return;
+				const cleaned = normalizeTrackingPaste(raw);
+				if (cleaned === raw) return;
+				event.preventDefault();
+				// Conserva el texto ya escrito fuera de la seleccion actual.
+				textarea.setRangeText(cleaned, textarea.selectionStart, textarea.selectionEnd, "end");
+				textarea.dispatchEvent(new Event("input", { bubbles: true }));
+			});
+		}
 
 		trackingControl.addEventListener("click", async function (event) {
 		if (!(event.target instanceof Element)) return;
