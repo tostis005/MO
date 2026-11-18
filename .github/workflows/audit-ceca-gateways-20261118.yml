@@ -56,6 +56,16 @@ jobs:
               $id = (string) ($gateway->id ?? $k);
               echo 'GATEWAY=' . wp_json_encode(['id'=>$id,'title'=>wp_strip_all_tags($gateway->get_title()),'enabled'=>$gateway->enabled], JSON_UNESCAPED_UNICODE) . "\n";
           }
+          $ceca_settings = get_option('woocommerce_cecabank_gateway_settings', []);
+          echo 'CECA_ENVIRONMENT=' . (is_array($ceca_settings) ? (string)($ceca_settings['environment'] ?? 'missing') : 'invalid') . "\\n";
+          $method_counts = [];
+          if (function_exists('wc_get_orders')) {
+              foreach (wc_get_orders(['limit'=>100, 'orderby'=>'date', 'order'=>'DESC', 'type'=>'shop_order', 'status'=>array_keys(wc_get_order_statuses()), 'return'=>'objects']) as $order) {
+                  $id = (string)$order->get_payment_method();
+                  $method_counts[$id] = ($method_counts[$id]??0)+1;
+              }
+          }
+          echo 'RECENT_PAYMENT_GATEWAY_COUNTS=' . wp_json_encode($method_counts) . "\\n";
           $plugins = get_plugins();
           $active = (array)get_option('active_plugins',[]);
           foreach ($plugins as $path=>$meta) {
