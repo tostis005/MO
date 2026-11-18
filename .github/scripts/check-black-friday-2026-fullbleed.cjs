@@ -164,12 +164,9 @@ const {chromium} = require('playwright-core');
             montjamText.includes('EN TODOS LOS PRODUCTOS MONTJAM') &&
             montjamText.includes('2,5 % adicional') &&
             montjamText.includes('automáticamente en el carrito') &&
-            montjamText.includes('7 kg o más') &&
-            montjamText.includes('igual o superior a 7 kg') &&
-            !montjamText.includes('incluye los de 7 kg exactos') &&
-            montjamText.includes('menos de 7 kg') &&
-            !montjamText.includes('7 kg o menos') &&
-            montjamText.includes('bellota 100 % ibérico') &&
+            montjamText.includes('jamones Montjam de bellota 100 % ibéricos') &&
+            montjamText.includes('no incluye paletas ni embutidos') &&
+            !/\b(?:peso|\d+\s*kg|restricci[oó]n de peso)\b/i.test(montjamText) &&
             montjamText.includes('medio morcón de regalo') &&
             montjamText.includes('400–500 g') &&
             !montjamText.toLowerCase().includes('fuet') &&

@@ -213,18 +213,18 @@ get_header();
 				<div class="bf26-offer__content">
 					<div class="bf26-offer__top"><span class="bf26-offer__origin">EL CARÁCTER DE LOS IBÉRICOS DE HUELVA</span><span class="bf26-offer__tag">15 % EN TODA SU SELECCIÓN</span></div>
 					<h3 id="bf26-montjam-title">Montjam<em>.</em></h3>
-					<p class="bf26-offer__description"><strong>15 % de descuento en todos los productos Montjam de nuestra tienda.</strong> Introduce <strong>BFMONTJAM</strong> al hacer tu pedido. Y si eliges uno de los jamones seleccionados*, tendrás un descuento adicional automático en el carrito. <strong>Todos sus jamones incluyen medio morcón de regalo (aproximadamente 400–500 g).</strong></p>
+					<p class="bf26-offer__description"><strong>15 % de descuento en todos los productos Montjam de nuestra tienda.</strong> Introduce <strong>BFMONTJAM</strong> al hacer tu pedido. Y en los jamones de bellota 100 % ibéricos, disfrutarás de un 2,5 % adicional automático en el carrito. <strong>Todos sus jamones incluyen medio morcón de regalo (aproximadamente 400–500 g).</strong></p>
 					<div class="bf26-offer__discount"><strong>–15<span>%</span></strong><div class="bf26-offer__discount-details"><span>EN TODOS LOS PRODUCTOS MONTJAM</span><div class="bf26-offer__coupon-row"><span class="bf26-offer__coupon-hint">CÓDIGO</span><button type="button" class="bf26-coupon" data-bf26-copy="BFMONTJAM" aria-label="Copiar cupón BFMONTJAM">BFMONTJAM <span aria-hidden="true">⧉</span></button></div></div></div>
 					<div class="bf26-montjam-extras" aria-label="Promociones adicionales de Montjam">
 						<div class="bf26-montjam-extra" id="montjam-condiciones">
 							<div class="bf26-montjam-extra__badge"><strong>+2,5<span>%</span></strong><small>ADICIONAL</small></div>
 							<div class="bf26-montjam-extra__copy">
-								<span class="bf26-hidalgo-benefits__eyebrow">SOLO EN JAMONES SELECCIONADOS <a href="#montjam-letra-pequena" aria-label="Ver condiciones del descuento adicional">*</a></span>
+								<span class="bf26-hidalgo-benefits__eyebrow">EN JAMONES DE BELLOTA 100 % IBÉRICOS <a href="#montjam-letra-pequena" aria-label="Ver condiciones del descuento adicional">*</a></span>
 								<h4>Un extra más. <em>Sin hacer nada.</em></h4>
-								<p>Solo en los <strong>jamones Montjam de bellota 100 % ibérico de 7 kg o más</strong>, disfrutas de un <strong>2,5 % adicional</strong>. Este extra se aplica <strong>automáticamente en el carrito</strong>, sin introducir otro código. El 15 % para todos los productos Montjam se consigue con <strong>BFMONTJAM</strong>.</p>
+								<p>Con los <strong>jamones Montjam de bellota 100 % ibéricos</strong>, disfrutas de un <strong>2,5 % adicional</strong>. Este extra se aplica <strong>automáticamente en el carrito</strong>, sin introducir otro código. El 15 % para todos los productos Montjam se consigue con <strong>BFMONTJAM</strong>.</p>
 							</div>
 						</div>
-						<p class="bf26-montjam-extras__conditions" id="montjam-letra-pequena"><strong>* Condiciones del 2,5 % adicional:</strong> solo para jamones Montjam de <strong>bellota 100 % ibérico</strong> con peso <strong>igual o superior a 7 kg</strong>; no incluye paletas, embutidos ni jamones de menos de 7 kg. Este descuento se refleja automáticamente en el carrito. El <strong>15 % general de Montjam</strong> se obtiene al introducir <strong>BFMONTJAM</strong>.</p>
+						<p class="bf26-montjam-extras__conditions" id="montjam-letra-pequena"><strong>* Condiciones del 2,5 % adicional:</strong> aplicable a los jamones Montjam de <strong>bellota 100 % ibéricos</strong>; no incluye paletas ni embutidos. Este descuento se refleja automáticamente en el carrito. El <strong>15 % general de Montjam</strong> se obtiene al introducir <strong>BFMONTJAM</strong>.</p>
 						<div class="bf26-montjam-gift">
 							<div class="bf26-montjam-gift__emblem" aria-hidden="true">✳</div>
 							<div>
