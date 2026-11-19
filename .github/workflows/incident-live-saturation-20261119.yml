@@ -1,0 +1,142 @@
+name: Read-only live saturation audit 2026-11-19
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/incident-live-saturation-20261119.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install SSH helper
+        run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Read small rolling access samples and process status without modifying server
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'python3 -' > /tmp/emdo-incident-raw.json <<'PYREMOTE'
+          import os,re,json,subprocess,hashlib
+          from datetime import datetime,timezone,timedelta
+          from collections import Counter,defaultdict
+          from urllib.parse import urlsplit,parse_qsl
+          root='/var/www/vhosts/system/elmercadodeorigen.com/logs'
+          now=datetime.now(timezone.utc)
+          cut=now-timedelta(minutes=60)
+          recent=now-timedelta(minutes=10)
+          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+(\S+)(?:\s+"([^"]*)"\s+"([^"]*)")?')
+          asset=re.compile(r'\.(?:css|js|mjs|map|png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|eot|mp4|webm|pdf|zip)$',re.I)
+          bot=re.compile(r'bot|spider|crawler|crawl|headless|python|curl/|wget/|httpclient|scrapy|semrush|ahrefs|mj12|bytespider',re.I)
+          report={'generated_utc':now.isoformat(),'cpu_count':os.cpu_count(),'loadavg':os.getloadavg(),'logs':{},'error_signals':{},'process':{},'ip_rows':{}}
+          try:
+              raw=subprocess.check_output(['ps','-eo','stat=,%cpu=,rss=,args='],text=True,stderr=subprocess.DEVNULL)
+              workers=[l.split(None,3) for l in raw.splitlines() if 'php-fpm: pool elmercadodeorigen.com' in l]
+              report['process']['php_workers']=len(workers)
+              report['process']['php_running']=sum('R' in x[0] for x in workers)
+              report['process']['php_cpu_pct_total']=round(sum(float(x[1]) for x in workers),1)
+              report['process']['php_rss_mb_total']=round(sum(int(x[2]) for x in workers)/1024,1)
+              top=subprocess.check_output(['ps','-eo','comm=,%cpu=','--sort=-%cpu'],text=True,stderr=subprocess.DEVNULL).splitlines()[:12]
+              report['process']['top_cpu_commands']=top
+          except Exception as e:report['process']['error']=type(e).__name__
+          try:
+              mem=open('/proc/meminfo').read()
+              report['process']['meminfo_kb']={k:int(v) for k,v in re.findall(r'^(MemTotal|MemAvailable|SwapTotal|SwapFree):\s+(\d+)',mem,re.M)}
+          except Exception:pass
+          for name in ('access_ssl_log','proxy_access_ssl_log'):
+              p=os.path.join(root,name)
+              c=Counter();c10=Counter();paths=Counter();paths10=Counter();routes=Counter();keys=Counter();ua=Counter();refs=Counter();minutes=Counter();countryrows=defaultdict(lambda:[0,0,0,0]);nall=bad=0;oldest=None
+              try:
+                  size=os.stat(p).st_size
+                  with open(p,'rb') as f:
+                      off=max(0,size-18000000);f.seek(off)
+                      if off:f.readline()
+                      for rawline in f:
+                          nall+=1
+                          m=rx.match(rawline.decode('utf8','replace'))
+                          if not m:bad+=1;continue
+                          ip,ds,method,target,status,bytes_,ref,agent=m.groups()
+                          try:dt=datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(timezone.utc)
+                          except ValueError:bad+=1;continue
+                          if dt<cut or dt>now+timedelta(minutes=3):continue
+                          if oldest is None or dt<oldest:oldest=dt
+                          path=urlsplit(target).path or '/'
+                          dyn=not bool(asset.search(path))
+                          last10=dt>=recent
+                          c['total']+=1;c['dynamic']+=int(dyn);c['status_'+status]+=1;c['method_'+method]+=1
+                          if last10:c10['total']+=1;c10['dynamic']+=int(dyn);c10['status_'+status]+=1
+                          if path.startswith('/producto/'):route='producto'
+                          elif path.startswith('/categoria-producto/'):route='categoria'
+                          elif path.startswith('/tienda/'):route='vendedor'
+                          elif path.startswith('/wp-content/'):route='estatico'
+                          elif path.startswith('/article-other/'):route='blog'
+                          elif path.startswith('/wp-json/'):route='wp-json'
+                          elif path.startswith('/wp-admin/'):route='wp-admin'
+                          elif path.startswith('/en/'):route='ingles'
+                          elif path=='/':route='inicio'
+                          else:route='otros'
+                          routes[route]+=1
+                          paths[path[:130]]+=1
+                          if last10:paths10[path[:130]]+=1
+                          typ='bot_visible' if bot.search(agent or '') else ('navegador_declarado' if 'Mozilla/5.0' in (agent or '') else 'otro')
+                          ua[typ]+=1
+                          refs['interno' if 'elmercadodeorigen.com' in (ref or '') else ('sin_referer' if ref in ('-',None,'') else 'externo')]+=1
+                          if '?' in target:
+                              for k,v in parse_qsl(urlsplit(target).query[:1400],keep_blank_values=True)[:30]:keys[k[:70]]+=1
+                          minutes[dt.strftime('%H:%M')]+=1
+                          ir=countryrows[ip];ir[0]+=1;ir[1]+=int(dyn);ir[2]+=int(last10);ir[3]+=int(dyn and last10)
+                  report['logs'][name]={'file_bytes':size,'sample_bytes':min(size,18000000),'scanned_lines':nall,'parse_errors':bad,'earliest_utc':oldest.isoformat() if oldest else None,'hour':dict(c),'last10m':dict(c10),'routes':routes.most_common(16),'paths':paths.most_common(20),'last10_paths':paths10.most_common(20),'params':keys.most_common(22),'agents':dict(ua),'referers':dict(refs),'per_minute':sorted(minutes.items())}
+                  report['ip_rows'][name]=[[ip,*a] for ip,a in countryrows.items()]
+              except Exception as e:report['logs'][name]={'error':str(e)[:140]}
+          for name in ('error_log','proxy_error_log'):
+              p=os.path.join(root,name)
+              try:
+                  with open(p,'rb') as f:
+                      f.seek(max(0,os.stat(p).st_size-350000))
+                      lines=f.read().decode('utf8','replace').splitlines()
+                  patterns=('upstream timed out','connect() failed','max_children','too many connections','resource temporarily unavailable','no live upstreams','502 bad gateway','504 gateway','fatal error','out of memory')
+                  report['error_signals'][name]={s:sum(s in l.lower() for l in lines) for s in patterns if any(s in l.lower() for l in lines)}
+              except Exception as e:report['error_signals'][name]={'error':type(e).__name__}
+          print(json.dumps(report,separators=(',',':')))
+          PYREMOTE
+          test -s /tmp/emdo-incident-raw.json
+      - name: Country breakdown and compact diagnostic without revealing visitor IPs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl -fsSL --retry 1 --max-time 45 'https://dbip.mirror.framasoft.org/files/dbip-country-lite-2026-10.csv.gz' -o /tmp/dbip-country.csv.gz || true
+          python3 - <<'PY'
+          import json,os,gzip,csv,ipaddress,bisect
+          from collections import Counter
+          r=json.load(open('/tmp/emdo-incident-raw.json'))
+          print('LIVE_INCIDENT_SYSTEM',json.dumps({'generated_utc':r['generated_utc'],'cpu_count':r['cpu_count'],'loadavg':r['loadavg'],'process':r['process'],'error_signals':r['error_signals']},ensure_ascii=False))
+          v4=[];v6=[]
+          try:
+              with gzip.open('/tmp/dbip-country.csv.gz','rt',encoding='utf8') as f:
+                  for a,b,cc in csv.reader(f):
+                      x=ipaddress.ip_address(a);y=ipaddress.ip_address(b)
+                      (v4 if x.version==4 else v6).append((int(x),int(y),cc))
+              v4.sort();v6.sort()
+          except Exception as e:print('COUNTRY_DB_ERROR',type(e).__name__)
+          starts4=[x[0] for x in v4];starts6=[x[0] for x in v6]
+          def country(ip):
+              try:x=ipaddress.ip_address(ip)
+              except ValueError:return '??'
+              db,st=(v4,starts4) if x.version==4 else (v6,starts6)
+              i=bisect.bisect_right(st,int(x))-1
+              return db[i][2] if i>=0 and int(x)<=db[i][1] else '??'
+          for name,info in r['logs'].items():
+              print('LIVE_INCIDENT_LOG',name,json.dumps(info,ensure_ascii=False))
+              co=Counter();dyn=Counter();last=Counter();unique=Counter();top=[]
+              for ip,n,d,n10,d10 in r['ip_rows'].get(name,[]):
+                  cc=country(ip);co[cc]+=n;dyn[cc]+=d;last[cc]+=n10;unique[cc]+=1
+                  top.append((n,d,n10,cc))
+              print('LIVE_INCIDENT_COUNTRIES',name,json.dumps([{'country':cc,'requests':n,'dynamic':dyn[cc],'last10m':last[cc],'ips':unique[cc]} for cc,n in co.most_common(25)],ensure_ascii=False))
+              print('LIVE_INCIDENT_TOP_SOURCES',name,json.dumps([{'requests':n,'dynamic':d,'last10m':n10,'country':cc} for n,d,n10,cc in sorted(top,reverse=True)[:15]]))
+          PY
