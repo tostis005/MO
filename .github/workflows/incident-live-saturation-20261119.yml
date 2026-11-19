@@ -140,3 +140,58 @@ jobs:
               print('LIVE_INCIDENT_COUNTRIES',name,json.dumps([{'country':cc,'requests':n,'dynamic':dyn[cc],'last10m':last[cc],'ips':unique[cc]} for cc,n in co.most_common(25)],ensure_ascii=False))
               print('LIVE_INCIDENT_TOP_SOURCES',name,json.dumps([{'requests':n,'dynamic':d,'last10m':n10,'country':cc} for n,d,n10,cc in sorted(top,reverse=True)[:15]]))
           PY
+
+      - name: Identify query signatures and check which Nginx protective guards are actually present
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'python3 -' <<'PYREMOTE'
+          import os,re,json,hashlib,glob
+          from collections import Counter
+          from datetime import datetime,timezone,timedelta
+          from urllib.parse import urlsplit,parse_qsl
+          now=datetime.now(timezone.utc)
+          p='/var/www/vhosts/system/elmercadodeorigen.com/logs/proxy_access_ssl_log'
+          cut=now-timedelta(minutes=15)
+          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+(\S+)(?:\s+"([^"]*)"\s+"([^"]*)")?')
+          status=Counter();group=Counter();routes=Counter();paramcounts=Counter();source=Counter();unique=set();bad=0;matched=0
+          with open(p,'rb') as f:
+              size=os.stat(p).st_size;f.seek(max(0,size-10000000))
+              if f.tell():f.readline()
+              for line in f:
+                  m=rx.match(line.decode('utf8','replace'))
+                  if not m:bad+=1;continue
+                  ip,ds,method,target,code,n,ref,ua=m.groups()
+                  try:t=datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(timezone.utc)
+                  except:continue
+                  if t<cut or t>now+timedelta(minutes=2):continue
+                  u=urlsplit(target);path=u.path or '/'
+                  if not path.startswith('/en/store/hidalgo-de-la-jara'):continue
+                  matched+=1
+                  keys=[k for k,v in parse_qsl(u.query[:1500],keep_blank_values=True)]
+                  nf=sum(k.startswith('filter_') for k in keys)
+                  has_vendor='emo_vendor_cat' in keys
+                  cat=('no_query' if not keys else 'no_facets' if nf==0 else 'one_facet' if nf==1 else 'two_facets' if nf==2 else 'three_plus')
+                  route='page2' if '/page/2' in path else ('no_slash' if path.endswith('hidalgo-de-la-jara') else 'slash' if path.endswith('hidalgo-de-la-jara/') else 'other')
+                  status[code]+=1;routes[route]+=1
+                  group[(route,cat,has_vendor,code)]+=1
+                  paramcounts[(cat,has_vendor)]+=1
+                  source[hashlib.sha256(ip.encode()).hexdigest()[:12]]+=1
+                  if u.query:unique.add(hashlib.sha256(u.query.encode()).hexdigest()[:16])
+          vhost='/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf'
+          names=[
+             '/etc/nginx/conf.d/96-emdo-producer-facet-multifilter-20261027.conf',
+             '/etc/nginx/conf.d/96-emdo-producer-filter-flood-20261027.conf',
+             '/etc/nginx/conf.d/99-emdo-geoip2-facet-guard.conf',
+             '/etc/nginx/conf.d/96-emdo-*.conf']
+          guards={}
+          for x in names:
+              if '*' in x:continue
+              guards[os.path.basename(x)]={'exists':os.path.isfile(x),'bytes':os.stat(x).st_size if os.path.isfile(x) else 0}
+          try:
+              s=open(vhost,errors='replace').read()
+              for label in ('EMDO PRODUCER MULTIFILTER 20261027','EMDO PRODUCER FILTER FLOOD GUARD 20261027','EMDO GEOIP2 FACET','EMDO SAFE UNCACHED BYPASS GUARD 20261029','EMDO SCOPED FULL-SITE FILTER GATE 20261029'):
+                  guards[label]=label in s
+          except Exception as e:guards['vhost_read']=type(e).__name__
+          print('LIVE_FOCUS_REPORT',json.dumps({'generated_utc':now.isoformat(),'window_minutes':15,'matching_requests':matched,'unique_source_hashes':len(source),'top_source_counts':source.most_common(8),'distinct_query_hashes':len(unique),'statuses':dict(status),'route_counts':dict(routes),'facet_groups':[{'class':k[0],'has_vendor':k[1],'requests':v} for k,v in paramcounts.most_common(15)],'status_by_group':[{'route':a,'class':b,'has_vendor':c,'http':d,'requests':n} for (a,b,c,d),n in group.most_common(35)],'nginx_guards':guards},ensure_ascii=False))
+          PYREMOTE
