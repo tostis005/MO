@@ -1,4 +1,4 @@
-name: Live recovery check Nov 19 afternoon
+name: Recheck site latency after Redis activation
 on:
   push:
     branches: [main]
@@ -52,7 +52,7 @@ jobs:
           output={'generated_utc':now.isoformat(),'loadavg':os.getloadavg(),'php_workers':len(workers),'running':sum(x[0].startswith('R') for x in workers),'php_cpu_total':round(sum(float(x[1]) for x in workers),2),'total_2m':n,'statuses':dict(stat),'top_routes':path.most_common(12),'per_minute':sorted(minu.items()),'hidalgo':[{'type':k[0],'status':k[1],'count':v} for k,v in kind.most_common()]}
           print('INCIDENT_RECOVERY',json.dumps(output,ensure_ascii=False))
           # A small number of critical route tests, never a production load test.
-          for label,path in [('store','/tienda/1957/'),('cart','/carrito/'),('checkout','/finalizar-compra/')]:
+          for label,path in [('home','/'),('store','/tienda/1957/'),('cart','/carrito/'),('checkout','/finalizar-compra/')]:
               command=['curl','-ksS','--max-time','13','--retry','0','-A','Mozilla/5.0 (EMDO incident recovery probe)','-o','/dev/null','-w','%{http_code} %{time_total}', 'https://www.elmercadodeorigen.com'+path]
               try:
                   r=subprocess.run(command,capture_output=True,text=True,timeout=16)
