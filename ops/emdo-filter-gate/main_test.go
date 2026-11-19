@@ -54,10 +54,10 @@ func TestGateEndToEndScopes(t *testing.T){
  req.Header.Set("X-Original-URI",uri);req.Header.Set("X-Real-IP","203.0.113.5")
  req.Header.Set("Referer","https://www.elmercadodeorigen.com/tienda/1957/")
  wrongRef:=httptest.NewRecorder();g.handle(wrongRef,req)
- if wrongRef.Code!=200||!strings.Contains(wrongRef.Body.String(),"Verificando acceso a los filtros"){t.Fatal("cross-vendor referrer must receive JS challenge, not a redirect")}
+ if wrongRef.Code!=403||wrongRef.Header().Get("Location")!="" {t.Fatalf("cross-vendor referrer should be rejected without redirect, got %d",wrongRef.Code)}
  req.Header.Del("Referer")
  direct:=httptest.NewRecorder();g.handle(direct,req)
- if direct.Code!=200||direct.Header().Get("Location")!=""||!strings.Contains(direct.Body.String(),"/__emdo_filtergate/verify?scope=vendor%3Ahidalgo-de-la-jara"){t.Fatalf("direct link must stay on challenge without redirect, got %d",direct.Code)}
+ if direct.Code!=403||direct.Header().Get("Location")!=""||!strings.Contains(direct.Body.String(),"Ir a la tienda y seleccionar los filtros"){t.Fatalf("direct link must fail closed without redirect or challenge, got %d",direct.Code)}
  req.Header.Set("Referer","https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/")
  chal:=httptest.NewRecorder();g.handle(chal,req)
  if chal.Code!=200||!strings.Contains(chal.Body.String(),"/__emdo_filtergate/verify?scope=vendor%3Ahidalgo-de-la-jara"){t.Fatal("same vendor must receive scoped challenge")}
