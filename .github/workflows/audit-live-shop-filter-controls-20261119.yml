@@ -1,0 +1,109 @@
+name: Audit live shop-filter controls 2026-11-19
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/audit-live-shop-filter-controls-20261119.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: emdo-filter-guard-readonly-audit
+  cancel-in-progress: false
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Inspect all-shop protections and rate zones (read-only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'python3 -' <<'PYREMOTE'
+          import os,re,glob,json,subprocess,collections
+          from datetime import datetime,timezone,timedelta
+          from urllib.parse import urlsplit,parse_qsl
+          root='/var/www/vhosts/system/elmercadodeorigen.com/logs'
+          paths=[
+           '/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf',
+           '/etc/nginx/conf.d/99-emdo-geoip2-facet-guard.conf',
+           '/etc/nginx/conf.d/96-emdo-producer-facet-multifilter-20261027.conf',
+           '/etc/nginx/conf.d/96-emdo-producer-filter-flood-20261027.conf',
+          ]
+          out={}
+          for p in paths:
+              try:
+                  s=open(p,errors='replace').read()
+                  out[p]={'bytes':len(s),'lines':len(s.splitlines()),'snippets':[]}
+                  lines=s.splitlines()
+                  patterns=('limit_req','limit_conn','map ','geoip2','return 429','return 403','return 302','set $emdo','if ($emdo','if ($emo','location ','proxy_pass','fastcgi_pass','request_uri','emdo_geofacet','emdo_20261027','real_ip')
+                  for i,l in enumerate(lines):
+                      if any(k in l for k in patterns):
+                          v=' '.join(lines[max(0,i-2):min(len(lines),i+3)])
+                          # prevent accidental auth/cookie disclosure
+                          if not any(y in v.lower() for y in ('password','secret','apikey','token','authorization','private_key')):
+                              out[p]['snippets'].append({'line':i+1,'text':v[:650]})
+                  out[p]['snippets']=out[p]['snippets'][:100]
+              except Exception as e:out[p]={'error':type(e).__name__}
+          for p in glob.glob('/etc/nginx/conf.d/*emdo*'):
+              if p not in out:out[p]={'exists':True,'size':os.path.getsize(p)}
+          cmd=subprocess.run(['nginx','-t'],capture_output=True,text=True)
+          out['nginx_test']={'code':cmd.returncode,'tail':(cmd.stderr+cmd.stdout)[-550:]}
+          # Get active limits and server context with redacted nginx -T lines
+          dump=subprocess.run(['nginx','-T'],capture_output=True,text=True,timeout=18)
+          txt=dump.stdout
+          ls=txt.splitlines(); found=[]
+          for i,line in enumerate(ls):
+              if ('limit_req_zone' in line or 'limit_req ' in line or 'limit_req_status' in line or
+                 'limit_req_dry_run' in line or 'geoip2' in line or 'emdo_geofacet' in line or
+                 'emdo_20261027' in line or 'real_ip_header' in line):
+                  found.append({'lineno':i+1,'text':line.strip()[:200]})
+          out['nginx_effective']={'ok':dump.returncode==0,'limit_lines':found[:75]}
+          print('GUARD_CONFIG_AUDIT',json.dumps(out,ensure_ascii=False))
+          now=datetime.now(timezone.utc)
+          cut=now-timedelta(minutes=20)
+          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+(\S+)(?:\s+"([^"]*)"\s+"([^"]*)")?')
+          p=os.path.join(root,'proxy_access_ssl_log')
+          stats=collections.Counter();routes=collections.Counter();statuses=collections.Counter();frequency=collections.Counter();perip=collections.defaultdict(collections.Counter);minute=collections.Counter();total=0
+          with open(p,'rb') as f:
+              f.seek(max(0,os.path.getsize(p)-22000000))
+              if f.tell():f.readline()
+              for row in f:
+                  m=rx.match(row.decode('utf8','replace'))
+                  if not m:continue
+                  ip,ds,method,url,code,size,ref,ua=m.groups()
+                  try:t=datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(timezone.utc)
+                  except:continue
+                  if t<cut or t>now+timedelta(minutes=2):continue
+                  u=urlsplit(url);path=u.path
+                  cats=('/tienda/','/en/store/','/en/tienda/')
+                  is_vendor=path.startswith(cats)
+                  is_cat=path.startswith(('/categoria-producto/','/en/product-category/'))
+                  if not(is_vendor or is_cat):continue
+                  keys=[k for k,v in parse_qsl(u.query[:2000],keep_blank_values=True)]
+                  nf=sum(k.startswith('filter_') for k in keys)
+                  nv=sum(k.startswith('query_type_') for k in keys)
+                  if not keys:kind='none'
+                  elif nf+nv==0:kind='other-query'
+                  elif nf==1:kind='single-filter'
+                  elif nf==2:kind='two-filters'
+                  elif nf>=3:kind='three-plus'
+                  else:kind='querytype-only'
+                  zone='vendor' if is_vendor else 'category'
+                  total+=1
+                  group=(zone,kind,code)
+                  stats[group]+=1;statuses[code]+=1;routes[(zone,path[:100])]+=1
+                  if nf:perip[ip][t.strftime('%Y-%m-%dT%H:%M')]+=1
+                  minute[t.strftime('%H:%M')]+=1
+          ips=collections.Counter()
+          for ip,items in perip.items():
+              n=sum(items.values())
+              bucket=('1' if n==1 else '2-3' if n<=3 else '4-6' if n<=6 else '7-12' if n<=12 else '13+')
+              ips[bucket]+=1
+          print('FILTER_TRAFFIC_AUDIT',json.dumps({'generated_utc':now.isoformat(),'minutes':20,'all_vendor_category_requests':total,'statuses':statuses,'stats':[{'zone':k[0],'kind':k[1],'status':k[2],'count':v} for k,v in stats.most_common(30)],'top_routes':routes.most_common(15),'source_filter_frequency_20m':dict(ips),'peak_requests_minute':max(minute.values()) if minute else 0},ensure_ascii=False))
+          PYREMOTE
