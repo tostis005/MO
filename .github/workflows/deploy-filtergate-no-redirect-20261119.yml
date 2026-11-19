@@ -1,0 +1,93 @@
+name: Deploy filter gate no-redirect mitigation to all shops 20261119
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/deploy-filtergate-no-redirect-20261119.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: emdo-prod-filter-gate-binary
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: Test four-per-minute complex quota and challenge no-redirect behavior
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          GO111MODULE=off go test -v ./ops/emdo-filter-gate
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /tmp/emdo-filter-gate-no-redirect ops/emdo-filter-gate/main.go
+          test -s /tmp/emdo-filter-gate-no-redirect
+      - name: Stage signed gate binary on production host
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+          sshpass -e scp -q -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -P "$STAGING_PORT" /tmp/emdo-filter-gate-no-redirect "$STAGING_USER@$STAGING_HOST:/tmp/emdo-filter-gate-20261119.stage"
+      - name: Atomically upgrade gate service and verify with automatic rollback
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          test "$(id -u)" = 0
+          OLD=/usr/local/sbin/emdo-filter-gate
+          STAGE=/tmp/emdo-filter-gate-20261119.stage
+          SERVICE=emdo-filter-gate.service
+          test -s "$OLD" && test -s "$STAGE"
+          test "$(systemctl is-active "$SERVICE")" = active
+          nginx -t
+          BK="/root/emdo-filter-gate-no-redirect-backup-$(date -u +%Y%m%dT%H%M%SZ)"
+          install -d -m 0700 "$BK"
+          cp -p "$OLD" "$BK/emdo-filter-gate"
+          echo "BACKUP_DIR=$BK"
+          changed=0
+          rollback() {
+            rc=$?
+            trap - EXIT
+            if [ "$rc" != 0 ] && [ "$changed" = 1 ]; then
+              cp -p "$BK/emdo-filter-gate" "$OLD.rollback"
+              chmod 0755 "$OLD.rollback"
+              mv -f "$OLD.rollback" "$OLD"
+              systemctl restart "$SERVICE" || true
+              echo "GATE_BINARY_ROLLBACK_COMPLETE"
+            fi
+            rm -f "$STAGE"
+            exit "$rc"
+          }
+          trap rollback EXIT
+          install -m 0755 "$STAGE" "$OLD.new"
+          changed=1
+          mv -f "$OLD.new" "$OLD"
+          systemctl restart "$SERVICE"
+          for i in 1 2 3 4 5; do
+            if ss -lnt | grep -q '127.0.0.1:18427' && [ "$(systemctl is-active "$SERVICE")" = active ]; then break; fi
+            sleep 1
+          done
+          test "$(systemctl is-active "$SERVICE")" = active
+          ss -lnt | grep -q '127.0.0.1:18427'
+          # Probe the gate locally without generating WooCommerce requests.
+          code=$(curl -sS --max-time 6 -A 'EMDO-Gate-NoRedirect-QA'             -H 'X-Original-URI: /tienda/1957/?filter_calidad=emdo_probe'             -H 'X-Real-IP: 127.0.0.1'             -o /tmp/emdo-gate-direct-qa-body -w '%{http_code}' http://127.0.0.1:18427/)
+          test "$code" = 200
+          grep -q 'Verificando acceso a los filtros' /tmp/emdo-gate-direct-qa-body
+          code2=$(curl -sS --max-time 6 -A 'EMDO-Gate-NoRedirect-QA'             -H 'Referer: https://www.elmercadodeorigen.com/tienda/1957/'             -H 'X-Original-URI: /tienda/1957/?filter_calidad=emdo_probe&filter_preparacion=emdo_probe'             -H 'X-Real-IP: 127.0.0.1'             -o /tmp/emdo-gate-internal-qa-body -w '%{http_code}' http://127.0.0.1:18427/)
+          test "$code2" = 200
+          grep -q 'Verificando acceso a los filtros' /tmp/emdo-gate-internal-qa-body
+          echo "LOCAL_GATE_DIRECT_NO_REDIRECT=200"
+          echo "LOCAL_GATE_VALID_ORIGIN=200"
+          nginx -t
+          test "$(systemctl is-active nginx)" = active
+          echo "SIGNED_GATE_ACTIVE=$(systemctl is-active "$SERVICE")"
+          echo "NGINX_ACTIVE=$(systemctl is-active nginx)"
+          REMOTE
