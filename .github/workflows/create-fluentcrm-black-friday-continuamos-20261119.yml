@@ -1,0 +1,72 @@
+name: Create draft for Black Friday follow-up in FluentCRM
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/create-fluentcrm-black-friday-continuamos-20261119.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emdo-fluentcrm-black-friday-continuamos-20261119
+  cancel-in-progress: false
+
+jobs:
+  create-draft:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate email HTML and PHP
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/create-fluentcrm-black-friday-continuamos-20261119.php
+          grep -Fq 'BFMONTJAM' .github/data/fluentcrm-black-friday-continuamos-20261119.html
+          grep -Fq '##crm.unsubscribe_url##' .github/data/fluentcrm-black-friday-continuamos-20261119.html
+          grep -Fq 'Leyendas del Vacuno' .github/data/fluentcrm-black-friday-continuamos-20261119.html
+          test -n "$HOST" && test -n "$USER" && test -n "$SSHPASS"
+      - name: Safely create or update FluentCRM draft only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          SSH_PORT="${PORT:-22}"
+          [[ "$SSH_PORT" =~ ^[0-9]{1,5}$ ]]
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$SSH_PORT" -H "$HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH=(-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$SSH_PORT")
+          SCP=(-o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P "$SSH_PORT")
+          TARGET="$USER@$HOST"
+          STAGE="/tmp/emdo-fluentcrm-bf-20261119-$GITHUB_RUN_ID"
+          sshpass -e ssh "${SSH[@]}" "$TARGET" "install -d -m 0700 '$STAGE'"
+          sshpass -e scp "${SCP[@]}" .github/scripts/create-fluentcrm-black-friday-continuamos-20261119.php "$TARGET:$STAGE/run.php"
+          sshpass -e scp "${SCP[@]}" .github/data/fluentcrm-black-friday-continuamos-20261119.html "$TARGET:$STAGE/mailing.html"
+          sshpass -e ssh "${SSH[@]}" "$TARGET" "bash -s -- '$STAGE'" <<'REMOTE'
+          set -Eeuo pipefail
+          STAGE="$1"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          test -f "$ROOT/wp-config.php" && test -x "$PHP" && test -x "$WP"
+          "$PHP" -l "$STAGE/run.php"
+          SITE="$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --allow-root --skip-plugins --skip-themes)"
+          case "$SITE" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
+            *) echo "WRONG_PRODUCTION_SITE $SITE"; exit 5 ;;
+          esac
+          EMDO_FLUENTCRM_HTML_PATH="$STAGE/mailing.html" EMDO_FLUENTCRM_DRAFT_MODE=preflight "$PHP" -d memory_limit=768M "$WP" eval-file "$STAGE/run.php" --path="$ROOT" --allow-root
+          EMDO_FLUENTCRM_HTML_PATH="$STAGE/mailing.html" EMDO_FLUENTCRM_DRAFT_MODE=apply "$PHP" -d memory_limit=768M "$WP" eval-file "$STAGE/run.php" --path="$ROOT" --allow-root
+          EMDO_FLUENTCRM_HTML_PATH="$STAGE/mailing.html" EMDO_FLUENTCRM_DRAFT_MODE=verify "$PHP" -d memory_limit=768M "$WP" eval-file "$STAGE/run.php" --path="$ROOT" --allow-root
+          REMOTE
+          echo "FLUENTCRM_DRAFT_ONLY_DEPLOYMENT_VERIFIED"
