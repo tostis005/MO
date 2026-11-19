@@ -1,0 +1,86 @@
+name: Read-only post-filter PHP bottleneck diagnostic 20261119
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/audit-current-php-bottleneck-20261119.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Identify remaining uncapped PHP load and recent FPM slow stacks
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'python3 -' <<'PYREMOTE'
+          import os,re,json,glob,subprocess
+          from collections import Counter
+          from datetime import datetime,timezone,timedelta
+          from urllib.parse import urlsplit,parse_qsl
+          now=datetime.now(timezone.utc);cut=now-timedelta(minutes=4)
+          logs='/var/www/vhosts/system/elmercadodeorigen.com/logs'
+          rx=re.compile(r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]*?)(?:\s+HTTP/[0-9.]+)?"\s+(\d{3})\s+(\S+)(?:\s+"([^"]*)"\s+"([^"]*)")?')
+          asset=re.compile(r'\.(?:png|jpe?g|webp|avif|gif|svg|ico|css|js|woff2?|mp4|pdf)$',re.I)
+          for file in ['access_ssl_log','proxy_access_ssl_log']:
+              p=os.path.join(logs,file)
+              st=Counter();route=Counter();params=Counter();mins=Counter();ua=Counter()
+              n=dyn=0
+              with open(p,'rb') as f:
+                  f.seek(max(0,os.stat(p).st_size-15000000))
+                  if f.tell():f.readline()
+                  for line in f:
+                      m=rx.match(line.decode('utf8','replace'))
+                      if not m:continue
+                      ip,ds,method,target,status,size,ref,agent=m.groups()
+                      try:dt=datetime.strptime(ds,'%d/%b/%Y:%H:%M:%S %z').astimezone(timezone.utc)
+                      except:continue
+                      if dt<cut or dt>now+timedelta(minutes=1):continue
+                      u=urlsplit(target);p=u.path or '/'
+                      n+=1;dyn+=int(not asset.search(p));st[status]+=1;mins[dt.strftime('%H:%M')]+=1
+                      if p.startswith('/wp-content/'):p='/wp-content/*'
+                      elif p.startswith('/en/product/'):p='/en/product/*'
+                      elif p.startswith('/producto/'):p='/producto/*'
+                      elif p.startswith('/article-other/'):p='/article-other/*'
+                      elif p.startswith('/en/store/'):p='/en/store/'+p.split('/')[3]+'/*' if len(p.split('/'))>3 else '/en/store/*'
+                      elif p.startswith('/wp-admin/'):p='/wp-admin/*'
+                      elif p.startswith('/wp-json/'):p='/wp-json/*'
+                      route[p[:105]]+=1
+                      for k,v in parse_qsl(u.query[:1500],keep_blank_values=True):
+                          params[k[:40]]+=1
+                      ua['bot_named' if re.search(r'bot|spider|crawler|ahrefs|bytespider',agent or '',re.I) else 'browser_claim' if 'Mozilla/5.0' in (agent or '') else 'other']+=1
+              print('POST_GATE_APACHE_TRAFFIC',file,json.dumps({'at':now.isoformat(),'n':n,'dynamic':dyn,'statuses':dict(st),'top_routes':route.most_common(22),'params':params.most_common(18),'minutes':sorted(mins.items()),'user_agents':dict(ua)},ensure_ascii=False))
+          ps=subprocess.check_output(['ps','-eo','stat=,%cpu=,rss=,etimes=,comm=,args=','--sort=-%cpu'],text=True)
+          top=[]
+          for line in ps.splitlines()[:50]:
+              sp=line.split(None,5)
+              if len(sp)<5:continue
+              state,cpu,rss,age,cmd=sp[:5]
+              top.append({'state':state,'cpu':cpu,'rss_mb':round(int(rss)/1024,1),'age_sec':age,'cmd':cmd})
+          print('CURRENT_TOP_PROCESSES',json.dumps(top[:25]))
+          # FPM slow stack files read-only, no request arguments or secrets.
+          candidates=glob.glob(logs+'/*slow*')+glob.glob('/var/log/plesk-php*/**/*slow*',recursive=True)+glob.glob('/var/log/php*/**/*slow*',recursive=True)
+          slow=[]
+          for fp in sorted(set(candidates)):
+              if not os.path.isfile(fp):continue
+              try:
+                  size=os.path.getsize(fp)
+                  if size>50000000:continue
+                  with open(fp,'rb') as f:
+                      f.seek(max(0,size-500000))
+                      tail=f.read().decode('utf8','replace')
+                  plugin=Counter(re.findall(r'/wp-content/plugins/([^/\s]+)/',tail))
+                  plug2=Counter(re.findall(r'/wp-content/mu-plugins/([^/\s]+)/',tail))
+                  php=Counter(re.findall(r'(?:\[0x[0-9a-f]+\])?\s*([^\s]+\.php):\d+',tail))
+                  slow.append({'file':os.path.basename(fp),'size_bytes':size,'top_plugins':plugin.most_common(18),'top_mu':plug2.most_common(12),'frames':len(php)})
+              except Exception as e:slow.append({'file':os.path.basename(fp),'error':type(e).__name__})
+          print('CURRENT_FPM_SLOWLOG',json.dumps(slow[:15]))
+          PYREMOTE
