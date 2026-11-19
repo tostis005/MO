@@ -79,12 +79,12 @@ jobs:
           ss -lnt | grep -q '127.0.0.1:18427'
           # Probe the gate locally without generating WooCommerce requests.
           code=$(curl -sS --max-time 6 -A 'EMDO-Gate-NoRedirect-QA'             -H 'X-Original-URI: /tienda/1957/?filter_calidad=emdo_probe'             -H 'X-Real-IP: 127.0.0.1'             -o /tmp/emdo-gate-direct-qa-body -w '%{http_code}' http://127.0.0.1:18427/)
-          test "$code" = 200
-          grep -q 'Verificando acceso a los filtros' /tmp/emdo-gate-direct-qa-body
+          test "$code" = 403
+          grep -q 'Ir a la tienda y seleccionar los filtros' /tmp/emdo-gate-direct-qa-body
           code2=$(curl -sS --max-time 6 -A 'EMDO-Gate-NoRedirect-QA'             -H 'Referer: https://www.elmercadodeorigen.com/tienda/1957/'             -H 'X-Original-URI: /tienda/1957/?filter_calidad=emdo_probe&filter_preparacion=emdo_probe'             -H 'X-Real-IP: 127.0.0.1'             -o /tmp/emdo-gate-internal-qa-body -w '%{http_code}' http://127.0.0.1:18427/)
           test "$code2" = 200
           grep -q 'Verificando acceso a los filtros' /tmp/emdo-gate-internal-qa-body
-          echo "LOCAL_GATE_DIRECT_NO_REDIRECT=200"
+          echo "LOCAL_GATE_DIRECT_NO_REDIRECT=403"
           echo "LOCAL_GATE_VALID_ORIGIN=200"
           nginx -t
           test "$(systemctl is-active nginx)" = active
