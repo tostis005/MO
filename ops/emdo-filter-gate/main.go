@@ -122,26 +122,6 @@ func canonicalTarget(uri string)(filterTarget,bool){
  }
  return filterTarget{uri:uri,scope:scope,clean:clean,depth:depth,filtered:filtered},true
 }
-func permittedReferrer(r *http.Request,t filterTarget)bool{
- u,err:=url.Parse(r.Referer())
- if err!=nil||u==nil||(u.Scheme!="https"&&u.Scheme!="http")||u.User!=nil{return false}
- hostname:=strings.ToLower(u.Hostname())
- if hostname!="www.elmercadodeorigen.com"&&hostname!="elmercadodeorigen.com"{return false}
- // Do not accept a custom port, a deceptive host, or a different vendor.
- if port:=u.Port();port!=""&&port!="443"&&port!="80"{return false}
- originScope,_,ok:=targetFromPath(u.Path)
- if !ok{return false}
- switch {
- case strings.HasPrefix(t.scope,"vendor:"):
-  return originScope==t.scope
- case strings.HasPrefix(t.scope,"category:"):
-  // Category filters can be entered from the matching category or shop.
-  return originScope==t.scope||strings.HasPrefix(originScope,"shop:")
- case strings.HasPrefix(t.scope,"shop:"):
-  return originScope==t.scope
- default:return false
- }
-}
 func(g *gate)reserve(id string,cap int)(bool,int){
  g.mu.Lock();defer g.mu.Unlock()
  now:=time.Now()
@@ -191,7 +171,9 @@ func(g *gate)handle(w http.ResponseWriter,r *http.Request){
  id,valid:="",false
  if c!=nil{id,valid=g.parseTicket(c.Value,"p",identity(r)+"|"+t.scope)}
  if !valid {
-  if !permittedReferrer(r,t){http.Redirect(w,r,t.clean,http.StatusFound);return}
+  // Challenge direct deep links without redirecting them to a second expensive
+  // storefront request. Successful first-party JS verification retains the
+  // signed per-visitor quota and scoped server-side origin gate.
   issueChallenge(w,r,g,t);return
  }
  cap,key:=12,"simple:"+id
