@@ -1,0 +1,128 @@
+name: Protect filters across all shops without blocking normal browsing 20261119
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/deploy-all-shops-filter-traffic-budget-20261119.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: emdo-prod-nginx-filter-controls
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install SSH helper
+        run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Add distributed-flood budget only at the existing signed filter gate for all vendors and catalogues
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          test "$(id -u)" = 0
+          VHOST=/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf
+          GLOBAL=/etc/nginx/conf.d/97-emdo-all-shops-filter-admission-20261119.conf
+          MARK='# BEGIN EMDO ALL SHOPS FILTER ADMISSION BUDGET 20261119'
+          test -s "$VHOST"
+          test -s /etc/nginx/conf.d/95-emdo-filter-signed-admission-20261027.conf
+          nginx -t
+          if grep -Fq "$MARK" "$VHOST"; then
+            test -s "$GLOBAL"
+            echo 'ALREADY_INSTALLED'
+          else
+            test ! -e "$GLOBAL"
+            BACKUP="/root/emdo-all-shop-filter-budget-$(date -u +%Y%m%dT%H%M%SZ)"
+            install -d -m 0700 "$BACKUP"
+            cp -p "$VHOST" "$BACKUP/vhost_nginx.conf"
+            echo "BACKUP_DIR=$BACKUP"
+            changed=0
+            rollback() {
+              rc=$?
+              trap - EXIT
+              if [ "$rc" != 0 ] && [ "$changed" = 1 ]; then
+                cp -p "$BACKUP/vhost_nginx.conf" "$VHOST"
+                rm -f "$GLOBAL"
+                nginx -t && systemctl reload nginx || true
+                echo 'AUTOMATIC_ROLLBACK_COMPLETE'
+              fi
+              exit "$rc"
+            }
+            trap rollback EXIT
+            # This is a generous aggregate backstop against thousands of proxy IPs.
+            # Existing Go signed gate keeps exact real-visitor quotas (4/min complex, 12/min simple).
+            # No rate controls on product pages, unfiltered store visits, cart, checkout or payments.
+            cat > "$GLOBAL" <<'CONF'
+          # In-memory shared budget only inside @emdo_signed_filter_gate.
+          # Applies to WooCommerce filter requests for ALL /tienda/, /en/store/,
+          # /en/tienda/ and product-category storefronts already covered by gate.
+          # Global 6 req/s, with a burst of 24, absorbs peaks from humans.
+          limit_req_zone $server_name zone=emdo_all_shop_filter_gate_global:1m rate=6r/s;
+          # No-referrer, no-signed-cookie deep links are rarely real filter actions:
+          # bound this distributed anonymous crawler class separately, at 2 req/s.
+          # Unknown/missing referer with a valid signed pass is not classified here.
+          map "$http_referer|$cookie_emdo_filter_pass" $emdo_filter_direct_anon_budget_key {
+              default "";
+              "|" "emdo-direct-anonymous-filter";
+          }
+          limit_req_zone $emdo_filter_direct_anon_budget_key zone=emdo_all_shop_direct_filter_global:1m rate=2r/s;
+          CONF
+            chmod 0644 "$GLOBAL"
+            changed=1
+            python3 - "$VHOST" <<'PY'
+          import sys
+          p=sys.argv[1]
+          s=open(p,encoding='utf8').read()
+          mark='# BEGIN EMDO ALL SHOPS FILTER ADMISSION BUDGET 20261119'
+          start='location @emdo_signed_filter_gate {\n'
+          assert s.count(start)==1, 'expected exactly one named filter admission gate'
+          head,tail=s.split(start,1)
+          end=tail.index('\n}')
+          inside,rest=tail[:end],tail[end:]
+          needle='    limit_req zone=emdo_signed_gate_entry_ip burst=15 nodelay;'
+          assert inside.count(needle)==1,'existing per-IP gate throttle not detected'
+          extra=(
+           '\n    '+mark+
+           '\n    limit_req zone=emdo_all_shop_filter_gate_global burst=24 nodelay;'+
+           '\n    limit_req zone=emdo_all_shop_direct_filter_global burst=12 nodelay;'+
+           '\n    # END EMDO ALL SHOPS FILTER ADMISSION BUDGET 20261119'
+          )
+          inside=inside.replace(needle,needle+extra,1)
+          updated=head+start+inside+rest
+          assert updated.count(mark)==1
+          open(p,'w',encoding='utf8').write(updated)
+          PY
+            nginx -t
+            systemctl reload nginx
+            test "$(systemctl is-active nginx)" = active
+            echo 'ALL_SHOPS_FILTER_BUDGET_INSTALLED'
+          fi
+          # Tests are read-only; the live gate must remain reachable.
+          ss -lnt | grep -q '127.0.0.1:18427'
+          nginx -t
+          python3 - "$VHOST" "$GLOBAL" <<'PY'
+          import sys
+          v=open(sys.argv[1]).read()
+          g=open(sys.argv[2]).read()
+          x=v.split('location @emdo_signed_filter_gate {',1)[1].split('}',1)[0]
+          assert 'limit_req zone=emdo_signed_gate_entry_ip burst=15 nodelay;' in x
+          assert 'limit_req zone=emdo_all_shop_filter_gate_global burst=24 nodelay;' in x
+          assert 'limit_req zone=emdo_all_shop_direct_filter_global burst=12 nodelay;' in x
+          assert 'rate=6r/s;' in g and 'rate=2r/s;' in g
+          assert v.count('# BEGIN EMDO ALL SHOPS FILTER ADMISSION BUDGET 20261119')==1
+          print('GUARD_CONFIG_VERIFIED: existing per-IP plus global 6/s and anonymous 2/s, all shops')
+          PY
+          # One probe per route; never run a load test against production during an incident.
+          for test_route in             '/tienda/1957/?filter_calidad=emdo_probe'             '/tienda/montjam/?filter_calidad=emdo_probe'             '/en/store/hidalgo-de-la-jara/?filter_calidad=emdo_probe'             '/en/store/chocolates-artesanos-isabel/?filter_calidad=emdo_probe'             '/categoria-producto/jamones-paletas/?filter_calidad=emdo_probe'; do
+             code=$(curl -ksS --max-time 12 --retry 0 -A 'EMDO-filter-budget-verification/1.0' -o /dev/null -w '%{http_code}' -H 'Referer: https://www.elmercadodeorigen.com/tienda/1957/' "https://www.elmercadodeorigen.com$test_route" || true)
+             echo "FILTER_ROUTE_QA route=$test_route status=$code"
+          done
+          echo "NGINX_ACTIVE=$(systemctl is-active nginx)"
+          REMOTE
