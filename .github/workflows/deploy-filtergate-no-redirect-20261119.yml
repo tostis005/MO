@@ -27,7 +27,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          GO111MODULE=off go test -v ./ops/emdo-filter-gate
+          GO111MODULE=off go test -count=1 -v ./ops/emdo-filter-gate
           GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /tmp/emdo-filter-gate-no-redirect ops/emdo-filter-gate/main.go
           test -s /tmp/emdo-filter-gate-no-redirect
       - name: Stage signed gate binary on production host
