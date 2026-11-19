@@ -39,7 +39,7 @@ jobs:
           test ! -e "$DROPIN"
           test ! -e "$PLUGIN"
           ! grep -q 'WP_REDIS_PREFIX' "$CONFIG"
-          test ! -x /usr/bin/redis-server
+          # Package may already be staged from an automatically rolled-back attempt.
           "$PHP" -m | grep -qx redis
           nginx -t
           test "$(systemctl is-active nginx)" = active
@@ -57,7 +57,7 @@ jobs:
               rm -f "$DROPIN"
               cp -p "$BK/wp-config.php" "$CONFIG"
               if test -e "$PLUGIN"; then
-                timeout 20 "$PHP" "$WP" plugin deactivate redis-cache --path="$ROOT" --allow-root --quiet || true
+                timeout 20 "$PHP" -d memory_limit=768M "$WP" plugin deactivate redis-cache --path="$ROOT" --allow-root --quiet || true
                 mv "$PLUGIN" "$BK/redis-cache-plugin" || true
               fi
               if test -f "$BK/redis-original.conf"; then cp -p "$BK/redis-original.conf" "$CONF"; fi
@@ -125,20 +125,20 @@ jobs:
           PY
           "$PHP" -l "$CONFIG" | grep -q 'No syntax errors detected'
           echo 'INSTALLING_OFFICIAL_REDIS_CACHE_PLUGIN'
-          timeout 85 "$PHP" "$WP" plugin install redis-cache --activate --path="$ROOT" --allow-root --quiet
+          timeout 85 "$PHP" -d memory_limit=768M "$WP" plugin install redis-cache --activate --path="$ROOT" --allow-root --quiet
           test -s "$PLUGIN/redis-cache.php"
           # Match ownership to existing site plugins, retaining future update ability.
           own=$(stat -c '%u:%g' "$ROOT/wp-content/plugins/woocommerce")
           chown -R "$own" "$PLUGIN"
           echo 'ENABLING_OBJECT_CACHE_DROPIN'
-          timeout 35 "$PHP" "$WP" redis enable --path="$ROOT" --allow-root
+          timeout 35 "$PHP" -d memory_limit=768M "$WP" redis enable --path="$ROOT" --allow-root
           test -s "$DROPIN"
           chown "$own" "$DROPIN"
-          timeout 20 "$PHP" "$WP" redis status --path="$ROOT" --allow-root | grep -Ei 'Status|Connected|Client|Drop-in|Redis'
+          timeout 20 "$PHP" -d memory_limit=768M "$WP" redis status --path="$ROOT" --allow-root | grep -Ei 'Status|Connected|Client|Drop-in|Redis'
           # Verify a cached value survives separate PHP processes.
-          first=$(timeout 20 "$PHP" "$WP" eval 'echo wp_cache_set("emdo_redis_cross_process_probe","redis_ok_20261119","emdo_health",120)?"CACHE_SET":"CACHE_FAILED";' --path="$ROOT" --allow-root --skip-themes 2>/dev/null)
+          first=$(timeout 20 "$PHP" -d memory_limit=768M "$WP" eval 'echo wp_cache_set("emdo_redis_cross_process_probe","redis_ok_20261119","emdo_health",120)?"CACHE_SET":"CACHE_FAILED";' --path="$ROOT" --allow-root --skip-themes 2>/dev/null)
           test "$first" = CACHE_SET
-          second=$(timeout 20 "$PHP" "$WP" eval 'echo wp_cache_get("emdo_redis_cross_process_probe","emdo_health");' --path="$ROOT" --allow-root --skip-themes 2>/dev/null)
+          second=$(timeout 20 "$PHP" -d memory_limit=768M "$WP" eval 'echo wp_cache_get("emdo_redis_cross_process_probe","emdo_health");' --path="$ROOT" --allow-root --skip-themes 2>/dev/null)
           test "$second" = redis_ok_20261119
           echo 'PERSISTENT_OBJECT_CACHE_VERIFIED'
           # Low-frequency smoke tests; no login, checkout state changes, or purchases.
