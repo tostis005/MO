@@ -26,7 +26,7 @@ jobs:
           from datetime import datetime,timezone,timedelta
           from collections import Counter
           from urllib.parse import urlsplit
-          now=datetime.now(timezone.utc);cut=now-timedelta(minutes=5)
+          now=datetime.now(timezone.utc);cut=now-timedelta(minutes=2)
           p='/var/www/vhosts/system/elmercadodeorigen.com/logs/proxy_access_ssl_log'
           rx=re.compile(r'^\S+ \S+ \S+ \[([^]]+)\] "(\S+) ([^"]+?) HTTP/[^"]+" (\d{3}) ')
           stat=Counter();path=Counter();minu=Counter();kind=Counter();n=0
@@ -49,7 +49,7 @@ jobs:
                   minu[dt.strftime('%H:%M')]+=1
           ps=subprocess.check_output(['ps','-eo','stat=,%cpu=,rss=,args='],text=True)
           workers=[x.split(None,3) for x in ps.splitlines() if 'php-fpm: pool elmercadodeorigen.com' in x]
-          output={'generated_utc':now.isoformat(),'loadavg':os.getloadavg(),'php_workers':len(workers),'running':sum(x[0].startswith('R') for x in workers),'php_cpu_total':round(sum(float(x[1]) for x in workers),2),'total_5m':n,'statuses':dict(stat),'top_routes':path.most_common(12),'per_minute':sorted(minu.items()),'hidalgo':[{'type':k[0],'status':k[1],'count':v} for k,v in kind.most_common()]}
+          output={'generated_utc':now.isoformat(),'loadavg':os.getloadavg(),'php_workers':len(workers),'running':sum(x[0].startswith('R') for x in workers),'php_cpu_total':round(sum(float(x[1]) for x in workers),2),'total_2m':n,'statuses':dict(stat),'top_routes':path.most_common(12),'per_minute':sorted(minu.items()),'hidalgo':[{'type':k[0],'status':k[1],'count':v} for k,v in kind.most_common()]}
           print('INCIDENT_RECOVERY',json.dumps(output,ensure_ascii=False))
           # A small number of critical route tests, never a production load test.
           for label,path in [('store','/tienda/1957/'),('cart','/carrito/'),('checkout','/finalizar-compra/')]:
