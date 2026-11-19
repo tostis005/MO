@@ -122,6 +122,38 @@ func canonicalTarget(uri string)(filterTarget,bool){
  }
  return filterTarget{uri:uri,scope:scope,clean:clean,depth:depth,filtered:filtered},true
 }
+// Only a genuine in-site navigation can initiate an unsigned filter challenge.
+// Visitors with a valid signed pass may continue via a bookmark or direct link.
+func permittedReferrer(r *http.Request,t filterTarget)bool{
+ u,err:=url.Parse(r.Referer())
+ if err!=nil||u==nil||(u.Scheme!="https"&&u.Scheme!="http")||u.User!=nil{return false}
+ hostname:=strings.ToLower(u.Hostname())
+ if hostname!="www.elmercadodeorigen.com"&&hostname!="elmercadodeorigen.com"{return false}
+ if port:=u.Port();port!=""&&port!="443"&&port!="80"{return false}
+ originScope,_,ok:=targetFromPath(u.Path)
+ if !ok{return false}
+ switch {
+ case strings.HasPrefix(t.scope,"vendor:"):
+  return originScope==t.scope
+ case strings.HasPrefix(t.scope,"category:"):
+  return originScope==t.scope||strings.HasPrefix(originScope,"shop:")
+ case strings.HasPrefix(t.scope,"shop:"):
+  return originScope==t.scope
+ default:return false
+ }
+}
+// Never redirect direct, unverified bot filter URLs to a clean storefront:
+// that previously doubled requests and made a distributed flood more costly.
+// A legitimate direct-link visitor can manually open the clean storefront.
+func directFilterDenied(w http.ResponseWriter,r *http.Request,t filterTarget){
+ w.Header().Set("Content-Type","text/html; charset=utf-8")
+ w.Header().Set("Cache-Control","private, no-store, max-age=0")
+ w.Header().Set("X-Robots-Tag","noindex, nofollow")
+ w.Header().Set("X-Content-Type-Options","nosniff")
+ w.WriteHeader(http.StatusForbidden)
+ fmt.Fprintf(w,`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Acceso a filtros</title></head><body style="font:16px system-ui,sans-serif;max-width:34rem;margin:12vh auto;padding:1.5rem"><h2>Accede desde la tienda para utilizar los filtros</h2><p>Esta comprobación protege el catálogo ante solicitudes masivas.</p><p><a href="%s">Ir a la tienda y seleccionar los filtros</a></p></body></html>`,html.EscapeString(t.clean))
+}
+
 func(g *gate)reserve(id string,cap int)(bool,int){
  g.mu.Lock();defer g.mu.Unlock()
  now:=time.Now()
@@ -171,9 +203,7 @@ func(g *gate)handle(w http.ResponseWriter,r *http.Request){
  id,valid:="",false
  if c!=nil{id,valid=g.parseTicket(c.Value,"p",identity(r)+"|"+t.scope)}
  if !valid {
-  // Challenge direct deep links without redirecting them to a second expensive
-  // storefront request. Successful first-party JS verification retains the
-  // signed per-visitor quota and scoped server-side origin gate.
+  if !permittedReferrer(r,t){directFilterDenied(w,r,t);return}
   issueChallenge(w,r,g,t);return
  }
  cap,key:=12,"simple:"+id
