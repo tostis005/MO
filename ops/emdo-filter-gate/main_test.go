@@ -48,40 +48,17 @@ func TestTargetAndScope(t *testing.T){
   if ok&&(got.scope!=tc.scope||got.clean!=tc.clean||got.depth!=tc.depth||got.filtered!=tc.filtered){t.Fatalf("%q got %+v",tc.uri,got)}
  }
 }
-func TestSameSectionReferrerOnly(t *testing.T){
- tests:=[]struct{target,ref string;allow bool}{
-  {"/tienda/hidalgo-de-la-jara/?filter_foo=x","https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/",true},
-  {"/tienda/hidalgo-de-la-jara/?filter_foo=x","https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/page/2/?filter_foo=y",true},
-  {"/tienda/1957/?filter_foo=x","https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/",false},
-  {"/tienda/hidalgo-de-la-jara/?filter_foo=x","https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara-evil/",false},
-  {"/tienda/hidalgo-de-la-jara/?filter_foo=x","https://www.elmercadodeorigen.com/tienda/",false},
-  {"/tienda/hidalgo-de-la-jara/?filter_foo=x","https://www.elmercadodeorigen.com/tienda/montjam/",false},
-  {"/tienda/hidalgo-de-la-jara/?filter_foo=x","https://evil.example/tienda/hidalgo-de-la-jara/",false},
-  {"/tienda/hidalgo-de-la-jara/?filter_foo=x","",false},
-  {"/categoria-producto/jamones-paletas/?filter_foo=x","https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/",true},
-  {"/categoria-producto/jamones-paletas/?filter_foo=x","https://www.elmercadodeorigen.com/tienda/",true},
-  {"/categoria-producto/jamones-paletas/?filter_foo=x","https://www.elmercadodeorigen.com/categoria-producto/embutidos-y-curados/",false},
-  {"/categoria-producto/quesos/curados/?filter_foo=x","https://www.elmercadodeorigen.com/categoria-producto/quesos/curados/",true},
-  {"/categoria-producto/quesos/curados/?filter_foo=x","https://www.elmercadodeorigen.com/categoria-producto/quesos/",false},
-  {"/tienda/?filter_foo=x","https://www.elmercadodeorigen.com/tienda/",true},
-  {"/tienda/?filter_foo=x","https://www.elmercadodeorigen.com/tienda/1957/",false},
-  {"/en/store/?filter_foo=x","https://www.elmercadodeorigen.com/en/store/",true},
- }
- for _,tc:=range tests{
-  tar,ok:=canonicalTarget(tc.target);if !ok{t.Fatal(tc.target)}
-  r:=httptest.NewRequest(http.MethodGet,"https://www.elmercadodeorigen.com"+tc.target,nil)
-  r.Header.Set("Referer",tc.ref)
-  if got:=permittedReferrer(r,tar);got!=tc.allow {t.Errorf("target %q ref %q got %v want %v",tc.target,tc.ref,got,tc.allow)}
- }
-}
 func TestGateEndToEndScopes(t *testing.T){
  g:=&gate{secret:[]byte(strings.Repeat("test-key",6)),buckets:make(map[string]*visitorBucket),lastGC:time.Now()}
  uri:="/tienda/hidalgo-de-la-jara/?filter_calidad=x"
  req:=httptest.NewRequest("GET","https://www.elmercadodeorigen.com/",nil)
  req.Header.Set("X-Original-URI",uri);req.Header.Set("X-Real-IP","203.0.113.5")
  req.Header.Set("Referer","https://www.elmercadodeorigen.com/tienda/1957/")
- denied:=httptest.NewRecorder();g.handle(denied,req)
- if denied.Code!=302||denied.Header().Get("Location")!="/tienda/hidalgo-de-la-jara/"{t.Fatalf("wrong ref should redirect, got %d %s",denied.Code,denied.Header().Get("Location"))}
+ wrongRef:=httptest.NewRecorder();g.handle(wrongRef,req)
+ if wrongRef.Code!=200||!strings.Contains(wrongRef.Body.String(),"Verificando acceso a los filtros"){t.Fatal("cross-vendor referrer must receive JS challenge, not a redirect")}
+ req.Header.Del("Referer")
+ direct:=httptest.NewRecorder();g.handle(direct,req)
+ if direct.Code!=200||direct.Header().Get("Location")!=""||!strings.Contains(direct.Body.String(),"/__emdo_filtergate/verify?scope=vendor%3Ahidalgo-de-la-jara"){t.Fatalf("direct link must stay on challenge without redirect, got %d",direct.Code)}
  req.Header.Set("Referer","https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/")
  chal:=httptest.NewRecorder();g.handle(chal,req)
  if chal.Code!=200||!strings.Contains(chal.Body.String(),"/__emdo_filtergate/verify?scope=vendor%3Ahidalgo-de-la-jara"){t.Fatal("same vendor must receive scoped challenge")}
