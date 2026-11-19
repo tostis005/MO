@@ -1,0 +1,54 @@
+name: Inspect effective Nginx filter rate maps 20261119
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/inspect-effective-filter-maps-20261119.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get install -y -qq --no-install-recommends sshpass >/dev/null
+      - name: Print scoped effective server-level rate maps and redirects safely
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sshpass -e ssh -o ConnectTimeout=12 -o StrictHostKeyChecking=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -p "$STAGING_PORT" "$STAGING_USER@$STAGING_HOST" 'python3 -' <<'PYREMOTE'
+          import re,os,subprocess,json
+          from collections import defaultdict
+          r=subprocess.run(['nginx','-T'],text=True,capture_output=True,timeout=18)
+          s=r.stdout
+          targets=('emdo_filter_ip_key','emdo_filter_global_key','emdo_filter_global','emdo_filter_per_ip','emdo_en_shop_direct_query','emdo_en_shop_query_budget_key','emdo_en_shop_clean_direct_key','emdo_gate_vendor_path','emdo_gate_has_filters','emdo_geo_reject_outside_gate','emdo_20261029_hidalgo_direct_key','emdo_signed_gate_entry_ip','limit_req_status')
+          lines=s.splitlines()
+          snippets=defaultdict(list)
+          for i,line in enumerate(lines):
+              if any(x in line for x in targets):
+                  # Limit to top 45 matches, context to 5 lines
+                  key=[x for x in targets if x in line][0]
+                  lo=max(0,i-2);hi=min(len(lines),i+6)
+                  snippet='\n'.join(lines[lo:hi])
+                  if ('secret' not in snippet.lower() and 'password' not in snippet.lower() and
+                      'auth_basic' not in snippet.lower()):
+                      snippet=re.sub(r'https?://[^\s";]+','URL_REDACTED',snippet)
+                      snippets[key].append({'line':i+1,'excerpt':snippet[:2000]})
+          print('MAPS_AUDIT',json.dumps({k:v[:8] for k,v in snippets.items()},ensure_ascii=False))
+          p='/var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf'
+          v=open(p,errors='replace').read().splitlines()
+          sections=[(1,16),(150,180),(245,280),(320,385)]
+          for lo,hi in sections:
+              rows=[]
+              for i in range(lo-1,min(hi,len(v))):
+                  line=v[i]
+                  if any(x in line.lower() for x in ('password','secret','auth_basic','proxy_set_header authorization')):line='REDACTED'
+                  line=re.sub(r'https?://[^\s";]+','URL_REDACTED',line)
+                  rows.append(f'{i+1}: {line[:400]}')
+              print('VHOST_SECTION',lo,hi,json.dumps(rows))
+          PYREMOTE
