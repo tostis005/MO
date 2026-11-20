@@ -194,9 +194,20 @@ const {chromium} = require('playwright-core');
             cashbackLines.every(el=>el.textContent.includes('2 % de cashback') &&
               el.textContent.includes('Después de la campaña, seguirás acumulando el 1 %') && el.textContent.includes('monedero') &&
               !!el.querySelector('a[href="#club-emdo"]')),
-          // The stacked media has a dedicated header and a flow-based image grid.
-          // On desktop the existing side-by-side media uses a different intrinsic height model.
-          hidalgoPhotoLabelsNoOverlap:!enabledSellers.includes('hidalgo') || window.innerWidth>780 || (
+          // Check producer heading, both photographs and both individual DOP captions.
+          hidalgoLabelGeometry:{
+            producerCaptionBottom:hidalgoCaption?.getBoundingClientRect().bottom,
+            photoGridTop:hidalgoDuo?.getBoundingClientRect().top,
+            mediaBottom:hidalgoMedia?.getBoundingClientRect().bottom,
+            figures:hidalgoFigures.map(figure=>{
+              const picture=figure.querySelector('.bf26-hidalgo-piece__photo')?.getBoundingClientRect();
+              const caption=figure.querySelector('figcaption')?.getBoundingClientRect();
+              return {photoBottom:picture?.bottom,labelTop:caption?.top,
+                labelBottom:caption?.bottom,labelLeft:caption?.left,
+                labelRight:caption?.right};
+            })
+          },
+          hidalgoPhotoLabelsNoOverlap:!enabledSellers.includes('hidalgo') || (
             !!hidalgoMedia && !!hidalgoDuo && !!hidalgoCaption &&
             hidalgoFigures.length===2 &&
             hidalgoCaption.getBoundingClientRect().bottom+5<=hidalgoDuo.getBoundingClientRect().top &&
