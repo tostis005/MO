@@ -1343,3 +1343,58 @@ html body.emdo-bf2026-page :is(.site-footer,#colophon) {
   .bf26 .bf26-exotic__item{min-height:80px}
   .bf26 .bf26-exotic__media{width:52px;height:58px;flex-basis:52px}
 }
+
+
+/* Black Friday 2026 · 10% manufacturer coupons after Latitudes.
+   Three editorial producer cards; original Hidalgo/Montjam layouts are untouched. */
+.bf26 .bf26-new-makers{margin-top:44px;padding:38px 0 0;border-top:1px solid #e2dfd4}
+.bf26 .bf26-new-makers__header{display:flex;align-items:flex-end;justify-content:space-between;gap:38px;margin-bottom:24px}
+.bf26 .bf26-new-makers__eyebrow{font-size:11px;font-weight:850;letter-spacing:.15em;color:#48745c;line-height:1.6}
+.bf26 .bf26-new-makers__eyebrow span{margin-right:6px;color:#a48958}
+.bf26 .bf26-new-makers__header h3{font-size:clamp(30px,3.3vw,45px);line-height:1.12;letter-spacing:-.045em;color:#173d2d;font-weight:650;margin-top:10px}
+.bf26 .bf26-new-makers__header h3 em{font:italic 400 .94em/1.15 Georgia,serif;color:#907346}
+.bf26 .bf26-new-makers__header>p{max-width:365px;font-size:14px;line-height:1.65;color:#5b6c60}
+.bf26 .bf26-new-makers__grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;align-items:stretch}
+.bf26 .bf26-new-maker{min-width:0;display:flex;flex-direction:column;overflow:hidden;border-radius:10px;background:#fff;border:1px solid #e6e3d8;box-shadow:0 9px 35px #1e352910}
+.bf26 .bf26-new-maker__visual{height:168px;flex:0 0 168px;display:flex;align-items:center;justify-content:center;position:relative;isolation:isolate;overflow:hidden;background:radial-gradient(circle at 65% 40%,#d4b99a,#aa775c)}
+.bf26 .bf26-new-maker__visual:before{content:"";position:absolute;z-index:-1;left:-8%;top:-65%;width:300px;height:300px;border:1px solid #fff7;border-radius:50%;box-shadow:0 0 0 36px #ffffff18,0 0 0 85px #ffffff12}
+.bf26 .bf26-new-maker--huerta .bf26-new-maker__visual{background:radial-gradient(circle at 65% 40%,#d3ddba,#87a07b)}
+.bf26 .bf26-new-maker--ikore .bf26-new-maker__visual{background:radial-gradient(circle at 65% 40%,#d8bd96,#9e7b5f)}
+.bf26 .bf26-new-maker__visual .bf26-photo{display:block;max-height:150px;max-width:72%;width:auto;height:auto;object-fit:contain;filter:drop-shadow(0 9px 13px #1b261c35);position:relative;z-index:1}
+.bf26 .bf26-new-maker__fallback{font-size:74px;line-height:1;filter:drop-shadow(0 10px 14px #0003);position:relative;z-index:1}
+.bf26 .bf26-new-maker__visual-label{position:absolute;left:16px;bottom:13px;z-index:2;color:#fff;padding:5px 9px;background:#1b382aa8;border-radius:4px;font-size:9px;font-weight:850;letter-spacing:.1em}
+.bf26 .bf26-new-maker__body{padding:25px 24px 23px;display:flex;flex-direction:column;flex:1 1 auto;min-width:0}
+.bf26 .bf26-new-maker__category{font-size:10px;color:#698272;font-weight:850;letter-spacing:.1em;line-height:1.5}
+.bf26 .bf26-new-maker__body h4{font-size:clamp(22px,2.1vw,29px);letter-spacing:-.04em;color:#173e2f;font-weight:680;line-height:1.15;min-height:67px;margin:12px 0 10px}
+.bf26 .bf26-new-maker__description{font-size:13px;line-height:1.7;color:#59685e;min-height:66px}
+.bf26 .bf26-new-maker__promotion{display:flex;gap:14px;align-items:center;margin-top:22px;padding:17px 0;border-block:1px solid #e8e8df}
+.bf26 .bf26-new-maker__percentage{font-size:52px;font-weight:760;line-height:1;letter-spacing:-.08em;color:#174535;white-space:nowrap}
+.bf26 .bf26-new-maker__percentage span{font-size:.55em;letter-spacing:-.03em;margin-left:3px}
+.bf26 .bf26-new-maker__promotion>span{font-size:10px;line-height:1.6;font-weight:850;letter-spacing:.08em;color:#456c51}
+.bf26 .bf26-new-maker__coupon{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:17px 0 22px}
+.bf26 .bf26-new-maker__coupon>span{font-size:10px;font-weight:850;letter-spacing:.075em;color:#67766b}
+.bf26 .bf26-new-maker__coupon .bf26-coupon{font-size:12px;max-width:100%;overflow-wrap:anywhere;white-space:normal;padding:7px 9px!important}
+.bf26 .bf26-new-maker__cta{width:100%;margin-top:auto;font-size:13px;min-height:49px;padding:13px 17px}
+.bf26 .bf26-new-makers__note{font-size:12px;line-height:1.65;color:#637266;margin-top:19px;max-width:980px}
+.bf26 .bf26-new-makers__note a{color:#1c563b!important;font-weight:750;text-decoration:underline;text-underline-offset:3px}
+@media(max-width:1030px){
+  .bf26 .bf26-new-makers__grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .bf26 .bf26-new-maker__body h4,.bf26 .bf26-new-maker__description{min-height:0}
+  .bf26 .bf26-new-makers__header{align-items:flex-start}
+}
+@media(max-width:690px){
+  .bf26 .bf26-new-makers{margin-top:31px;padding-top:29px}
+  .bf26 .bf26-new-makers__header{display:block;margin-bottom:20px}
+  .bf26 .bf26-new-makers__header>p{margin-top:13px;font-size:13px}
+  .bf26 .bf26-new-makers__grid{grid-template-columns:minmax(0,1fr);gap:15px}
+  .bf26 .bf26-new-maker__visual{height:156px;flex-basis:156px}
+  .bf26 .bf26-new-maker__body{padding:22px 20px}
+  .bf26 .bf26-new-maker__body h4{font-size:26px}
+  .bf26 .bf26-new-maker__description{font-size:13px}
+  .bf26 .bf26-new-makers__note{font-size:11px}
+}
+@media(max-width:375px){
+  .bf26 .bf26-new-maker__coupon{align-items:flex-start;flex-direction:column}
+  .bf26 .bf26-new-maker__percentage{font-size:45px}
+}
+

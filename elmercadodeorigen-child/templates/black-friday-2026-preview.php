@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
  * Si una ficha cambia o no hay fotografía, se utiliza una composición gráfica.
  */
 if ( ! function_exists( 'emdo_bf2026_photo' ) ) {
-	function emdo_bf2026_photo( string $slug, string $alt, string $size = 'large' ): string {
+	function emdo_bf2026_photo( string $slug, string $alt, string $size = 'large', string $loading = 'lazy' ): string {
 		if ( ! function_exists( 'wc_get_product' ) ) { return ''; }
 		$post = get_page_by_path( $slug, OBJECT, 'product' );
 		if ( ! $post instanceof WP_Post || 'publish' !== $post->post_status ) { return ''; }
@@ -25,7 +25,7 @@ if ( ! function_exists( 'emdo_bf2026_photo' ) ) {
 			array(
 				'alt'      => $alt,
 				'class'    => 'bf26-photo',
-				'loading'  => 'lazy',
+				'loading'  => $loading,
 				'decoding' => 'async',
 			)
 		);
@@ -34,6 +34,9 @@ if ( ! function_exists( 'emdo_bf2026_photo' ) ) {
 
 $hidalgo_url  = home_url( '/tienda/hidalgo-de-la-jara/' );
 $montjam_url  = home_url( '/tienda/montjam/' );
+$bf26_chocolate_url = home_url( '/tienda/chocolates-artesanos-isabel/' );
+$bf26_huerta_url    = home_url( '/tienda/la-huerta-de-ana-mary/' );
+$bf26_ikore_url     = home_url( '/tienda/ikore-kofi/' );
 $club_account_url = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : home_url( '/mi-cuenta/' );
 $club_wallet_url  = function_exists( 'wc_get_account_endpoint_url' ) ? wc_get_account_endpoint_url( 'monedero' ) : $club_account_url;
 
@@ -57,6 +60,11 @@ $hidalgo_ham_dop = emdo_bf2026_photo( 'jamon-de-bellota-100-iberico-con-dop-los-
 $hidalgo_palet = emdo_bf2026_photo( 'paleta-de-bellota-100-iberico', 'Paleta de bellota 100 % ibérica de Hidalgo de la Jara' );
 $montjam_ham   = emdo_bf2026_photo( 'jamon-de-bellota-100-iberico-montjam', 'Jamón de bellota 100 % ibérico de Montjam' );
 $montjam_slice = emdo_bf2026_photo( 'jamon-bellota-100-iberico-loncheado-montjam-90g', 'Sobre de jamón de bellota 100 % ibérico loncheado Montjam' );
+
+/* Imágenes de artículos publicados, con fallback visual si dejan de estar disponibles. */
+$bf26_chocolate_photo = emdo_bf2026_photo( 'crema-bioft-de-chocolate-negro-con-45-de-avellanas-y-cafe-arabica-200-g', 'Crema artesana de chocolate de Chocolates Artesanos Isabel', 'medium', 'eager' );
+$bf26_huerta_photo    = emdo_bf2026_photo( '10-kg-de-hortalizas-frescas', 'Caja de hortalizas frescas de La Huerta de Ana Mary', 'medium', 'eager' );
+$bf26_ikore_photo     = emdo_bf2026_photo( 'cafe-ikore-kofi-el-indio', 'Café de especialidad Colombia El Indio de Ikore Kofi', 'medium', 'eager' );
 
 /**
  * Siete packs públicos de Latitudes, independientes de los originales Mentta.
@@ -266,6 +274,79 @@ get_header();
 				<p class="bf26-exotic__note">El 2 % del Club EMDO está sujeto a las <a href="#club-emdo">condiciones del monedero</a>.</p>
 			</section>
 			<?php endif; ?>
+
+			<section class="bf26-new-makers" id="bf26-nuevos-productores" aria-labelledby="bf26-new-makers-title">
+				<div class="bf26-new-makers__header">
+					<div>
+						<p class="bf26-new-makers__eyebrow"><span aria-hidden="true">✳</span> MÁS OFERTAS · BLACK FRIDAY</p>
+						<h3 id="bf26-new-makers-title">Más productores. <em>Más para disfrutar.</em></h3>
+					</div>
+					<p>Chocolates artesanos, productos de la huerta y café de especialidad. Descubre tres nuevas promociones con un <strong>10 % de descuento</strong> utilizando el cupón de cada productor.</p>
+				</div>
+				<div class="bf26-new-makers__grid">
+					<article class="bf26-new-maker bf26-new-maker--chocolate" id="bf26-chocolates-isabel" data-bf26-promo="chocoisabel" aria-labelledby="bf26-chocolate-title">
+						<div class="bf26-new-maker__visual">
+							<?php if ( $bf26_chocolate_photo ) { echo $bf26_chocolate_photo; } else { echo '<span class="bf26-new-maker__fallback" aria-hidden="true">🍫</span>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+							<span class="bf26-new-maker__visual-label">CHOCOLATE ARTESANO</span>
+						</div>
+						<div class="bf26-new-maker__body">
+							<p class="bf26-new-maker__category">CHOCOLATE · ELABORACIÓN ARTESANA</p>
+							<h4 id="bf26-chocolate-title">Chocolates Artesanos Isabel</h4>
+							<p class="bf26-new-maker__description">Tabletas, bombones y cremas de cacao para dar un capricho especial a tu Black Friday.</p>
+							<div class="bf26-new-maker__promotion">
+								<strong class="bf26-new-maker__percentage">–10<span>%</span></strong>
+								<span>DE DESCUENTO EN SUS PRODUCTOS</span>
+							</div>
+							<div class="bf26-new-maker__coupon">
+								<span>CÓDIGO DE DESCUENTO</span>
+								<button type="button" class="bf26-coupon" data-bf26-copy="CHOCOISABEL" aria-label="Copiar cupón CHOCOISABEL">CHOCOISABEL <span aria-hidden="true">⧉</span></button>
+							</div>
+							<a class="bf26-button bf26-button--green bf26-new-maker__cta" href="<?php echo esc_url( $bf26_chocolate_url ); ?>">Descubrir sus chocolates <span aria-hidden="true">↗</span></a>
+						</div>
+					</article>
+					<article class="bf26-new-maker bf26-new-maker--huerta" id="bf26-huerta-ana-mary" data-bf26-promo="anamary" aria-labelledby="bf26-huerta-title">
+						<div class="bf26-new-maker__visual">
+							<?php if ( $bf26_huerta_photo ) { echo $bf26_huerta_photo; } else { echo '<span class="bf26-new-maker__fallback" aria-hidden="true">🥬</span>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+							<span class="bf26-new-maker__visual-label">DIRECTO DE LA HUERTA</span>
+						</div>
+						<div class="bf26-new-maker__body">
+							<p class="bf26-new-maker__category">HUERTA · PRODUCTOS DE TEMPORADA</p>
+							<h4 id="bf26-huerta-title">La Huerta de Ana Mary</h4>
+							<p class="bf26-new-maker__description">Hortalizas frescas, legumbres y elaboraciones de la huerta, directamente del productor.</p>
+							<div class="bf26-new-maker__promotion">
+								<strong class="bf26-new-maker__percentage">–10<span>%</span></strong>
+								<span>DE DESCUENTO EN SUS PRODUCTOS</span>
+							</div>
+							<div class="bf26-new-maker__coupon">
+								<span>CÓDIGO DE DESCUENTO</span>
+								<button type="button" class="bf26-coupon" data-bf26-copy="BFANAMARY" aria-label="Copiar cupón BFANAMARY">BFANAMARY <span aria-hidden="true">⧉</span></button>
+							</div>
+							<a class="bf26-button bf26-button--green bf26-new-maker__cta" href="<?php echo esc_url( $bf26_huerta_url ); ?>">Explorar la huerta <span aria-hidden="true">↗</span></a>
+						</div>
+					</article>
+					<article class="bf26-new-maker bf26-new-maker--ikore" id="bf26-ikore-kofi" data-bf26-promo="ikore" aria-labelledby="bf26-ikore-title">
+						<div class="bf26-new-maker__visual">
+							<?php if ( $bf26_ikore_photo ) { echo $bf26_ikore_photo; } else { echo '<span class="bf26-new-maker__fallback" aria-hidden="true">☕</span>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+							<span class="bf26-new-maker__visual-label">CAFÉ DE ESPECIALIDAD</span>
+						</div>
+						<div class="bf26-new-maker__body">
+							<p class="bf26-new-maker__category">CAFÉ · ORÍGENES SELECCIONADOS</p>
+							<h4 id="bf26-ikore-title">Ikore Kofi</h4>
+							<p class="bf26-new-maker__description">Cafés de especialidad de distintos orígenes, para descubrir nuevos aromas en cada taza.</p>
+							<div class="bf26-new-maker__promotion">
+								<strong class="bf26-new-maker__percentage">–10<span>%</span></strong>
+								<span>DE DESCUENTO EN SUS PRODUCTOS</span>
+							</div>
+							<div class="bf26-new-maker__coupon">
+								<span>CÓDIGO DE DESCUENTO</span>
+								<button type="button" class="bf26-coupon" data-bf26-copy="BFIKORE" aria-label="Copiar cupón BFIKORE">BFIKORE <span aria-hidden="true">⧉</span></button>
+							</div>
+							<a class="bf26-button bf26-button--green bf26-new-maker__cta" href="<?php echo esc_url( $bf26_ikore_url ); ?>">Descubrir sus cafés <span aria-hidden="true">↗</span></a>
+						</div>
+					</article>
+				</div>
+				<p class="bf26-new-makers__note">Aplica el código correspondiente en el carrito o al finalizar la compra. Los cupones de cada productor se utilizan por separado. Además, con tu cuenta registrada acumulas el 2 % de cashback del <a href="#club-emdo">Club EMDO</a> durante Black Friday.</p>
+			</section>
 		</div>
 	</section>
 

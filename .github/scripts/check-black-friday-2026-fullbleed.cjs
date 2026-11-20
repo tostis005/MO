@@ -47,6 +47,12 @@ const {chromium} = require('playwright-core');
         const discountDetails=Array.from(document.querySelectorAll('.bf26-offer__discount-details'));
         const couponRows=Array.from(document.querySelectorAll('.bf26-offer__coupon-row'));
         const couponButtons=Array.from(document.querySelectorAll('[data-bf26-copy]'));
+        const sellerCouponButtons=Array.from(document.querySelectorAll('.bf26-offer [data-bf26-copy]'));
+        const newMakerCards=Array.from(document.querySelectorAll('.bf26-new-maker'));
+        const newMakerCoupons=Array.from(document.querySelectorAll('.bf26-new-maker [data-bf26-copy]'));
+        const latitudes=sel('#packs-carnes-exoticas');
+        const newMakers=sel('#bf26-nuevos-productores');
+        const club=sel('#club-emdo');
         const sellerCards=Array.from(document.querySelectorAll('.bf26-offer'));
         const enabledSellers=(promo?.getAttribute('data-bf26-visible-sellers')||'').split(',').filter(Boolean);
         const actualSellers=sellerCards.map(el=>el.getAttribute('data-bf26-seller'));
@@ -97,7 +103,9 @@ const {chromium} = require('playwright-core');
           '.bf26-montjam-extra','.bf26-montjam-extra__badge',
           '.bf26-montjam-extra__copy','.bf26-montjam-extra__copy h4',
           '.bf26-montjam-extras__conditions',
-          '.bf26-montjam-gift','.bf26-montjam-gift__emblem'
+          '.bf26-montjam-gift','.bf26-montjam-gift__emblem',
+          '.bf26-new-makers','.bf26-new-maker','.bf26-new-maker__body',
+          '.bf26-new-maker__promotion','.bf26-new-maker__coupon','.bf26-new-maker__cta'
         ];
         const offerRectangles=offerSelectors.flatMap(selector=>
           Array.from(document.querySelectorAll(selector)).map(el=>{
@@ -155,7 +163,7 @@ const {chromium} = require('playwright-core');
             overlayText.includes('2 % de cashback') &&
             overlayText.includes('Club EMDO') &&
             !overlayText.includes('1 % en tu monedero'),
-          distinctSellerCoupons:couponButtons.length===enabledSellers.length &&
+          distinctSellerCoupons:sellerCouponButtons.length===enabledSellers.length &&
             (!enabledSellers.includes('hidalgo') || hidalgoCoupon?.getAttribute('data-bf26-copy')==='BFEMDO') &&
             (!enabledSellers.includes('montjam') || montjamCoupon?.getAttribute('data-bf26-copy')==='BFMONTJAM') &&
             (!hidalgoCoupon || !montjamCoupon || hidalgoCoupon!==montjamCoupon),
@@ -201,11 +209,22 @@ const {chromium} = require('playwright-core');
           noOldHidalgoGift:!hidalgoText.includes('100 g') &&
             !hidalgoText.includes('Con la compra de cualquier jamón o paleta de Hidalgo'),
           legacyCouponPresent:!!promo && /BFM2|BFEMDOM/.test(promo.textContent),
-          allCopyButtonsUpdated:couponButtons.length===enabledSellers.length &&
+          allCopyButtonsUpdated:couponButtons.length===enabledSellers.length+3 &&
             couponButtons.every(el=>/^[A-Z0-9]{4,16}$/.test(el.getAttribute('data-bf26-copy')||'')),
+          additionalProducerCards:!!latitudes && !!newMakers && !!club &&
+            (latitudes.compareDocumentPosition(newMakers)&Node.DOCUMENT_POSITION_FOLLOWING)!==0 &&
+            (newMakers.compareDocumentPosition(club)&Node.DOCUMENT_POSITION_FOLLOWING)!==0 &&
+            newMakerCards.length===3 && newMakerCoupons.length===3 &&
+            ['chocoisabel','anamary','ikore'].every((slug,i)=>newMakerCards[i]?.getAttribute('data-bf26-promo')===slug) &&
+            ['CHOCOISABEL','BFANAMARY','BFIKORE'].every((code,i)=>newMakerCoupons[i]?.getAttribute('data-bf26-copy')===code) &&
+            ['Chocolates Artesanos Isabel','La Huerta de Ana Mary','Ikore Kofi'].every((name,i)=>newMakerCards[i]?.textContent.includes(name)) &&
+            newMakerCards.every(el=>el.textContent.includes('10%') || el.textContent.includes('10 %')) &&
+            newMakerCards.every(el=>!!el.querySelector('.bf26-new-maker__cta[href^="/tienda/"]') || !!el.querySelector('.bf26-new-maker__cta[href^="https://www.elmercadodeorigen.com/tienda/"]')) &&
+            newMakerCards.every(el=>!!el.querySelector('.bf26-photo')) &&
+            newMakerCards.every(el=>!!el.querySelector('a[href="#club-emdo"]') || !!newMakers.querySelector('a[href="#club-emdo"]')),
           integratedCoupons:discountDetails.length===enabledSellers.length &&
             couponRows.length===enabledSellers.length &&
-            couponRows.length===couponButtons.length &&
+            couponRows.length===sellerCouponButtons.length &&
             couponRows.every(el=>!!el.querySelector('.bf26-coupon')),
           noOldCouponSentence:!!promo && !promo.textContent.includes('Introduce el código'),
           heroTitleTopGap:hero && headline ? box(headline).top-box(hero).top : null,
@@ -241,7 +260,7 @@ const {chromium} = require('playwright-core');
         throw Error('Missing definitive Hidalgo BF benefits at '+label+': '+JSON.stringify(measurement));
       }
       if (!measurement.couponPresent || measurement.legacyCouponPresent || !measurement.allCopyButtonsUpdated
-          || !measurement.integratedCoupons || !measurement.noOldCouponSentence
+          || !measurement.integratedCoupons || !measurement.additionalProducerCards || !measurement.noOldCouponSentence
           || measurement.heroTitleTopGap===null || measurement.heroTitleTopGap<0 || measurement.heroTitleTopGap>105
           || !measurement.removedInstructionSection || !measurement.removedHeroEyebrow
           || !measurement.removedHowItWorksLink) {
