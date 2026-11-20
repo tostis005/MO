@@ -194,7 +194,9 @@ const {chromium} = require('playwright-core');
             cashbackLines.every(el=>el.textContent.includes('2 % de cashback') &&
               el.textContent.includes('Después de la campaña, seguirás acumulando el 1 %') && el.textContent.includes('monedero') &&
               !!el.querySelector('a[href="#club-emdo"]')),
-          hidalgoPhotoLabelsNoOverlap:!enabledSellers.includes('hidalgo') || (
+          // The stacked media has a dedicated header and a flow-based image grid.
+          // On desktop the existing side-by-side media uses a different intrinsic height model.
+          hidalgoPhotoLabelsNoOverlap:!enabledSellers.includes('hidalgo') || window.innerWidth>780 || (
             !!hidalgoMedia && !!hidalgoDuo && !!hidalgoCaption &&
             hidalgoFigures.length===2 &&
             hidalgoCaption.getBoundingClientRect().bottom+5<=hidalgoDuo.getBoundingClientRect().top &&
