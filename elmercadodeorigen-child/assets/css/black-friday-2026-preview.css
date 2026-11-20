@@ -1398,3 +1398,46 @@ html body.emdo-bf2026-page :is(.site-footer,#colophon) {
   .bf26 .bf26-new-maker__percentage{font-size:45px}
 }
 
+
+/* Hidalgo DOP / sin DOP: keep the producer caption in a dedicated top strip.
+   The image grid and each photo's figure label stay in normal layout on mobile. */
+.bf26 .bf26-offer--hidalgo .bf26-offer__imagecaption{
+  top:17px;bottom:auto;left:19px;right:19px;text-align:center;
+  font-size:10px;line-height:1.45;letter-spacing:.10em;
+}
+@media(min-width:781px){
+  .bf26 .bf26-offer--hidalgo .bf26-offer__photobg--hidalgo-duo{
+    inset:60px 24px 24px;
+  }
+}
+@media(max-width:780px){
+  .bf26 .bf26-offer--hidalgo .bf26-offer__media{
+    display:flex;flex-direction:column;align-items:stretch;
+    min-height:clamp(350px,86vw,435px);padding:47px 18px 16px;
+  }
+  .bf26 .bf26-offer--hidalgo .bf26-offer__photobg--hidalgo-duo{
+    position:relative;inset:auto;flex:1 1 auto;min-height:0;
+    display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:10px;align-items:stretch;
+  }
+  .bf26 .bf26-offer--hidalgo .bf26-hidalgo-piece{
+    min-height:0;justify-content:space-between;gap:8px;
+  }
+  .bf26 .bf26-offer--hidalgo .bf26-hidalgo-piece__photo{min-height:0}
+  .bf26 .bf26-offer--hidalgo .bf26-hidalgo-piece figcaption{
+    margin:0;flex:0 0 auto;max-width:100%;
+  }
+  .bf26 .bf26-offer--hidalgo .bf26-offer__number{display:none}
+}
+@media(max-width:420px){
+  .bf26 .bf26-offer--hidalgo .bf26-offer__media{
+    min-height:clamp(322px,97vw,374px);padding:45px 11px 13px;
+  }
+  .bf26 .bf26-offer--hidalgo .bf26-offer__imagecaption{
+    left:10px;right:10px;top:15px;font-size:9px;letter-spacing:.075em;
+  }
+  .bf26 .bf26-offer--hidalgo .bf26-offer__photobg--hidalgo-duo{gap:8px}
+  .bf26 .bf26-offer--hidalgo .bf26-hidalgo-piece figcaption{
+    padding:8px 4px;font-size:9px;line-height:1.35;letter-spacing:.025em;
+  }
+}

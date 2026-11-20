@@ -80,6 +80,10 @@ const {chromium} = require('playwright-core');
           ring:getComputedStyle(el,'::before').borderTopWidth
         }));
         const hidalgo=sel('.bf26-offer--hidalgo');
+        const hidalgoMedia=sel('.bf26-offer--hidalgo .bf26-offer__media');
+        const hidalgoDuo=sel('.bf26-offer--hidalgo .bf26-offer__photobg--hidalgo-duo');
+        const hidalgoCaption=sel('.bf26-offer--hidalgo .bf26-offer__imagecaption');
+        const hidalgoFigures=Array.from(document.querySelectorAll('.bf26-offer--hidalgo .bf26-hidalgo-piece'));
         const hidalgoText=hidalgo?.textContent || '';
         const hidalgoPremium=sel('.bf26-hidalgo-rewards__tier--premium')?.textContent || '';
         const hidalgoGiftTiers=Array.from(document.querySelectorAll('.bf26-hidalgo-rewards__tier'));
@@ -190,6 +194,21 @@ const {chromium} = require('playwright-core');
             cashbackLines.every(el=>el.textContent.includes('2 % de cashback') &&
               el.textContent.includes('Después de la campaña, seguirás acumulando el 1 %') && el.textContent.includes('monedero') &&
               !!el.querySelector('a[href="#club-emdo"]')),
+          hidalgoPhotoLabelsNoOverlap:!enabledSellers.includes('hidalgo') || (
+            !!hidalgoMedia && !!hidalgoDuo && !!hidalgoCaption &&
+            hidalgoFigures.length===2 &&
+            hidalgoCaption.getBoundingClientRect().bottom+5<=hidalgoDuo.getBoundingClientRect().top &&
+            hidalgoFigures.every(figure=>{
+              const photo=figure.querySelector('.bf26-hidalgo-piece__photo');
+              const label=figure.querySelector('figcaption');
+              if(!photo || !label)return false;
+              const p=photo.getBoundingClientRect();
+              const l=label.getBoundingClientRect();
+              const outer=hidalgoMedia.getBoundingClientRect();
+              return p.bottom+3<=l.top && l.bottom<=outer.bottom-5 &&
+                l.left>=outer.left && l.right<=outer.right;
+            })
+          ),
           finalHidalgoTerms:!enabledSellers.includes('hidalgo') || (!!hidalgo &&
             hidalgoText.includes('15 % de descuento en todos los productos Hidalgo') &&
             hidalgoText.includes('7–7,5 kg') &&
@@ -256,7 +275,8 @@ const {chromium} = require('playwright-core');
           !measurement.selectedConditionsAccessible || !measurement.bothCashbacks) {
         throw Error('Montjam/Club EMDO coupon or conditional benefit mismatch at '+label+': '+JSON.stringify(measurement));
       }
-      if (!measurement.finalHidalgoTerms || !measurement.noOldHidalgoGift) {
+      if (!measurement.finalHidalgoTerms || !measurement.noOldHidalgoGift ||
+          !measurement.hidalgoPhotoLabelsNoOverlap) {
         throw Error('Missing definitive Hidalgo BF benefits at '+label+': '+JSON.stringify(measurement));
       }
       if (!measurement.couponPresent || measurement.legacyCouponPresent || !measurement.allCopyButtonsUpdated
