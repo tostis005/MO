@@ -30,6 +30,18 @@ const {chromium} = require('playwright-core');
         const close = document.querySelector('#bf26-overlay [data-bf26-close]');
         if (close) close.click();
       });
+      // Wait for all six catalog photos to finish decoding before visual capture.
+      await page.waitForFunction(() => {
+        const images=Array.from(document.querySelectorAll('.bf26-new-maker__visual .bf26-photo'));
+        return images.length===6 && images.every(img=>img.complete && img.naturalWidth>30 && img.naturalHeight>30);
+      }, null, {timeout:45000});
+      const producerPhotos=await page.locator('.bf26-new-maker__visual .bf26-photo').evaluateAll(images=>images.map(img=>{
+        const rect=img.getBoundingClientRect();
+        const css=getComputedStyle(img);
+        return {src:img.currentSrc,naturalWidth:img.naturalWidth,naturalHeight:img.naturalHeight,
+          displayWidth:rect.width,displayHeight:rect.height,opacity:css.opacity,visibility:css.visibility};
+      }));
+      console.log('BF2026_PRODUCER_IMAGES_'+label.toUpperCase()+'='+JSON.stringify(producerPhotos));
       const measurement=await page.evaluate(() => {
         const sel=(s)=>document.querySelector(s);
         const box=(e)=>{ if (!e) return null; const r=e.getBoundingClientRect();
@@ -255,7 +267,13 @@ const {chromium} = require('playwright-core');
             newMakerCards.every(el=>!!el.querySelector('.bf26-new-maker__cta[href^="/tienda/"]') || !!el.querySelector('.bf26-new-maker__cta[href^="https://www.elmercadodeorigen.com/tienda/"]')) &&
             newMakerCards.every(el=>!!el.querySelector('.bf26-photo')) &&
             newMakerCards.every(el=>el.querySelector('.bf26-photo').getAttribute('src')) &&
-            newMakerCards.every(el=>el.querySelector('.bf26-photo').naturalWidth>0) &&
+            newMakerCards.every(el=>{
+              const img=el.querySelector('.bf26-photo');
+              const box=img?.getBoundingClientRect();
+              return !!img && img.naturalWidth>30 && img.naturalHeight>30 &&
+                !!box && box.width>70 && box.height>70 &&
+                getComputedStyle(img).visibility==='visible' && getComputedStyle(img).opacity!=='0';
+            }) &&
             newMakerCards.every(el=>!el.querySelector('.bf26-new-maker__fallback')) &&
             newMakerCards.every(el=>!!el.querySelector('a[href="#club-emdo"]') || !!newMakers.querySelector('a[href="#club-emdo"]')),
           integratedCoupons:discountDetails.length===enabledSellers.length &&
