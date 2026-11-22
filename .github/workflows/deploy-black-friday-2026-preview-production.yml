@@ -57,7 +57,9 @@ jobs:
           grep -Fq 'id="bf26-chocolates-isabel"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'id="bf26-huerta-ana-mary"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'id="bf26-ikore-kofi"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
-          for code in CHOCOISABEL BFANAMARY BFIKORE; do grep -Fq "data-bf26-copy=\"$code\"" elmercadodeorigen-child/templates/black-friday-2026-preview.php; done
+          for seller in tolecarnes quesos-pajarete selectos-de-castilla; do grep -Fq "id=\"bf26-$seller\"" elmercadodeorigen-child/templates/black-friday-2026-preview.php; done
+          grep -Fq 'seis promociones' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          for code in CHOCOISABEL BFANAMARY BFIKORE BFTOLECARNES BFPAJARETE BFSELECTOS; do grep -Fq "data-bf26-copy=\"$code\"" elmercadodeorigen-child/templates/black-friday-2026-preview.php; done
           grep -Fq '.bf26-new-makers__grid' elmercadodeorigen-child/assets/css/black-friday-2026-preview.css
           grep -Fq '2,5 % adicional' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'automáticamente en el carrito' elmercadodeorigen-child/templates/black-friday-2026-preview.php
@@ -446,7 +448,8 @@ jobs:
           grep -Fq 'data-bf26-seller="hidalgo"' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'data-bf26-seller="montjam"' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'id="bf26-nuevos-productores"' "/tmp/bf-preview-$RUN.html"
-          for code in CHOCOISABEL BFANAMARY BFIKORE; do grep -Fq "data-bf26-copy=\"$code\"" "/tmp/bf-preview-$RUN.html"; done
+          for seller in tolecarnes quesos-pajarete selectos-de-castilla; do grep -Fq "id=\"bf26-$seller\"" "/tmp/bf-preview-$RUN.html"; done
+          for code in CHOCOISABEL BFANAMARY BFIKORE BFTOLECARNES BFPAJARETE BFSELECTOS; do grep -Fq "data-bf26-copy=\"$code\"" "/tmp/bf-preview-$RUN.html"; done
           if [ -f "$BACKUP/seller-visibility-before.json" ]; then
             grep -Fq 'data-bf26-visible-sellers="hidalgo"' "/tmp/bf-preview-$RUN.html"
             grep -Fq 'data-bf26-seller="hidalgo"' "/tmp/bf-preview-$RUN.html"
@@ -513,7 +516,8 @@ jobs:
           grep -Fq 'data-bf26-seller="hidalgo"' /tmp/bf-preview-live.html
           grep -Fq 'data-bf26-seller="montjam"' /tmp/bf-preview-live.html
           grep -Fq 'id="bf26-nuevos-productores"' /tmp/bf-preview-live.html
-          for code in CHOCOISABEL BFANAMARY BFIKORE; do grep -Fq "data-bf26-copy=\"$code\"" /tmp/bf-preview-live.html; done
+          for seller in tolecarnes quesos-pajarete selectos-de-castilla; do grep -Fq "id=\"bf26-$seller\"" /tmp/bf-preview-live.html; done
+          for code in CHOCOISABEL BFANAMARY BFIKORE BFTOLECARNES BFPAJARETE BFSELECTOS; do grep -Fq "data-bf26-copy=\"$code\"" /tmp/bf-preview-live.html; done
           grep -Fq 'medio morcón de regalo' /tmp/bf-preview-live.html
           grep -Fq 'jamones Montjam de bellota 100 % ibéricos' /tmp/bf-preview-live.html
           ! grep -Eq '7 kg o más|igual o superior a 7 kg|jamones de menos de 7 kg' /tmp/bf-preview-live.html

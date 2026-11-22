@@ -37,6 +37,9 @@ $montjam_url  = home_url( '/tienda/montjam/' );
 $bf26_chocolate_url = home_url( '/tienda/chocolates-artesanos-isabel/' );
 $bf26_huerta_url    = home_url( '/tienda/la-huerta-de-ana-mary/' );
 $bf26_ikore_url     = home_url( '/tienda/ikore-kofi/' );
+$bf26_tolecarnes_url = home_url( '/tienda/tolecarnes/' );
+$bf26_pajarete_url   = home_url( '/tienda/quesos-pajarete/' );
+$bf26_selectos_url   = home_url( '/tienda/selectos-de-castilla/' );
 $club_account_url = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : home_url( '/mi-cuenta/' );
 $club_wallet_url  = function_exists( 'wc_get_account_endpoint_url' ) ? wc_get_account_endpoint_url( 'monedero' ) : $club_account_url;
 
@@ -62,9 +65,12 @@ $montjam_ham   = emdo_bf2026_photo( 'jamon-de-bellota-100-iberico-montjam', 'Jam
 $montjam_slice = emdo_bf2026_photo( 'jamon-bellota-100-iberico-loncheado-montjam-90g', 'Sobre de jamón de bellota 100 % ibérico loncheado Montjam' );
 
 /* Imágenes de artículos publicados, con fallback visual si dejan de estar disponibles. */
-$bf26_chocolate_photo = emdo_bf2026_photo( 'crema-bioft-de-chocolate-negro-con-45-de-avellanas-y-cafe-arabica-200-g', 'Crema artesana de chocolate de Chocolates Artesanos Isabel', 'medium', 'eager' );
-$bf26_huerta_photo    = emdo_bf2026_photo( '10-kg-de-hortalizas-frescas', 'Caja de hortalizas frescas de La Huerta de Ana Mary', 'medium', 'eager' );
-$bf26_ikore_photo     = emdo_bf2026_photo( 'cafe-ikore-kofi-el-indio', 'Café de especialidad Colombia El Indio de Ikore Kofi', 'medium', 'eager' );
+$bf26_chocolate_photo = emdo_bf2026_photo( 'crema-bioft-de-chocolate-negro-con-45-de-avellanas-y-cafe-arabica-200-g', 'Crema artesana de chocolate de Chocolates Artesanos Isabel', 'large', 'eager' );
+$bf26_huerta_photo    = emdo_bf2026_photo( '10-kg-de-hortalizas-frescas', 'Caja de hortalizas frescas de La Huerta de Ana Mary', 'large', 'eager' );
+$bf26_ikore_photo     = emdo_bf2026_photo( 'cafe-ikore-kofi-el-indio', 'Café de especialidad Colombia El Indio de Ikore Kofi', 'large', 'eager' );
+$bf26_tolecarnes_photo = emdo_bf2026_photo( 'lote-barbacoa', 'Lote barbacoa de Tolecarnes con cortes de ternera para parrilla', 'large', 'eager' );
+$bf26_pajarete_photo   = emdo_bf2026_photo( 'gran-reserva-mezcla', 'Queso gran reserva mezcla de Quesos Pajarete', 'large', 'eager' );
+$bf26_selectos_photo   = emdo_bf2026_photo( 'foie-gras-mi-cuit-entero', 'Foie gras mi cuit entero de Selectos de Castilla', 'large', 'eager' );
 
 /**
  * Siete packs públicos de Latitudes, independientes de los originales Mentta.
@@ -281,7 +287,7 @@ get_header();
 						<p class="bf26-new-makers__eyebrow"><span aria-hidden="true">✳</span> MÁS OFERTAS · BLACK FRIDAY</p>
 						<h3 id="bf26-new-makers-title">Más productores. <em>Más para disfrutar.</em></h3>
 					</div>
-					<p>Chocolates artesanos, productos de la huerta y café de especialidad. Descubre tres nuevas promociones con un <strong>10 % de descuento</strong> utilizando el cupón de cada productor.</p>
+					<p>Chocolates artesanos, huerta, café de especialidad, carnes, quesos y productos gourmet de pato. Descubre <strong>seis promociones con un 10 % de descuento</strong> utilizando el cupón de cada productor.</p>
 				</div>
 				<div class="bf26-new-makers__grid">
 					<article class="bf26-new-maker bf26-new-maker--chocolate" id="bf26-chocolates-isabel" data-bf26-promo="chocoisabel" aria-labelledby="bf26-chocolate-title">
@@ -342,6 +348,67 @@ get_header();
 								<button type="button" class="bf26-coupon" data-bf26-copy="BFIKORE" aria-label="Copiar cupón BFIKORE">BFIKORE <span aria-hidden="true">⧉</span></button>
 							</div>
 							<a class="bf26-button bf26-button--green bf26-new-maker__cta" href="<?php echo esc_url( $bf26_ikore_url ); ?>">Descubrir sus cafés <span aria-hidden="true">↗</span></a>
+						</div>
+					</article>
+
+					<article class="bf26-new-maker bf26-new-maker--tolecarnes" id="bf26-tolecarnes" data-bf26-promo="tolecarnes" aria-labelledby="bf26-tolecarnes-title">
+						<div class="bf26-new-maker__visual">
+							<?php if ( $bf26_tolecarnes_photo ) { echo $bf26_tolecarnes_photo; } else { echo '<span class="bf26-new-maker__fallback" aria-hidden="true">🥩</span>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+							<span class="bf26-new-maker__visual-label">CARNES PARA DISFRUTAR</span>
+						</div>
+						<div class="bf26-new-maker__body">
+							<p class="bf26-new-maker__category">CARNES · CORTES Y LOTES</p>
+							<h4 id="bf26-tolecarnes-title">Tolecarnes</h4>
+							<p class="bf26-new-maker__description">Carnes seleccionadas, cortes de ternera y lotes para disfrutar de una buena parrilla.</p>
+							<div class="bf26-new-maker__promotion">
+								<strong class="bf26-new-maker__percentage">–10<span>%</span></strong>
+								<span>DE DESCUENTO EN SUS PRODUCTOS</span>
+							</div>
+							<div class="bf26-new-maker__coupon">
+								<span>CÓDIGO DE DESCUENTO</span>
+								<button type="button" class="bf26-coupon" data-bf26-copy="BFTOLECARNES" aria-label="Copiar cupón BFTOLECARNES">BFTOLECARNES <span aria-hidden="true">⧉</span></button>
+							</div>
+							<a class="bf26-button bf26-button--green bf26-new-maker__cta" href="<?php echo esc_url( $bf26_tolecarnes_url ); ?>">Descubrir sus carnes <span aria-hidden="true">↗</span></a>
+						</div>
+					</article>
+					<article class="bf26-new-maker bf26-new-maker--pajarete" id="bf26-quesos-pajarete" data-bf26-promo="pajarete" aria-labelledby="bf26-pajarete-title">
+						<div class="bf26-new-maker__visual">
+							<?php if ( $bf26_pajarete_photo ) { echo $bf26_pajarete_photo; } else { echo '<span class="bf26-new-maker__fallback" aria-hidden="true">🧀</span>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+							<span class="bf26-new-maker__visual-label">QUESOS DE LA SIERRA DE CÁDIZ</span>
+						</div>
+						<div class="bf26-new-maker__body">
+							<p class="bf26-new-maker__category">QUESOS · TRADICIÓN ARTESANA</p>
+							<h4 id="bf26-pajarete-title">Quesos Pajarete</h4>
+							<p class="bf26-new-maker__description">Quesos de cabra, oveja y mezcla con personalidad propia y todo el sabor de la Sierra de Cádiz.</p>
+							<div class="bf26-new-maker__promotion">
+								<strong class="bf26-new-maker__percentage">–10<span>%</span></strong>
+								<span>DE DESCUENTO EN SUS PRODUCTOS</span>
+							</div>
+							<div class="bf26-new-maker__coupon">
+								<span>CÓDIGO DE DESCUENTO</span>
+								<button type="button" class="bf26-coupon" data-bf26-copy="BFPAJARETE" aria-label="Copiar cupón BFPAJARETE">BFPAJARETE <span aria-hidden="true">⧉</span></button>
+							</div>
+							<a class="bf26-button bf26-button--green bf26-new-maker__cta" href="<?php echo esc_url( $bf26_pajarete_url ); ?>">Descubrir sus quesos <span aria-hidden="true">↗</span></a>
+						</div>
+					</article>
+					<article class="bf26-new-maker bf26-new-maker--selectos" id="bf26-selectos-de-castilla" data-bf26-promo="selectos" aria-labelledby="bf26-selectos-title">
+						<div class="bf26-new-maker__visual">
+							<?php if ( $bf26_selectos_photo ) { echo $bf26_selectos_photo; } else { echo '<span class="bf26-new-maker__fallback" aria-hidden="true">🍽️</span>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+							<span class="bf26-new-maker__visual-label">ESPECIALIDADES DE PATO</span>
+						</div>
+						<div class="bf26-new-maker__body">
+							<p class="bf26-new-maker__category">FOIE GRAS · MAGRET · CONFIT</p>
+							<h4 id="bf26-selectos-title">Selectos de Castilla</h4>
+							<p class="bf26-new-maker__description">Foie gras, magret, confit y especialidades de pato para llevar algo diferente a la mesa.</p>
+							<div class="bf26-new-maker__promotion">
+								<strong class="bf26-new-maker__percentage">–10<span>%</span></strong>
+								<span>DE DESCUENTO EN SUS PRODUCTOS</span>
+							</div>
+							<div class="bf26-new-maker__coupon">
+								<span>CÓDIGO DE DESCUENTO</span>
+								<button type="button" class="bf26-coupon" data-bf26-copy="BFSELECTOS" aria-label="Copiar cupón BFSELECTOS">BFSELECTOS <span aria-hidden="true">⧉</span></button>
+							</div>
+							<a class="bf26-button bf26-button--green bf26-new-maker__cta" href="<?php echo esc_url( $bf26_selectos_url ); ?>">Ver sus especialidades <span aria-hidden="true">↗</span></a>
 						</div>
 					</article>
 				</div>

@@ -241,18 +241,22 @@ const {chromium} = require('playwright-core');
           noOldHidalgoGift:!hidalgoText.includes('100 g') &&
             !hidalgoText.includes('Con la compra de cualquier jamón o paleta de Hidalgo'),
           legacyCouponPresent:!!promo && /BFM2|BFEMDOM/.test(promo.textContent),
-          allCopyButtonsUpdated:couponButtons.length===enabledSellers.length+3 &&
+          allCopyButtonsUpdated:couponButtons.length===enabledSellers.length+6 &&
             couponButtons.every(el=>/^[A-Z0-9]{4,16}$/.test(el.getAttribute('data-bf26-copy')||'')),
           additionalProducerCards:!!latitudes && !!newMakers && !!club &&
             (latitudes.compareDocumentPosition(newMakers)&Node.DOCUMENT_POSITION_FOLLOWING)!==0 &&
             (newMakers.compareDocumentPosition(club)&Node.DOCUMENT_POSITION_FOLLOWING)!==0 &&
-            newMakerCards.length===3 && newMakerCoupons.length===3 &&
-            ['chocoisabel','anamary','ikore'].every((slug,i)=>newMakerCards[i]?.getAttribute('data-bf26-promo')===slug) &&
-            ['CHOCOISABEL','BFANAMARY','BFIKORE'].every((code,i)=>newMakerCoupons[i]?.getAttribute('data-bf26-copy')===code) &&
-            ['Chocolates Artesanos Isabel','La Huerta de Ana Mary','Ikore Kofi'].every((name,i)=>newMakerCards[i]?.textContent.includes(name)) &&
+            newMakerCards.length===6 && newMakerCoupons.length===6 &&
+            ['chocoisabel','anamary','ikore','tolecarnes','pajarete','selectos'].every((slug,i)=>newMakerCards[i]?.getAttribute('data-bf26-promo')===slug) &&
+            ['CHOCOISABEL','BFANAMARY','BFIKORE','BFTOLECARNES','BFPAJARETE','BFSELECTOS'].every((code,i)=>newMakerCoupons[i]?.getAttribute('data-bf26-copy')===code) &&
+            ['Chocolates Artesanos Isabel','La Huerta de Ana Mary','Ikore Kofi','Tolecarnes','Quesos Pajarete','Selectos de Castilla'].every((name,i)=>newMakerCards[i]?.textContent.includes(name)) &&
+            newMakers.textContent.includes('seis promociones') &&
             newMakerCards.every(el=>el.textContent.includes('10%') || el.textContent.includes('10 %')) &&
             newMakerCards.every(el=>!!el.querySelector('.bf26-new-maker__cta[href^="/tienda/"]') || !!el.querySelector('.bf26-new-maker__cta[href^="https://www.elmercadodeorigen.com/tienda/"]')) &&
             newMakerCards.every(el=>!!el.querySelector('.bf26-photo')) &&
+            newMakerCards.every(el=>el.querySelector('.bf26-photo').getAttribute('src')) &&
+            newMakerCards.every(el=>el.querySelector('.bf26-photo').naturalWidth>0) &&
+            newMakerCards.every(el=>!el.querySelector('.bf26-new-maker__fallback')) &&
             newMakerCards.every(el=>!!el.querySelector('a[href="#club-emdo"]') || !!newMakers.querySelector('a[href="#club-emdo"]')),
           integratedCoupons:discountDetails.length===enabledSellers.length &&
             couponRows.length===enabledSellers.length &&
