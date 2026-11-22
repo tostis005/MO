@@ -29,7 +29,7 @@ $title = 'Black Friday 2026 · Seis productores al 10 % · Tolecarnes y envío g
 $subject = '🖤 Black Friday: 10 % en 6 productores + envío gratis con Tolecarnes';
 $preheader = '10 % en Tolecarnes y envío gratis a Madrid y Toledo. También chocolates, huerta, café, quesos y foie con su cupón.';
 $recipient = 'jose.fraga@gmail.com';
-$test_key = '_emdo_fluentcrm_bf10_seis_productores_test_20261122';
+$test_key = '_emdo_fluentcrm_bf10_seis_productores_test_foto_recordatorio_20261122';
 $coupons = [
     'BFTOLECARNES' => 'tolecarnes',
     'CHOCOISABEL' => 'chocolates-artesanos-isabel',
@@ -44,7 +44,10 @@ if (!is_string($html) || strlen($html) < 11000 ||
     !str_contains($html, 'Comunidad de Madrid') ||
     !str_contains($html, 'provincia de Toledo') ||
     !str_contains($html, '2 % de cashback') ||
-    !str_contains($html, '/black-friday-2026/')) {
+    !str_contains($html, '/black-friday-2026/') ||
+    !str_contains($html, 'tolecarnes-grill.jpg') ||
+    !str_contains($html, 'RECUERDA · BLACK FRIDAY 2026') ||
+    !str_contains($html, 'Ver todas las ofertas del Black Friday')) {
     fwrite(STDERR, "EMDO_BF10_ABORT_HTML_VALIDATION\n"); exit(7);
 }
 foreach ($coupons as $code => $slug) {
