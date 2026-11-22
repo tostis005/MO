@@ -1,0 +1,87 @@
+name: Update FluentCRM Black Friday six-producer grill photo and final reminder, send test
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fluentcrm-black-friday-foto-recordatorio-test-20261122.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emdo-fcrm-bf10-seis-productores-photo-reminder-20261122
+  cancel-in-progress: false
+
+jobs:
+  draft-and-single-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      EMDO_HOST: ${{ secrets.STAGING_HOST }}
+      EMDO_PORT: ${{ secrets.STAGING_PORT }}
+      EMDO_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate PHP and HTML and limit scope to one test
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/fluentcrm-black-friday-seis-productores-20261122.php
+          for CODE in BFTOLECARNES CHOCOISABEL BFANAMARY BFIKORE BFPAJARETE BFSELECTOS; do
+            grep -Fq "$CODE" .github/data/fluentcrm-black-friday-seis-productores-20261122.html
+            grep -Fq "$CODE" .github/scripts/fluentcrm-black-friday-seis-productores-20261122.php
+          done
+          grep -Fq '##crm.unsubscribe_url##' .github/data/fluentcrm-black-friday-seis-productores-20261122.html
+          grep -Fq 'jose.fraga@gmail.com' .github/scripts/fluentcrm-black-friday-seis-productores-20261122.php
+          grep -Fq 'sendTestEmail()' .github/scripts/fluentcrm-black-friday-seis-productores-20261122.php
+          test -n "$EMDO_HOST" && test -n "$EMDO_USER" && test -n "$SSHPASS"
+      - name: Create draft and submit one native FluentCRM test to requested address
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="$EMDO_PORT"
+          if [ -z "$PORT" ]; then PORT=22; fi
+          [[ "$PORT" =~ ^[0-9]{1,5}$ ]]
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$EMDO_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          TARGET="$EMDO_USER@$EMDO_HOST"
+          STAGE="/tmp/emdo-bf10-six-$GITHUB_RUN_ID"
+          sshpass -e ssh -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$PORT" "$TARGET" "install -d -m 0700 '$STAGE'"
+          sshpass -e scp -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P "$PORT" .github/scripts/fluentcrm-black-friday-seis-productores-20261122.php "$TARGET:$STAGE/run.php"
+          sshpass -e scp -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P "$PORT" .github/data/fluentcrm-black-friday-seis-productores-20261122.html "$TARGET:$STAGE/mailing.html"
+          sshpass -e ssh -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p "$PORT" "$TARGET" "bash -s -- '$STAGE'" <<'REMOTE' | tee /tmp/fluent-bf10-result.txt
+          set -Eeuo pipefail
+          STAGE="$1"
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          test -f "$ROOT/wp-config.php" && test -x "$PHP" && test -x "$WP"
+          trap 'rm -rf "$STAGE"' EXIT
+          "$PHP" -l "$STAGE/run.php"
+          SITE="$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --allow-root --skip-plugins --skip-themes)"
+          case "$SITE" in
+            https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
+            *) echo "EMDO_BF10_WRONG_SITE $SITE"; exit 5 ;;
+          esac
+          for MODE in preflight apply verify test verify; do
+            EMDO_BF10_MODE="$MODE" EMDO_BF10_HTML_PATH="$STAGE/mailing.html" timeout 240 "$PHP" -d memory_limit=768M "$WP" eval-file "$STAGE/run.php" --path="$ROOT" --allow-root
+          done
+          echo "EMDO_BF10_COMPLETE"
+          REMOTE
+          grep -q 'EMDO_BF10_COMPLETE' /tmp/fluent-bf10-result.txt
+          grep -Eq 'EMDO_BF10_TEST_SENT|EMDO_BF10_TEST_ALREADY_SENT' /tmp/fluent-bf10-result.txt
+          grep -q 'EMDO_BF10_DRAFT_VERIFIED' /tmp/fluent-bf10-result.txt
+      - name: Archive non-sensitive verification result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fluentcrm-bf10-six-producers-test-result
+          path: /tmp/fluent-bf10-result.txt
+          if-no-files-found: warn
+          retention-days: 5
