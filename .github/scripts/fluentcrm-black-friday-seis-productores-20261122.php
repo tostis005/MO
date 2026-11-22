@@ -53,15 +53,33 @@ foreach ($coupons as $code => $slug) {
         fwrite(STDERR, "EMDO_BF10_ABORT_MISSING_HTML_CODE_OR_STORE " . $code . "\n"); exit(8);
     }
     $coupon = new WC_Coupon($code);
+    // The Black Friday landing page advertises BFANAMARY at 10%, but WooCommerce
+    // had its percentage amount erroneously set to zero. Repair only this
+    // known coupon, preserving all product, vendor, usage and date restrictions.
+    $pending_ana_repair = $code === 'BFANAMARY' &&
+        $coupon->get_id() &&
+        get_post_status($coupon->get_id()) === 'publish' &&
+        $coupon->get_discount_type() === 'percent' &&
+        abs((float)$coupon->get_amount()) < 0.001;
+    if ($pending_ana_repair && $mode === 'preflight') {
+        echo "EMDO_BF10_PREFLIGHT_REPAIR_REQUIRED BFANAMARY amount=0 expected=10\\n";
+    } elseif ($pending_ana_repair && $mode === 'apply') {
+        $coupon->set_amount('10');
+        $coupon->save();
+        $coupon = new WC_Coupon($code);
+        echo "EMDO_BF10_COUPON_REPAIRED BFANAMARY amount=" . (string)$coupon->get_amount() . "\n";
+    }
     if (!$coupon->get_id() || get_post_status($coupon->get_id()) !== 'publish' ||
         $coupon->get_discount_type() !== 'percent' ||
-        abs((float)$coupon->get_amount() - 10.0) > 0.001) {
+        (abs((float)$coupon->get_amount() - 10.0) > 0.001 &&
+            !($pending_ana_repair && $mode === 'preflight'))) {
         fwrite(STDERR, "EMDO_BF10_ABORT_COUPON_INVALID " . $code .
             " id=" . (int)$coupon->get_id() .
             " type=" . (string)$coupon->get_discount_type() .
             " amount=" . (string)$coupon->get_amount() . "\n");
         exit(9);
     }
+    echo "EMDO_BF10_COUPON_VERIFIED " . $code . " id=" . (int)$coupon->get_id() . " percent=" . (string)$coupon->get_amount() . "\n";
     $expires = $coupon->get_date_expires();
     if ($expires && $expires->getTimestamp() < time()) {
         fwrite(STDERR, "EMDO_BF10_ABORT_COUPON_EXPIRED " . $code . "\n"); exit(9);
