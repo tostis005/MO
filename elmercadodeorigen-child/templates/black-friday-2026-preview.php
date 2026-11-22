@@ -261,6 +261,32 @@ get_header();
 			</article>
 			<?php endif; ?>
 
+
+            <section class="bf26-featured-producer" id="bf26-tolecarnes-promo" aria-labelledby="bf26-tolecarnes-title">
+                <p class="bf26-featured-producer__eyebrow">✳ OFERTA 03 · BLACK FRIDAY · CARNES DE TOLEDO</p>
+                <article class="bf26-new-maker bf26-new-maker--tolecarnes bf26-new-maker--featured" id="bf26-tolecarnes" data-bf26-promo="tolecarnes" aria-labelledby="bf26-tolecarnes-title">
+						<div class="bf26-new-maker__visual"><span class="bf26-featured-producer__number" aria-label="Oferta número 3">03</span>
+							<img class="bf26-photo bf26-photo--editorial" src="<?php echo esc_url( $bf26_grill_photo_url ); ?>" alt="Vacuno a la brasa con llamas, fotografía gastronómica de ambientación" width="960" height="610" loading="eager" decoding="async" />
+							<span class="bf26-new-maker__visual-label">CARNES PARA DISFRUTAR</span>
+						</div>
+						<div class="bf26-new-maker__body">
+							<p class="bf26-new-maker__category">CARNES · CORTES Y LOTES</p>
+							<h4 id="bf26-tolecarnes-title">Tolecarnes</h4>
+							<p class="bf26-new-maker__description">Carnes seleccionadas, cortes de ternera y lotes para disfrutar de una buena parrilla.</p>
+<div class="bf26-featured-producer__shipping" role="note"><span aria-hidden="true" class="bf26-featured-producer__shipping-icon">✳</span><div><strong>Envío gratuito a Madrid y Toledo</strong><span>En productos de Tolecarnes. El coste definitivo se confirma en el carrito según la dirección de entrega.</span></div></div>
+							<div class="bf26-new-maker__promotion">
+								<strong class="bf26-new-maker__percentage">–10<span>%</span></strong>
+								<span>DE DESCUENTO EN SUS PRODUCTOS</span>
+							</div>
+							<div class="bf26-new-maker__coupon">
+								<span>CÓDIGO DE DESCUENTO</span>
+								<button type="button" class="bf26-coupon" data-bf26-copy="BFTOLECARNES" aria-label="Copiar cupón BFTOLECARNES">BFTOLECARNES <span aria-hidden="true">⧉</span></button>
+							</div>
+							<a class="bf26-button bf26-button--green bf26-new-maker__cta" href="<?php echo esc_url( $bf26_tolecarnes_url ); ?>">Descubrir sus carnes <span aria-hidden="true">↗</span></a>
+						</div>
+					</article>
+            </section>
+
 			<?php if ( $bf26_exotic_packs ) : ?>
 			<section class="bf26-exotic" id="packs-carnes-exoticas" aria-labelledby="bf26-exotic-title">
 				<div class="bf26-exotic__head">
@@ -293,7 +319,7 @@ get_header();
 						<p class="bf26-new-makers__eyebrow"><span aria-hidden="true">✳</span> MÁS OFERTAS · BLACK FRIDAY</p>
 						<h3 id="bf26-new-makers-title">Más productores. <em>Más para disfrutar.</em></h3>
 					</div>
-					<p>Chocolates artesanos, huerta, café de especialidad, carnes, quesos y productos gourmet de pato. Descubre <strong>seis promociones con un 10 % de descuento</strong> utilizando el cupón de cada productor.</p>
+					<p>Chocolates artesanos, huerta, café de especialidad, quesos y productos gourmet de pato. Descubre <strong>cinco promociones con un 10 % de descuento</strong> utilizando el cupón de cada productor.</p>
 				</div>
 				<div class="bf26-new-makers__grid">
 					<article class="bf26-new-maker bf26-new-maker--chocolate" id="bf26-chocolates-isabel" data-bf26-promo="chocoisabel" aria-labelledby="bf26-chocolate-title">
@@ -357,26 +383,6 @@ get_header();
 						</div>
 					</article>
 
-					<article class="bf26-new-maker bf26-new-maker--tolecarnes" id="bf26-tolecarnes" data-bf26-promo="tolecarnes" aria-labelledby="bf26-tolecarnes-title">
-						<div class="bf26-new-maker__visual">
-							<img class="bf26-photo bf26-photo--editorial" src="<?php echo esc_url( $bf26_grill_photo_url ); ?>" alt="Vacuno a la brasa con llamas, fotografía gastronómica de ambientación" width="960" height="610" loading="eager" decoding="async" />
-							<span class="bf26-new-maker__visual-label">CARNES PARA DISFRUTAR</span>
-						</div>
-						<div class="bf26-new-maker__body">
-							<p class="bf26-new-maker__category">CARNES · CORTES Y LOTES</p>
-							<h4 id="bf26-tolecarnes-title">Tolecarnes</h4>
-							<p class="bf26-new-maker__description">Carnes seleccionadas, cortes de ternera y lotes para disfrutar de una buena parrilla.</p>
-							<div class="bf26-new-maker__promotion">
-								<strong class="bf26-new-maker__percentage">–10<span>%</span></strong>
-								<span>DE DESCUENTO EN SUS PRODUCTOS</span>
-							</div>
-							<div class="bf26-new-maker__coupon">
-								<span>CÓDIGO DE DESCUENTO</span>
-								<button type="button" class="bf26-coupon" data-bf26-copy="BFTOLECARNES" aria-label="Copiar cupón BFTOLECARNES">BFTOLECARNES <span aria-hidden="true">⧉</span></button>
-							</div>
-							<a class="bf26-button bf26-button--green bf26-new-maker__cta" href="<?php echo esc_url( $bf26_tolecarnes_url ); ?>">Descubrir sus carnes <span aria-hidden="true">↗</span></a>
-						</div>
-					</article>
 					<article class="bf26-new-maker bf26-new-maker--pajarete" id="bf26-quesos-pajarete" data-bf26-promo="pajarete" aria-labelledby="bf26-pajarete-title">
 						<div class="bf26-new-maker__visual">
 							<?php if ( $bf26_pajarete_photo ) { echo $bf26_pajarete_photo; } else { echo '<span class="bf26-new-maker__fallback" aria-hidden="true">🧀</span>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
@@ -418,7 +424,7 @@ get_header();
 						</div>
 					</article>
 				</div>
-				<p class="bf26-new-makers__note">Aplica el código correspondiente en el carrito o al finalizar la compra. Los cupones de cada productor se utilizan por separado. Las fotografías de Tolecarnes y Selectos de Castilla son ilustrativas. Además, con tu cuenta registrada acumulas el 2 % de cashback del <a href="#club-emdo">Club EMDO</a> durante Black Friday.</p>
+				<p class="bf26-new-makers__note">Aplica el código correspondiente en el carrito o al finalizar la compra. Los cupones de cada productor se utilizan por separado. Las fotografías de ambientación de Tolecarnes y Selectos de Castilla son ilustrativas. Además, con tu cuenta registrada acumulas el 2 % de cashback del <a href="#club-emdo">Club EMDO</a> durante Black Friday.</p>
 			</section>
 		</div>
 	</section>

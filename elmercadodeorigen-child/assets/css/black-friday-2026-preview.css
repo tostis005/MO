@@ -1498,3 +1498,35 @@ html body.emdo-bf2026-page :is(.site-footer,#colophon) {
 .bf26 .bf26-new-maker--selectos .bf26-new-maker__visual-label{
   background:rgba(21,30,22,.78);color:#fff;font-weight:850;
 }
+/* Third featured Black Friday offer: Tolecarnes immediately after Montjam. */
+.bf26 .bf26-featured-producer{margin:27px 0 38px}
+.bf26 .bf26-featured-producer__eyebrow{margin:0 0 13px;font-size:11px;font-weight:850;letter-spacing:.145em;color:#5b785f;line-height:1.5}
+.bf26 .bf26-new-maker--featured{display:grid;grid-template-columns:minmax(0,46%) minmax(0,54%);align-items:stretch;border-radius:13px;box-shadow:0 13px 43px rgba(26,52,37,.11)}
+.bf26 .bf26-new-maker--featured .bf26-new-maker__visual{height:auto;min-height:407px;flex-basis:auto;align-self:stretch}
+.bf26 .bf26-new-maker--featured .bf26-new-maker__body{padding:29px clamp(24px,3.5vw,48px) 30px}
+.bf26 .bf26-new-maker--featured .bf26-new-maker__body h4{font-size:clamp(32px,3.3vw,46px);min-height:0;margin:8px 0 10px}
+.bf26 .bf26-new-maker--featured .bf26-new-maker__description{min-height:0;max-width:500px;font-size:14px}
+.bf26 .bf26-new-maker--featured .bf26-new-maker__promotion{margin-top:17px;padding:13px 0}
+.bf26 .bf26-new-maker--featured .bf26-new-maker__coupon{padding:13px 0 17px}
+.bf26 .bf26-new-maker--featured .bf26-new-maker__cta{max-width:390px}
+.bf26 .bf26-featured-producer__number{position:absolute;z-index:3;right:17px;top:14px;display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,.68);color:#fff;background:rgba(16,34,22,.45);font-size:22px;font-weight:800;letter-spacing:-.03em}
+.bf26 .bf26-featured-producer__shipping{display:flex;align-items:flex-start;gap:11px;margin:16px 0 0;border-radius:8px;padding:13px 15px;background:#e9f0e5;border:1px solid #ccdfc8;color:#1d4b34;max-width:490px}
+.bf26 .bf26-featured-producer__shipping-icon{flex:0 0 28px;font-size:24px;line-height:1;color:#276041}
+.bf26 .bf26-featured-producer__shipping div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.bf26 .bf26-featured-producer__shipping strong{font-size:14px;line-height:1.4;font-weight:850}
+.bf26 .bf26-featured-producer__shipping span:last-child{font-size:11px;line-height:1.5;color:#526b57}
+@media(max-width:850px){
+  .bf26 .bf26-new-maker--featured{grid-template-columns:minmax(0,1fr)}
+  .bf26 .bf26-new-maker--featured .bf26-new-maker__visual{height:230px;min-height:0;flex-basis:230px}
+  .bf26 .bf26-new-maker--featured .bf26-new-maker__body{padding:26px 24px}
+  .bf26 .bf26-new-maker--featured .bf26-new-maker__cta{max-width:none}
+}
+@media(max-width:420px){
+  .bf26 .bf26-featured-producer{margin:23px 0 32px}
+  .bf26 .bf26-featured-producer__eyebrow{font-size:10px;letter-spacing:.095em}
+  .bf26 .bf26-new-maker--featured .bf26-new-maker__visual{height:204px;flex-basis:204px}
+  .bf26 .bf26-new-maker--featured .bf26-new-maker__body{padding:23px 19px}
+  .bf26 .bf26-new-maker--featured .bf26-new-maker__body h4{font-size:32px}
+  .bf26 .bf26-featured-producer__shipping{padding:11px 10px;gap:7px}
+  .bf26 .bf26-featured-producer__shipping strong{font-size:12.5px}
+}
