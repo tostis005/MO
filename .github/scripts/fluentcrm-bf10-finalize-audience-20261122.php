@@ -16,16 +16,22 @@ if(!class_exists($cls)){fwrite(STDERR,"BF10_READY_MODEL_MISSING\n");exit(4);}
 $target=$cls::find(15);
 $latest=$cls::find(14);
 $sender_ref=$cls::find(13);
-if(!$target || !$latest || !$sender_ref ||
-    (string)$target->status !== 'draft' ||
-    (string)$latest->status !== 'archived' ||
-    (string)$sender_ref->status !== 'archived' ||
-    (string)$target->email_subject !== '🖤 Black Friday: 10 % en 6 productores + envío gratis con Tolecarnes' ||
-    !str_contains((string)$target->email_body,'tolecarnes-grill.jpg') ||
-    !str_contains((string)$target->email_body,'Ver todas las ofertas del Black Friday') ||
-    !str_contains((string)$latest->title,'Montjam') ||
-    !str_contains((string)$sender_ref->title,'Hidalgo de la Jara')) {
-    fwrite(STDERR,"BF10_READY_SOURCE_OR_TARGET_MISMATCH\n");exit(5);
+$checks = [
+  'target_exists' => (bool)$target,
+  'latest_exists' => (bool)$latest,
+  'sender_ref_exists' => (bool)$sender_ref,
+  'target_draft' => $target && (string)$target->status === 'draft',
+  'source_archived' => $latest && (string)$latest->status === 'archived',
+  'sender_archived' => $sender_ref && (string)$sender_ref->status === 'archived',
+  'subject_match' => $target && (string)$target->email_subject === '🖤 Black Friday: 10 % en 6 productores + envío gratis con Tolecarnes',
+  'grill_image_present' => $target && str_contains((string)$target->email_body,'tolecarnes-grill.jpg'),
+  'final_reminder_present' => $target && str_contains((string)$target->email_body,'Ver todas las ofertas del Black Friday'),
+  'reference_montjam' => $latest && str_contains((string)$latest->title,'Montjam'),
+  'reference_hidalgo' => $sender_ref && str_contains((string)$sender_ref->title,'Hidalgo de la Jara'),
+];
+$failed = array_keys(array_filter($checks,static function($ok){return !$ok;}));
+if($failed){
+    fwrite(STDERR,"BF10_READY_SOURCE_OR_TARGET_MISMATCH checks=".implode(',',$failed)."\n");exit(5);
 }
 $source=is_array($latest->settings)?$latest->settings:[];
 $sender=is_array($sender_ref->settings)?$sender_ref->settings:[];
