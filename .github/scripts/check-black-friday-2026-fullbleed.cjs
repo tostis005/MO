@@ -349,6 +349,14 @@ const {chromium} = require('playwright-core');
       if (Math.abs(gap)>5) {
         throw Error('Gap before native shop footer at '+label+': '+gap+'px');
       }
+      // Real visitors scroll through the six cards; trigger lazy browser paint
+      // and intersection-based effects before producing the full-page screenshot.
+      for (const card of await page.locator('.bf26-new-maker__visual').all()) {
+        await card.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(170);
+      }
+      await page.waitForTimeout(450);
+      await page.evaluate(() => window.scrollTo({top:0,behavior:'instant'}));
       await page.screenshot({path:'/tmp/black-friday-2026-'+label+'.png',fullPage:true});
       await page.close();
     }
