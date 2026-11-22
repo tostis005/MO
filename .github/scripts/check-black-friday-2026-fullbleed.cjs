@@ -275,6 +275,11 @@ const {chromium} = require('playwright-core');
                 getComputedStyle(img).visibility==='visible' && getComputedStyle(img).opacity!=='0';
             }) &&
             newMakerCards.every(el=>!el.querySelector('.bf26-new-maker__fallback')) &&
+            ['tolecarnes','selectos'].every((key,i)=>{
+              const img=newMakers.querySelector('.bf26-new-maker--'+key+' .bf26-photo--editorial');
+              return !!img && img.currentSrc.includes(i===0?'tolecarnes-grill.jpg':'selectos-foie.jpg') &&
+                getComputedStyle(img).objectFit==='cover' && img.naturalWidth>=700;
+            }) &&
             newMakerCards.every(el=>!!el.querySelector('a[href="#club-emdo"]') || !!newMakers.querySelector('a[href="#club-emdo"]')),
           integratedCoupons:discountDetails.length===enabledSellers.length &&
             couponRows.length===enabledSellers.length &&

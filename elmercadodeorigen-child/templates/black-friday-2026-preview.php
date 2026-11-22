@@ -68,9 +68,15 @@ $montjam_slice = emdo_bf2026_photo( 'jamon-bellota-100-iberico-loncheado-montjam
 $bf26_chocolate_photo = emdo_bf2026_photo( 'crema-bioft-de-chocolate-negro-con-45-de-avellanas-y-cafe-arabica-200-g', 'Crema artesana de chocolate de Chocolates Artesanos Isabel', 'large', 'eager' );
 $bf26_huerta_photo    = emdo_bf2026_photo( '10-kg-de-hortalizas-frescas', 'Caja de hortalizas frescas de La Huerta de Ana Mary', 'large', 'eager' );
 $bf26_ikore_photo     = emdo_bf2026_photo( 'cafe-ikore-kofi-el-indio', 'Café de especialidad Colombia El Indio de Ikore Kofi', 'large', 'eager' );
-$bf26_tolecarnes_photo = emdo_bf2026_photo( 'lote-barbacoa', 'Lote barbacoa de Tolecarnes con cortes de ternera para parrilla', 'large', 'eager' );
+/* Imágenes de ambientación fotográfica con permiso de uso comercial:
+ * Vacuno a la brasa: Unsplash / https://unsplash.com/id/foto/steak-dimasak-di-atas-panggangan-dengan-penjepit-uRrKbxHiazE
+ * Foie gras emplatado: Pexels / https://www.pexels.com/photo/a-foie-gras-with-stainless-fork-on-a-ceramic-plate-6880221/
+ * Ambas se almacenan en el directorio público de la campaña durante el despliegue.
+ * Las fotos no muestran necesariamente el producto exacto a la venta.
+ */
+$bf26_grill_photo_url = content_url( '/mu-plugins/emdo-black-friday-2026-preview/tolecarnes-grill.jpg' );
+$bf26_foie_photo_url  = content_url( '/mu-plugins/emdo-black-friday-2026-preview/selectos-foie.jpg' );
 $bf26_pajarete_photo   = emdo_bf2026_photo( 'gran-reserva-mezcla', 'Queso gran reserva mezcla de Quesos Pajarete', 'large', 'eager' );
-$bf26_selectos_photo   = emdo_bf2026_photo( 'foie-gras-mi-cuit-entero', 'Foie gras mi cuit entero de Selectos de Castilla', 'large', 'eager' );
 
 /**
  * Siete packs públicos de Latitudes, independientes de los originales Mentta.
@@ -353,7 +359,7 @@ get_header();
 
 					<article class="bf26-new-maker bf26-new-maker--tolecarnes" id="bf26-tolecarnes" data-bf26-promo="tolecarnes" aria-labelledby="bf26-tolecarnes-title">
 						<div class="bf26-new-maker__visual">
-							<?php if ( $bf26_tolecarnes_photo ) { echo $bf26_tolecarnes_photo; } else { echo '<span class="bf26-new-maker__fallback" aria-hidden="true">🥩</span>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+							<img class="bf26-photo bf26-photo--editorial" src="<?php echo esc_url( $bf26_grill_photo_url ); ?>" alt="Vacuno a la brasa con llamas, fotografía gastronómica de ambientación" width="960" height="610" loading="eager" decoding="async" />
 							<span class="bf26-new-maker__visual-label">CARNES PARA DISFRUTAR</span>
 						</div>
 						<div class="bf26-new-maker__body">
@@ -393,7 +399,7 @@ get_header();
 					</article>
 					<article class="bf26-new-maker bf26-new-maker--selectos" id="bf26-selectos-de-castilla" data-bf26-promo="selectos" aria-labelledby="bf26-selectos-title">
 						<div class="bf26-new-maker__visual">
-							<?php if ( $bf26_selectos_photo ) { echo $bf26_selectos_photo; } else { echo '<span class="bf26-new-maker__fallback" aria-hidden="true">🍽️</span>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+							<img class="bf26-photo bf26-photo--editorial" src="<?php echo esc_url( $bf26_foie_photo_url ); ?>" alt="Foie gras emplatado en vajilla oscura, fotografía gastronómica de ambientación" width="960" height="610" loading="eager" decoding="async" />
 							<span class="bf26-new-maker__visual-label">ESPECIALIDADES DE PATO</span>
 						</div>
 						<div class="bf26-new-maker__body">
@@ -412,7 +418,7 @@ get_header();
 						</div>
 					</article>
 				</div>
-				<p class="bf26-new-makers__note">Aplica el código correspondiente en el carrito o al finalizar la compra. Los cupones de cada productor se utilizan por separado. Además, con tu cuenta registrada acumulas el 2 % de cashback del <a href="#club-emdo">Club EMDO</a> durante Black Friday.</p>
+				<p class="bf26-new-makers__note">Aplica el código correspondiente en el carrito o al finalizar la compra. Los cupones de cada productor se utilizan por separado. Las fotografías de Tolecarnes y Selectos de Castilla son ilustrativas. Además, con tu cuenta registrada acumulas el 2 % de cashback del <a href="#club-emdo">Club EMDO</a> durante Black Friday.</p>
 			</section>
 		</div>
 	</section>

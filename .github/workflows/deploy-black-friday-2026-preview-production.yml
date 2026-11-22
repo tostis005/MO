@@ -61,6 +61,9 @@ jobs:
           grep -Fq 'seis promociones' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           for code in CHOCOISABEL BFANAMARY BFIKORE BFTOLECARNES BFPAJARETE BFSELECTOS; do grep -Fq "data-bf26-copy=\"$code\"" elmercadodeorigen-child/templates/black-friday-2026-preview.php; done
           grep -Fq '.bf26-new-makers__grid' elmercadodeorigen-child/assets/css/black-friday-2026-preview.css
+          grep -Fq 'tolecarnes-grill.jpg' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'selectos-foie.jpg' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'fotografías de Tolecarnes y Selectos de Castilla son ilustrativas' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq '2,5 % adicional' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'automáticamente en el carrito' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'medio morcón de regalo' elmercadodeorigen-child/templates/black-friday-2026-preview.php
@@ -141,6 +144,25 @@ jobs:
           sshpass -e scp $SCP elmercadodeorigen-child/assets/css/black-friday-2026-preview.css "$USER@$HOST:$STAGE/preview.css"
           sshpass -e scp $SCP elmercadodeorigen-child/assets/css/black-friday-2026-global-curtain.css "$USER@$HOST:$STAGE/curtain.css"
           sshpass -e scp $SCP elmercadodeorigen-child/assets/js/black-friday-2026-preview.js "$USER@$HOST:$STAGE/preview.js"
+          # Licensed commercial-use food photographs. Fetch resized JPEGs once in CI,
+          # then deploy them locally rather than hotlinking third-party CDNs.
+          # Unsplash license https://unsplash.com/license
+          # Unsplash photo https://unsplash.com/id/foto/steak-dimasak-di-atas-panggangan-dengan-penjepit-uRrKbxHiazE
+          # Pexels license https://www.pexels.com/license/
+          # Pexels photo https://www.pexels.com/photo/a-foie-gras-with-stainless-fork-on-a-ceramic-plate-6880221/
+          curl -fLsS --retry 3 --retry-delay 2 --max-time 50 \
+            'https://images.unsplash.com/photo-1709433420574-7e8b97952eed?fit=crop&w=1100&q=82' \
+            -o /tmp/emdo-tolecarnes-grill.jpg
+          curl -fLsS --retry 3 --retry-delay 2 --max-time 50 \
+            'https://images.pexels.com/photos/6880221/pexels-photo-6880221.jpeg?auto=compress&cs=tinysrgb&w=1100' \
+            -o /tmp/emdo-selectos-foie.jpg
+          for f in /tmp/emdo-tolecarnes-grill.jpg /tmp/emdo-selectos-foie.jpg; do
+            test "$(file -b --mime-type "$f")" = 'image/jpeg'
+            test "$(stat -c '%s' "$f")" -gt 10000
+            test "$(stat -c '%s' "$f")" -lt 1300000
+          done
+          sshpass -e scp $SCP /tmp/emdo-tolecarnes-grill.jpg "$USER@$HOST:$STAGE/tolecarnes-grill.jpg"
+          sshpass -e scp $SCP /tmp/emdo-selectos-foie.jpg "$USER@$HOST:$STAGE/selectos-foie.jpg"
 
       - name: Deploy to production only with backup, rollback and live smoke test
         shell: bash
@@ -164,6 +186,7 @@ jobs:
           test -f "$ROOT/wp-config.php" && test -d "$MU" && test -x "$PHP"
           for f in bootstrap.php landing.php home-banner.php; do "$PHP" -l "$STAGE/$f" >/dev/null; done
           test -s "$STAGE/preview.js" && test -s "$STAGE/preview.css" && test -s "$STAGE/curtain.css"
+          test -s "$STAGE/tolecarnes-grill.jpg" && test -s "$STAGE/selectos-foie.jpg"
           SITE="$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$ROOT" --allow-root --skip-plugins --skip-themes)"
           case "$SITE" in
             https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
@@ -239,6 +262,8 @@ jobs:
           install -m 0644 "$STAGE/preview.css" "$NEW/preview.css"
           install -m 0644 "$STAGE/curtain.css" "$NEW/curtain.css"
           install -m 0644 "$STAGE/preview.js" "$NEW/preview.js"
+          install -m 0644 "$STAGE/tolecarnes-grill.jpg" "$NEW/tolecarnes-grill.jpg"
+          install -m 0644 "$STAGE/selectos-foie.jpg" "$NEW/selectos-foie.jpg"
           CHANGED=1
           rm -rf "$DEST"
           mv "$NEW" "$DEST"
@@ -518,6 +543,8 @@ jobs:
           grep -Fq 'id="bf26-nuevos-productores"' /tmp/bf-preview-live.html
           for seller in tolecarnes quesos-pajarete selectos-de-castilla; do grep -Fq "id=\"bf26-$seller\"" /tmp/bf-preview-live.html; done
           for code in CHOCOISABEL BFANAMARY BFIKORE BFTOLECARNES BFPAJARETE BFSELECTOS; do grep -Fq "data-bf26-copy=\"$code\"" /tmp/bf-preview-live.html; done
+          grep -Fq 'tolecarnes-grill.jpg' /tmp/bf-preview-live.html
+          grep -Fq 'selectos-foie.jpg' /tmp/bf-preview-live.html
           grep -Fq 'medio morcón de regalo' /tmp/bf-preview-live.html
           grep -Fq 'jamones Montjam de bellota 100 % ibéricos' /tmp/bf-preview-live.html
           ! grep -Eq '7 kg o más|igual o superior a 7 kg|jamones de menos de 7 kg' /tmp/bf-preview-live.html
@@ -529,6 +556,8 @@ jobs:
           curl -fsSIL --max-time 30 'https://www.elmercadodeorigen.com/wp-content/mu-plugins/emdo-black-friday-2026-preview/preview.css' >/dev/null
           curl -fsSIL --max-time 30 'https://www.elmercadodeorigen.com/wp-content/mu-plugins/emdo-black-friday-2026-preview/curtain.css' >/dev/null
           curl -fsSIL --max-time 30 'https://www.elmercadodeorigen.com/wp-content/mu-plugins/emdo-black-friday-2026-preview/preview.js' >/dev/null
+          curl -fsSIL --max-time 30 'https://www.elmercadodeorigen.com/wp-content/mu-plugins/emdo-black-friday-2026-preview/tolecarnes-grill.jpg' >/dev/null
+          curl -fsSIL --max-time 30 'https://www.elmercadodeorigen.com/wp-content/mu-plugins/emdo-black-friday-2026-preview/selectos-foie.jpg' >/dev/null
           echo "BLACK_FRIDAY_PREVIEW_PUBLIC_VERIFIED"
 
       - name: Verify 320/360/390/768/1440 px viewport cards, full-bleed sections and native shop shell
