@@ -262,10 +262,36 @@ get_header();
 			<?php endif; ?>
 
 
-            <section class="bf26-featured-producer" id="bf26-tolecarnes-promo" aria-labelledby="bf26-tolecarnes-title">
-                <p class="bf26-featured-producer__eyebrow">✳ OFERTA 03 · BLACK FRIDAY · CARNES DE TOLEDO</p>
-                <article class="bf26-new-maker bf26-new-maker--tolecarnes bf26-new-maker--featured" id="bf26-tolecarnes" data-bf26-promo="tolecarnes" aria-labelledby="bf26-tolecarnes-title">
+
+            <section class="bf26-featured-producer bf26-featured-producer--selectos" id="bf26-selectos-promo" aria-labelledby="bf26-selectos-title">
+                <p class="bf26-featured-producer__eyebrow">✳ OFERTA 03 · BLACK FRIDAY · ESPECIALIDADES DE PATO</p>
+                <article class="bf26-new-maker bf26-new-maker--selectos bf26-new-maker--featured bf26-new-maker--featured-selectos" id="bf26-selectos-de-castilla" data-bf26-promo="selectos" aria-labelledby="bf26-selectos-title">
 						<div class="bf26-new-maker__visual"><span class="bf26-featured-producer__number" aria-label="Oferta número 3">03</span>
+							<img class="bf26-photo bf26-photo--editorial" src="<?php echo esc_url( $bf26_foie_photo_url ); ?>" alt="Foie gras emplatado en vajilla oscura, fotografía gastronómica de ambientación" width="960" height="610" loading="eager" decoding="async" />
+							<span class="bf26-new-maker__visual-label">ESPECIALIDADES DE PATO</span>
+						</div>
+						<div class="bf26-new-maker__body">
+							<p class="bf26-new-maker__category">SELECCIÓN GOURMET · FOIE GRAS · MAGRET · CONFIT</p>
+							<h4 id="bf26-selectos-title">Selectos de Castilla</h4>
+							<p class="bf26-new-maker__description">Foie gras, magret, confit y especialidades de pato para disfrutar de una mesa especial. <strong>Esta Black Friday, llévate un 20 % de descuento en todos sus productos</strong> con el cupón <strong>BFSELECTOS</strong>.</p>
+                            <p class="bf26-featured-producer__highlight"><span aria-hidden="true">✳</span> OFERTA ESPECIAL · 20 % DE DESCUENTO</p>
+							<div class="bf26-new-maker__promotion">
+								<strong class="bf26-new-maker__percentage">–20<span>%</span></strong>
+								<span>DE DESCUENTO EN TODOS SUS PRODUCTOS</span>
+							</div>
+							<div class="bf26-new-maker__coupon">
+								<span>CÓDIGO DE DESCUENTO</span>
+								<button type="button" class="bf26-coupon" data-bf26-copy="BFSELECTOS" aria-label="Copiar cupón BFSELECTOS">BFSELECTOS <span aria-hidden="true">⧉</span></button>
+							</div>
+							<a class="bf26-button bf26-button--green bf26-new-maker__cta" href="<?php echo esc_url( $bf26_selectos_url ); ?>">Ver sus especialidades <span aria-hidden="true">↗</span></a>
+						</div>
+					</article>
+            </section>
+
+            <section class="bf26-featured-producer" id="bf26-tolecarnes-promo" aria-labelledby="bf26-tolecarnes-title">
+                <p class="bf26-featured-producer__eyebrow">✳ OFERTA 04 · BLACK FRIDAY · CARNES DE TOLEDO</p>
+                <article class="bf26-new-maker bf26-new-maker--tolecarnes bf26-new-maker--featured" id="bf26-tolecarnes" data-bf26-promo="tolecarnes" aria-labelledby="bf26-tolecarnes-title">
+						<div class="bf26-new-maker__visual"><span class="bf26-featured-producer__number" aria-label="Oferta número 4">04</span>
 							<img class="bf26-photo bf26-photo--editorial" src="<?php echo esc_url( $bf26_grill_photo_url ); ?>" alt="Vacuno a la brasa con llamas, fotografía gastronómica de ambientación" width="960" height="610" loading="eager" decoding="async" />
 							<span class="bf26-new-maker__visual-label">CARNES PARA DISFRUTAR</span>
 						</div>
@@ -319,7 +345,7 @@ get_header();
 						<p class="bf26-new-makers__eyebrow"><span aria-hidden="true">✳</span> MÁS OFERTAS · BLACK FRIDAY</p>
 						<h3 id="bf26-new-makers-title">Más productores. <em>Más para disfrutar.</em></h3>
 					</div>
-					<p>Chocolates artesanos, huerta, café de especialidad, quesos y productos gourmet de pato. Descubre <strong>cinco promociones con un 10 % de descuento</strong> utilizando el cupón de cada productor.</p>
+					<p>Chocolates artesanos, productos de la huerta, café de especialidad y quesos. Descubre <strong>cuatro promociones con un 10 % de descuento</strong> utilizando el cupón de cada productor.</p>
 				</div>
 				<div class="bf26-new-makers__grid">
 					<article class="bf26-new-maker bf26-new-maker--chocolate" id="bf26-chocolates-isabel" data-bf26-promo="chocoisabel" aria-labelledby="bf26-chocolate-title">
@@ -401,26 +427,6 @@ get_header();
 								<button type="button" class="bf26-coupon" data-bf26-copy="BFPAJARETE" aria-label="Copiar cupón BFPAJARETE">BFPAJARETE <span aria-hidden="true">⧉</span></button>
 							</div>
 							<a class="bf26-button bf26-button--green bf26-new-maker__cta" href="<?php echo esc_url( $bf26_pajarete_url ); ?>">Descubrir sus quesos <span aria-hidden="true">↗</span></a>
-						</div>
-					</article>
-					<article class="bf26-new-maker bf26-new-maker--selectos" id="bf26-selectos-de-castilla" data-bf26-promo="selectos" aria-labelledby="bf26-selectos-title">
-						<div class="bf26-new-maker__visual">
-							<img class="bf26-photo bf26-photo--editorial" src="<?php echo esc_url( $bf26_foie_photo_url ); ?>" alt="Foie gras emplatado en vajilla oscura, fotografía gastronómica de ambientación" width="960" height="610" loading="eager" decoding="async" />
-							<span class="bf26-new-maker__visual-label">ESPECIALIDADES DE PATO</span>
-						</div>
-						<div class="bf26-new-maker__body">
-							<p class="bf26-new-maker__category">FOIE GRAS · MAGRET · CONFIT</p>
-							<h4 id="bf26-selectos-title">Selectos de Castilla</h4>
-							<p class="bf26-new-maker__description">Foie gras, magret, confit y especialidades de pato para llevar algo diferente a la mesa.</p>
-							<div class="bf26-new-maker__promotion">
-								<strong class="bf26-new-maker__percentage">–10<span>%</span></strong>
-								<span>DE DESCUENTO EN SUS PRODUCTOS</span>
-							</div>
-							<div class="bf26-new-maker__coupon">
-								<span>CÓDIGO DE DESCUENTO</span>
-								<button type="button" class="bf26-coupon" data-bf26-copy="BFSELECTOS" aria-label="Copiar cupón BFSELECTOS">BFSELECTOS <span aria-hidden="true">⧉</span></button>
-							</div>
-							<a class="bf26-button bf26-button--green bf26-new-maker__cta" href="<?php echo esc_url( $bf26_selectos_url ); ?>">Ver sus especialidades <span aria-hidden="true">↗</span></a>
 						</div>
 					</article>
 				</div>

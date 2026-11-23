@@ -57,11 +57,14 @@ jobs:
           grep -Fq 'id="bf26-chocolates-isabel"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'id="bf26-huerta-ana-mary"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'id="bf26-ikore-kofi"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'id="bf26-selectos-promo"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq '–20<span>%</span>' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'OFERTA 03 · BLACK FRIDAY · ESPECIALIDADES DE PATO' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'id="bf26-tolecarnes-promo"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'Envío gratuito a Madrid y Toledo' elmercadodeorigen-child/templates/black-friday-2026-preview.php
-          grep -Fq 'cinco promociones' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'cuatro promociones' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           for seller in tolecarnes quesos-pajarete selectos-de-castilla; do grep -Fq "id=\"bf26-$seller\"" elmercadodeorigen-child/templates/black-friday-2026-preview.php; done
-          grep -Fq 'cinco promociones' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'cuatro promociones' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           for code in CHOCOISABEL BFANAMARY BFIKORE BFTOLECARNES BFPAJARETE BFSELECTOS; do grep -Fq "data-bf26-copy=\"$code\"" elmercadodeorigen-child/templates/black-friday-2026-preview.php; done
           grep -Fq '.bf26-new-makers__grid' elmercadodeorigen-child/assets/css/black-friday-2026-preview.css
           grep -Fq 'tolecarnes-grill.jpg' elmercadodeorigen-child/templates/black-friday-2026-preview.php
@@ -476,6 +479,9 @@ jobs:
           grep -Fq 'data-bf26-seller="hidalgo"' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'data-bf26-seller="montjam"' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'id="bf26-nuevos-productores"' "/tmp/bf-preview-$RUN.html"
+          grep -Fq 'id="bf26-selectos-promo"' "/tmp/bf-preview-$RUN.html"
+          grep -Fq '–20<span>%</span>' "/tmp/bf-preview-$RUN.html"
+          grep -Fq '20 % de descuento en todos sus productos' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'id="bf26-tolecarnes-promo"' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'Envío gratuito a Madrid y Toledo' "/tmp/bf-preview-$RUN.html"
           for seller in tolecarnes quesos-pajarete selectos-de-castilla; do grep -Fq "id=\"bf26-$seller\"" "/tmp/bf-preview-$RUN.html"; done
@@ -546,6 +552,9 @@ jobs:
           grep -Fq 'data-bf26-seller="hidalgo"' /tmp/bf-preview-live.html
           grep -Fq 'data-bf26-seller="montjam"' /tmp/bf-preview-live.html
           grep -Fq 'id="bf26-nuevos-productores"' /tmp/bf-preview-live.html
+          grep -Fq 'id="bf26-selectos-promo"' /tmp/bf-preview-live.html
+          grep -Fq '–20<span>%</span>' /tmp/bf-preview-live.html
+          grep -Fq '20 % de descuento en todos sus productos' /tmp/bf-preview-live.html
           grep -Fq 'id="bf26-tolecarnes-promo"' /tmp/bf-preview-live.html
           grep -Fq 'Envío gratuito a Madrid y Toledo' /tmp/bf-preview-live.html
           for seller in tolecarnes quesos-pajarete selectos-de-castilla; do grep -Fq "id=\"bf26-$seller\"" /tmp/bf-preview-live.html; done

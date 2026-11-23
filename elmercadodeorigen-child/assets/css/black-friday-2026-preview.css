@@ -1530,3 +1530,30 @@ html body.emdo-bf2026-page :is(.site-footer,#colophon) {
   .bf26 .bf26-featured-producer__shipping{padding:11px 10px;gap:7px}
   .bf26 .bf26-featured-producer__shipping strong{font-size:12.5px}
 }
+/* Black Friday Selectos de Castilla: independent featured 20 % offer,
+   positioned third after Montjam; Tolecarnes remains prominent in fourth place. */
+.bf26 .bf26-featured-producer--selectos{margin-top:30px;margin-bottom:32px}
+.bf26 .bf26-featured-producer--selectos .bf26-featured-producer__eyebrow{color:#936929}
+.bf26 .bf26-new-maker--featured-selectos{border:1px solid #dfc99e;background:#fffaf1;box-shadow:0 14px 40px rgba(109,82,36,.13)}
+.bf26 .bf26-new-maker--featured-selectos .bf26-new-maker__body{background:linear-gradient(135deg,#fffdf8 0%,#fff7e8 100%)}
+.bf26 .bf26-new-maker--featured-selectos .bf26-new-maker__category{color:#997039}
+.bf26 .bf26-new-maker--featured-selectos .bf26-new-maker__body h4{color:#30452e}
+.bf26 .bf26-new-maker--featured-selectos .bf26-new-maker__description strong{color:#385c42}
+.bf26 .bf26-new-maker--featured-selectos .bf26-new-maker__percentage{color:#8c5923}
+.bf26 .bf26-new-maker--featured-selectos .bf26-new-maker__promotion>span{color:#77552b}
+.bf26 .bf26-new-maker--featured-selectos .bf26-new-maker__visual-label{background:rgba(66,44,20,.79)}
+.bf26 .bf26-new-maker--featured-selectos .bf26-featured-producer__number{background:rgba(111,72,28,.7)}
+.bf26 .bf26-featured-producer__highlight{
+  display:inline-flex;align-items:center;gap:8px;align-self:flex-start;
+  max-width:100%;margin:15px 0 0;padding:9px 13px;
+  border-radius:6px;background:#f4e6c8;border:1px solid #e6d1a5;
+  color:#76511f;font-size:11px;font-weight:850;letter-spacing:.07em;line-height:1.4
+}
+.bf26 .bf26-featured-producer__highlight span{font-size:14px}
+@media(max-width:850px){
+ .bf26 .bf26-featured-producer--selectos{margin-top:24px;margin-bottom:29px}
+}
+@media(max-width:420px){
+ .bf26 .bf26-featured-producer__highlight{font-size:10px;padding:9px 10px}
+ .bf26 .bf26-new-maker--featured-selectos .bf26-new-maker__body h4{font-size:29px}
+}

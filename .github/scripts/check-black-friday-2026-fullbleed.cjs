@@ -62,6 +62,9 @@ const {chromium} = require('playwright-core');
         const sellerCouponButtons=Array.from(document.querySelectorAll('.bf26-offer [data-bf26-copy]'));
         const newMakerCards=Array.from(document.querySelectorAll('.bf26-new-makers__grid .bf26-new-maker'));
         const newMakerCoupons=Array.from(document.querySelectorAll('.bf26-new-makers__grid .bf26-new-maker [data-bf26-copy]'));
+        const featuredSelectos=sel('#bf26-selectos-promo');
+        const featuredSelectosCard=sel('#bf26-selectos-de-castilla.bf26-new-maker--featured-selectos');
+        const featuredSelectosCoupon=featuredSelectosCard?.querySelector('[data-bf26-copy]');
         const featuredTolecarnes=sel('#bf26-tolecarnes-promo');
         const featuredCard=sel('#bf26-tolecarnes.bf26-new-maker--featured');
         const featuredCoupon=featuredCard?.querySelector('[data-bf26-copy]');
@@ -125,6 +128,7 @@ const {chromium} = require('playwright-core');
           '.bf26-montjam-gift','.bf26-montjam-gift__emblem',
           '.bf26-new-makers','.bf26-new-maker','.bf26-new-maker__body',
           '.bf26-featured-producer','.bf26-featured-producer__shipping',
+          '.bf26-featured-producer__highlight','.bf26-new-maker--featured-selectos',
           '.bf26-new-maker__promotion','.bf26-new-maker__coupon','.bf26-new-maker__cta'
         ];
         const offerRectangles=offerSelectors.flatMap(selector=>
@@ -259,23 +263,33 @@ const {chromium} = require('playwright-core');
           legacyCouponPresent:!!promo && /BFM2|BFEMDOM/.test(promo.textContent),
           allCopyButtonsUpdated:couponButtons.length===enabledSellers.length+6 &&
             couponButtons.every(el=>/^[A-Z0-9]{4,16}$/.test(el.getAttribute('data-bf26-copy')||'')),
-          featuredProducerThird:!!featuredTolecarnes && !!featuredCard &&
+          featuredProducerOrder:!!featuredSelectos && !!featuredSelectosCard &&
+            !!featuredTolecarnes && !!featuredCard && !!latitudes &&
+            !!sel('.bf26-offer--montjam') &&
+            (sel('.bf26-offer--montjam').compareDocumentPosition(featuredSelectos)&Node.DOCUMENT_POSITION_FOLLOWING)!==0 &&
+            (featuredSelectos.compareDocumentPosition(featuredTolecarnes)&Node.DOCUMENT_POSITION_FOLLOWING)!==0 &&
+            (featuredTolecarnes.compareDocumentPosition(latitudes)&Node.DOCUMENT_POSITION_FOLLOWING)!==0 &&
+            featuredSelectosCard.getAttribute('data-bf26-promo')==='selectos' &&
+            featuredSelectosCard.querySelector('.bf26-new-maker__percentage')?.textContent.trim()==='–20%' &&
+            featuredSelectosCard.textContent.includes('20 % de descuento en todos sus productos') &&
+            featuredSelectosCard.querySelector('.bf26-featured-producer__number')?.textContent.trim()==='03' &&
+            featuredSelectosCoupon?.getAttribute('data-bf26-copy')==='BFSELECTOS' &&
+            featuredSelectosCard.querySelector('.bf26-photo--editorial')?.naturalWidth>=700 &&
             featuredCard.getAttribute('data-bf26-promo')==='tolecarnes' &&
             featuredCard.textContent.includes('Envío gratuito a Madrid y Toledo') &&
-            featuredCard.textContent.includes('10') &&
+            featuredCard.querySelector('.bf26-new-maker__percentage')?.textContent.trim()==='–10%' &&
+            featuredCard.querySelector('.bf26-featured-producer__number')?.textContent.trim()==='04' &&
             featuredCoupon?.getAttribute('data-bf26-copy')==='BFTOLECARNES' &&
-            !!sel('.bf26-offer--montjam') && !!latitudes &&
-            (sel('.bf26-offer--montjam').compareDocumentPosition(featuredTolecarnes)&Node.DOCUMENT_POSITION_FOLLOWING)!==0 &&
-            (featuredTolecarnes.compareDocumentPosition(latitudes)&Node.DOCUMENT_POSITION_FOLLOWING)!==0 &&
             featuredCard.querySelector('.bf26-photo--editorial')?.naturalWidth>=700,
           additionalProducerCards:!!latitudes && !!newMakers && !!club &&
             (latitudes.compareDocumentPosition(newMakers)&Node.DOCUMENT_POSITION_FOLLOWING)!==0 &&
             (newMakers.compareDocumentPosition(club)&Node.DOCUMENT_POSITION_FOLLOWING)!==0 &&
-            newMakerCards.length===5 && newMakerCoupons.length===5 &&
-            ['chocoisabel','anamary','ikore','pajarete','selectos'].every((slug,i)=>newMakerCards[i]?.getAttribute('data-bf26-promo')===slug) &&
-            ['CHOCOISABEL','BFANAMARY','BFIKORE','BFPAJARETE','BFSELECTOS'].every((code,i)=>newMakerCoupons[i]?.getAttribute('data-bf26-copy')===code) &&
-            ['Chocolates Artesanos Isabel','La Huerta de Ana Mary','Ikore Kofi','Quesos Pajarete','Selectos de Castilla'].every((name,i)=>newMakerCards[i]?.textContent.includes(name)) &&
-            newMakers.textContent.includes('cinco promociones') &&
+            newMakerCards.length===4 && newMakerCoupons.length===4 &&
+            ['chocoisabel','anamary','ikore','pajarete'].every((slug,i)=>newMakerCards[i]?.getAttribute('data-bf26-promo')===slug) &&
+            ['CHOCOISABEL','BFANAMARY','BFIKORE','BFPAJARETE'].every((code,i)=>newMakerCoupons[i]?.getAttribute('data-bf26-copy')===code) &&
+            ['Chocolates Artesanos Isabel','La Huerta de Ana Mary','Ikore Kofi','Quesos Pajarete'].every((name,i)=>newMakerCards[i]?.textContent.includes(name)) &&
+            newMakers.textContent.includes('cuatro promociones') &&
+            !newMakers.textContent.includes('Selectos de Castilla') &&
             newMakerCards.every(el=>el.textContent.includes('10%') || el.textContent.includes('10 %')) &&
             newMakerCards.every(el=>!!el.querySelector('.bf26-new-maker__cta[href^="/tienda/"]') || !!el.querySelector('.bf26-new-maker__cta[href^="https://www.elmercadodeorigen.com/tienda/"]')) &&
             newMakerCards.every(el=>!!el.querySelector('.bf26-photo')) &&
@@ -333,7 +347,7 @@ const {chromium} = require('playwright-core');
         throw Error('Missing definitive Hidalgo BF benefits at '+label+': '+JSON.stringify(measurement));
       }
       if (!measurement.couponPresent || measurement.legacyCouponPresent || !measurement.allCopyButtonsUpdated
-          || !measurement.integratedCoupons || !measurement.additionalProducerCards || !measurement.featuredProducerThird || !measurement.noOldCouponSentence
+          || !measurement.integratedCoupons || !measurement.additionalProducerCards || !measurement.featuredProducerOrder || !measurement.noOldCouponSentence
           || measurement.heroTitleTopGap===null || measurement.heroTitleTopGap<0 || measurement.heroTitleTopGap>105
           || !measurement.removedInstructionSection || !measurement.removedHeroEyebrow
           || !measurement.removedHowItWorksLink) {
