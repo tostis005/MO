@@ -273,7 +273,7 @@ get_header();
 						<div class="bf26-new-maker__body">
 							<p class="bf26-new-maker__category">SELECCIÓN GOURMET · FOIE GRAS · MAGRET · CONFIT</p>
 							<h4 id="bf26-selectos-title">Selectos de Castilla</h4>
-							<p class="bf26-new-maker__description">Foie gras, magret, confit y especialidades de pato para disfrutar de una mesa especial. <strong>Esta Black Friday, llévate un 20 % de descuento en todos sus productos</strong> con el cupón <strong>BFSELECTOS</strong>.</p>
+							<p class="bf26-new-maker__description">Foie gras, magret, confit y especialidades de pato para disfrutar de una mesa especial. <strong>Este Black Friday, llévate un 20 % de descuento en todos sus productos</strong> con el cupón <strong>BFSELECTOS</strong>.</p>
                             <p class="bf26-featured-producer__highlight"><span aria-hidden="true">✳</span> OFERTA ESPECIAL · 20 % DE DESCUENTO</p>
 							<div class="bf26-new-maker__promotion">
 								<strong class="bf26-new-maker__percentage">–20<span>%</span></strong>
