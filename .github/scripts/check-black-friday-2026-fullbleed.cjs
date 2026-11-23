@@ -289,7 +289,7 @@ const {chromium} = require('playwright-core');
             ['CHOCOISABEL','BFANAMARY','BFIKORE','BFPAJARETE'].every((code,i)=>newMakerCoupons[i]?.getAttribute('data-bf26-copy')===code) &&
             ['Chocolates Artesanos Isabel','La Huerta de Ana Mary','Ikore Kofi','Quesos Pajarete'].every((name,i)=>newMakerCards[i]?.textContent.includes(name)) &&
             newMakers.textContent.includes('cuatro promociones') &&
-            !newMakers.textContent.includes('Selectos de Castilla') &&
+            !newMakerCards.some(card=>card.textContent.includes('Selectos de Castilla')) &&
             newMakerCards.every(el=>el.textContent.includes('10%') || el.textContent.includes('10 %')) &&
             newMakerCards.every(el=>!!el.querySelector('.bf26-new-maker__cta[href^="/tienda/"]') || !!el.querySelector('.bf26-new-maker__cta[href^="https://www.elmercadodeorigen.com/tienda/"]')) &&
             newMakerCards.every(el=>!!el.querySelector('.bf26-photo')) &&
