@@ -272,13 +272,13 @@ const {chromium} = require('playwright-core');
             featuredSelectosCard.getAttribute('data-bf26-promo')==='selectos' &&
             featuredSelectosCard.querySelector('.bf26-new-maker__percentage')?.textContent.trim()==='–20%' &&
             featuredSelectosCard.textContent.includes('20 % de descuento en todos sus productos') &&
-            featuredSelectosCard.querySelector('.bf26-featured-producer__number')?.textContent.trim()==='03' &&
+            !featuredSelectosCard.querySelector('.bf26-featured-producer__number') &&
             featuredSelectosCoupon?.getAttribute('data-bf26-copy')==='BFSELECTOS' &&
             featuredSelectosCard.querySelector('.bf26-photo--editorial')?.naturalWidth>=700 &&
             featuredCard.getAttribute('data-bf26-promo')==='tolecarnes' &&
             featuredCard.textContent.includes('Envío gratuito a Madrid y Toledo') &&
             featuredCard.querySelector('.bf26-new-maker__percentage')?.textContent.trim()==='–10%' &&
-            featuredCard.querySelector('.bf26-featured-producer__number')?.textContent.trim()==='04' &&
+            !featuredCard.querySelector('.bf26-featured-producer__number') &&
             featuredCoupon?.getAttribute('data-bf26-copy')==='BFTOLECARNES' &&
             featuredCard.querySelector('.bf26-photo--editorial')?.naturalWidth>=700,
           additionalProducerCards:!!latitudes && !!newMakers && !!club &&

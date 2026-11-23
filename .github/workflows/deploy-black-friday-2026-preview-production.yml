@@ -59,7 +59,9 @@ jobs:
           grep -Fq 'id="bf26-ikore-kofi"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'id="bf26-selectos-promo"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq '–20<span>%</span>' elmercadodeorigen-child/templates/black-friday-2026-preview.php
-          grep -Fq 'OFERTA 03 · BLACK FRIDAY · ESPECIALIDADES DE PATO' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'BLACK FRIDAY · ESPECIALIDADES DE PATO' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'BLACK FRIDAY · CARNES DE TOLEDO' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          ! grep -Fq 'bf26-featured-producer__number' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'id="bf26-tolecarnes-promo"' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'Envío gratuito a Madrid y Toledo' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'cuatro promociones' elmercadodeorigen-child/templates/black-friday-2026-preview.php

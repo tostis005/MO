@@ -264,9 +264,9 @@ get_header();
 
 
             <section class="bf26-featured-producer bf26-featured-producer--selectos" id="bf26-selectos-promo" aria-labelledby="bf26-selectos-title">
-                <p class="bf26-featured-producer__eyebrow">✳ OFERTA 03 · BLACK FRIDAY · ESPECIALIDADES DE PATO</p>
+                <p class="bf26-featured-producer__eyebrow">✳ BLACK FRIDAY · ESPECIALIDADES DE PATO</p>
                 <article class="bf26-new-maker bf26-new-maker--selectos bf26-new-maker--featured bf26-new-maker--featured-selectos" id="bf26-selectos-de-castilla" data-bf26-promo="selectos" aria-labelledby="bf26-selectos-title">
-						<div class="bf26-new-maker__visual"><span class="bf26-featured-producer__number" aria-label="Oferta número 3">03</span>
+						<div class="bf26-new-maker__visual">
 							<img class="bf26-photo bf26-photo--editorial" src="<?php echo esc_url( $bf26_foie_photo_url ); ?>" alt="Foie gras emplatado en vajilla oscura, fotografía gastronómica de ambientación" width="960" height="610" loading="eager" decoding="async" />
 							<span class="bf26-new-maker__visual-label">ESPECIALIDADES DE PATO</span>
 						</div>
@@ -289,9 +289,9 @@ get_header();
             </section>
 
             <section class="bf26-featured-producer" id="bf26-tolecarnes-promo" aria-labelledby="bf26-tolecarnes-title">
-                <p class="bf26-featured-producer__eyebrow">✳ OFERTA 04 · BLACK FRIDAY · CARNES DE TOLEDO</p>
+                <p class="bf26-featured-producer__eyebrow">✳ BLACK FRIDAY · CARNES DE TOLEDO</p>
                 <article class="bf26-new-maker bf26-new-maker--tolecarnes bf26-new-maker--featured" id="bf26-tolecarnes" data-bf26-promo="tolecarnes" aria-labelledby="bf26-tolecarnes-title">
-						<div class="bf26-new-maker__visual"><span class="bf26-featured-producer__number" aria-label="Oferta número 4">04</span>
+						<div class="bf26-new-maker__visual">
 							<img class="bf26-photo bf26-photo--editorial" src="<?php echo esc_url( $bf26_grill_photo_url ); ?>" alt="Vacuno a la brasa con llamas, fotografía gastronómica de ambientación" width="960" height="610" loading="eager" decoding="async" />
 							<span class="bf26-new-maker__visual-label">CARNES PARA DISFRUTAR</span>
 						</div>
