@@ -122,7 +122,7 @@ jobs:
                   state['size']=size
                   results.append(state)
               print('MONTJAM_BROWSER_RESULT '+json.dumps(results,ensure_ascii=False))
-              assert all(int(x.get('id') or 0)>0 and x['format'] and any('Pieza entera' in o for o in x['options']) and re.search(r'\\d', x['price']+' '+x['total']) for x in results), 'Missing variation, visible format or price'
+              assert all(int(x.get('id') or 0)>0 and x['format'] and any('Pieza entera' in o for o in x['options']) and re.search(r'\d', x['price']+' '+x['total']) for x in results), 'Missing variation, visible format or price'
           finally:
               d.quit()
           PY
