@@ -1,0 +1,128 @@
+name: Repair Montjam black shoulder format associations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/montjam-black-shoulder-format-sync-20261126.php'
+      - '.github/workflows/montjam-black-shoulder-format-sync-20261126.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-montjam-black-format-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+      ROOT: /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate PHP and prepare existing SSH route
+        env:
+          KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/montjam-black-shoulder-format-sync-20261126.php
+          : "${STAGING_HOST:?}" "${STAGING_USER:?}" "${SSHPASS:?}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -T 15 -p "${STAGING_PORT:-22}" -H "$STAGING_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Audit, add missing associations and install future variation hook
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS=(-o StrictHostKeyChecking=yes -o ConnectTimeout=15 -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive -p "$PORT")
+          REMOTE="/tmp/emdo-black-format-$GITHUB_RUN_ID.php"
+          sshpass -e ssh "${OPTS[@]}" "$STAGING_USER@$STAGING_HOST" "umask 077; cat > '$REMOTE'" < .github/scripts/montjam-black-shoulder-format-sync-20261126.php
+          sshpass -e ssh "${OPTS[@]}" "$STAGING_USER@$STAGING_HOST" "bash -s -- '$ROOT' '$REMOTE'" <<'REMOTE_SCRIPT'
+          set -Eeuo pipefail
+          root="$1"; script="$2"
+          php=/opt/plesk/php/8.2/bin/php; wp="$(command -v wp)"
+          trap 'rm -f "$script"' EXIT
+          test -s "$root/wp-config.php"
+          site="$("$php" "$wp" option get siteurl --path="$root" --skip-plugins --skip-themes --allow-root)"
+          case "$site" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;; *) exit 10;; esac
+          "$php" -l "$script"
+          export EMDO_FORMAT_SOURCE="$script"
+          "$php" -d memory_limit=1536M "$wp" eval '
+            if (!function_exists("emdo_montjam_black_format_sync_20261126")) require getenv("EMDO_FORMAT_SOURCE");
+            $post=get_page_by_path("paleta-de-bellota-100-iberica-montjam",OBJECT,"product");
+            if (!$post || $post->post_status!=="publish") throw new Exception("Target not found");
+            foreach ([false,true,false] as $i=>$apply) {
+              $r=emdo_montjam_black_format_sync_20261126($post->ID,$apply);
+              if(is_wp_error($r)) throw new Exception($r->get_error_message());
+              echo "MONTJAM_PHASE_".$i." ".wp_json_encode($r,JSON_UNESCAPED_UNICODE)."\n";
+              if($i===2 && $r["missing"]) throw new Exception("Associations remain missing");
+            }
+          ' --path="$root" --allow-root
+          dir="$root/wp-content/mu-plugins"; mkdir -p "$dir"
+          target="$dir/elmercado-montjam-black-format-20261126.php"
+          install -m 0644 "$script" "$target.new"
+          mv "$target.new" "$target"
+          if ! "$php" -d memory_limit=512M "$wp" eval 'if(!has_action("woocommerce_new_product_variation","emdo_montjam_black_format_on_variation_20261126")) throw new Exception("Missing hook"); echo "MONTJAM_HOOK_ACTIVE\n";' --path="$root" --allow-root; then
+            rm -f "$target"
+            exit 11
+          fi
+          echo MONTJAM_ASSOCIATIONS_VERIFIED
+          REMOTE_SCRIPT
+      - name: Check public product in Chrome at every available weight
+        run: |
+          python3 -m pip install --quiet --break-system-packages selenium
+          python3 - <<'PY'
+          import os, re, time, json
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          from selenium.webdriver.common.by import By
+          from selenium.webdriver.support.ui import WebDriverWait, Select
+          options=Options()
+          for arg in ['--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1440,1200']:
+              options.add_argument(arg)
+          d=webdriver.Chrome(options=options)
+          d.set_page_load_timeout(65)
+          wait=WebDriverWait(d,20)
+          selector='select[name="attribute_pa_tamano"]'
+          results=[]
+          try:
+              d.get('https://www.elmercadodeorigen.com/producto/paleta-de-bellota-100-iberica-montjam/?format_verify='+os.environ['GITHUB_RUN_ID'])
+              wait.until(lambda x: x.find_elements(By.CSS_SELECTOR,selector))
+              sizes=[o.get_attribute('value') for o in Select(d.find_element(By.CSS_SELECTOR,selector)).options if o.get_attribute('value') and o.is_enabled()]
+              assert sizes, 'No enabled weights'
+              for size in sizes:
+                  Select(d.find_element(By.CSS_SELECTOR,selector)).select_by_value(size)
+                  time.sleep(3)
+                  state=d.execute_script("""
+                    const c=document.querySelector('#yith-wapo-container');
+                    const v=document.querySelector('input.variation_id');
+                    const s=c?.querySelector('select');
+                    const text=c?.innerText||'';
+                    const visible=e=>!!(e&&e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden');
+                    const total=document.querySelector('#wapo-total-price, .wapo-total-price, #yith-wapo-total-price');
+                    const price=[...document.querySelectorAll('.single_variation .price, #wapo-total-price, .wapo-total-price, #yith-wapo-total-price, .summary > .price')].filter(visible).map(e=>e.innerText).join(' ');
+                    return {id:v?.value,format:visible(c)&&!!s&&text.includes('FORMATO'),options:s?[...s.options].map(o=>o.textContent):[],price,total:total?.innerText||''};
+                  """)
+                  state['size']=size
+                  results.append(state)
+              print('MONTJAM_BROWSER_RESULT '+json.dumps(results,ensure_ascii=False))
+              assert all(int(x.get('id') or 0)>0 and x['format'] and any('Pieza entera' in o for o in x['options']) and re.search(r'\\d', x['price']+' '+x['total']) for x in results), 'Missing variation, visible format or price'
+          finally:
+              d.quit()
+          PY
