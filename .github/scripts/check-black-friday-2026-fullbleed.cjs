@@ -30,10 +30,10 @@ const {chromium} = require('playwright-core');
         const close = document.querySelector('#bf26-overlay [data-bf26-close]');
         if (close) close.click();
       });
-      // Wait for all six catalog photos to finish decoding before visual capture.
+      // Wait for all seven producer photos to finish decoding before visual capture.
       await page.waitForFunction(() => {
         const images=Array.from(document.querySelectorAll('.bf26-new-maker__visual .bf26-photo'));
-        return images.length===6 && images.every(img=>img.complete && img.naturalWidth>30 && img.naturalHeight>30);
+        return images.length===7 && images.every(img=>img.complete && img.naturalWidth>30 && img.naturalHeight>30);
       }, null, {timeout:45000});
       const producerPhotos=await page.locator('.bf26-new-maker__visual .bf26-photo').evaluateAll(images=>images.map(img=>{
         const rect=img.getBoundingClientRect();
@@ -261,7 +261,7 @@ const {chromium} = require('playwright-core');
           noOldHidalgoGift:!hidalgoText.includes('100 g') &&
             !hidalgoText.includes('Con la compra de cualquier jamón o paleta de Hidalgo'),
           legacyCouponPresent:!!promo && /BFM2|BFEMDOM/.test(promo.textContent),
-          allCopyButtonsUpdated:couponButtons.length===enabledSellers.length+6 &&
+          allCopyButtonsUpdated:couponButtons.length===enabledSellers.length+7 &&
             couponButtons.every(el=>/^[A-Z0-9]{4,16}$/.test(el.getAttribute('data-bf26-copy')||'')),
           featuredProducerOrder:!!featuredSelectos && !!featuredSelectosCard &&
             !!featuredTolecarnes && !!featuredCard && !!latitudes &&
@@ -284,11 +284,13 @@ const {chromium} = require('playwright-core');
           additionalProducerCards:!!latitudes && !!newMakers && !!club &&
             (latitudes.compareDocumentPosition(newMakers)&Node.DOCUMENT_POSITION_FOLLOWING)!==0 &&
             (newMakers.compareDocumentPosition(club)&Node.DOCUMENT_POSITION_FOLLOWING)!==0 &&
-            newMakerCards.length===4 && newMakerCoupons.length===4 &&
-            ['chocoisabel','anamary','ikore','pajarete'].every((slug,i)=>newMakerCards[i]?.getAttribute('data-bf26-promo')===slug) &&
-            ['CHOCOISABEL','BFANAMARY','BFIKORE','BFPAJARETE'].every((code,i)=>newMakerCoupons[i]?.getAttribute('data-bf26-copy')===code) &&
-            ['Chocolates Artesanos Isabel','La Huerta de Ana Mary','Ikore Kofi','Quesos Pajarete'].every((name,i)=>newMakerCards[i]?.textContent.includes(name)) &&
-            newMakers.textContent.includes('cuatro promociones') &&
+            newMakerCards.length===5 && newMakerCoupons.length===5 &&
+            ['1957','chocoisabel','anamary','ikore','pajarete'].every((slug,i)=>newMakerCards[i]?.getAttribute('data-bf26-promo')===slug) &&
+            ['SINFILTRO','CHOCOISABEL','BFANAMARY','BFIKORE','BFPAJARETE'].every((code,i)=>newMakerCoupons[i]?.getAttribute('data-bf26-copy')===code) &&
+            ['1957','Chocolates Artesanos Isabel','La Huerta de Ana Mary','Ikore Kofi','Quesos Pajarete'].every((name,i)=>newMakerCards[i]?.textContent.includes(name)) &&
+            newMakerCards[0]?.textContent.includes('DE DESCUENTO EN TODOS SUS PRODUCTOS') &&
+            newMakerCards[0]?.querySelector('a.bf26-new-maker__cta[href*="/tienda/1957/"]')!==null &&
+            newMakers.textContent.includes('cinco promociones') &&
             !newMakerCards.some(card=>card.textContent.includes('Selectos de Castilla')) &&
             newMakerCards.every(el=>el.textContent.includes('10%') || el.textContent.includes('10 %')) &&
             newMakerCards.every(el=>!!el.querySelector('.bf26-new-maker__cta[href^="/tienda/"]') || !!el.querySelector('.bf26-new-maker__cta[href^="https://www.elmercadodeorigen.com/tienda/"]')) &&

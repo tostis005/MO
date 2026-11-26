@@ -34,6 +34,7 @@ if ( ! function_exists( 'emdo_bf2026_photo' ) ) {
 
 $hidalgo_url  = home_url( '/tienda/hidalgo-de-la-jara/' );
 $montjam_url  = home_url( '/tienda/montjam/' );
+$bf26_1957_url     = home_url( '/tienda/1957/' );
 $bf26_chocolate_url = home_url( '/tienda/chocolates-artesanos-isabel/' );
 $bf26_huerta_url    = home_url( '/tienda/la-huerta-de-ana-mary/' );
 $bf26_ikore_url     = home_url( '/tienda/ikore-kofi/' );
@@ -65,6 +66,7 @@ $montjam_ham   = emdo_bf2026_photo( 'jamon-de-bellota-100-iberico-montjam', 'Jam
 $montjam_slice = emdo_bf2026_photo( 'jamon-bellota-100-iberico-loncheado-montjam-90g', 'Sobre de jamón de bellota 100 % ibérico loncheado Montjam' );
 
 /* Imágenes de artículos publicados, con fallback visual si dejan de estar disponibles. */
+$bf26_1957_photo = emdo_bf2026_photo( 'cosecha-26-27-sin-filtrar-aceite-de-oliva-virgen-extra-5l-extraccion-en-frio', 'Aceite de oliva virgen extra de la cosecha 2026/27 del productor 1957', 'large', 'eager' );
 $bf26_chocolate_photo = emdo_bf2026_photo( 'crema-bioft-de-chocolate-negro-con-45-de-avellanas-y-cafe-arabica-200-g', 'Crema artesana de chocolate de Chocolates Artesanos Isabel', 'large', 'eager' );
 $bf26_huerta_photo    = emdo_bf2026_photo( '10-kg-de-hortalizas-frescas', 'Caja de hortalizas frescas de La Huerta de Ana Mary', 'large', 'eager' );
 $bf26_ikore_photo     = emdo_bf2026_photo( 'cafe-ikore-kofi-el-indio', 'Café de especialidad Colombia El Indio de Ikore Kofi', 'large', 'eager' );
@@ -345,9 +347,29 @@ get_header();
 						<p class="bf26-new-makers__eyebrow"><span aria-hidden="true">✳</span> MÁS OFERTAS · BLACK FRIDAY</p>
 						<h3 id="bf26-new-makers-title">Más productores. <em>Más para disfrutar.</em></h3>
 					</div>
-					<p>Chocolates artesanos, productos de la huerta, café de especialidad y quesos. Descubre <strong>cuatro promociones con un 10 % de descuento</strong> utilizando el cupón de cada productor.</p>
+					<p>Aceite de oliva virgen extra, chocolates artesanos, productos de la huerta, café de especialidad y quesos. Descubre <strong>cinco promociones con un 10 % de descuento</strong> utilizando el cupón de cada productor.</p>
 				</div>
 				<div class="bf26-new-makers__grid">
+					<article class="bf26-new-maker bf26-new-maker--1957" id="bf26-1957" data-bf26-promo="1957" aria-labelledby="bf26-1957-title">
+						<div class="bf26-new-maker__visual">
+							<?php if ( $bf26_1957_photo ) { echo $bf26_1957_photo; } else { echo '<span class="bf26-new-maker__fallback" aria-hidden="true">🫒</span>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+							<span class="bf26-new-maker__visual-label">ACEITE DE OLIVA VIRGEN EXTRA</span>
+						</div>
+						<div class="bf26-new-maker__body">
+							<p class="bf26-new-maker__category">AOVE · TRADICIÓN DE CÓRDOBA</p>
+							<h4 id="bf26-1957-title">1957</h4>
+							<p class="bf26-new-maker__description">Aceites de oliva virgen extra de tradición familiar, con variedades como Arbequina, Picual y Lechín, en distintos formatos.</p>
+							<div class="bf26-new-maker__promotion">
+								<strong class="bf26-new-maker__percentage">–10<span>%</span></strong>
+								<span>DE DESCUENTO EN TODOS SUS PRODUCTOS</span>
+							</div>
+							<div class="bf26-new-maker__coupon">
+								<span>CÓDIGO DE DESCUENTO</span>
+								<button type="button" class="bf26-coupon" data-bf26-copy="SINFILTRO" aria-label="Copiar cupón SINFILTRO">SINFILTRO <span aria-hidden="true">⧉</span></button>
+							</div>
+							<a class="bf26-button bf26-button--green bf26-new-maker__cta" href="<?php echo esc_url( $bf26_1957_url ); ?>">Descubrir sus aceites <span aria-hidden="true">↗</span></a>
+						</div>
+					</article>
 					<article class="bf26-new-maker bf26-new-maker--chocolate" id="bf26-chocolates-isabel" data-bf26-promo="chocoisabel" aria-labelledby="bf26-chocolate-title">
 						<div class="bf26-new-maker__visual">
 							<?php if ( $bf26_chocolate_photo ) { echo $bf26_chocolate_photo; } else { echo '<span class="bf26-new-maker__fallback" aria-hidden="true">🍫</span>'; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>

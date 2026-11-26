@@ -1555,3 +1555,17 @@ html body.emdo-bf2026-page :is(.site-footer,#colophon) {
  .bf26 .bf26-featured-producer__highlight{font-size:10px;padding:9px 10px}
  .bf26 .bf26-new-maker--featured-selectos .bf26-new-maker__body h4{font-size:29px}
 }
+/* New first 10%-coupon card: 1957 AOVE, with a catalog photo (not editorial stock).
+   Same card spacing, percent and CTA hierarchy as its peer producers. */
+.bf26 .bf26-new-maker--1957 .bf26-new-maker__visual{
+  background:radial-gradient(circle at 57% 38%,#e0dcb9 0%,#9cab7d 57%,#6e8969 100%);
+}
+.bf26 .bf26-new-maker--1957 .bf26-new-maker__visual .bf26-photo{
+  max-width:86%;max-height:186px;filter:drop-shadow(0 12px 16px rgba(27,40,22,.24));
+}
+.bf26 .bf26-new-maker--1957 .bf26-new-maker__visual-label{
+  background:rgba(29,67,42,.82);
+}
+@media(max-width:690px){
+  .bf26 .bf26-new-maker--1957 .bf26-new-maker__visual .bf26-photo{max-height:175px}
+}
