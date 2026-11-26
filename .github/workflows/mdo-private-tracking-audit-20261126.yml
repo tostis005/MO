@@ -1,0 +1,54 @@
+name: Audit one shipment against WooCommerce (private input)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mdo-private-tracking-audit
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+      KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+      PRIVATE_INPUT: ${{ secrets.MDO_TRACKING_TEST_PAYLOAD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read-only lookup; private report to operations mailbox
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          : "${HOST:?Missing host}" "${USER:?Missing user}" "${SSHPASS:?Missing authentication}" "${KNOWN_HOSTS:?Missing pinned host key}" "${PRIVATE_INPUT:?Missing private shipment input}"
+          PORT="${PORT:-22}"
+          [[ "$PORT" =~ ^[0-9]{1,5}$ ]]
+          umask 077
+          TEMP="$(mktemp -d)"
+          trap 'rm -rf -- "$TEMP"' EXIT
+          printf '%s\n' "$KNOWN_HOSTS" > "$TEMP/known_hosts"
+          printf '%s' "$PRIVATE_INPUT" > "$TEMP/input.json"
+          unset PRIVATE_INPUT
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          php -l .github/scripts/mdo-private-tracking-audit-20261126.php
+          SSH_ARGS=(-o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TEMP/known_hosts" -o PubkeyAuthentication=no)
+          REMOTE_DIR="$(sshpass -e ssh "${SSH_ARGS[@]}" -p "$PORT" "$USER@$HOST" 'umask 077; mktemp -d /tmp/mdo-tracking-audit.XXXXXXXX')"
+          [[ "$REMOTE_DIR" =~ ^/tmp/mdo-tracking-audit\.[a-zA-Z0-9]+$ ]]
+          trap 'sshpass -e ssh "${SSH_ARGS[@]}" -p "$PORT" "$USER@$HOST" "rm -rf -- $REMOTE_DIR" >/dev/null 2>&1 || true; rm -rf -- "$TEMP"' EXIT
+          sshpass -e scp "${SSH_ARGS[@]}" -P "$PORT" .github/scripts/mdo-private-tracking-audit-20261126.php "$USER@$HOST:$REMOTE_DIR/audit.php"
+          sshpass -e scp "${SSH_ARGS[@]}" -P "$PORT" "$TEMP/input.json" "$USER@$HOST:$REMOTE_DIR/input.json"
+          sshpass -e ssh "${SSH_ARGS[@]}" -p "$PORT" "$USER@$HOST" "sh -s -- '$REMOTE_DIR'" <<'REMOTE'
+          set -eu
+          D="$1"
+          trap 'rm -rf -- "$D"' EXIT
+          ROOT='/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs'
+          PHP='/opt/plesk/php/8.2/bin/php'
+          WP='/usr/local/bin/wp'
+          "$PHP" -d memory_limit=512M "$WP" eval-file "$D/audit.php" --path="$ROOT" --allow-root --skip-themes >"$D/private.log" 2>&1 || { echo 'PRIVATE_AUDIT_FAILED'; exit 1; }
+          grep -qx 'PRIVATE_AUDIT_REPORT_ACCEPTED' "$D/private.log" || { echo 'PRIVATE_AUDIT_FAILED'; exit 1; }
+          echo 'PRIVATE_AUDIT_REPORT_ACCEPTED'
+          REMOTE
