@@ -12,14 +12,23 @@ const {chromium} = require('playwright-core');
       ['mobile-small',320,720],['mobile-medium',360,780],
       ['mobile',390,844],['tablet',768,1024],['desktop',1440,900]
     ]) {
-      const context=await browser.newContext({viewport:{width,height}});
+      // The Black Friday homepage campaign is intentionally Spanish-only.
+      // Explicitly request Spanish so TranslatePress cannot redirect this
+      // regression run to /en/, where the campaign banner is omitted by design.
+      const context=await browser.newContext({
+        viewport:{width,height},
+        locale:'es-ES',
+        extraHTTPHeaders:{'Accept-Language':'es-ES,es;q=0.9'}
+      });
       const page=await context.newPage();
       const base='https://www.elmercadodeorigen.com';
       const home=await page.goto(base+'/',
         {waitUntil:'domcontentloaded',timeout:90000});
       if(!home || home.status()!==200) throw Error('Home not 200 at '+label);
       await page.waitForSelector('#bf26-overlay',{timeout:20000});
-      await page.waitForSelector('[data-emdo-bf26-home-feature="2026"]',{timeout:20000});
+      await page.waitForSelector('[data-emdo-bf26-home-feature="2026"]',{timeout:20000}).catch(err=>{
+        throw Error('Spanish BF homepage feature missing at '+label+' ('+page.url()+'): '+err.message);
+      });
       await page.waitForFunction(() => {
         const x=document.getElementById('bf26-overlay');
         return x && !x.hidden && document.body.classList.contains('bf26-modal-open');
