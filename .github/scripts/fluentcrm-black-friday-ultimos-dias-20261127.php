@@ -12,7 +12,7 @@ if (!in_array($host, ['www.elmercadodeorigen.com', 'elmercadodeorigen.com'], tru
     fwrite(STDERR, "EMDO_BFLAST_ABORT_WRONG_SITE\n"); exit(3);
 }
 $mode = getenv('EMDO_BFLAST_MODE') ?: 'preflight';
-if (!in_array($mode, ['preflight', 'apply', 'verify', 'test'], true)) {
+if (!in_array($mode, ['preflight', 'apply', 'verify'], true)) {
     fwrite(STDERR, "EMDO_BFLAST_ABORT_INVALID_MODE\n"); exit(4);
 }
 $class = '\FluentCrm\App\Models\Campaign';
@@ -76,6 +76,7 @@ foreach ($coupons as $code => $slug) {
     }
 }
 $campaign = $class::where('title', $title)->first();
+if (!$campaign || (int)$campaign->id !== 16 || (string)$campaign->status !== 'draft') { fwrite(STDERR, "EMDO_BFLAST_ABORT_EXPECTED_DRAFT_16\n"); exit(21); }
 if ($campaign && (string)$campaign->status !== 'draft') {
     fwrite(STDERR, "EMDO_BFLAST_ABORT_EXISTING_NOT_DRAFT id=" . $campaign->id . "\n"); exit(10);
 }

@@ -1,4 +1,4 @@
-name: Create FluentCRM Black Friday final weekend draft and send one test
+name: Update FluentCRM Black Friday final weekend draft without sending
 on:
   push:
     branches: [main]
@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  draft-and-single-test:
+  update-draft:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -24,7 +24,7 @@ jobs:
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Validate PHP and HTML and limit scope to one test
+      - name: Validate revised HTML and draft-only scope
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -37,7 +37,7 @@ jobs:
           grep -Fq 'jose.fraga@gmail.com' .github/scripts/fluentcrm-black-friday-ultimos-dias-20261127.php
           grep -Fq 'sendTestEmail()' .github/scripts/fluentcrm-black-friday-ultimos-dias-20261127.php
           test -n "$EMDO_HOST" && test -n "$EMDO_USER" && test -n "$SSHPASS"
-      - name: Create draft and submit one native FluentCRM test to requested address
+      - name: Update existing campaign draft without sending
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -69,19 +69,20 @@ jobs:
             https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;;
             *) echo "EMDO_BFLAST_WRONG_SITE $SITE"; exit 5 ;;
           esac
-          for MODE in preflight apply verify test verify; do
+          for MODE in preflight apply verify; do
             EMDO_BFLAST_MODE="$MODE" EMDO_BFLAST_HTML_PATH="$STAGE/mailing.html" timeout 240 "$PHP" -d memory_limit=768M "$WP" eval-file "$STAGE/run.php" --path="$ROOT" --allow-root
           done
           echo "EMDO_BFLAST_COMPLETE"
           REMOTE
           grep -q 'EMDO_BFLAST_COMPLETE' /tmp/fluent-bf10-result.txt
-          grep -Eq 'EMDO_BFLAST_TEST_SENT|EMDO_BFLAST_TEST_ALREADY_SENT' /tmp/fluent-bf10-result.txt
-          grep -q 'EMDO_BFLAST_DRAFT_VERIFIED' /tmp/fluent-bf10-result.txt
+          grep -q 'EMDO_BFLAST_COUPON_VERIFIED SINFILTRO id=2349 percent=10' /tmp/fluent-bf10-result.txt
+          ! grep -Eq '^EMDO_BFLAST_TEST_SENT|^EMDO_BFLAST_TEST_ALREADY_SENT' /tmp/fluent-bf10-result.txt
+          grep -q 'EMDO_BFLAST_DRAFT_VERIFIED id=16 status=draft' /tmp/fluent-bf10-result.txt
       - name: Archive non-sensitive verification result
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: fluentcrm-bflast-producers-test-result
+          name: fluentcrm-bflast-revised-draft-result
           path: /tmp/fluent-bf10-result.txt
           if-no-files-found: warn
           retention-days: 5
