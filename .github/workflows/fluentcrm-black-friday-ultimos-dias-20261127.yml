@@ -33,6 +33,8 @@ jobs:
             grep -Fq "$CODE" .github/data/fluentcrm-black-friday-ultimos-dias-20261127.html
             grep -Fq "$CODE" .github/scripts/fluentcrm-black-friday-ultimos-dias-20261127.php
           done
+          grep -Fq 'https://t.me/elmercadodeorigen' .github/data/fluentcrm-black-friday-ultimos-dias-20261127.html
+          grep -Fq 'https://whatsapp.com/channel/0029VbE9YBkIN9iuvrocPb3x' .github/data/fluentcrm-black-friday-ultimos-dias-20261127.html
           grep -Fq '##crm.unsubscribe_url##' .github/data/fluentcrm-black-friday-ultimos-dias-20261127.html
           grep -Fq 'jose.fraga@gmail.com' .github/scripts/fluentcrm-black-friday-ultimos-dias-20261127.php
           grep -Fq 'sendTestEmail()' .github/scripts/fluentcrm-black-friday-ultimos-dias-20261127.php
