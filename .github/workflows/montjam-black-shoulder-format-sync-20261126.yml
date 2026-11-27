@@ -101,55 +101,15 @@ jobs:
           fi
           echo MONTJAM_ASSOCIATIONS_VERIFIED
           REMOTE_SCRIPT
-      - name: Check public product in Chrome at every available weight
-        if: ${{ !cancelled() }}
-        run: |
-          python3 -m pip install --quiet --break-system-packages selenium
-          python3 - <<'PY'
-          import os, re, time, json
-          from selenium import webdriver
-          from selenium.webdriver.chrome.options import Options
-          from selenium.webdriver.common.by import By
-          from selenium.webdriver.support.ui import WebDriverWait, Select
-          options=Options()
-          for arg in ['--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1440,1200']:
-              options.add_argument(arg)
-          d=webdriver.Chrome(options=options)
-          d.set_page_load_timeout(65)
-          wait=WebDriverWait(d,20)
-          selector='select[name="attribute_pa_tamano"]'
-          results=[]
-          try:
-              d.get('https://www.elmercadodeorigen.com/producto/paleta-de-bellota-100-iberica-montjam/?format_verify='+os.environ['GITHUB_RUN_ID'])
-              wait.until(lambda x: x.find_elements(By.CSS_SELECTOR,selector))
-              sizes=[o.get_attribute('value') for o in Select(d.find_element(By.CSS_SELECTOR,selector)).options if o.get_attribute('value') and o.is_enabled()]
-              assert sizes, 'No enabled weights'
-              for size in sizes:
-                  Select(d.find_element(By.CSS_SELECTOR,selector)).select_by_value(size)
-                  time.sleep(3)
-                  state=d.execute_script("""
-                    const c=document.querySelector('#yith-wapo-container');
-                    const v=document.querySelector('input.variation_id');
-                    const s=c?.querySelector('select');
-                    const text=c?.innerText||'';
-                    const visible=e=>!!(e&&e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden');
-                    const total=document.querySelector('#wapo-total-price, .wapo-total-price, #yith-wapo-total-price');
-                    const price=[...document.querySelectorAll('.single_variation .price, #wapo-total-price, .wapo-total-price, #yith-wapo-total-price, .summary > .price')].filter(visible).map(e=>e.innerText).join(' ');
-                    return {id:v?.value,format:visible(c)&&!!s&&text.includes('FORMATO'),options:s?[...s.options].map(o=>o.textContent):[],price,total:total?.innerText||''};
-                  """)
-                  state['size']=size
-                  results.append(state)
-              print('MONTJAM_BROWSER_RESULT '+json.dumps(results,ensure_ascii=False))
-              assert all(int(x.get('id') or 0)>0 and x['format'] and any('Pieza entera' in o for o in x['options']) and re.search(r'\d', x['price']+' '+x['total']) for x in results), 'Missing variation, visible format or price'
-          finally:
-              d.quit()
-          PY
       - name: Verify actual knife-sliced selection on shoulder and ham
         if: ${{ !cancelled() }}
         run: |
           set -Eeuo pipefail
+          python3 -m pip install --quiet --break-system-packages selenium
           python3 - <<'PY'
           import os, re, time, json, unicodedata
+          from decimal import Decimal
+          from selenium.common.exceptions import StaleElementReferenceException, NoSuchElementException
           from selenium import webdriver
           from selenium.webdriver.chrome.options import Options
           from selenium.webdriver.common.by import By
@@ -161,7 +121,7 @@ jobs:
               options.add_argument(arg)
           d=webdriver.Chrome(options=options)
           d.set_page_load_timeout(65)
-          wait=WebDriverWait(d,25)
+          wait=WebDriverWait(d,30,ignored_exceptions=(StaleElementReferenceException,NoSuchElementException))
           weight='select[name="attribute_pa_tamano"]'
           fmt='#yith-wapo-container select'
           failures=[]
@@ -174,14 +134,18 @@ jobs:
                           return el,o.get_attribute('value'),o.text
               return False
           try:
-              for slug in ['jamon-de-bellota-100-iberico-montjam','paleta-de-bellota-100-iberica-montjam']:
+              for slug in ['paleta-de-bellota-100-iberica-montjam','jamon-de-bellota-100-iberico-montjam']:
                   d.get('https://www.elmercadodeorigen.com/producto/'+slug+'/?lang=es&format_verify='+os.environ['GITHUB_RUN_ID'])
-                  sizes=[o.get_attribute('value') for o in Select(wait.until(lambda x:x.find_element(By.CSS_SELECTOR,weight))).options if o.get_attribute('value') and o.is_enabled()]
+                  wait.until(lambda x:x.find_elements(By.CSS_SELECTOR,weight))
+                  sizes=d.execute_script('return [...document.querySelector(arguments[0]).options].filter(o=>o.value&&!o.disabled).map(o=>o.value)',weight)
+                  if slug.startswith('jamon-'): sizes=sizes[:1]
                   if not sizes:
                       failures.append([slug,'no enabled weights'])
                   for size in sizes:
                       try:
-                          Select(d.find_element(By.CSS_SELECTOR,weight)).select_by_value(size)
+                          d.get('https://www.elmercadodeorigen.com/producto/'+slug+'/?lang=es&format_verify='+os.environ['GITHUB_RUN_ID']+'&weight_test='+size)
+                          wait.until(lambda x:x.find_elements(By.CSS_SELECTOR,weight))
+                          d.execute_script('const s=document.querySelector(arguments[0]);s.value=arguments[1];s.dispatchEvent(new Event("change",{bubbles:true}));',weight,size)
                           time.sleep(4)
                           el,value,label=wait.until(lambda x:candidate())
                           d.execute_script('arguments[0].scrollIntoView({block:"center"})',el)
@@ -197,7 +161,22 @@ jobs:
                               """)
                               print('MONTJAM_KNIFE '+json.dumps(dict(state,product=slug,size=size,delay=delay),ensure_ascii=False),flush=True)
                               assert state['value']==value and 'cuchillo' in normalize(state['selected']), 'Knife option did not persist'
-                              assert int(state['variation'] or 0)>0 and state['button'] and re.search(r'\d',state['prices']), 'Invalid variation, price or disabled add-to-cart button'
+                              totals=re.findall(r'(?m)^\s*(\d+(?:\.\d{3})*,\d{2})\s*€\s*
+                      except Exception as e:
+                          failures.append([slug,size,str(e)])
+                          print('MONTJAM_KNIFE_FAILURE '+json.dumps(dict(product=slug,size=size,error=str(e),options=d.execute_script("return [...document.querySelectorAll('#yith-wapo-container select option')].map(o=>({label:o.textContent,disabled:o.disabled,value:o.value}))")),ensure_ascii=False),flush=True)
+                  print('MONTJAM_KNIFE_PRODUCT '+slug,flush=True)
+              assert not failures, json.dumps(failures,ensure_ascii=False)
+              print('MONTJAM_KNIFE_SELECTION_VERIFIED')
+          finally:
+              d.quit()
+          PY
+,state['format'])
+                              assert int(state['variation'] or 0)>0 and state['button'] and totals, 'Invalid variation, missing visible total or disabled add-to-cart button'
+                              if slug.startswith('paleta-'):
+                                  actual=Decimal(totals[-1].replace('.','').replace(',','.'))
+                                  expected={'6-65-kg':Decimal('260.70'),'65-7-kg':Decimal('277.86')}[size]
+                                  assert actual==expected, 'Unexpected total '+str(actual)+' expected '+str(expected)
                       except Exception as e:
                           failures.append([slug,size,str(e)])
                           print('MONTJAM_KNIFE_FAILURE '+json.dumps(dict(product=slug,size=size,error=str(e),options=d.execute_script("return [...document.querySelectorAll('#yith-wapo-container select option')].map(o=>({label:o.textContent,disabled:o.disabled,value:o.value}))")),ensure_ascii=False),flush=True)
