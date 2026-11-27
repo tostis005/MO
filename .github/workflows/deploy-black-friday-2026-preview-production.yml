@@ -86,7 +86,8 @@ jobs:
           grep -Fq '2 % de cashback durante Black Friday' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq '<strong>2<span>%</span></strong>' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'Los regalos y las mejoras de peso están sujetos' elmercadodeorigen-child/templates/black-friday-2026-preview.php
-          grep -Fq 'Próximamente iremos incorporando nuevas promociones' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'Las ofertas finalizan el domingo 29 de noviembre.' elmercadodeorigen-child/templates/black-friday-2026-preview.php
+          grep -Fq 'Las ofertas finalizan el domingo 29 de noviembre.' mu-plugins/emdo-home-black-friday-feature-20261112.php
           ! grep -Fq 'todavía no se ha anunciado oficialmente' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           ! grep -Fq '1 % en tu monedero Club EMDO' elmercadodeorigen-child/templates/black-friday-2026-preview.php
           grep -Fq 'Ofertas que apetecen.' elmercadodeorigen-child/templates/black-friday-2026-preview.php
@@ -462,6 +463,8 @@ jobs:
           grep -Fq 'id="bf26-overlay"' "/tmp/bf-global-$RUN.html"
           test "$(grep -oF 'data-emdo-bf26-home-feature="2026"' "/tmp/bf-global-$RUN.html" | wc -l)" -eq 1
           grep -Fq 'Este Black Friday' "/tmp/bf-global-$RUN.html"
+          grep -Fq 'Las ofertas finalizan el domingo 29 de noviembre.' "/tmp/bf-global-$RUN.html"
+          grep -Fq 'Las ofertas finalizan el domingo 29 de noviembre.' "/tmp/bf-preview-$RUN.html"
           grep -Fq 'Ver todas las promociones' "/tmp/bf-global-$RUN.html"
           ! grep -Fq 'Las primeras ofertas' "/tmp/bf-global-$RUN.html"
           "$PHP" -d memory_limit=768M "$WP" eval '
