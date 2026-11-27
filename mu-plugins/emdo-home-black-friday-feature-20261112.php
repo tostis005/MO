@@ -23,7 +23,7 @@ function emdo_bf26_home_banner_html(): string {
 		. '<span class="emdo-bf26-home-feature__eyebrow"><span class="emdo-bf26-home-feature__spark" aria-hidden="true">✳</span> BLACK FRIDAY 2026 <span class="emdo-bf26-home-feature__spark" aria-hidden="true">✳</span></span>'
 		. '<strong class="emdo-bf26-home-feature__title">Este Black Friday, <em>hay mucho por descubrir.</em></strong>'
 		. '<span class="emdo-bf26-home-feature__lead">Descuentos, regalos y ventajas especiales de nuestros productores, reunidos en un mismo lugar. <strong>Explora todas las promociones disponibles</strong> y descubre las que más te apetezcan.</span>'
-		. '<span class="emdo-bf26-home-feature__note">Todas las ofertas y sus condiciones, en nuestra página especial de Black Friday.</span>'
+		. '<span class="emdo-bf26-home-feature__note"><strong style="color:#fff0cf;font-size:16px">Las ofertas finalizan el domingo 29 de noviembre.</strong></span>'
 		. '</div>'
 		. '<div class="emdo-bf26-home-feature__action">'
 		. '<div class="emdo-bf26-home-feature__seal" aria-hidden="true"><small>BLACK FRIDAY</small><strong>2026</strong><small>OFERTAS</small></div>'

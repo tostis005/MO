@@ -125,6 +125,7 @@ get_header();
 			<div class="bf26-hero__copy">
 				<h1 id="bf26-title">Black Friday.<em>Ofertas que apetecen.</em><span>Y mucho por descubrir.</span></h1>
 				<p class="bf26-hero__lead">Este Black Friday reunimos <strong>descuentos, regalos y ventajas especiales</strong> de nuestros productores. Y estrenamos el <strong>Club EMDO</strong>: durante la campaña, tus compras con cuenta registrada acumulan un <strong>2 % de cashback</strong> en el monedero.</p>
+				<p class="bf26-hero__lead" style="font-size:clamp(17px,2vw,22px);margin-top:12px"><strong>Las ofertas finalizan el domingo 29 de noviembre.</strong></p>
 				<div class="bf26-hero__buttons">
 					<a class="bf26-button bf26-button--cream" href="#ofertas">Ver todas las promociones <span aria-hidden="true">↗</span></a>
 				</div>
@@ -159,7 +160,7 @@ get_header();
 					<p class="bf26-eyebrow">LAS PROMOCIONES</p>
 					<h2>Promociones para elegir.<br><em>Ofertas para disfrutar.</em></h2>
 				</div>
-				<p>Descubre las ofertas disponibles y las condiciones de cada promoción. <strong>Próximamente iremos incorporando nuevas promociones, así que estate atento a las novedades.</strong></p>
+				<p>Descubre las ofertas disponibles y las condiciones de cada promoción. <strong>Aprovecha las ofertas hasta el domingo 29 de noviembre.</strong></p>
 			</div>
 
 			<?php if ( $bf26_show_hidalgo ) : $bf26_offer_position++; ?>
@@ -496,7 +497,7 @@ get_header();
 		<div class="bf26-overlay__layout">
 			<div class="bf26-overlay__copy">
 				<h2 id="bf26-overlay-title">BLACK<br><em>FRIDAY</em></h2>
-				<p id="bf26-overlay-desc">Nuestro Black Friday trae <strong>descuentos, regalos y ventajas especiales</strong>. Además, estrenamos el <strong>Club EMDO</strong> con un <strong>2 % de cashback</strong> al comprar con tu cuenta registrada. <strong>Próximamente incorporaremos nuevas promociones. ¡Estate atento!</strong></p>
+				<p id="bf26-overlay-desc">Nuestro Black Friday trae <strong>descuentos, regalos y ventajas especiales</strong>. Además, estrenamos el <strong>Club EMDO</strong> con un <strong>2 % de cashback</strong> al comprar con tu cuenta registrada. <strong>Las ofertas finalizan el domingo 29 de noviembre.</strong></p>
 				<div class="bf26-overlay__buttons">
 					<button type="button" class="bf26-overlay__cta" data-bf26-enter>Descubrir las promociones <span aria-hidden="true">↗</span></button>
 					<button type="button" class="bf26-overlay__skip" data-bf26-close>Ahora no, ver la página</button>
