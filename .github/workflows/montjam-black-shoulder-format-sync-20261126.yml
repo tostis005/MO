@@ -39,13 +39,30 @@ jobs:
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          if [ -n "$KNOWN_HOSTS" ]; then
-            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
-          else
-            ssh-keyscan -T 15 -p "${STAGING_PORT:-22}" -H "$STAGING_HOST" > ~/.ssh/known_hosts 2>/dev/null
-          fi
-          test -s ~/.ssh/known_hosts
+          # Match the existing trusted key material even if the stored hostname
+          # differs from the current SSH host or the configured port.
+          : "${KNOWN_HOSTS:?Missing verified STAGING_KNOWN_HOSTS}"
+          umask 077
+          printf '%s\n' "$KNOWN_HOSTS" | tr -d '\r' > ~/.ssh/emdo-trusted-hosts
+          ssh-keyscan -T 15 -p "${STAGING_PORT:-22}" -H "$STAGING_HOST" > ~/.ssh/emdo-presented-hosts 2>/dev/null
+          python3 - <<'PY'
+          from pathlib import Path
+          home=Path.home()/'.ssh'
+          def rows(path):
+              for line in path.read_text().splitlines():
+                  parts=line.split()
+                  if len(parts)>=3 and not line.lstrip().startswith(('#','@')):
+                      yield parts
+          trusted={(p[1],p[2]) for p in rows(home/'emdo-trusted-hosts')}
+          matched=[p for p in rows(home/'emdo-presented-hosts') if (p[1],p[2]) in trusted]
+          if not matched:
+              raise SystemExit('SSH identity mismatch: no presented server key matches the verified STAGING_KNOWN_HOSTS secret. Refresh it using a fingerprint confirmed by hosting.')
+          (home/'known_hosts').write_text(''.join(' '.join(p[:3])+'\n' for p in matched))
+          print('SSH_TRUSTED_KEY_MATCH types='+','.join(sorted({p[1] for p in matched})))
+          PY
+          rm -f ~/.ssh/emdo-trusted-hosts ~/.ssh/emdo-presented-hosts
           chmod 600 ~/.ssh/known_hosts
+          sshpass -e ssh -o StrictHostKeyChecking=yes -o ConnectTimeout=15 -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive -p "${STAGING_PORT:-22}" "$STAGING_USER@$STAGING_HOST" 'echo SSH_VERIFIED_OK'
       - name: Audit, add missing associations and install future variation hook
         run: |
           set -Eeuo pipefail
@@ -85,6 +102,7 @@ jobs:
           echo MONTJAM_ASSOCIATIONS_VERIFIED
           REMOTE_SCRIPT
       - name: Check public product in Chrome at every available weight
+        if: ${{ !cancelled() }}
         run: |
           python3 -m pip install --quiet --break-system-packages selenium
           python3 - <<'PY'
@@ -127,6 +145,7 @@ jobs:
               d.quit()
           PY
       - name: Verify actual knife-sliced selection on shoulder and ham
+        if: ${{ !cancelled() }}
         run: |
           set -Eeuo pipefail
           python3 - <<'PY'
