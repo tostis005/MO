@@ -161,17 +161,7 @@ jobs:
                               """)
                               print('MONTJAM_KNIFE '+json.dumps(dict(state,product=slug,size=size,delay=delay),ensure_ascii=False),flush=True)
                               assert state['value']==value and 'cuchillo' in normalize(state['selected']), 'Knife option did not persist'
-                              totals=re.findall(r'(?m)^\s*(\d+(?:\.\d{3})*,\d{2})\s*€\s*
-                      except Exception as e:
-                          failures.append([slug,size,str(e)])
-                          print('MONTJAM_KNIFE_FAILURE '+json.dumps(dict(product=slug,size=size,error=str(e),options=d.execute_script("return [...document.querySelectorAll('#yith-wapo-container select option')].map(o=>({label:o.textContent,disabled:o.disabled,value:o.value}))")),ensure_ascii=False),flush=True)
-                  print('MONTJAM_KNIFE_PRODUCT '+slug,flush=True)
-              assert not failures, json.dumps(failures,ensure_ascii=False)
-              print('MONTJAM_KNIFE_SELECTION_VERIFIED')
-          finally:
-              d.quit()
-          PY
-,state['format'])
+                              totals=re.findall(r'(?m)^\s*(\d+(?:\.\d{3})*,\d{2})\s*€\s*$',state['format'])
                               assert int(state['variation'] or 0)>0 and state['button'] and totals, 'Invalid variation, missing visible total or disabled add-to-cart button'
                               if slug.startswith('paleta-'):
                                   actual=Decimal(totals[-1].replace('.','').replace(',','.'))
