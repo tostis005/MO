@@ -1,0 +1,99 @@
+name: Deploy vendor-country guard with shipping regression checks
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-vendor-country-guard-20261127.yml'
+      - 'mu-plugins/mdo-vendor-country-guard-20261127.php'
+      - '.github/scripts/verify-vendor-country-guard-20261127.php'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deploy-vendor-country-guard-20261127
+  cancel-in-progress: false
+jobs:
+  guarded-deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint and prepare SSH
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l mu-plugins/mdo-vendor-country-guard-20261127.php
+          php -l .github/scripts/verify-vendor-country-guard-20261127.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Read-only preflight, install atomically, recheck or roll back
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ServerAliveInterval=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s|%s|%s" "$p" "$php_bin" "$wp_bin"; break ;;
+              esac
+            done
+          ')"
+          test -n "$INFO"
+          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
+          REMOTE="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'mktemp -d /tmp/mdo-country-guard.XXXXXXXX')"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf -- $REMOTE" >/dev/null 2>&1 || true' EXIT
+          sshpass -e scp $SCP mu-plugins/mdo-vendor-country-guard-20261127.php "$STAGING_USER@$STAGING_HOST:$REMOTE/guard.php"
+          sshpass -e scp $SCP .github/scripts/verify-vendor-country-guard-20261127.php "$STAGING_USER@$STAGING_HOST:$REMOTE/verify.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD' '$PHP' '$WP' '$REMOTE' '$GITHUB_RUN_ID'" <<'REMOTE_SCRIPT' | tee /tmp/mdo-country-guard-verification.log
+          set -Eeuo pipefail
+          prod="$1"; php="$2"; wp="$3"; work="$4"; run="$5"
+          target="$prod/wp-content/mu-plugins/mdo-vendor-country-guard-20261127.php"
+          export PATH="$(dirname "$php"):$PATH"
+          "$php" -l "$work/guard.php"
+          "$php" -l "$work/verify.php"
+          if [ -f "$target" ] && ! cmp -s "$target" "$work/guard.php"; then
+            echo "Existing different guard requires explicit migration; refusing automatic overwrite" >&2
+            exit 1
+          fi
+          MDO_GUARD_SOURCE="$work/guard.php" "$php" -d memory_limit=1536M "$wp" eval-file "$work/verify.php" --path="$prod" --allow-root
+          if [ -f "$target" ]; then
+            echo "Identical guard already installed"
+          else
+            incoming="$target.incoming-$run"
+            rollback() { rm -f "$incoming" "$target"; }
+            trap rollback ERR
+            install -m 0644 "$work/guard.php" "$incoming"
+            mv "$incoming" "$target"
+            "$php" -l "$target"
+            MDO_GUARD_SOURCE="" "$php" -d memory_limit=1536M "$wp" eval-file "$work/verify.php" --path="$prod" --allow-root
+            trap - ERR
+          fi
+          echo 'MDO_COUNTRY_GUARD_DEPLOYED'
+          REMOTE_SCRIPT
+          grep -q '^MDO_COUNTRY_GUARD_DEPLOYED$' /tmp/mdo-country-guard-verification.log
+      - name: Keep regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mdo-country-guard-verification
+          path: /tmp/mdo-country-guard-verification.log
+          retention-days: 10
+          if-no-files-found: warn
