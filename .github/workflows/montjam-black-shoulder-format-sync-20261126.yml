@@ -126,3 +126,65 @@ jobs:
           finally:
               d.quit()
           PY
+      - name: Verify actual knife-sliced selection on shoulder and ham
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import os, re, time, json, unicodedata
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          from selenium.webdriver.common.by import By
+          from selenium.webdriver.support.ui import WebDriverWait, Select
+          def normalize(s):
+              return ''.join(c for c in unicodedata.normalize('NFD',s.lower()) if unicodedata.category(c)!='Mn')
+          options=Options()
+          for arg in ['--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1440,1200','--lang=es-ES']:
+              options.add_argument(arg)
+          d=webdriver.Chrome(options=options)
+          d.set_page_load_timeout(65)
+          wait=WebDriverWait(d,25)
+          weight='select[name="attribute_pa_tamano"]'
+          fmt='#yith-wapo-container select'
+          failures=[]
+          def candidate():
+              for el in d.find_elements(By.CSS_SELECTOR,fmt):
+                  if not el.is_displayed() or not el.is_enabled():
+                      continue
+                  for o in Select(el).options:
+                      if 'cuchillo' in normalize(o.text) and o.is_enabled() and o.get_attribute('value'):
+                          return el,o.get_attribute('value'),o.text
+              return False
+          try:
+              for slug in ['jamon-de-bellota-100-iberico-montjam','paleta-de-bellota-100-iberica-montjam']:
+                  d.get('https://www.elmercadodeorigen.com/producto/'+slug+'/?lang=es&format_verify='+os.environ['GITHUB_RUN_ID'])
+                  sizes=[o.get_attribute('value') for o in Select(wait.until(lambda x:x.find_element(By.CSS_SELECTOR,weight))).options if o.get_attribute('value') and o.is_enabled()]
+                  if not sizes:
+                      failures.append([slug,'no enabled weights'])
+                  for size in sizes:
+                      try:
+                          Select(d.find_element(By.CSS_SELECTOR,weight)).select_by_value(size)
+                          time.sleep(4)
+                          el,value,label=wait.until(lambda x:candidate())
+                          d.execute_script('arguments[0].scrollIntoView({block:"center"})',el)
+                          Select(el).select_by_value(value)
+                          for delay in [2,10]:
+                              time.sleep(delay)
+                              state=d.execute_script("""
+                              const c=document.querySelector('#yith-wapo-container');
+                              const s=[...document.querySelectorAll('#yith-wapo-container select')].find(x=>x.getClientRects().length && [...x.options].some(o=>/cuchillo/i.test(o.textContent)));
+                              const b=document.querySelector('form.cart .single_add_to_cart_button');
+                              const prices=[...document.querySelectorAll('#wapo-total-price,.wapo-total-price,#yith-wapo-total-price,.single_variation .price,.summary > .price')].filter(e=>e.getClientRects().length).map(e=>e.innerText).join(' ');
+                              return {selected:s?.selectedOptions[0]?.textContent||'',value:s?.value||'',variation:document.querySelector('input.variation_id')?.value||'',prices,button:!!b&&!b.disabled&&!b.classList.contains('disabled')&&b.getAttribute('aria-disabled')!=='true',format:c?.innerText||''};
+                              """)
+                              print('MONTJAM_KNIFE '+json.dumps(dict(state,product=slug,size=size,delay=delay),ensure_ascii=False),flush=True)
+                              assert state['value']==value and 'cuchillo' in normalize(state['selected']), 'Knife option did not persist'
+                              assert int(state['variation'] or 0)>0 and state['button'] and re.search(r'\d',state['prices']), 'Invalid variation, price or disabled add-to-cart button'
+                      except Exception as e:
+                          failures.append([slug,size,str(e)])
+                          print('MONTJAM_KNIFE_FAILURE '+json.dumps(dict(product=slug,size=size,error=str(e),options=d.execute_script("return [...document.querySelectorAll('#yith-wapo-container select option')].map(o=>({label:o.textContent,disabled:o.disabled,value:o.value}))")),ensure_ascii=False),flush=True)
+                  print('MONTJAM_KNIFE_PRODUCT '+slug,flush=True)
+              assert not failures, json.dumps(failures,ensure_ascii=False)
+              print('MONTJAM_KNIFE_SELECTION_VERIFIED')
+          finally:
+              d.quit()
+          PY
