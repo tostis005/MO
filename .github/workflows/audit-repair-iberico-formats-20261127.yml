@@ -1,0 +1,107 @@
+name: Audit and repair Hidalgo and Montjam whole piece formats
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/audit-repair-iberico-formats-20261127.php'
+      - '.github/workflows/audit-repair-iberico-formats-20261127.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emdo-iberico-formats-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+      ROOT: /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate PHP and prepare existing SSH route
+        env:
+          KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+        run: |
+          set -Eeuo pipefail
+          php -l .github/scripts/audit-repair-iberico-formats-20261127.php
+          : "${STAGING_HOST:?}" "${STAGING_USER:?}" "${SSHPASS:?}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          # Match the existing trusted key material even if the stored hostname
+          # differs from the current SSH host or the configured port.
+          : "${KNOWN_HOSTS:?Missing verified STAGING_KNOWN_HOSTS}"
+          umask 077
+          printf '%s\n' "$KNOWN_HOSTS" | tr -d '\r' > ~/.ssh/emdo-trusted-hosts
+          ssh-keyscan -T 15 -p "${STAGING_PORT:-22}" -H "$STAGING_HOST" > ~/.ssh/emdo-presented-hosts 2>/dev/null
+          python3 - <<'PY'
+          from pathlib import Path
+          home=Path.home()/'.ssh'
+          def rows(path):
+              for line in path.read_text().splitlines():
+                  parts=line.split()
+                  if len(parts)>=3 and not line.lstrip().startswith(('#','@')):
+                      yield parts
+          trusted={(p[1],p[2]) for p in rows(home/'emdo-trusted-hosts')}
+          matched=[p for p in rows(home/'emdo-presented-hosts') if (p[1],p[2]) in trusted]
+          if not matched:
+              raise SystemExit('SSH identity mismatch: no presented server key matches the verified STAGING_KNOWN_HOSTS secret. Refresh it using a fingerprint confirmed by hosting.')
+          (home/'known_hosts').write_text(''.join(' '.join(p[:3])+'\n' for p in matched))
+          print('SSH_TRUSTED_KEY_MATCH types='+','.join(sorted({p[1] for p in matched})))
+          PY
+          rm -f ~/.ssh/emdo-trusted-hosts ~/.ssh/emdo-presented-hosts
+          chmod 600 ~/.ssh/known_hosts
+          sshpass -e ssh -o StrictHostKeyChecking=yes -o ConnectTimeout=15 -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive -p "${STAGING_PORT:-22}" "$STAGING_USER@$STAGING_HOST" 'echo SSH_VERIFIED_OK'
+      - name: Audit repair verify production associations and preserve price options
+        run: |
+          set -Eeuo pipefail
+          PORT="$STAGING_PORT"
+          if [ -z "$PORT" ]; then PORT=22; fi
+          OPTS=(-o StrictHostKeyChecking=yes -o ConnectTimeout=15 -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive -p "$PORT")
+          REMOTE="/tmp/emdo-iberico-format-$GITHUB_RUN_ID.php"
+          sshpass -e ssh "${OPTS[@]}" "$STAGING_USER@$STAGING_HOST" "umask 077; cat > '$REMOTE'" < .github/scripts/audit-repair-iberico-formats-20261127.php
+          sshpass -e ssh "${OPTS[@]}" "$STAGING_USER@$STAGING_HOST" "bash -s -- '$ROOT' '$REMOTE'" <<'REMOTE_SCRIPT' | tee /tmp/iberico-audit.log
+          set -Eeuo pipefail
+          root="$1"; script="$2"
+          php=/opt/plesk/php/8.2/bin/php; wp="$(command -v wp)"
+          trap 'rm -f "$script"' EXIT
+          site="$("$php" "$wp" option get siteurl --path="$root" --skip-plugins --skip-themes --allow-root)"
+          case "$site" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) ;; *) exit 10;; esac
+          for mode in audit apply verify; do
+            EMDO_FORMAT_MODE="$mode" "$php" -d memory_limit=1536M "$wp" eval-file "$script" --path="$root" --allow-root
+          done
+          REMOTE_SCRIPT
+          python3 - <<'PY'
+          import json
+          lines=open('/tmp/iberico-audit.log').read().splitlines()
+          m=[x for x in lines if x.startswith('IBERICO_MANIFEST ')]
+          assert len(m)==1
+          open('/tmp/iberico-manifest.json','w').write(m[0].split(' ',1)[1])
+          PY
+      - name: Check public prices and selectable options for every purchasable weight
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --quiet --break-system-packages selenium
+          python3 -m py_compile .github/scripts/verify-iberico-formats-20261127.py
+          python3 .github/scripts/verify-iberico-formats-20261127.py | tee /tmp/iberico-browser.log
+          grep -q 'IBERICO_ASSOCIATIONS_VERIFIED' /tmp/iberico-audit.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iberico-format-audit
+          path: |
+            /tmp/iberico-audit.log
+            /tmp/iberico-manifest.json
+            /tmp/iberico-browser.log
+          if-no-files-found: warn
